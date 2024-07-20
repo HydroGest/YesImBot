@@ -1,0 +1,24 @@
+{
+  "name": "koishi-plugin-yesimbot",
+  "description": "Yes! I'm Bot! 机械壳，人类心。",
+  "version": "1.1.2-fix",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "license": "MIT",
+  "scripts": {},
+  "keywords": [
+    "chatbot",
+    "koishi",
+    "plugin"
+  ],
+  "peerDependencies": {
+    "koishi": "^4.17.9"
+  },
+  "dependencies": {
+    "axios": "^1.7.2"
+  }
+}
