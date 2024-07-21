@@ -1,4 +1,4 @@
-import { Context, Next, Schema, h } from "koishi";
+import { Context, Next, Schema, h, Bot } from "koishi";
 import { genSysPrompt } from "./promptUtils";
 import { run } from "./apiAdapter";
 
@@ -22,7 +22,6 @@ export interface Config {
     AIModel: string;
   };
   Bot: {
-    OwnerId: string;
     PromptFileUrl: string;
     BotName: string;
     BotHometown: string;
@@ -122,7 +121,7 @@ class SendQueue {
 
   updateSendQueue(group: number, sender: string, content: string, id: any, FilterList: any) {
     if (this.sendQueueMap.has(group)) {
-      if (containsFilter(content, FilterList)) return next();
+      if (containsFilter(content, FilterList)) return;
       const queue = this.sendQueueMap.get(group);
       queue.push({ id: Number(id), sender, content }); 
       this.sendQueueMap.set(group, queue);
@@ -202,68 +201,86 @@ function handleResponse(APIType: string, input: any): string {
   return finalResponse;
 }
 
-export function apply(ctx: Context, config: Config) {
-  ctx.middleware(async (session: any, next: Next) => {
-    //ctx.logger.info("Message Recieved.");
-    // 加入消息队列
-    let groupId: number =
-      session.channelId == "#" ? 0 : Number(session.channelId);
-    if (!config.Group.AllowedGroups.includes(groupId)) return next();
-    sendQueue.updateSendQueue(
-      groupId,
-      session.event.user.name,
-      session.content,
-      session.messageId,
-      config.Group.Filter
-    );
-    console.log("Message recieved.");
+export function apply(ctx: Context, config: Config, bot: Bot) {  
+  ctx.middleware(async (session: any, next: Next) => {  
+    const groupId: number =  
+      session.channelId == "#" ? 0 : Number(session.channelId);  
+    if (!config.Group.AllowedGroups.includes(groupId)) return next();  
 
-    // 检测是否达到发送次数
-    if (!sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize)) {
-      ctx.logger.info(sendQueue.getPrompt(groupId));
-      return next();
-    }
-    ctx.logger.info(`Request sent, awaiting for response...`);
+    const regex = /<at id\s*=\s*([^>]+)\/>/g;  
 
-    // 获取回答
-    var SysPrompt: string = await genSysPrompt(
-      config,
-      session.channel.name,
-      session.channel.name
-    );
-	
-	// 消息队列出队
-	const chatData: string = sendQueue.getPrompt(groupId);
-	sendQueue.resetSendQueue(
-      groupId,
-      getRandomInt(config.Group.MinPopNum, config.Group.MaxPopNum)
-    );
+    // 转码 <at> 消息
+    const matches = Array.from(session.content.matchAll(regex));  
+
+    const userContentPromises = matches.map(async (match) => {  
+      const id = match[1].trim();  
+      const user = await bot.getUser(id); 
+      return { match: match[0], replacement: `@${user.id}` }; 
+    });  
+
+    const userContents = await Promise.all(userContentPromises);  
+
+    // 根据获取的用户内容更新 message  
+    let userContent: string = session.content;  
+    userContents.forEach(({ match, replacement }) => {  
+      userContent = userContent.replace(match, replacement);  
+    });  
+
+    sendQueue.updateSendQueue(  
+      groupId,  
+      session.event.user.name,  
+      userContent,  
+      session.messageId,  
+      config.Group.Filter  
+    );  
+    console.log("Message received.");  
+
+    // 检测是否达到发送次数  
+    if (!sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize)) {  
+      ctx.logger.info(sendQueue.getPrompt(groupId));  
+      return next();  
+    }  
     
-	const response = await run(
-      config.API.APIType,
-      config.API.BaseAPI,
-      config.API.UID,
-      config.API.APIKey,
-      config.API.AIModel,
-      SysPrompt,
-      chatData
-    );
+    ctx.logger.info(`Request sent, awaiting for response...`);  
 
-  const finalRes: string = handleResponse(config.API.APIType, response);
-	const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
-	
-    sendQueue.updateSendQueue(
-      groupId,
-      config.Bot.BotName,
-      finalRes,
-      0,
-      config.Group.Filter
-    );
-	
-    ctx.logger.info(finalRes);
-	
-    for (let sentence of sentences) {
-		session.sendQueued(sentence);
-	}
-  });
+    // 获取回答  
+    const SysPrompt: string = await genSysPrompt(  
+      config,  
+      session.channel.name,  
+      session.channel.name  
+    );  
+
+    // 消息队列出队  
+    const chatData: string = sendQueue.getPrompt(groupId);  
+    sendQueue.resetSendQueue(  
+      groupId,  
+      getRandomInt(config.Group.MinPopNum, config.Group.MaxPopNum)  
+    );  
+    
+    const response = await run(  
+      config.API.APIType,  
+      config.API.BaseAPI,  
+      config.API.UID,  
+      config.API.APIKey,  
+      config.API.AIModel,  
+      SysPrompt,  
+      chatData  
+    );  
+
+    const finalRes: string = handleResponse(config.API.APIType, response);  
+    const sentences = finalRes.split(/(?<=[。?!？！])\s*/);  
+    
+    sendQueue.updateSendQueue(  
+      groupId,  
+      config.Bot.BotName,  
+      finalRes,  
+      0,  
+      config.Group.Filter  
+    );  
+    
+    ctx.logger.info(finalRes);  
+    for (const sentence of sentences) {  
+      session.sendQueued(sentence);  
+    }  
+  });  
 }
