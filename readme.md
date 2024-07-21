@@ -1,12 +1,19 @@
-# YesImBot
+<div align="center">
+  <div>
+    ![Logo](/logo.png)
+  </div>
 
-[![npm](https://img.shields.io/npm/v/koishi-plugin-yesimbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-yesimbot)
+<h1 id="koishi">Athena</h1>
 
-*机器壳，人类心。*
+[![npm](https://img.shields.io/npm/v/koishi-plugin-yesimbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-yesimbot) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![NPM Downloads](https://img.shields.io/npm/dw/koishi-plugin-yesimbot)
+
+*✨机器壳，人类心。✨*
+
+</div>
 
 ## 🎐 简介
 
-YesImBot 是一个 Koishi 插件，旨在让大模型人工智能也能参与到聊群的讨论中。
+YesImBot / Athena 是一个 [Koishi](https://koishi.chat/zh-CN/) 插件，旨在让大模型人工智能也能参与到聊群的讨论中。
 
 ## 🌈 开始使用
 
