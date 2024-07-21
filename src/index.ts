@@ -12,6 +12,7 @@ export interface Config {
     SendQueueSize: number;
     MaxPopNum: number;
     MinPopNum: number;
+	Filter: any;
   };
   API: {
     APIType: any;
@@ -21,6 +22,7 @@ export interface Config {
     AIModel: string;
   };
   Bot: {
+    OwnerId: string;
     PromptFileUrl: string;
     BotName: string;
     BotHometown: string;
@@ -48,6 +50,9 @@ export const Config: Schema<Config> = Schema.object({
     MinPopNum: Schema.number()
       .default(1)
       .description("消息队列每次出队的最小数量"),
+	Filter: Schema.array(Schema.string())
+      .default(["你是", "You are", "吧", "呢"])
+      .description("过滤的词汇（防止被调皮群友/机器人自己搞傻）"),
   }).description("群聊设置"),
   API: Schema.object({
     APIType: Schema.union(["OpenAI", "Cloudflare", "脑力计算"]).description(
@@ -92,6 +97,16 @@ function getRandomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+
+function containsFilter(sessionContent: string, FilterList: any): boolean {  
+    for (const filterString of FilterList) {  
+        if (sessionContent.includes(filterString)) {  
+            return true;  
+        }  
+    }  
+    return false;  
+} 
+
 class SendQueue {
   private sendQueueMap: Map<
     number,
@@ -105,8 +120,9 @@ class SendQueue {
     >();
   }
 
-  updateSendQueue(group: number, sender: string, content: string, id: any) {
+  updateSendQueue(group: number, sender: string, content: string, id: any, FilterList: any) {
     if (this.sendQueueMap.has(group)) {
+      if (containsFilter(content, FilterList)) return next();
       const queue = this.sendQueueMap.get(group);
       queue.push({ id: Number(id), sender, content }); 
       this.sendQueueMap.set(group, queue);
@@ -197,7 +213,8 @@ export function apply(ctx: Context, config: Config) {
       groupId,
       session.event.user.name,
       session.content,
-      session.messageId
+      session.messageId,
+      config.Group.Filter
     );
     console.log("Message recieved.");
 
@@ -216,7 +233,7 @@ export function apply(ctx: Context, config: Config) {
     );
 	
 	// 消息队列出队
-	const chatData:　string = sendQueue.getPrompt(groupId);
+	const chatData: string = sendQueue.getPrompt(groupId);
 	sendQueue.resetSendQueue(
       groupId,
       getRandomInt(config.Group.MinPopNum, config.Group.MaxPopNum)
@@ -232,14 +249,15 @@ export function apply(ctx: Context, config: Config) {
       chatData
     );
 
-    const finalRes: string = handleResponse(config.API.APIType, response);
-	const sentences = finalRes.split(/(?<=[。?!？!])\s*/);
+  const finalRes: string = handleResponse(config.API.APIType, response);
+	const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
 	
     sendQueue.updateSendQueue(
       groupId,
       config.Bot.BotName,
       finalRes,
-      0
+      0,
+      config.Group.Filter
     );
 	
     ctx.logger.info(finalRes);
@@ -247,11 +265,5 @@ export function apply(ctx: Context, config: Config) {
     for (let sentence of sentences) {
 		session.sendQueued(sentence);
 	}
-	
-    /*
-    return config.Bot.SendDirectly
-      ? finalRes
-      : next(finalRes);
-    */
   });
 }
