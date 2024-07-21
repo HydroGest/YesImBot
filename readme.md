@@ -1,10 +1,10 @@
 <div align="center">
     <img src="https://raw.githubusercontent.com/HydroGest/YesImBot/main/logo.png"/>
-	<h1 id="koishi">Athena</h1>
+	<h1 id="koishi">Athena | YesImBot</h1>
 
-	[![npm](https://img.shields.io/npm/v/koishi-plugin-yesimbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-yesimbot) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![NPM Downloads](https://img.shields.io/npm/dw/koishi-plugin-yesimbot)
+[![npm](https://img.shields.io/npm/v/koishi-plugin-yesimbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-yesimbot) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![NPM Downloads](https://img.shields.io/npm/dw/koishi-plugin-yesimbot)
 
-	*✨机器壳，人类心。✨*
+*✨机器壳，人类心。✨*
 
 </div>
 
