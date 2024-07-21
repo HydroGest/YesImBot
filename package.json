@@ -1,24 +1,40 @@
-{
-  "name": "koishi-plugin-yesimbot",
-  "description": "Yes! I'm Bot! 机械壳，人类心。",
-  "version": "1.1.3",
-  "main": "lib/index.js",
-  "typings": "lib/index.d.ts",
-  "files": [
-    "lib",
-    "dist"
-  ],
-  "license": "MIT",
-  "scripts": {},
-  "keywords": [
-    "chatbot",
-    "koishi",
-    "plugin"
-  ],
-  "peerDependencies": {
-    "koishi": "^4.17.9"
-  },
-  "dependencies": {
-    "axios": "^1.7.2"
-  }
+{  
+  "name": "koishi-plugin-yesimbot",  
+  "description": "Yes! I'm Bot! 机械壳，人类心。",  
+  "version": "1.1.3-fix",  
+  "main": "lib/index.js",  
+  "typings": "lib/index.d.ts",  
+  "homepage": "https://github.com/HydroGest/YesImBot",  
+  "files": [  
+    "lib",  
+    "dist"  
+  ],  
+  "contributors": [  
+    "HydroGest <2445691453@qq.com>",  
+    "Dispure <3116716016@qq.com>"  
+  ],  
+  "license": "MIT",  
+  "scripts": {},  
+  "keywords": [  
+    "chatbot",  
+    "koishi",  
+    "plugin",  
+    "ai"  
+  ],  
+  "repository": {  
+    "type": "git",  
+    "url": "git+https://github.com/HydroGest/YesImBot.git"  
+  },  
+  "peerDependencies": {  
+    "koishi": "^4.17.9"  
+  },  
+  "dependencies": {  
+    "axios": "^1.7.2"  
+  },  
+  "koishi": {  
+    "description": {  
+      "zh": "让语言大模型机器人假装群友并和群友聊天！",  
+      "en": "A Koishi plugin that allows LLM chat in your channel."  
+    }  
+  }  
 }
