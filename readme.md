@@ -1,7 +1,5 @@
 <div align="center">
-  <div>
-    ![Logo](/logo.png)
-  </div>
+    <img src="https://raw.githubusercontent.com/HydroGest/YesImBot/main/logo.png"/>
 
 <h1 id="koishi">Athena</h1>
 
