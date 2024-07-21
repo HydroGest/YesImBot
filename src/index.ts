@@ -1,6 +1,7 @@
-import { Context, Next, Schema, h, Bot } from "koishi";
-import { genSysPrompt } from "./promptUtils";
-import { run } from "./apiAdapter";
+import { Context, Next, Schema, h} from "koishi";
+import { genSysPrompt } from "./utils/prompt";
+import { run } from "./utils/api-adapter";
+import { SendQueue } from "./utils/queue";
 
 export const name = "yesimbot";
 
@@ -96,74 +97,6 @@ function getRandomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-
-function containsFilter(sessionContent: string, FilterList: any): boolean {  
-    for (const filterString of FilterList) {  
-        if (sessionContent.includes(filterString)) {  
-            return true;  
-        }  
-    }  
-    return false;  
-} 
-
-class SendQueue {
-  private sendQueueMap: Map<
-    number,
-    { id: number; sender: string; content: string }[]
-  >;
-
-  constructor() {
-    this.sendQueueMap = new Map<
-      number,
-      { id: number; sender: string; content: string }[]
-    >();
-  }
-
-  updateSendQueue(group: number, sender: string, content: string, id: any, FilterList: any) {
-    if (this.sendQueueMap.has(group)) {
-      if (containsFilter(content, FilterList)) return;
-      const queue = this.sendQueueMap.get(group);
-      queue.push({ id: Number(id), sender, content }); 
-      this.sendQueueMap.set(group, queue);
-    } else {
-      this.sendQueueMap.set(group, [{ id: Number(id), sender, content }]); 
-    }
-  }
-
-  // 检查队列长度
-  checkQueueSize(group: number, size: number): boolean {
-    if (this.sendQueueMap.has(group)) {
-      const queue = this.sendQueueMap.get(group);
-      console.log(`${queue.length} / ${size}`);
-      return queue.length >= size;
-    }
-    return false;
-  }
-
-  // 重置消息队列
-  resetSendQueue(group: number, popNumber: number) {
-    const queue = this.sendQueueMap.get(group);
-    if (queue && queue.length > 0) {
-      const newQueue = queue.slice(popNumber);
-      this.sendQueueMap.set(group, newQueue);
-    }
-  }
-
-  getPrompt(group: number): string {
-    if (this.sendQueueMap.has(group)) {
-      const queue = this.sendQueueMap.get(group);
-      const promptArr = queue.map((item) => ({
-        id: item.id,
-        author: item.sender,
-        msg: item.content,
-      }));
-      //ctx.logger.info(JSON.stringify(promptArr));
-      return JSON.stringify(promptArr);
-    }
-    return "[]";
-  }
-}
-
 const sendQueue = new SendQueue();
 
 function handleResponse(APIType: string, input: any): string {
@@ -189,7 +122,6 @@ function handleResponse(APIType: string, input: any): string {
   }
   res = res.replaceAll("```", " ");
   res = res.replaceAll("json", " ");
-  //ctx.logger.info(res);
   const LLMResponse = JSON.parse(res);
   if (LLMResponse.status != "success") {
     throw new Error(`LLM provides unexpected response: ${res}`);
@@ -201,21 +133,21 @@ function handleResponse(APIType: string, input: any): string {
   return finalResponse;
 }
 
-export function apply(ctx: Context, config: Config, bot: Bot) {  
+export function apply(ctx: Context, config: Config) {  
   ctx.middleware(async (session: any, next: Next) => {  
     const groupId: number =  
       session.channelId == "#" ? 0 : Number(session.channelId);  
     if (!config.Group.AllowedGroups.includes(groupId)) return next();  
 
-    const regex = /<at id\s*=\s*([^>]+)\/>/g;  
+    const regex = /<at id="([^"]+)"\s*\/>/g; 
 
     // 转码 <at> 消息
     const matches = Array.from(session.content.matchAll(regex));  
 
     const userContentPromises = matches.map(async (match) => {  
       const id = match[1].trim();  
-      const user = await bot.getUser(id); 
-      return { match: match[0], replacement: `@${user.id}` }; 
+      const user = await session.bot.getUser(id); 
+      return { match: match[0], replacement: `@${user.name}` }; 
     });  
 
     const userContents = await Promise.all(userContentPromises);  
@@ -232,8 +164,7 @@ export function apply(ctx: Context, config: Config, bot: Bot) {
       userContent,  
       session.messageId,  
       config.Group.Filter  
-    );  
-    console.log("Message received.");  
+    );   
 
     // 检测是否达到发送次数  
     if (!sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize)) {  

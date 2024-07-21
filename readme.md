@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/koishi-plugin-yesimbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-yesimbot)
 
-*机器人，人类心。*
+*机器壳，人类心。*
 
 YesImBot 是一个 Koishi 插件，旨在让大模型人工智能也能参与到聊群的讨论中。
 
@@ -67,7 +67,7 @@ Bot:
 
 我们的终极目标是——即使哪一天你的账号接入了 YesImBot，群友也不能发现任何端倪——我们一切的改进都是朝这方面努力的。
 
-- [ ] At 消息识别
+- [x] At 消息识别
 - [ ] 转发消息拾取
 - [ ] TTS 文字转语语音
 - [ ] OCR 图像识别
