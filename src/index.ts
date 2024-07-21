@@ -34,6 +34,9 @@ export interface Config {
     BotBackground: string;
     CuteMode: boolean;
   };
+  Debug: {
+	DebugAsInfo: boolean;
+  }
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -91,6 +94,11 @@ export const Config: Schema<Config> = Schema.object({
       .description("Bot 的背景。"),
     CuteMode: Schema.boolean().default(false).description("原神模式（迫真"),
   }).description("机器人设定"),
+  Debug: Schema.object({
+    DebugAsInfo: Schema.boolean()
+      .default(false)
+      .description("在控制台显示 Debug 消息"),
+  }).description("调试工具"),
 });
 
 function getRandomInt(min: number, max: number): number {
@@ -116,8 +124,6 @@ function handleResponse(APIType: string, input: any): string {
   }
   console.log(typeof res);
   if (typeof res != "string") {
-    console.log("API responded an object!");
-    console.log(JSON.stringify(res));
     res = JSON.stringify(res);
   }
   res = res.replaceAll("```", " ");
@@ -168,11 +174,11 @@ export function apply(ctx: Context, config: Config) {
 
     // 检测是否达到发送次数  
     if (!sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize)) {  
-      ctx.logger.info(sendQueue.getPrompt(groupId));  
+      if (config.Debug.DebugAsInfo) ctx.logger.info(sendQueue.getPrompt(groupId));  
       return next();  
     }  
     
-    ctx.logger.info(`Request sent, awaiting for response...`);  
+    if (config.Debug.DebugAsInfo) ctx.logger.info(`Request sent, awaiting for response...`);
 
     // 获取回答  
     const SysPrompt: string = await genSysPrompt(  
@@ -198,7 +204,7 @@ export function apply(ctx: Context, config: Config) {
       chatData  
     );  
 
-    const finalRes: string = handleResponse(config.API.APIType, response);  
+    const finalRes: string = handleResponse(config.API.APIType, response);
     const sentences = finalRes.split(/(?<=[。?!？！])\s*/);  
     
     sendQueue.updateSendQueue(  
@@ -209,8 +215,8 @@ export function apply(ctx: Context, config: Config) {
       config.Group.Filter  
     );  
     
-    ctx.logger.info(finalRes);  
     for (const sentence of sentences) {  
+	  if (config.Debug.DebugAsInfo) ctx.logger.info(sentence);  
       session.sendQueued(sentence);  
     }  
   });  

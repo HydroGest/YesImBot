@@ -4,9 +4,11 @@
 
 *机器壳，人类心。*
 
+## 🎐 简介
+
 YesImBot 是一个 Koishi 插件，旨在让大模型人工智能也能参与到聊群的讨论中。
 
-## 开始使用
+## 🌈 开始使用
 
 首先确保安装了 YesImBot 最新版，填入配置文件。下面来讲解配置文件的用法。
 
@@ -48,7 +50,7 @@ Bot:
     CuteMode: true
     # Prompt 文件的下载链接
     # 非常重要！插件第一次运行将会从这个链接下载 Prompt 文件，并保存在 Koishi 应用目录下的 prompt.mdt
-    PromptFileUrl: https://cdn.asagi.cc/projects/npm/koishi-plugin-yesimbot/prompt.mdt
+    PromptFileUrl: https://github.com/HydroGest/promptHosting/blob/main/prompt.mdt
     # Bot 的性格
     BotPersonality: 冷漠/高傲/网络女神/每次发言不超过20个字/少用疑问句/说话末尾要带“喵”字/不要居高临下，要参与进讨论中
     # 屏蔽其他指令（实验性）
@@ -63,11 +65,17 @@ Bot:
 
 接下来你可以根据实际情况调整机器人设定中的选项。在这方面你大可以自由发挥。但是如果你用的是 Cloudflare Workers AI，你可以会发现你的机器人在胡言乱语。这是 Cloudflare Workers AI 的免费模型效果不够好，中文语料较差导致的。如果你想要在保证 AI 发言质量的情况下尽量选择价格较为经济的 AI 模型，那么 ChatGPT-4o-mini 或许是明智之选。当然，你也不必强制自己使用 OpenAI 的官方 API，所有官方 API 格式都支持 YesImBot。
 
-## TODO
+## 🌼 推荐的 API 提供商
+
+我们强力推荐大家使用非 Token 计费的 API，这是因为 YesImBot 每次请求需要发送的 Prompt 本身占用了非常多的 Token。你可以使用以调用次数计费的 API，比如：
+
+- [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r)
+
+## 🍧 TODO
 
 我们的终极目标是——即使哪一天你的账号接入了 YesImBot，群友也不能发现任何端倪——我们一切的改进都是朝这方面努力的。
 
 - [x] At 消息识别
 - [ ] 转发消息拾取
-- [ ] TTS 文字转语语音
+- [ ] TTS 文字转语音
 - [ ] OCR 图像识别
