@@ -2,7 +2,7 @@ import fs from 'fs';
 import https from 'https';
 import { promisify } from 'util';
 
-function getFileNameFromUrl(url: string): string {  
+export function getFileNameFromUrl(url: string): string {  
     const parsedUrl = new URL(url);  
     const filePath = parsedUrl.pathname;  
     const fileName = filePath.substring(filePath.lastIndexOf('/') + 1);  
@@ -13,7 +13,7 @@ function getFileNameFromUrl(url: string): string {
 // 将 fs.exists 转换为 Promise 版本
 const exists = promisify(fs.exists);
 
-async function ensurePromptFileExists(url: string): Promise<void> {
+export async function ensurePromptFileExists(url: string): Promise<void> {
     const filePath = getFileNameFromUrl(url);
 
     const fileExists = await exists(filePath);
@@ -42,16 +42,13 @@ async function ensurePromptFileExists(url: string): Promise<void> {
 
 
 export async function genSysPrompt(config: any, curGroupDescription: string, curGroupName: string): Promise<string> {
-	// 确保文件存在
-	await ensurePromptFileExists(config.Bot.PromptFileUrl[config.Bot.PromptFileUrlSelected]);
-	
 	// 获取当前日期
 	const currentDate = new Date();  
 	const curYear: number = currentDate.getFullYear();  
 	const curMonth: number = currentDate.getMonth() + 1;  
 	const curDate: number = currentDate.getDate();  
 
-	let content = fs.readFileSync(getFileNameFromUrl(config.Bot.PromptFileUrl[config.Bot.PromptFileUrlSelected]), 'utf-8');  
+	let content = fs.readFileSync(getFileNameFromUrl(config.Bot.PromptFileUrl[config.Bot.PromptFileSelected]), 'utf-8');  
 	
 	content = content.replaceAll("${config.Bot.BotName}", config.Bot.BotName);
 	content = content.replaceAll("${config.Bot.WhoAmI}", config.Bot.WhoAmI);

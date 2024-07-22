@@ -55,13 +55,13 @@ Bot:
     # Prompt 文件的下载链接
     # 非常重要！ 不要修改
     PromptFileUrl: 
-		- "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt.mdt" # 一代 Prompt， 所有 AI 模型适用。
-		- "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next.mdt" # 下一代 Prompt， 效果最佳，如果你是富哥，用的起 Claude 3.5 / GPT-4 等推荐使用。
-		- "https://raw.githubusercontent.com/HydroGest/promptHosting/main/Prompt-next-short.mdt" # 下一代 Prompt 的删减版，适合 GPT-4o-mini 等低配模型使用。
-	# 当前选择的 Prompt，从 0 开始。
-	PromptFileSelected: 2
-	# Bot 的自我认知
-	WhoAmI: 一个普通群友
+        - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt.mdt" # 一代 Prompt， 所有 AI 模型适用。
+        - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next.mdt" # 下一代 Prompt， 效果最佳，如果你是富哥，用的起 Claude 3.5 / GPT-4 等推荐使用。
+        - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/Prompt-next-short.mdt" # 下一代 Prompt 的删减版，适合 GPT-4o-mini 等低配模型使用。
+    # 当前选择的 Prompt，从 0 开始。
+    PromptFileSelected: 2
+    # Bot 的自我认知
+    WhoAmI: 一个普通群友
     # Bot 的性格
     BotPersonality: 冷漠/高傲/网络女神
     # 屏蔽其他指令（实验性）

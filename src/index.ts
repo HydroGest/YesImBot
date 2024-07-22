@@ -5,7 +5,9 @@ import {
     h
 } from "koishi";
 import {
-    genSysPrompt
+    genSysPrompt,
+	ensurePromptFileExists,
+	getFileNameFromUrl
 } from "./utils/prompt";
 import {
     run
@@ -17,7 +19,7 @@ import {
 export const name = "yesimbot";
 
 export const usage = `\"Yes! I'm Bot!\" 是一个让你的机器人激活灵魂的插件。
-使用请阅读 ![Github Readme](https://github.com/HydroGest/YesImBot/blob/main/readme.md)，推荐使用 [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r) 提供的 GPT-4o-mini 模型以获得最高性价比。
+使用请阅读 [Github Readme](https://github.com/HydroGest/YesImBot/blob/main/readme.md)，推荐使用 [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r) 提供的 GPT-4o-mini 模型以获得最高性价比。
 `
 
 ;
@@ -167,7 +169,7 @@ export function apply(ctx: Context, config: Config) {
         const groupId: number =
             session.channelId == "#" ? 0 : Number(session.channelId);
         if (!config.Group.AllowedGroups.includes(groupId)) return next();
-
+		
         const regex = /<at id="([^"]+)"\s*\/>/g;
 
         // 转码 <at> 消息
@@ -183,7 +185,7 @@ export function apply(ctx: Context, config: Config) {
         });
 
         const userContents = await Promise.all(userContentPromises);
-
+		
         // 根据获取的用户内容更新 message  
         let userContent: string = session.content;
         userContents.forEach(({
@@ -206,7 +208,10 @@ export function apply(ctx: Context, config: Config) {
             if (config.Debug.DebugAsInfo) ctx.logger.info(sendQueue.getPrompt(groupId));
             return next();
         }
-
+		
+		if (config.Debug.DebugAsInfo) ctx.logger.info(`Ensure prompt file ${getFileNameFromUrl(config.Bot.PromptFileUrl[config.Bot.PromptFileSelected])} exist`);
+		await ensurePromptFileExists(config.Bot.PromptFileUrl[config.Bot.PromptFileSelected]);
+		
         if (config.Debug.DebugAsInfo) ctx.logger.info(`Request sent, awaiting for response...`);
 
         // 获取回答  
