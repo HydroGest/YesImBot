@@ -43,7 +43,7 @@ async function ensurePromptFileExists(url: string): Promise<void> {
 
 export async function genSysPrompt(config: any, curGroupDescription: string, curGroupName: string): Promise<string> {
 	// 确保文件存在
-	await ensurePromptFileExists(config.Bot.PromptFileUrl[config.Bot.PromptFileUrlSelected - 1]);
+	await ensurePromptFileExists(config.Bot.PromptFileUrl[config.Bot.PromptFileUrlSelected]);
 	
 	// 获取当前日期
 	const currentDate = new Date();  
@@ -51,7 +51,7 @@ export async function genSysPrompt(config: any, curGroupDescription: string, cur
 	const curMonth: number = currentDate.getMonth() + 1;  
 	const curDate: number = currentDate.getDate();  
 
-	let content = fs.readFileSync(getFileNameFromUrl(config.Bot.PromptFileUrl[config.Bot.PromptFileUrlSelected - 1]), 'utf-8');  
+	let content = fs.readFileSync(getFileNameFromUrl(config.Bot.PromptFileUrl[config.Bot.PromptFileUrlSelected]), 'utf-8');  
 	
 	content = content.replaceAll("${config.Bot.BotName}", config.Bot.BotName);
 	content = content.replaceAll("${config.Bot.WhoAmI}", config.Bot.WhoAmI);
