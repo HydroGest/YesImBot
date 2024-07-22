@@ -27,7 +27,7 @@ export interface Config {
     AIModel: string;
   };
   Bot: {
-    PromptFileUrl: string;
+    PromptFileUrl: any;
 	PromptFileSelected: number;
     BotName: string;
 	WhoAmI: string;
@@ -85,8 +85,8 @@ export const Config: Schema<Config> = Schema.object({
 			"https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next.mdt",
 			"https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next-short.mdt",
 			])
-		  .description("Prompt 文件下载链接"),
-	PromptFileSelected: Schema.number().default(3).description("Prompt 文件编号，从 1 开始"), 
+		  .description("Prompt 文件下载链接。一般情况下不需要修改！"),
+	PromptFileSelected: Schema.number().default(3).description("Prompt 文件编号，从 1 开始。请阅读 readme!"), 
     BotName: Schema.string().required().description("Bot 的名字"),
 	WhoAmI: Schema.string().default("一个普通的群友").description("Bot 的简要设定"),
     BotHometown: Schema.string().default("广州").description("Bot 的家乡。"),
