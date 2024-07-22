@@ -21,6 +21,10 @@ export async function run(
             role: "system",
             content: SysInput,
           },
+		  {
+            role: "assistant",
+            content: "Resolved OK",
+          },
           {
             role: "user",
             content: InfoInput,

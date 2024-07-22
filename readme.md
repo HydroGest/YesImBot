@@ -14,7 +14,7 @@ YesImBot / Athena 是一个 [Koishi](https://koishi.chat/zh-CN/) 插件，旨在
 
 ## 🌈 开始使用
 
-首先确保安装了 YesImBot 最新版，填入配置文件。下面来讲解配置文件的用法。
+首先确保安装了 YesImBot 最新版，填入配置文件。下面来讲解配置文件的用法。**务必重点阅读！！**
 
 ```yaml
 # 群聊设置
@@ -53,21 +53,28 @@ Bot:
     # 原神模式（什
     CuteMode: true
     # Prompt 文件的下载链接
-    # 非常重要！插件第一次运行将会从这个链接下载 Prompt 文件，并保存在 Koishi 应用目录下的 prompt.mdt
-    PromptFileUrl: https://github.com/HydroGest/promptHosting/blob/main/prompt.mdt
+    # 非常重要！ 不要修改
+    PromptFileUrl: 
+		- "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt.mdt" # 一代 Prompt， 所有 AI 模型适用。
+		- "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next.mdt" # 下一代 Prompt， 效果最佳，如果你是富哥，用的起 Claude 3.5 / GPT-4 等推荐使用。
+		- "https://raw.githubusercontent.com/HydroGest/promptHosting/main/Prompt-next-short.mdt" # 下一代 Prompt 的删减版，适合 GPT-4o-mini 等低配模型使用。
+	# 当前选择的 Prompt，从 1 开始。
+	PromptFileSelected: 3
+	# Bot 的自我认知
+	WhoAmI: 一个普通群友
     # Bot 的性格
-    BotPersonality: 冷漠/高傲/网络女神/每次发言不超过20个字/少用疑问句/说话末尾要带“喵”字/不要居高临下，要参与进讨论中
+    BotPersonality: 冷漠/高傲/网络女神
     # 屏蔽其他指令（实验性）
     SendDirectly: true
     # 机器人的习惯，当然你也可以放点别的小叮咛。
-    BotHabbits: 辩论/反驳他人/每次说话字数不超过20字
+    BotHabbits: 辩论
     # 机器人的背景
-    BotBackground: 校辩论队选手/禁止使用疑问句
+    BotBackground: 校辩论队选手
 ```
 
 然后，将机器人拉到对应的群组中。机器人首先会潜水一段时间，这取决于 `Group.SendQueueSize` 的配置。当新消息条数达到这个值之后，Bot 就要开始参与讨论了（这也非常还原真实人类的情况，不是吗）。如果你认为 Bot 太活跃了，你也可以将 `Group.MinPopNum` 调高。**请注意**，`Group.MinPopNum` 必须小于 `Group.MaxPopNum`，并且 `Group.MaxPopNum` 必须小于 `Group.SendQueueSize`。
 
-接下来你可以根据实际情况调整机器人设定中的选项。在这方面你大可以自由发挥。但是如果你用的是 Cloudflare Workers AI，你可以会发现你的机器人在胡言乱语。这是 Cloudflare Workers AI 的免费模型效果不够好，中文语料较差导致的。如果你想要在保证 AI 发言质量的情况下尽量选择价格较为经济的 AI 模型，那么 ChatGPT-4o-mini 或许是明智之选。当然，你也不必强制自己使用 OpenAI 的官方 API，所有官方 API 格式都支持 YesImBot。
+接下来你可以根据实际情况调整机器人设定中的选项。在这方面你大可以自由发挥。但是如果你用的是 Cloudflare Workers AI，你可以会发现你的机器人在胡言乱语。这是 Cloudflare Workers AI 的免费模型效果不够好，中文语料较差导致的。如果你想要在保证 AI 发言质量的情况下尽量选择价格较为经济的 AI 模型，那么 ChatGPT-4o-mini 或许是明智之选。当然，你也不必强制自己使用 OpenAI 的官方 API，所有官方 API 格式都支持 YesImBot。 **当然，表现的最好的模型是 Claude 3.5! 我帮大家试过了!**。
 
 ## 🌼 推荐的 API 提供商
 

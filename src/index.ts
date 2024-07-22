@@ -5,7 +5,11 @@ import { SendQueue } from "./utils/queue";
 
 export const name = "yesimbot";
 
-export const usage = "\"Yes! I'm Bot!\" 是一个让你的机器人激活灵魂的插件。";
+export const usage = `\"Yes! I'm Bot!\" 是一个让你的机器人激活灵魂的插件。
+使用请阅读 ![Github Readme](https://github.com/HydroGest/YesImBot/blob/main/readme.md)，推荐使用 [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r) 提供的 GPT-4o-mini 模型以获得最高性价比。
+`
+
+;
 
 export interface Config {
   Group: {
@@ -24,6 +28,7 @@ export interface Config {
   };
   Bot: {
     PromptFileUrl: string;
+	PromptFileSelected: number;
     BotName: string;
 	WhoAmI: string;
     BotHometown: string;
@@ -74,11 +79,14 @@ export const Config: Schema<Config> = Schema.object({
       .description("模型 ID。"),
   }).description("LLM API 设置"),
   Bot: Schema.object({
-    PromptFileUrl: Schema.string()
-      .default(
-        "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt.mdt"
-      )
-      .description("Prompt 文件下载链接"),
+	PromptFileUrl: Schema.array(Schema.string())
+		  .default([
+			"https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt.mdt",
+			"https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next.mdt",
+			"https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next-short.mdt",
+			])
+		  .description("Prompt 文件下载链接"),
+	PromptFileSelected: Schema.number().default(3).description("Prompt 文件编号，从 1 开始"), 
     BotName: Schema.string().required().description("Bot 的名字"),
 	WhoAmI: Schema.string().default("一个普通的群友").description("Bot 的简要设定"),
     BotHometown: Schema.string().default("广州").description("Bot 的家乡。"),
