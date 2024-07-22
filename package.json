@@ -24,6 +24,11 @@
 		"description": {
 			"zh": "让语言大模型机器人假装群友并和群友聊天！",
 			"en": "A Koishi plugin that allows LLM chat in your channel."
+		},
+		"browser": true,
+		"service": {
+			"required": ["axios"],
+			"implements": ["yesimbot"]
 		}
 	}
 }
