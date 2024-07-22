@@ -75,7 +75,7 @@ Bot:
 
 - [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r)
 
-## 效果
+## ✨ 效果
 
 ![](https://raw.githubusercontent.com/HydroGest/YesImBot/main/screenshot-1.png)
 ![](https://raw.githubusercontent.com/HydroGest/YesImBot/main/screenshot-2.png)
