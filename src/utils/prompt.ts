@@ -35,7 +35,6 @@ async function ensurePromptFileExists(url: string): Promise<void> {
 
 
 export async function genSysPrompt(config: any, curGroupDescription: string, curGroupName: string): Promise<string> {
-
 	// 确保文件存在
 	await ensurePromptFileExists(config.Bot.PromptFileUrl)
 	
@@ -48,6 +47,7 @@ export async function genSysPrompt(config: any, curGroupDescription: string, cur
 	let content = fs.readFileSync('prompt.mdt', 'utf-8');  
 	
 	content = content.replaceAll("${config.Bot.BotName}", config.Bot.BotName);
+	content = content.replaceAll("${config.Bot.WhoAmI}", config.Bot.WhoAmI);
 	content = content.replaceAll("${config.Bot.BotHometown}", config.Bot.BotHometown);
 	content = content.replaceAll("${config.Bot.BotYearold}", config.Bot.BotYearold);
 	content = content.replaceAll("${config.Bot.BotPersonality}", config.Bot.BotPersonality);

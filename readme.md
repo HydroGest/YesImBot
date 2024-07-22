@@ -75,6 +75,11 @@ Bot:
 
 - [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r)
 
+## 效果
+
+![](https://raw.githubusercontent.com/HydroGest/YesImBot/main/screenshot-1.png)
+![](https://raw.githubusercontent.com/HydroGest/YesImBot/main/screenshot-2.png)
+
 ## 🍧 TODO
 
 我们的终极目标是——即使哪一天你的账号接入了 YesImBot，群友也不能发现任何端倪——我们一切的改进都是朝这方面努力的。

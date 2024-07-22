@@ -25,6 +25,7 @@ export interface Config {
   Bot: {
     PromptFileUrl: string;
     BotName: string;
+	WhoAmI: string;
     BotHometown: string;
     SendDirectly: boolean;
     BotYearold: string;
@@ -79,6 +80,7 @@ export const Config: Schema<Config> = Schema.object({
       )
       .description("Prompt 文件下载链接"),
     BotName: Schema.string().required().description("Bot 的名字"),
+	WhoAmI: Schema.string().default("一个普通的群友").description("Bot 的简要设定"),
     BotHometown: Schema.string().default("广州").description("Bot 的家乡。"),
     SendDirectly: Schema.boolean()
       .default(false)
@@ -203,7 +205,7 @@ export function apply(ctx: Context, config: Config) {
       SysPrompt,  
       chatData  
     );  
-
+	ctx.logger.info(JSON.stringify(response));
     const finalRes: string = handleResponse(config.API.APIType, response);
     const sentences = finalRes.split(/(?<=[。?!？！])\s*/);  
     
