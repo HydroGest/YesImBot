@@ -1,6 +1,6 @@
 {
 	"name": "koishi-plugin-yesimbot",
-	"description": "Yes! I'm Bot! 机械壳，人类心。",
+	"description": "Yes! I'm Bot! 机械壳，人类心",
 	"version": "1.1.5",
 	"main": "lib/index.js",
 	"typings": "lib/index.d.ts",

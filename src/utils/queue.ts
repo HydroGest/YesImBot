@@ -1,12 +1,11 @@
-function containsFilter(sessionContent: string, FilterList: any): boolean {  
-    for (const filterString of FilterList) {  
-        if (sessionContent.includes(filterString)) {  
-            return true;  
-        }  
-    }  
-    return false;  
-} 
-
+function containsFilter(sessionContent: string, FilterList: any): boolean {
+  for (const filterString of FilterList) {
+    if (sessionContent.includes(filterString)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export class SendQueue {
   private sendQueueMap: Map<
@@ -21,14 +20,20 @@ export class SendQueue {
     >();
   }
 
-  updateSendQueue(group: number, sender: string, content: string, id: any, FilterList: any) {
+  updateSendQueue(
+    group: number,
+    sender: string,
+    content: string,
+    id: any,
+    FilterList: any
+  ) {
     if (this.sendQueueMap.has(group)) {
       if (containsFilter(content, FilterList)) return;
       const queue = this.sendQueueMap.get(group);
-      queue.push({ id: Number(id), sender, content }); 
+      queue.push({ id: Number(id), sender, content });
       this.sendQueueMap.set(group, queue);
     } else {
-      this.sendQueueMap.set(group, [{ id: Number(id), sender, content }]); 
+      this.sendQueueMap.set(group, [{ id: Number(id), sender, content }]);
     }
   }
 
