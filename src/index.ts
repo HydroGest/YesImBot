@@ -79,12 +79,12 @@ export const Config: Schema < Config > = Schema.object({
     }).description("群聊设置"),
     API: Schema.object({
         APIList: Schema.array(Schema.object({
-            APIType: Schema.union(["OpenAI", "Cloudflare", "脑力计算"]).default("OpenAI").description(
+            APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"]).default("OpenAI").description(
                 "API 类型"
             ),
             BaseAPI: Schema.string()
-                .default("https://api.openai.com/v1/chat/completions/")
-                .description("API 基础URL"),
+                .default("https://api.openai.com/")
+                .description("API 基础URL, 设置为“Custom URL”需要填写完整的 URL"),
             UID: Schema.string()
                 .default("若非 Cloudflare 可不填")
                 .description("Cloudflare UID"),
@@ -137,6 +137,10 @@ function handleResponse(APIType: string, input: any): string {
     let res: string;
     switch (APIType) {
         case "OpenAI": {
+            res = input.choices[0].message.content;
+            break;
+        }
+        case "Custom URL": {
             res = input.choices[0].message.content;
             break;
         }

@@ -23,7 +23,7 @@ export async function run(
           },
           {
             role: "assistant",
-            content: "Resolved OK",
+            content: "Resolve OK",
           },
           {
             role: "user",
@@ -52,6 +52,31 @@ export async function run(
       };
       break;
     }
+	
+    case "Custom URL": {
+      url = `${BaseAPI}/`;
+      requestBody = {
+        model: model,
+        messages: [
+          {
+            role: "system",
+            content: SysInput,
+          },
+          {
+            role: "assistant",
+            content: "Resolve OK",
+          },
+          {
+            role: "user",
+            content: InfoInput,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 4096,
+      };
+      break;
+    }
+
 
     default: {
       throw new Error(`不支持的 API 类型: ${APIType}`);
