@@ -45,7 +45,7 @@ API:
       - APIType: OpenAI
         # API 基础 URL，此处以 OpenAI 为例
         # 若你是 Cloudflare， 请填入 https://api.cloudflare.com/client/v4
-        BaseURL: https://api.openai.com/v1/chat/completions/
+        BaseURL: https://api.openai.com/
         # 你的 API 令牌
         APIKey: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXX
         # 模型
