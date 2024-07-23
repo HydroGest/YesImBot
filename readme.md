@@ -39,18 +39,20 @@ Group:
 
 # LLM API 相关设置
 API:
-    # API 返回格式类型，可选 OpenAI / Cloudflare
-    APIType: OpenAI
-    # API 基础 URL，此处以 OpenAI 为例
-    # 若你是 Cloudflare， 请填入 https://api.cloudflare.com/client/v4
-    BaseURL: https://api.openai.com/v1/chat/completions/
-    # 你的 API 令牌
-    APIKey: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXX
-    # 模型
-    AIModel: gpt-4o-mini
-    # 若你正在使用 Cloudflare，不要忘记下面这个配置
-    # Cloudflare Account ID，若不清楚可以看看你 Cloudflare 控制台的 URL
-    UID:　xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+	# 这是个列表，可以配置多个 API，实现负载均衡。
+    APIList:
+        # API 返回格式类型，可选 OpenAI / Cloudflare
+      - APIType: OpenAI
+        # API 基础 URL，此处以 OpenAI 为例
+        # 若你是 Cloudflare， 请填入 https://api.cloudflare.com/client/v4
+        BaseURL: https://api.openai.com/v1/chat/completions/
+        # 你的 API 令牌
+        APIKey: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXX
+        # 模型
+        AIModel: gpt-4o-mini
+        # 若你正在使用 Cloudflare，不要忘记下面这个配置
+        # Cloudflare Account ID，若不清楚可以看看你 Cloudflare 控制台的 URL
+        UID:　xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # 机器人设定
 Bot:
