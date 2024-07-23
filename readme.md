@@ -39,7 +39,7 @@ Group:
 
 # LLM API 相关设置
 API:
-	# 这是个列表，可以配置多个 API，实现负载均衡。
+    # 这是个列表，可以配置多个 API，实现负载均衡。
     APIList:
         # API 返回格式类型，可选 OpenAI / Cloudflare
       - APIType: OpenAI
