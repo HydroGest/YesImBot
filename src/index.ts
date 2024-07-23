@@ -1,4 +1,4 @@
-import { Context, Next, Schema, h } from "koishi";
+import { Context, Next, Schema, h, Random } from "koishi";
 import {
   genSysPrompt,
   ensurePromptFileExists,
@@ -117,10 +117,6 @@ export const Config: Schema<Config> = Schema.object({
   }).description("调试工具"),
 });
 
-function getRandomInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
 const sendQueue = new SendQueue();
 
 function handleResponse(APIType: string, input: any): string {
@@ -230,7 +226,7 @@ export function apply(ctx: Context, config: Config) {
     const chatData: string = sendQueue.getPrompt(groupId);
     sendQueue.resetSendQueue(
       groupId,
-      getRandomInt(config.Group.MinPopNum, config.Group.MaxPopNum)
+      Random.int(config.Group.MinPopNum, config.Group.MaxPopNum)
     );
 
     const response = await run(
