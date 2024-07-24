@@ -36,23 +36,31 @@ Group:
     MaxPopNum: 4
     # 最小冷却条数
     MinPopNum: 2
+    # 每次收到 @ 消息，机器人马上开始做出回复的概率。 取值范围：[0, 1]
+    AtReactPossiblilty: 0.50
+    # 过滤的消息。这些包含这些关键词的消息将不会加入到上下文。
+    # 这主要是为了防止 Bot 遭受提示词注入攻击。
+    Filter:
+        - You are
+        - 呢
+        - 大家
 
 # LLM API 相关设置
 API:
     # 这是个列表，可以配置多个 API，实现负载均衡。
     APIList:
         # API 返回格式类型，可选 OpenAI / Cloudflare
-      - APIType: OpenAI
-        # API 基础 URL，此处以 OpenAI 为例
-        # 若你是 Cloudflare， 请填入 https://api.cloudflare.com/client/v4
-        BaseURL: https://api.openai.com/
-        # 你的 API 令牌
-        APIKey: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXX
-        # 模型
-        AIModel: gpt-4o-mini
-        # 若你正在使用 Cloudflare，不要忘记下面这个配置
-        # Cloudflare Account ID，若不清楚可以看看你 Cloudflare 控制台的 URL
-        UID:　xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        - APIType: OpenAI
+          # API 基础 URL，此处以 OpenAI 为例
+          # 若你是 Cloudflare， 请填入 https://api.cloudflare.com/client/v4
+          BaseURL: https://api.openai.com/
+          # 你的 API 令牌
+          APIKey: sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXX
+          # 模型
+          AIModel: gpt-4o-mini
+          # 若你正在使用 Cloudflare，不要忘记下面这个配置
+          # Cloudflare Account ID，若不清楚可以看看你 Cloudflare 控制台的 URL
+          UID:　xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # 机器人设定
 Bot:
