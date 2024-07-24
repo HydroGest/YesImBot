@@ -29,6 +29,7 @@ export interface Config {
         SendQueueSize: number;
         MaxPopNum: number;
         MinPopNum: number;
+		AtReactPossiblilty: number;
         Filter: any;
     };
     API: {
@@ -61,7 +62,7 @@ export interface Config {
 
 export const Config: Schema < Config > = Schema.object({
     Group: Schema.object({
-        AllowedGroups: Schema.array(Schema.number())
+        AllowedGroups: Schema.array(Schema.string())
             .required()
             .description("允许的群聊"),
         SendQueueSize: Schema.number()
@@ -73,6 +74,11 @@ export const Config: Schema < Config > = Schema.object({
         MinPopNum: Schema.number()
             .default(1)
             .description("消息队列每次出队的最小数量"),
+		AtReactPossiblilty: Schema.number()
+            .default(0.5)
+			.min(0).max(1).step(0.05)
+			.role('slider')
+            .description("立即回复 @ 消息的概率"),
         Filter: Schema.array(Schema.string())
             .default(["你是", "You are", "吧", "呢"])
             .description("过滤的词汇（防止被调皮群友/机器人自己搞傻）"),
@@ -217,8 +223,11 @@ const status = new APIStatus();
 
 export function apply(ctx: Context, config: Config) {
     ctx.middleware(async (session: any, next: Next) => {
-        const groupId: number =
-            session.channelId == "#" ? 0 : Number(session.channelId);
+        const groupId: string = session.channelId;
+
+		if (config.Debug.DebugAsInfo)
+			ctx.logger.info(`New message recieved, channeId = ${groupId}`);
+		
         if (!config.Group.AllowedGroups.includes(groupId)) return next();
 
         const userContent = await processUserContent(session);
@@ -231,19 +240,17 @@ export function apply(ctx: Context, config: Config) {
             config.Group.Filter
         );
 
-        // 检测是否达到发送次数
-        if (!sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize)) {
-            if (config.Debug.DebugAsInfo)
-                ctx.logger.info(sendQueue.getPrompt(groupId));
-            return next();
-        }
-
-        if (config.Debug.DebugAsInfo)
-            ctx.logger.info(
-                `Ensure prompt file ${getFileNameFromUrl(
-          config.Bot.PromptFileUrl[config.Bot.PromptFileSelected]
-        )} exist`
-            );
+        // 检测是否达到发送次数或被at
+		// 返回 false 的条件：
+		// 发送队列已满 或者 用户消息提及机器人且随机条件命中：
+		if (!sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize) && !(  
+			userContent.includes(`@${config.Bot.BotName}`) && Random.bool(config.Group.AtReactPossiblilty)  
+		)) {  
+			if (config.Debug.DebugAsInfo)  
+				ctx.logger.info(sendQueue.getPrompt(groupId));  
+			return next();  
+		}  
+		
         await ensurePromptFileExists(
             config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
             config.Debug.DebugAsInfo ? ctx : null

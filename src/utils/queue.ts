@@ -9,19 +9,19 @@ function containsFilter(sessionContent: string, FilterList: any): boolean {
 
 export class SendQueue {
   private sendQueueMap: Map<
-    number,
+    string,
     { id: number; sender: string; content: string }[]
   >;
 
   constructor() {
     this.sendQueueMap = new Map<
-      number,
+      string,
       { id: number; sender: string; content: string }[]
     >();
   }
 
   updateSendQueue(
-    group: number,
+    group: string,
     sender: string,
     content: string,
     id: any,
@@ -38,7 +38,7 @@ export class SendQueue {
   }
 
   // 检查队列长度
-  checkQueueSize(group: number, size: number): boolean {
+  checkQueueSize(group: string, size: number): boolean {
     if (this.sendQueueMap.has(group)) {
       const queue = this.sendQueueMap.get(group);
       console.log(`${queue.length} / ${size}`);
@@ -48,7 +48,7 @@ export class SendQueue {
   }
 
   // 重置消息队列
-  resetSendQueue(group: number, popNumber: number) {
+  resetSendQueue(group: string, popNumber: number) {
     const queue = this.sendQueueMap.get(group);
     if (queue && queue.length > 0) {
       const newQueue = queue.slice(popNumber);
@@ -56,7 +56,7 @@ export class SendQueue {
     }
   }
 
-  getPrompt(group: number): string {
+  getPrompt(group: string): string {
     if (this.sendQueueMap.has(group)) {
       const queue = this.sendQueueMap.get(group);
       const promptArr = queue.map((item) => ({
