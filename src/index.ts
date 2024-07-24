@@ -29,7 +29,7 @@ export interface Config {
         SendQueueSize: number;
         MaxPopNum: number;
         MinPopNum: number;
-		AtReactPossiblilty: number;
+        AtReactPossiblilty: number;
         Filter: any;
     };
     API: {
@@ -74,10 +74,10 @@ export const Config: Schema < Config > = Schema.object({
         MinPopNum: Schema.number()
             .default(1)
             .description("消息队列每次出队的最小数量"),
-		AtReactPossiblilty: Schema.number()
+        AtReactPossiblilty: Schema.number()
             .default(0.5)
-			.min(0).max(1).step(0.05)
-			.role('slider')
+            .min(0).max(1).step(0.05)
+            .role('slider')
             .description("立即回复 @ 消息的概率"),
         Filter: Schema.array(Schema.string())
             .default(["你是", "You are", "吧", "呢"])
@@ -225,9 +225,9 @@ export function apply(ctx: Context, config: Config) {
     ctx.middleware(async (session: any, next: Next) => {
         const groupId: string = session.channelId;
 
-		if (config.Debug.DebugAsInfo)
-			ctx.logger.info(`New message recieved, channeId = ${groupId}`);
-		
+        if (config.Debug.DebugAsInfo)
+            ctx.logger.info(`New message recieved, channeId = ${groupId}`);
+
         if (!config.Group.AllowedGroups.includes(groupId)) return next();
 
         const userContent = await processUserContent(session);
@@ -241,16 +241,16 @@ export function apply(ctx: Context, config: Config) {
         );
 
         // 检测是否达到发送次数或被at
-		// 返回 false 的条件：
-		// 发送队列已满 或者 用户消息提及机器人且随机条件命中：
-		if (!sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize) && !(  
-			userContent.includes(`@${config.Bot.BotName}`) && Random.bool(config.Group.AtReactPossiblilty)  
-		)) {  
-			if (config.Debug.DebugAsInfo)  
-				ctx.logger.info(sendQueue.getPrompt(groupId));  
-			return next();  
-		}  
-		
+        // 返回 false 的条件：
+        // 发送队列已满 或者 用户消息提及机器人且随机条件命中：
+        if (!sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize) && !(
+                userContent.includes(`@${config.Bot.BotName}`) && Random.bool(config.Group.AtReactPossiblilty)
+            )) {
+            if (config.Debug.DebugAsInfo)
+                ctx.logger.info(sendQueue.getPrompt(groupId));
+            return next();
+        }
+
         await ensurePromptFileExists(
             config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
             config.Debug.DebugAsInfo ? ctx : null
