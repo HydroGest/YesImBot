@@ -2,6 +2,8 @@
     <img src="https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/logo.png" />
 	<h1>Athena | YesImBot</h1>
 
+<h6>感谢 <a href="https://github.com/MizuAsaka">@MizuAsaka</a> 提供 <a href="https://github.com/HydroGest/YesImBot/issues/6">Logo</a></h6>
+
 [![npm](https://img.shields.io/npm/v/koishi-plugin-yesimbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-yesimbot) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![NPM Downloads](https://img.shields.io/npm/dw/koishi-plugin-yesimbot)
 
 *✨机器壳，人类心。✨*
@@ -120,3 +122,9 @@ Bot:
 - [ ] 转发消息拾取
 - [ ] TTS 文字转语音
 - [ ] OCR 图像识别
+
+## 💫 贡献者
+
+感谢贡献者们, 是你们让 Athena 成为可能。
+
+![contributors](https://contrib.rocks/image?repo=HydroGest/YesImBot)
