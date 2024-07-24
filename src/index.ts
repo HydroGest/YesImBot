@@ -35,7 +35,7 @@ export interface Config {
     API: {
         APIList: {
             APIType: any;
-            BaseAPI: string;
+            BaseURL: string;
             UID: string;
             APIKey: string;
             AIModel: string;
@@ -88,7 +88,7 @@ export const Config: Schema < Config > = Schema.object({
             APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"]).default("OpenAI").description(
                 "API 类型"
             ),
-            BaseAPI: Schema.string()
+            BaseURL: Schema.string()
                 .default("https://api.openai.com/")
                 .description("API 基础URL, 设置为“Custom URL”需要填写完整的 URL"),
             UID: Schema.string()
@@ -277,11 +277,11 @@ export function apply(ctx: Context, config: Config) {
         status.updateStatus(config.API.APIList.length);
 
         if (config.Debug.DebugAsInfo)
-            ctx.logger.info(`Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseAPI}.`);
+            ctx.logger.info(`Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseURL}.`);
 
         const response = await run(
             config.API.APIList[curAPI].APIType,
-            config.API.APIList[curAPI].BaseAPI,
+            config.API.APIList[curAPI].BaseURL,
             config.API.APIList[curAPI].UID,
             config.API.APIList[curAPI].APIKey,
             config.API.APIList[curAPI].AIModel,

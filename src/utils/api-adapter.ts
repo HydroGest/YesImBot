@@ -2,7 +2,7 @@ import axios from "axios";
 
 export async function run(
   APIType: string,
-  BaseAPI: string,
+  BaseURL: string,
   UID: string,
   APIKey: string,
   model: string,
@@ -13,7 +13,7 @@ export async function run(
 
   switch (APIType) {
     case "OpenAI": {
-      url = `${BaseAPI}/v1/chat/completions/`;
+      url = `${BaseURL}/v1/chat/completions/`;
       requestBody = {
         model: model,
         messages: [
@@ -37,7 +37,7 @@ export async function run(
     }
 
     case "Cloudflare": {
-      url = `${BaseAPI}/accounts/${UID}/ai/run/${model}`;
+      url = `${BaseURL}/accounts/${UID}/ai/run/${model}`;
       requestBody = {
         messages: [
           {
@@ -54,7 +54,7 @@ export async function run(
     }
 	
     case "Custom URL": {
-      url = `${BaseAPI}/`;
+      url = `${BaseURL}/`;
       requestBody = {
         model: model,
         messages: [
