@@ -177,32 +177,46 @@ function handleResponse(APIType: string, input: any): string {
     return finalResponse;
 }
 
-async function processUserContent(session: any): Promise < string > {
-    const regex = /<at id="([^"]+)"\s*\/>/g;
-    // 转码 <at> 消息
-    const matches = Array.from(session.content.matchAll(regex));
+async function processUserContent(session: any): Promise<string> {  
+    const regex = /<at id="([^"]+)"\s*\/>/g;  
+    // 转码 <at> 消息  
+    const matches = Array.from(session.content.matchAll(regex));  
 
-    const userContentPromises = matches.map(async (match) => {
-        const id = match[1].trim();
-        const user = await session.bot.getUser(id);
-        return {
-            match: match[0],
-            replacement: `@${user.name}`,
-        };
-    });
+    const userContentPromises = matches.map(async (match) => {  
+        const id = match[1].trim();  
+        try {  
+            const user = await session.bot.getUser(id);  
+            return {  
+                match: match[0],  
+                replacement: `@${user.name}`,  
+            };  
+        } catch (error) {  
+            // QQ 官方机器人接口无法使用 session.bot.getUser()，尝试调用备用 API
+            try {  
+                const response = await fetch(`https://api.usuuu.com/qq/${id}`);  
+                if (!response.ok) {  
+                    throw new Error(`Failed to fetch user from backup API`);  
+                }  
+                const user = await response.json();  
+                return {  
+                    match: match[0],  
+                    replacement: `@${user.data.name || 'UserNotFound'}`,  
+                };  
+            } catch (backupError) {
+                return { match: match[0], replacement: `@UserNotFound` };  
+            }  
+        }  
+    });  
 
-    const userContents = await Promise.all(userContentPromises);
+    const userContents = await Promise.all(userContentPromises);  
 
-    // 根据获取的用户内容更新 message
-    let userContent: string = session.content;
+    let userContent: string = session.content;  
 
-    userContents.forEach(({
-        match,
-        replacement
-    }) => {
-        userContent = userContent.replace(match, replacement);
-    });
-    return userContent;
+    userContents.forEach(({ match, replacement }) => {  
+        userContent = userContent.replace(match, replacement);  
+    });  
+
+    return userContent;  
 }
 
 class APIStatus {
