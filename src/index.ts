@@ -173,7 +173,7 @@ function handleResponse(APIType: string, input: any): string {
         finalResponse += h("quote", {
             id: LLMResponse.select,
         });
-    finalResponse += LLMResponse.finReply;
+    finalResponse += (LLMResponse.finReply ? LLMResponse.finReply : LLMResponse.reply);
     return finalResponse;
 }
 
