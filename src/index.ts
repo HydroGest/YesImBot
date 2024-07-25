@@ -276,8 +276,8 @@ export function apply(ctx: Context, config: Config) {
         // 获取回答
         const SysPrompt: string = await genSysPrompt(
             config,
-            session.channel.name,
-            session.channel.name
+            session.event.channel.name,
+            session.event.channel.name
         );
 
         // 消息队列出队
