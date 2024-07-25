@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/logo.png" />
+    <img src="https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/logo.png" width="60%" />
 	<h1>Athena | YesImBot</h1>
 
 <h6>感谢 <a href="https://github.com/MizuAsaka">@MizuAsaka</a> 提供 <a href="https://github.com/HydroGest/YesImBot/issues/6">Logo</a></h6>
