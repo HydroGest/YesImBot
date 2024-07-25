@@ -119,7 +119,7 @@ export const Config: Schema < Config > = Schema.object({
         PromptFileSelected: Schema.number()
             .default(2)
             .description("Prompt 文件编号，从 0 开始。请阅读 readme 再修改!"),
-        BotName: Schema.string().required().description("Bot 的名字"),
+        BotName: Schema.string().default("Athena").description("Bot 的名字，最好是 Bot 的用户名"),
         WhoAmI: Schema.string()
             .default("一个普通的群友")
             .description("Bot 的简要设定"),
@@ -164,6 +164,17 @@ class APIStatus {
 const status = new APIStatus();
 
 export function apply(ctx: Context, config: Config) {
+
+	// 当应用启动时更新 Prompt
+	ctx.on('ready', async () => {
+		ctx.logger.info("正在尝试更新 Prompt 文件...");
+		await ensurePromptFileExists(
+            config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
+            config.Debug.DebugAsInfo ? ctx : null,
+			true
+        );
+	})
+	
     ctx.middleware(async (session: any, next: Next) => {
         const groupId: string = session.channelId;
 
@@ -201,7 +212,7 @@ export function apply(ctx: Context, config: Config) {
         if (config.Debug.DebugAsInfo)
             ctx.logger.info(`Request sent, awaiting for response...`);
 
-        // 获取回答
+        // 获取 Prompt
         const SysPrompt: string = await genSysPrompt(
             config,
             session.event.channel.name,
@@ -221,6 +232,7 @@ export function apply(ctx: Context, config: Config) {
         if (config.Debug.DebugAsInfo)
             ctx.logger.info(`Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseURL}.`);
 
+		// 获取回答
         const response = await run(
             config.API.APIList[curAPI].APIType,
             config.API.APIList[curAPI].BaseURL,
@@ -232,7 +244,9 @@ export function apply(ctx: Context, config: Config) {
         );
 
         if (config.Debug.DebugAsInfo) ctx.logger.info(JSON.stringify(response));
-        const finalRes: string = handleResponse(config.API.APIList[curAPI].APIType, response);
+		
+		const finalRes: string = handleResponse(config.API.APIList[curAPI].APIType, response);
+		
         const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
 
         sendQueue.updateSendQueue(

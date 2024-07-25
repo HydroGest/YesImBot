@@ -1,3 +1,5 @@
+import { h } from "koishi";
+
 export function handleResponse(APIType: string, input: any): string {
     let res: string;
     switch (APIType) {

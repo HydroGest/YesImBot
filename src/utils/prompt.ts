@@ -15,19 +15,22 @@ const exists = promisify(fs.exists);
 
 export async function ensurePromptFileExists(
   url: string,
-  ctx: Context | null
+  ctx: Context | null,
+  forceLoad: boolean = false
 ): Promise<void> {
+
   const debug = ctx !== null;
   const filePath = getFileNameFromUrl(url);
 
   const fileExists = await exists(filePath);
-  if (fileExists) {
+  
+  if (fileExists && !forceLoad) {
     if (debug) ctx.logger.info("Prompt file already exists.");
     return;
   }
 
   // 文件不存在，从 URL 下载
-  if (debug) ctx.logger.info("Prompt file not found, downloading...");
+  if (debug && !forceLoad) ctx.logger.info("Prompt file not found, downloading...");
   const file = fs.createWriteStream(filePath);
   const request = https.get(url, (response) => {
     response.pipe(file);
