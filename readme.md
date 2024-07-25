@@ -4,7 +4,8 @@
 
 <h6>感谢 <a href="https://github.com/MizuAsaka">@MizuAsaka</a> 提供 <a href="https://github.com/HydroGest/YesImBot/issues/6">Logo</a></h6>
 
-[![npm](https://img.shields.io/npm/v/koishi-plugin-yesimbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-yesimbot) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![NPM Downloads](https://img.shields.io/npm/dw/koishi-plugin-yesimbot)
+[![npm](https://img.shields.io/npm/v/koishi-plugin-yesimbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-yesimbot) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![NPM Downloads](https://img.shields.io/npm/dw/koishi-plugin-yesimbot) ![Static Badge](https://img.shields.io/badge/QQ交流群-857518324-green)
+
 
 *✨机器壳，人类心。✨*
 
@@ -143,3 +144,7 @@ Bot:
 感谢贡献者们, 是你们让 Athena 成为可能。
 
 ![contributors](https://contrib.rocks/image?repo=HydroGest/YesImBot)
+
+## 💡反馈
+
+欢迎发布 issue，或是直接加入 Athena 官方交流 & 测试群：[857518324](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=k3O5_1kNFJMERGxBOj1ci43jHvLvfru9&authKey=TkOxmhIa6kEQxULtJ0oMVU9FxoY2XNiA%2B7bQ4K%2FNx5%2F8C8ToakYZeDnQjL%2B31Rx%2B&noverify=0&group_code=857518324)，我们随时欢迎你的来访！
