@@ -29,6 +29,7 @@ export const name = "yesimbot";
 
 export const usage = `\"Yes! I'm Bot!\" 是一个能让你的机器人激活灵魂的插件。
 使用请阅读 [Github README](https://github.com/HydroGest/YesImBot/blob/main/readme.md)，推荐使用 [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r) 提供的 GPT-4o-mini 模型以获得最高性价比。
+官方交流 & 测试群：[857518324](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=k3O5_1kNFJMERGxBOj1ci43jHvLvfru9&authKey=TkOxmhIa6kEQxULtJ0oMVU9FxoY2XNiA%2B7bQ4K%2FNx5%2F8C8ToakYZeDnQjL%2B31Rx%2B&noverify=0&group_code=857518324)
 `;
 
 export interface Config {
@@ -65,6 +66,9 @@ export interface Config {
     };
     Debug: {
         DebugAsInfo: boolean;
+		DisableGroupFilter: boolean;
+		UpdatePromptOnLoad: boolean;
+		AllowErrorFormat: boolean;
     };
 }
 
@@ -142,6 +146,15 @@ export const Config: Schema < Config > = Schema.object({
         DebugAsInfo: Schema.boolean()
             .default(false)
             .description("在控制台显示 Debug 消息"),
+		DisableGroupFilter: Schema.boolean()
+            .default(false)
+            .description("禁用聊群筛选器，接收并回复所有群的消息"),
+		UpdatePromptOnLoad: Schema.boolean()
+            .default(true)
+            .description("每次启动时尝试更新 Prompt 文件"),
+		AllowErrorFormat: Schema.boolean()
+            .default(false)
+            .description("兼容几种较为常见的大模型错误输出格式"),
     }).description("调试工具"),
 });
 
@@ -168,6 +181,7 @@ export function apply(ctx: Context, config: Config) {
 	// 当应用启动时更新 Prompt
 	ctx.on('ready', async () => {
 		ctx.logger.info("正在尝试更新 Prompt 文件...");
+		if (!config.Debug.UpdatePromptOnLoad) return;
 		await ensurePromptFileExists(
             config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
             config.Debug.DebugAsInfo ? ctx : null,
@@ -179,9 +193,9 @@ export function apply(ctx: Context, config: Config) {
         const groupId: string = session.channelId;
 
         if (config.Debug.DebugAsInfo)
-            ctx.logger.info(`New message recieved, channeId = ${groupId}`);
+            ctx.logger.info(`New message recieved, channelId = ${groupId}`);
 
-        if (!config.Group.AllowedGroups.includes(groupId)) return next();
+        if (!config.Group.AllowedGroups.includes(groupId) && !config.Debug.DisableGroupFilter) return next();
 
         const userContent = await processUserContent(session);
 
@@ -245,7 +259,7 @@ export function apply(ctx: Context, config: Config) {
 
         if (config.Debug.DebugAsInfo) ctx.logger.info(JSON.stringify(response));
 		
-		const finalRes: string = handleResponse(config.API.APIList[curAPI].APIType, response);
+		const finalRes: string = handleResponse(config.API.APIList[curAPI].APIType, response, config.Debug.AllowErrorFormat);
 		
         const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
 

@@ -1,6 +1,6 @@
 import { h } from "koishi";
 
-export function handleResponse(APIType: string, input: any): string {
+export function handleResponse(APIType: string, input: any, AllowErrorFormat: boolean): string {
     let res: string;
     switch (APIType) {
         case "OpenAI": {
@@ -27,14 +27,21 @@ export function handleResponse(APIType: string, input: any): string {
     res = res.replaceAll("json", " ");
     const LLMResponse = JSON.parse(res);
     if (LLMResponse.status != "success") {
-        throw new Error(`LLM provides unexpected response: ${res}`);
+		if (!AllowErrorFormat) throw new Error(`LLM provides unexpected response: ${res}`);
     }
     let finalResponse: string = "";
     if (LLMResponse.select)
         finalResponse += h("quote", {
             id: LLMResponse.select,
         });
-    finalResponse += (LLMResponse.finReply ? LLMResponse.finReply : LLMResponse.reply);
+	if (!AllowErrorFormat) {
+		finalResponse += (LLMResponse.finReply ? LLMResponse.finReply : LLMResponse.reply);
+	} else {
+		if (LLMResponse.finReply) finalResponse += LLMResponse.finReply;
+		else if (LLMResponse.reply) finalResponse += LLMResponse.reply;
+		else if (LLMResponse.msg) finalResponse += LLMResponse.msg;
+		else throw new Error(`LLM provides unexpected response: ${res}`);
+	}
     return finalResponse;
 }
 
