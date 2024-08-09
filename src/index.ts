@@ -180,8 +180,8 @@ export function apply(ctx: Context, config: Config) {
 
 	// 当应用启动时更新 Prompt
 	ctx.on('ready', async () => {
-		ctx.logger.info("正在尝试更新 Prompt 文件...");
 		if (!config.Debug.UpdatePromptOnLoad) return;
+		ctx.logger.info("正在尝试更新 Prompt 文件...");
 		await ensurePromptFileExists(
             config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
             config.Debug.DebugAsInfo ? ctx : null,
