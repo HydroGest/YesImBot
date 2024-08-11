@@ -30,7 +30,7 @@ export function handleResponse(APIType: string, input: any, AllowErrorFormat: bo
 		if (!AllowErrorFormat) throw new Error(`LLM provides unexpected response: ${res}`);
     }
     let finalResponse: string = "";
-    if (LLMResponse.select)
+    if (~LLMResponse.select)
         finalResponse += h("quote", {
             id: LLMResponse.select,
         });
