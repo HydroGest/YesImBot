@@ -1,8 +1,6 @@
-import {
-    Schema
-} from "koishi";
+import { Schema } from "koishi";
 
-export configSchema:　any = Schema.object({
+export configSchema: any = Schema.object({
     Group: Schema.object({
         AllowedGroups: Schema.array(Schema.string())
             .required()
@@ -45,11 +43,11 @@ export configSchema:　any = Schema.object({
     Bot: Schema.object({
         PromptFileUrl: Schema.array(Schema.string())
             .default([
-                "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt.mdt",
-                "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next.mdt",
-                "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next-short.mdt",
+                "https://fastly.jsdelivr.net/gh/HydroGest/promptHosting@main/src/prompt-legacy.mdt",
+                "https://fastly.jsdelivr.net/gh/HydroGest/promptHosting@main/src/prompt-next.mdt",
+                "https://fastly.jsdelivr.net/gh/HydroGest/promptHosting@main/src/prompt-next-short.mdt",
             ])
-            .description("Prompt 文件下载链接。一般情况下不需要修改！"),
+            .description("Prompt 文件下载链接。一般情况下不需要修改。"),
         PromptFileSelected: Schema.number()
             .default(2)
             .description("Prompt 文件编号，从 0 开始。请阅读 readme 再修改!"),

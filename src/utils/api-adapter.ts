@@ -52,7 +52,7 @@ export async function run(
       };
       break;
     }
-	
+
     case "Custom URL": {
       url = `${BaseURL}/`;
       requestBody = {
@@ -76,7 +76,6 @@ export async function run(
       };
       break;
     }
-
 
     default: {
       throw new Error(`不支持的 API 类型: ${APIType}`);
