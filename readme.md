@@ -88,9 +88,9 @@ Bot:
     # Prompt 文件的下载链接
     # 非常重要! 如果你不理解这是什么，请不要修改
     PromptFileUrl: 
-        - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt.mdt" # 一代 Prompt，所有 AI 模型适用
-        - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next.mdt" # 下一代 Prompt，效果最佳，如果你是富哥，用的起 Claude 3.5 / GPT-4 等，则推荐使用
-        - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/prompt-next-short.mdt" # 下一代 Prompt 的删减版，适合 GPT-4o-mini 等低配模型使用
+        - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/src/prompt.mdt" # 一代 Prompt，所有 AI 模型适用
+        - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/src/prompt-next.mdt" # 下一代 Prompt，效果最佳，如果你是富哥，用的起 Claude 3.5 / GPT-4 等，则推荐使用
+        - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/src/prompt-next-short.mdt" # 下一代 Prompt 的删减版，适合 GPT-4o-mini 等低配模型使用
     # 当前选择的 Prompt 索引，从 0 开始
     PromptFileSelected: 2
     # Bot 的自我认知
