@@ -1,6 +1,6 @@
 import { Schema } from "koishi";
 
-export configSchema: any = Schema.object({
+export const configSchema: any = Schema.object({
     Group: Schema.object({
         AllowedGroups: Schema.array(Schema.string())
             .required()
@@ -40,6 +40,35 @@ export configSchema: any = Schema.object({
                 .description("模型 ID"),
         })).description("单个 LLM API 配置，可配置多个 API 进行负载均衡。"),
     }).description("LLM API 相关配置"),
+    Verifier: Schema.object({
+        Enabled: Schema.boolean()
+          .default(false)
+          .description("是否启用相似度验证"),
+        API: Schema.object({
+          APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"])
+            .default("OpenAI")
+            .description("验证器 API 类型"),
+          BaseURL: Schema.string()
+            .default("https://api.openai.com/")
+            .description("验证器 API 基础URL"),
+          UID: Schema.string()
+            .default("")
+            .description("验证器 Cloudflare UID（如果适用）"),
+          APIKey: Schema.string()
+		    .default("sk-xxxxxxx")
+            .description("验证器 API 令牌"),
+          AIModel: Schema.string()
+            .default("gpt-3.5-turbo")
+            .description("验证器使用的模型"),
+        }).description("验证器 API 配置"),
+        SimilarityThreshold: Schema.number()
+          .default(0.75)
+          .min(0)
+          .max(1)
+          .step(0.05)
+          .role('slider')
+          .description("相似度阈值，超过此值的回复将被过滤"),
+      }).description("相似度验证器配置"),
     Bot: Schema.object({
         PromptFileUrl: Schema.array(Schema.string())
             .default([

@@ -1,11 +1,10 @@
 import { Context, Next, Schema, h, Random } from "koishi";
 
+import { ResponseVerifier } from "./utils/verifier";
+
 import { configSchema } from "./config";
 
-import {
-  genSysPrompt,
-  ensurePromptFileExists,
-} from "./utils/prompt";
+import { genSysPrompt, ensurePromptFileExists } from "./utils/prompt";
 
 import { run } from "./utils/api-adapter";
 
@@ -63,6 +62,8 @@ export interface Config {
 export const Config: Schema<Config> = configSchema;
 
 const sendQueue = new SendQueue();
+
+const responseVerifier = new ResponseVerifier();
 
 class APIStatus {
   private currentStatus: number = 0;
@@ -177,6 +178,21 @@ export function apply(ctx: Context, config: Config) {
       response,
       config.Debug.AllowErrorFormat
     );
+
+    responseVerifier.loadConfig(config);
+
+    const isAllowed = await responseVerifier.verifyResponse(finalRes);
+
+    if (!isAllowed) {
+      if (config.Debug.DebugAsInfo) {
+        ctx.logger.info(
+          "Response filtered due to high similarity with previous response"
+        );
+      }
+      return next();
+    }
+
+    responseVerifier.setPreviousResponse(finalRes);
 
     const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
 
