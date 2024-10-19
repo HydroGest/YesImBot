@@ -15,6 +15,8 @@
 
 YesImBot / Athena 是一个 [Koishi](https://koishi.chat/zh-CN/) 插件，旨在让人工智能大模型也能参与到群聊的讨论中。
 
+*新的文档站已上线：[https://yesimbot.ccalliance.tech](https://yesimbot.ccalliance.tech/)*
+
 ## 🎹 特性
 
 - 轻松自定义：Bot 的名字、性格、情感，以及其他额外的消息都可以在插件配置中轻易修改。
