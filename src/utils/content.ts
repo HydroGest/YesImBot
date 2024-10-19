@@ -1,5 +1,16 @@
 import { h } from "koishi";
 
+export function replaceTags(str: string): string {
+  const imgRegex = /<img.*?\/>/g;
+  const videoRegex = /<video.*?\/>/g
+  const audioRegex = /<audio.*?\/>/g
+  let finalString: string = str;
+  finalString = finalString.replace(imgRegex, finalString);
+  finalString = finalString.replace(videoRegex, finalString);
+  finalString = finalString.replace(audioRegex, finalString);
+  return finalString;
+}
+
 export function handleResponse(
   APIType: string,
   input: any,
@@ -92,6 +103,6 @@ export async function processUserContent(session: any): Promise<string> {
   userContents.forEach(({ match, replacement }) => {
     userContent = userContent.replace(match, replacement);
   });
-
+  userContent = replaceTags(userContent);
   return userContent;
 }
