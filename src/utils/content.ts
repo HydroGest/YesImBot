@@ -11,19 +11,29 @@ export function replaceTags(str: string): string {
   return finalString;
 }
 
+/*
+    @description: 处理 AI 的消息
+*/
 export function handleResponse(
   APIType: string,
   input: any,
-  AllowErrorFormat: boolean
-): string {
+  AllowErrorFormat: boolean,
+): {
+    res: string;
+        LLMResponse: any;
+        usage: any;
+    } {
+    let usage: any;
   let res: string;
   switch (APIType) {
     case "OpenAI": {
-      res = input.choices[0].message.content;
+          res = input.choices[0].message.content;
+          usage = input.usage;
       break;
     }
     case "Custom URL": {
-      res = input.choices[0].message.content;
+          res = input.choices[0].message.content;
+          usage = input.usage;
       break;
     }
     case "Cloudflare": {
@@ -60,7 +70,11 @@ export function handleResponse(
     else if (LLMResponse.msg) finalResponse += LLMResponse.msg;
     else throw new Error(`LLM provides unexpected response: ${res}`);
   }
-  return finalResponse;
+    return {
+        res: finalResponse,
+        LLMResponse: LLMResponse,
+        usage: usage,
+  };
 }
 
 export async function processUserContent(session: any): Promise<string> {
@@ -97,9 +111,7 @@ export async function processUserContent(session: any): Promise<string> {
   });
 
   const userContents = await Promise.all(userContentPromises);
-
   let userContent: string = session.content;
-
   userContents.forEach(({ match, replacement }) => {
     userContent = userContent.replace(match, replacement);
   });

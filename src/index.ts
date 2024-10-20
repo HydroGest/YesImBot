@@ -52,6 +52,10 @@ export interface Config {
     CuteMode: boolean;
   };
   Debug: {
+    LogicRedirect: {
+        Enabled: boolean;
+        Target: string;
+    }
     DebugAsInfo: boolean;
     DisableGroupFilter: boolean;
     UpdatePromptOnLoad: boolean;
@@ -171,13 +175,29 @@ export function apply(ctx: Context, config: Config) {
       chatData
     );
 
-    if (config.Debug.DebugAsInfo) ctx.logger.info(JSON.stringify(response));
+      if (config.Debug.DebugAsInfo) ctx.logger.info(JSON.stringify(response));
 
-    const finalRes: string = handleResponse(
+      const handledRes: {
+          res: string;
+          LLMResponse: any;
+          usage: any;
+      } = handleResponse(
       config.API.APIList[curAPI].APIType,
       response,
       config.Debug.AllowErrorFormat
     );
+      
+    const finalRes: string = handledRes.res;
+      
+      if (config.Debug.LogicRedirect.Enabled) {
+          const template = `回复于 ${session.bot.getChannel(groupId).name}(${groupId}) 的消息已生成，来自 API ${curAPI}: 
+内容: ${(handledRes.LLMResponse.finReply ? handledRes.LLMResponse.finReply : handledRes.LLMResponse.reply)}
+---
+逻辑: ${handledRes.LLMResponse.logic}
+---
+消耗: 输入 ${handledRes.usage["prompt_tokens"]}, 输出 ${handledRes.usage["completion_tokens"]}`;
+          await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template);
+      }
 
     responseVerifier.loadConfig(config);
 
@@ -204,9 +224,12 @@ export function apply(ctx: Context, config: Config) {
       config.Group.Filter
     );
 
+    let lastSentence: string = "";
     for (const sentence of sentences) {
-      if (config.Debug.DebugAsInfo) ctx.logger.info(sentence);
-      session.sendQueued(sentence);
+        if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence) };
+        if (lastSentence == sentence) { continue; }
+        session.sendQueued(sentence);
+        lastSentence = sentence;
     }
   });
 }

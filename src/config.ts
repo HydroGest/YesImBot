@@ -33,7 +33,7 @@ export const configSchema: any = Schema.object({
 			),
 			BaseURL: Schema.string()
 				.default("https://api.openai.com/")
-				.description("API 基础URL, 设置为“Custom URL”需要填写完整的 URL"),
+				.description("API 基础 URL, 设置为“Custom URL”需要填写完整的 URL"),
 			UID: Schema.string()
 				.default("若非 Cloudflare 可不填")
 				.description("Cloudflare UID"),
@@ -57,7 +57,7 @@ export const configSchema: any = Schema.object({
 						.description("验证器 API 类型"),
 					BaseURL: Schema.string()
 						.default("https://api.openai.com/")
-						.description("验证器 API 基础URL"),
+						.description("验证器 API 基础 URL"),
 					UID: Schema.string()
 						.default("")
 						.description("验证器 Cloudflare UID（如果适用）"),
@@ -75,9 +75,39 @@ export const configSchema: any = Schema.object({
 					.step(0.05)
 					.role('slider')
 					.description("相似度阈值，超过此值的回复将被过滤"),
-			}),
+            }),
+            Schema.object({})
 		])
-	]),
+    ]),
+    
+    // 保留备用
+    // Memory: Schema.intersect([
+    //     Schema.object({
+    //         Enabled: Schema.boolean().default(false),
+    //     }).description('是否启用记忆中枢'),
+    //     Schema.union([
+    //         Schema.object({
+    //             Enabled: Schema.const(true).required(),
+    //             API: Schema.object({
+    //                 APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"])
+    //                     .default("OpenAI")
+    //                     .description("记忆中枢 API 类型"),
+    //                 BaseURL: Schema.string()
+    //                     .default("https://api.openai.com/")
+    //                     .description("记忆中枢 API 基础 URL"),
+    //                 UID: Schema.string()
+    //                     .default("")
+    //                     .description("记忆中枢 Cloudflare UID（如果适用）"),
+    //                 APIKey: Schema.string()
+    //                     .default("sk-xxxxxxx")
+    //                     .description("记忆中枢 API 令牌"),
+    //                 AIModel: Schema.string()
+    //                     .default("gpt-3.5-turbo")
+    //                     .description("记忆中枢使用的模型"),
+    //             }).description("记忆中枢 API 配置"),
+    //         }),
+    //     ])
+    // ]),
 
 	Bot: Schema.object({
 		PromptFileUrl: Schema.array(Schema.string())
@@ -109,7 +139,21 @@ export const configSchema: any = Schema.object({
 			.description("Bot 的背景"),
 		CuteMode: Schema.boolean().default(false).description("原神模式（迫真"),
 	}).description("机器人设定"),
-	Debug: Schema.object({
+    Debug: Schema.object({
+        LogicRedirect: Schema.intersect([
+            Schema.object({
+                Enabled: Schema.boolean().default(false).description('是否开启逻辑重定向'),
+            }),
+            Schema.union([
+                Schema.object({
+                    Enabled: Schema.const(true).required(),
+                    Target: Schema.string()
+                        .default("")
+                        .description("将 Bot 的发言逻辑重定向到群组"),
+                }),
+                Schema.object({}),
+            ])
+        ]),
 		DebugAsInfo: Schema.boolean()
 			.default(false)
 			.description("在控制台显示 Debug 消息"),
