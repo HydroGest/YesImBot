@@ -70,7 +70,7 @@ export function handleResponse(
     else if (LLMResponse.msg) finalResponse += LLMResponse.msg;
     else throw new Error(`LLM provides unexpected response: ${res}`);
   }
-    return {
+  return {
         res: finalResponse,
         LLMResponse: LLMResponse,
         usage: usage,
