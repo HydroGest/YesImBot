@@ -114,6 +114,7 @@ export function apply(ctx: Context, config: Config) {
         sendQueue.updateSendQueue(
             groupId,
             session.event.user.name,
+			session.event.user.id,
             userContent,
             session.messageId,
             config.Group.Filter
@@ -221,6 +222,7 @@ export function apply(ctx: Context, config: Config) {
         sendQueue.updateSendQueue(
             groupId,
             config.Bot.BotName,
+			0,
             finalRes,
             0,
             config.Group.Filter
@@ -229,7 +231,8 @@ export function apply(ctx: Context, config: Config) {
         // 如果 AI 使用了指令
         if (handledRes.LLMResponse.execute) {
             handledRes.LLMResponse.execute.forEach(command => {
-                h('execute', {}, command); // 执行每个指令
+                session.sendQueued(h('execute', {}, command)); // 执行每个指令
+				ctx.logger.info(`已执行指令：${command}`)
             });
         }
 

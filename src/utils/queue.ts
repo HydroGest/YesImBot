@@ -10,19 +10,20 @@ function containsFilter(sessionContent: string, FilterList: any): boolean {
 export class SendQueue {
   private sendQueueMap: Map<
     string,
-    { id: number; sender: string; content: string }[]
+    { id: number; sender: string; sender_id: string; content: string }[]
   >;
 
   constructor() {
     this.sendQueueMap = new Map<
       string,
-      { id: number; sender: string; content: string }[]
+      { id: number; sender: string; sender_id:string, content: string }[]
     >();
   }
 
   updateSendQueue(
     group: string,
     sender: string,
+	sender_id:　any,
     content: string,
     id: any,
     FilterList: any
@@ -30,10 +31,10 @@ export class SendQueue {
     if (this.sendQueueMap.has(group)) {
       if (containsFilter(content, FilterList)) return;
       const queue = this.sendQueueMap.get(group);
-      queue.push({ id: Number(id), sender, content });
+      queue.push({ id: Number(id), sender: sender, sender_id: sender_id, content: content });
       this.sendQueueMap.set(group, queue);
     } else {
-      this.sendQueueMap.set(group, [{ id: Number(id), sender, content }]);
+      this.sendQueueMap.set(group, [{ id: Number(id), sender: sender, sender_id: sender_id, content: content }]);
     }
   }
 
@@ -62,6 +63,7 @@ export class SendQueue {
       const promptArr = queue.map((item) => ({
         id: item.id,
         author: item.sender,
+		author_id: item.sender_id,
         msg: item.content,
       }));
       //ctx.logger.info(JSON.stringify(promptArr));

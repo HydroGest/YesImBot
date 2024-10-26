@@ -1,15 +1,26 @@
 {
 	"name": "koishi-plugin-yesimbot",
 	"description": "Yes! I'm Bot! 机械壳，人类心",
-	"version": "1.2.0",
+	"version": "1.4.0-preview",
 	"main": "lib/index.js",
 	"typings": "lib/index.d.ts",
 	"homepage": "https://github.com/HydroGest/YesImBot",
-	"files": ["lib", "dist"],
-	"contributors": ["HydroGest <2445691453@qq.com>", "Dispure <3116716016@qq.com>"],
+	"files": [
+		"lib",
+		"dist"
+	],
+	"contributors": [
+		"HydroGest <2445691453@qq.com>",
+		"Dispure <3116716016@qq.com>"
+	],
 	"license": "MIT",
 	"scripts": {},
-	"keywords": ["chatbot", "koishi", "plugin", "ai"],
+	"keywords": [
+		"chatbot",
+		"koishi",
+		"plugin",
+		"ai"
+	],
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/HydroGest/YesImBot.git"
@@ -18,7 +29,7 @@
 		"koishi": "^4.17.9"
 	},
 	"dependencies": {
-		"axios": "^1.7.2"
+		"axios": "^1.7.7"
 	},
 	"koishi": {
 		"description": {
@@ -27,8 +38,12 @@
 		},
 		"browser": true,
 		"service": {
-			"required": ["axios"],
-			"implements": ["yesimbot"]
+			"required": [
+				"axios"
+			],
+			"implements": [
+				"yesimbot"
+			]
 		}
 	}
 }

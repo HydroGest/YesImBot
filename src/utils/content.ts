@@ -83,6 +83,7 @@ export async function processUserContent(session: any): Promise<string> {
   const matches = Array.from(session.content.matchAll(regex));
 
   const userContentPromises = matches.map(async (match) => {
+  
     const id = match[1].trim();
     const name = match[2]?.trim(); // 可能获取到 name
 
