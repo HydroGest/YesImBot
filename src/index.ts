@@ -85,6 +85,10 @@ class APIStatus {
 
 const status = new APIStatus();
 
+export const inject = {
+  optional: ['qmanager', 'interactions']
+}
+
 export function apply(ctx: Context, config: Config) {
     // 当应用启动时更新 Prompt
     ctx.on("ready", async () => {
@@ -230,8 +234,8 @@ export function apply(ctx: Context, config: Config) {
 
         // 如果 AI 使用了指令
         if (handledRes.LLMResponse.execute) {
-            handledRes.LLMResponse.execute.forEach(command => {
-                session.sendQueued(h('execute', {}, command)); // 执行每个指令
+            handledRes.LLMResponse.execute.forEach(async (command) => {
+                await session.sendQueued(h('execute', {}, command)); // 执行每个指令
 				ctx.logger.info(`已执行指令：${command}`)
             });
         }
@@ -240,7 +244,7 @@ export function apply(ctx: Context, config: Config) {
         for (const sentence of sentences) {
             if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence) };
             if (lastSentence == sentence) { continue; }
-            session.sendQueued(sentence);
+            await session.sendQueued(sentence);
             lastSentence = sentence;
         }
     });
