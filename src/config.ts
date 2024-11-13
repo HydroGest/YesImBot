@@ -210,6 +210,10 @@ export const configSchema: any = Schema.object({
 		BotBackground: Schema.string()
 			.default("高中女生")
 			.description("Bot 的背景"),
+    BotSentencePostProcess: Schema.array(Schema.object({
+      replacethis: Schema.string().description("需要替换的文本"),
+      tothis: Schema.string().description("替换为的文本"),
+    })).default([{ replacethis: "。$", tothis: "" }]).role('table').description("Bot 生成的句子后处理，用于替换文本。每行一个替换规则，从上往下依次替换，支持正则表达式"),
 		CuteMode: Schema.boolean().default(false).description("原神模式（迫真"),
 	}).description("机器人设定"),
     Debug: Schema.object({
