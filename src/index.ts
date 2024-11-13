@@ -37,6 +37,19 @@ export interface Config {
             AIModel: string;
         }[];
     };
+    Parameters: {
+      Temperature: number;
+      MaxTokens: number;
+      TopK: number;
+      TopP: number;
+      TypicalP: number;
+      MinP: number;
+      TopA: number;
+      FrequencyPenalty: number;
+      PresencePenalty: number;
+      Stop: string[];
+      OtherParameters: string[];
+    };
     Bot: {
         PromptFileUrl: any;
         PromptFileSelected: number;
@@ -170,15 +183,19 @@ export function apply(ctx: Context, config: Config) {
             );
 
         // 获取回答
-        const response = await run(
+        const { response, requestBody } = await run(
             config.API.APIList[curAPI].APIType,
             config.API.APIList[curAPI].BaseURL,
             config.API.APIList[curAPI].UID,
             config.API.APIList[curAPI].APIKey,
             config.API.APIList[curAPI].AIModel,
             SysPrompt,
-            chatData
+            chatData,
+            config.Parameters
         );
+
+        if (config.Debug.DebugAsInfo)
+            ctx.logger.info(`Request body: ${JSON.stringify(requestBody, null, 2)}`);
 
         if (config.Debug.DebugAsInfo) ctx.logger.info(JSON.stringify(response));
 
@@ -195,7 +212,7 @@ export function apply(ctx: Context, config: Config) {
         const finalRes: string = handledRes.res;
 
         if (config.Debug.LogicRedirect.Enabled) {
-            const template = `回复于 ${groupId} 的消息已生成，来自 API ${curAPI}: 
+            const template = `回复于 ${groupId} 的消息已生成，来自 API ${curAPI}:
 内容: ${(handledRes.LLMResponse.finReply ? handledRes.LLMResponse.finReply : handledRes.LLMResponse.reply)}
 ---
 逻辑: ${handledRes.LLMResponse.logic}

@@ -25,7 +25,7 @@ export const configSchema: any = Schema.object({
 			.default(["你是", "You are", "吧", "呢"])
 			.description("过滤的词汇（防止被调皮群友/机器人自己搞傻）"),
 	}).description("群聊设置"),
-	
+
 	API: Schema.object({
 		APIList: Schema.array(Schema.object({
 			APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"]).default("OpenAI").description(
@@ -43,6 +43,79 @@ export const configSchema: any = Schema.object({
 				.description("模型 ID"),
 		})).description("单个 LLM API 配置，可配置多个 API 进行负载均衡。"),
 	}).description("LLM API 相关配置"),
+
+  Parameters: Schema.object({
+    Temperature: Schema.number()
+      .default(1.36)
+      .min(0)
+      .max(5)
+      .step(0.01)
+      .role('slider')
+      .description("温度，数值越大，回复越具有创造性"),
+    MaxTokens: Schema.number()
+      .default(4096)
+      .min(1)
+      .max(20480)
+      .step(1)
+      .description("一次生成的最大 Token 数量"),
+    TopK: Schema.number()
+      .default(33)
+      .min(-1)
+      .max(200)
+      .step(1)
+      .role('slider')
+      .description("Top K，值为0时表示关闭"),
+    TopP: Schema.number()
+      .default(0.64)
+      .min(0)
+      .max(1)
+      .step(0.01)
+      .role('slider')
+      .description("Top P，值为1时表示关闭"),
+    TypicalP: Schema.number()
+      .default(1)
+      .min(0)
+      .max(1)
+      .step(0.01)
+      .role('slider')
+      .description("Typical P，值为1时表示关闭"),
+    MinP: Schema.number()
+      .default(0.164)
+      .min(0)
+      .max(1)
+      .step(0.001)
+      .role('slider')
+      .description("Min P，值为0时表示关闭"),
+    TopA: Schema.number()
+      .default(0.04)
+      .min(0)
+      .max(1)
+      .step(0.01)
+      .role('slider')
+      .description("Top A，值为0时表示关闭"),
+    FrequencyPenalty: Schema.number()
+      .default(0)
+      .min(-2)
+      .max(2)
+      .step(0.01)
+      .role('slider')
+      .description("Frequency 重复惩罚"),
+    PresencePenalty: Schema.number()
+      .default(0)
+      .min(-2)
+      .max(2)
+      .step(0.01)
+      .role('slider')
+      .description("Presence 重复惩罚"),
+    Stop: Schema.array(Schema.string())
+      .default(["\n", "<|endoftext|>"])
+      .role('table')
+      .description("自定义停止词"),
+    OtherParameters: Schema.array(Schema.string())
+      .default(["do_sample: true", "grammar_string: \"\""])
+      .role('table')
+      .description("自定义请求体中的其他参数，例如dry_base: 1"),
+  }).description("API 参数"),
 
 	Verifier: Schema.intersect([
 		Schema.object({
@@ -79,7 +152,7 @@ export const configSchema: any = Schema.object({
             Schema.object({})
 		])
     ]),
-    
+
     // 保留备用
     // Memory: Schema.intersect([
     //     Schema.object({
