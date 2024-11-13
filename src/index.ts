@@ -63,6 +63,7 @@ export interface Config {
         BotHabbits: string;
         BotBackground: string;
         CuteMode: boolean;
+        BotSentencePostProcess: any;
     };
     Debug: {
         LogicRedirect: {
@@ -258,12 +259,20 @@ export function apply(ctx: Context, config: Config) {
             });
         }
 
-        let lastSentence: string = "";
-        for (const sentence of sentences) {
-            if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence) };
-            if (lastSentence == sentence) { continue; }
+        let sentencesCopy = [...sentences];
+        while (sentencesCopy.length > 0) {
+            let sentence = sentencesCopy.shift();
+            if (!sentence) { continue; }
+            config.Bot.BotSentencePostProcess.forEach(rule => {
+              const regex = new RegExp(rule.replacethis, "g");
+              if (!rule.tothis) {
+                sentence = sentence.replace(regex, "");
+              } else {
+                sentence = sentence.replace(regex, rule.tothis);
+              }
+            });
+            if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence); }
             await session.sendQueued(sentence);
-            lastSentence = sentence;
         }
     });
 }
