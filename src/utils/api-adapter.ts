@@ -7,9 +7,23 @@ export async function run(
   APIKey: string,
   model: string,
   SysInput: string,
-  InfoInput: string
+  InfoInput: string,
+  parameters: any
 ): Promise<any> {
   let url: string, requestBody: any;
+
+  // 解析其他参数
+  const otherParams = {};
+  if (parameters.OtherParameters) {
+    parameters.OtherParameters.forEach((param: string) => {
+      const [key, value] = param.split(':').map(s => s.trim());
+      // 转换 value 为适当的类型
+      otherParams[key] = value === 'true' ? true :
+                        value === 'false' ? false :
+                        !isNaN(value as any) ? Number(value) :
+                        value;
+    });
+  }
 
   switch (APIType) {
     case "OpenAI": {
@@ -30,8 +44,17 @@ export async function run(
             content: InfoInput,
           },
         ],
-        temperature: 0.7,
-        max_tokens: 4096,
+        temperature: parameters.Temperature,
+        max_tokens: parameters.MaxTokens,
+        top_k: parameters.TopK,
+        top_p: parameters.TopP,
+        typical_p: parameters.TypicalP,
+        min_p: parameters.MinP,
+        top_a: parameters.TopA,
+        frequency_penalty: parameters.FrequencyPenalty,
+        presence_penalty: parameters.PresencePenalty,
+        stop: parameters.Stop,
+        ...otherParams
       };
       break;
     }
@@ -96,7 +119,10 @@ export async function run(
     }
 
     const result = await response.data;
-    return result;
+    return {
+      response: result,
+      requestBody: requestBody,
+    }
   } catch (error) {
     throw error;
   }

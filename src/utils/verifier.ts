@@ -38,7 +38,8 @@ export class ResponseVerifier {
         this.config.Verifier.API.APIKey,
         this.config.Verifier.API.AIModel,
         sysPrompt,
-        promptInput
+        promptInput,
+        this.config.Parameters
       );
 
       const similarityScore = this.extractSimilarityScore(response);
