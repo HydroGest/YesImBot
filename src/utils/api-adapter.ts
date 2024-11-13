@@ -94,8 +94,17 @@ export async function run(
             content: InfoInput,
           },
         ],
-        temperature: 0.7,
-        max_tokens: 4096,
+        temperature: parameters.Temperature,
+        max_tokens: parameters.MaxTokens,
+        top_k: parameters.TopK,
+        top_p: parameters.TopP,
+        typical_p: parameters.TypicalP,
+        min_p: parameters.MinP,
+        top_a: parameters.TopA,
+        frequency_penalty: parameters.FrequencyPenalty,
+        presence_penalty: parameters.PresencePenalty,
+        stop: parameters.Stop,
+        ...otherParams
       };
       break;
     }

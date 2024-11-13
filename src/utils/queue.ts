@@ -66,8 +66,8 @@ export class SendQueue {
 		author_id: item.sender_id,
         msg: item.content,
       }));
-      //ctx.logger.info(JSON.stringify(promptArr));
-      return JSON.stringify(promptArr);
+      //ctx.logger.info(JSON.stringify(promptArr, null, 2));
+      return JSON.stringify(promptArr, null, 2);
     }
     return "[]";
   }

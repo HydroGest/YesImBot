@@ -197,7 +197,8 @@ export function apply(ctx: Context, config: Config) {
         if (config.Debug.DebugAsInfo)
             ctx.logger.info(`Request body: ${JSON.stringify(requestBody, null, 2)}`);
 
-        if (config.Debug.DebugAsInfo) ctx.logger.info(JSON.stringify(response));
+        if (config.Debug.DebugAsInfo)
+            ctx.logger.info(JSON.stringify(response, null, 2));
 
         const handledRes: {
             res: string;

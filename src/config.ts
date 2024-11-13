@@ -108,7 +108,7 @@ export const configSchema: any = Schema.object({
       .role('slider')
       .description("Presence 重复惩罚"),
     Stop: Schema.array(Schema.string())
-      .default(["\n", "<|endoftext|>"])
+      .default(["<|endoftext|>"])
       .role('table')
       .description("自定义停止词"),
     OtherParameters: Schema.array(Schema.string())
