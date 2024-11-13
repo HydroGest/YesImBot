@@ -46,7 +46,7 @@ export function handleResponse(
   }
   console.log(typeof res);
   if (typeof res != "string") {
-    res = JSON.stringify(res);
+    res = JSON.stringify(res, null, 2);
   }
   res = res.replaceAll("```", " ");
   res = res.replaceAll("json", " ");
@@ -83,7 +83,7 @@ export async function processUserContent(session: any): Promise<string> {
   const matches = Array.from(session.content.matchAll(regex));
 
   const userContentPromises = matches.map(async (match) => {
-  
+
     const id = match[1].trim();
     const name = match[2]?.trim(); // 可能获取到 name
 
