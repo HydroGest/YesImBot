@@ -264,7 +264,11 @@ export function apply(ctx: Context, config: Config) {
             if (!sentence) { continue; }
             config.Bot.BotSentencePostProcess.forEach(rule => {
               const regex = new RegExp(rule.replacethis, "g");
-              sentence = sentence.replace(regex, rule.tothis);
+              if (!rule.tothis) {
+                sentence = sentence.replace(regex, "");
+              } else {
+                sentence = sentence.replace(regex, rule.tothis);
+              }
             });
             if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence); }
             await session.sendQueued(sentence);
