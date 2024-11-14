@@ -5,9 +5,9 @@ export function replaceTags(str: string): string {
   const videoRegex = /<video.*?\/>/g
   const audioRegex = /<audio.*?\/>/g
   let finalString: string = str;
-  finalString = finalString.replace(imgRegex, finalString);
-  finalString = finalString.replace(videoRegex, finalString);
-  finalString = finalString.replace(audioRegex, finalString);
+  finalString = finalString.replace(imgRegex, "[图片]");
+  finalString = finalString.replace(videoRegex, "[视频]");
+  finalString = finalString.replace(audioRegex, "[音频]");
   return finalString;
 }
 
