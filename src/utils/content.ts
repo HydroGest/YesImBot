@@ -63,10 +63,10 @@ export function handleResponse(
   if (!AllowErrorFormat) {
     finalResponse += LLMResponse.finReply
       ? LLMResponse.finReply
-      : LLMResponse.reply;
+      : LLMResponse.replyToID;
   } else {
     if (LLMResponse.finReply) finalResponse += LLMResponse.finReply;
-    else if (LLMResponse.reply) finalResponse += LLMResponse.reply;
+    else if (LLMResponse.replyToID) finalResponse += LLMResponse.replyToID;
     else if (LLMResponse.msg) finalResponse += LLMResponse.msg;
     else throw new Error(`LLM provides unexpected response: ${res}`);
   }

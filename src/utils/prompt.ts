@@ -55,11 +55,14 @@ export async function genSysPrompt(
   curGroupDescription: string,
   curGroupName: string
 ): Promise<string> {
-  // 获取当前日期
+  // 获取当前日期与时间
   const currentDate = new Date();
   const curYear: number = currentDate.getFullYear();
   const curMonth: number = currentDate.getMonth() + 1;
   const curDate: number = currentDate.getDate();
+  const curHour: number = currentDate.getHours();
+  const curMinute: number = currentDate.getMinutes();
+  const curSecond: number = currentDate.getSeconds();
 
   let content = fs.readFileSync(
     getFileNameFromUrl(config.Bot.PromptFileUrl[config.Bot.PromptFileSelected]),
@@ -94,6 +97,9 @@ export async function genSysPrompt(
   content = content.replaceAll("${curYear}", curYear.toString());
   content = content.replaceAll("${curMonth}", curMonth.toString());
   content = content.replaceAll("${curDate}", curDate.toString());
+  content = content.replaceAll("${curHour}", curHour.toString());
+  content = content.replaceAll("${curMinute}", curMinute.toString());
+  content = content.replaceAll("${curSecond}", curSecond.toString());
 
   content = content.replaceAll("${curGroupDescription}", curGroupDescription);
   content = content.replaceAll("${curGroupName}", curGroupName);

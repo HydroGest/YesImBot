@@ -214,7 +214,7 @@ export function apply(ctx: Context, config: Config) {
 
         if (config.Debug.LogicRedirect.Enabled) {
             const template = `回复于 ${groupId} 的消息已生成，来自 API ${curAPI}:
-内容: ${(handledRes.LLMResponse.finReply ? handledRes.LLMResponse.finReply : handledRes.LLMResponse.reply)}
+内容: ${(handledRes.LLMResponse.finReply ? handledRes.LLMResponse.finReply : handledRes.LLMResponse.replyToID)}
 ---
 逻辑: ${handledRes.LLMResponse.logic}
 ---
