@@ -48,7 +48,7 @@ export interface Config {
       FrequencyPenalty: number;
       PresencePenalty: number;
       Stop: string[];
-      OtherParameters: string[];
+      OtherParameters: any;
     };
     Bot: {
         PromptFileUrl: any;
@@ -245,7 +245,7 @@ export function apply(ctx: Context, config: Config) {
         sendQueue.updateSendQueue(
             groupId,
             config.Bot.BotName,
-			0,
+			      0,
             finalRes,
             0,
             config.Group.Filter
