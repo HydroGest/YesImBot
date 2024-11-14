@@ -1,6 +1,6 @@
 import fs from "fs";
 import https from "https";
-import { Context, is } from "koishi";
+import { Context } from "koishi";
 import { promisify } from "util";
 
 export function getFileNameFromUrl(url: string): string {
