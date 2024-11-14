@@ -111,10 +111,10 @@ export const configSchema: any = Schema.object({
       .default(["<|endoftext|>"])
       .role('table')
       .description("自定义停止词"),
-    OtherParameters: Schema.array(Schema.string())
-      .default(["do_sample: true", "grammar_string: \"\""])
-      .role('table')
-      .description("自定义请求体中的其他参数，例如dry_base: 1"),
+    OtherParameters: Schema.array(Schema.object({
+      key: Schema.string().description("键名"),
+      value: Schema.string().description("键值"),
+    })).default([{ key: "do_sample", value: "true" }, { key: "grammar_string", value: "root   ::= object\nobject ::= \"{\\n\\\"status\\\": \" status-value \",\\n\\\"logic\\\": \" logic-value \",\\n\\\"replyToID\\\": \" reply-value \",\\n\\\"select\\\": \" select-value \",\\n\\\"check\\\": \" check-value \",\\n\\\"finReply\\\": \" finReply-value \",\\n\\\"execute\\\": \" execute-value \"\\n}\"\nstring ::= \"\\\"\" ([^\"\\\\] | \"\\\\\" [\"\\\\/bfnrt])* \"\\\"\"\nnumber ::= \"-\"? [0-9]+\nban-time ::= [1-9][0-9]{1,3} | [1-4][0-3][0-1][0-9][0-9]\nstatus-value  ::= \"\\\"success\\\"\" | \"\\\"skip\\\"\"\nlogic-value   ::= string | \"\\\"\\\"\"\nreply-value   ::= number | \"\\\"\\\"\"\nselect-value  ::= \"-1\"\ncheck-value   ::= \"\\\"\\\"\"\nfinReply-value::= string\nexecute-value ::= \"[\"( execute-cmds (\", \" execute-cmds )* )? \"]\"\nexecute-cmds  ::= delmsg | ban | reaction\ndelmsg        ::= \"\\\"delmsg \" number \"\\\"\"\nban           ::= \"\\\"ban \" number \" \" ban-time \"\\\"\"\nreaction      ::= \"\\\"reaction-create \" number \" \" number \"\\\"\""}]).role('table').description("自定义请求体中的其他参数，例如dry_base: 1。\n提示：直接将gbnf内容作为grammar_string的值粘贴至此时，换行符会被转换成空格，需要手动替换为\\n后方可生效"),
   }).description("API 参数"),
 
 	Verifier: Schema.intersect([

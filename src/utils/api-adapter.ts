@@ -12,18 +12,20 @@ export async function run(
 ): Promise<any> {
   let url: string, requestBody: any;
 
-  // 解析其他参数
-  const otherParams = {};
-  if (parameters.OtherParameters) {
-    parameters.OtherParameters.forEach((param: string) => {
-      const [key, value] = param.split(':').map(s => s.trim());
-      // 转换 value 为适当的类型
-      otherParams[key] = value === 'true' ? true :
-                        value === 'false' ? false :
-                        !isNaN(value as any) ? Number(value) :
-                        value;
-    });
-  }
+// 解析其他参数
+const otherParams = {};
+if (parameters.OtherParameters) {
+  parameters.OtherParameters.forEach((param: { key: string, value: string }) => {
+    const key = param.key.trim();
+    const value = param.value.trim();
+
+    // 转换 value 为适当的类型
+    otherParams[key] = value === 'true' ? true :
+                       value === 'false' ? false :
+                       !isNaN(value as any) ? Number(value) :
+                       value;
+  });
+}
 
   switch (APIType) {
     case "OpenAI": {
