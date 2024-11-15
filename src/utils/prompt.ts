@@ -57,7 +57,7 @@ export async function ensurePromptFileExists(
     });
 
     request.on("error", (err) => {
-      fs.unlink(filePath, () => {});
+      fs.unlink(filePath, () => { });
       if (debug)
         ctx.logger.error("An error occurred while downloading prompt file: ", err.message.toString());
     });
@@ -84,7 +84,6 @@ export async function ensurePromptFileExists(
 
 export async function genSysPrompt(
   config: any,
-  curGroupDescription: string,
   curGroupName: string
 ): Promise<string> {
   // 获取当前日期与时间
@@ -133,7 +132,6 @@ export async function genSysPrompt(
   content = content.replaceAll("${curMinute}", curMinute.toString());
   content = content.replaceAll("${curSecond}", curSecond.toString());
 
-  content = content.replaceAll("${curGroupDescription}", curGroupDescription);
   content = content.replaceAll("${curGroupName}", curGroupName);
 
   return content;

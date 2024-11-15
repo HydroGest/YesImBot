@@ -86,9 +86,9 @@ export async function runChatCompeletion(
 
       // 转换 value 为适当的类型
       otherParams[key] = value === 'true' ? true :
-                         value === 'false' ? false :
-                         !isNaN(value as any) ? Number(value) :
-                         value;
+        value === 'false' ? false :
+          !isNaN(value as any) ? Number(value) :
+            value;
     });
   }
 

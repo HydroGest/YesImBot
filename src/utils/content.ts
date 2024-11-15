@@ -18,22 +18,23 @@ export function handleResponse(
   APIType: string,
   input: any,
   AllowErrorFormat: boolean,
+  session: any,
 ): {
-    res: string;
-        LLMResponse: any;
-        usage: any;
-    } {
-    let usage: any;
+  res: string;
+  LLMResponse: any;
+  usage: any;
+} {
+  let usage: any;
   let res: string;
   switch (APIType) {
     case "OpenAI": {
-          res = input.choices[0].message.content;
-          usage = input.usage;
+      res = input.choices[0].message.content;
+      usage = input.usage;
       break;
     }
     case "Custom URL": {
-          res = input.choices[0].message.content;
-          usage = input.usage;
+      res = input.choices[0].message.content;
+      usage = input.usage;
       break;
     }
     case "Cloudflare": {
@@ -48,12 +49,30 @@ export function handleResponse(
   if (typeof res != "string") {
     res = JSON.stringify(res, null, 2);
   }
-  res = res.replaceAll("```", " ");
-  res = res.replaceAll("json", " ");
+
+  // 正版回复：
+  // {
+  //   "status": "success", // "success" 或 "skip" (跳过回复)
+  //   "logic": "", // LLM思考过程
+  //   "select": -1, // 回复引用的消息id
+  //   "reply": "", // 初版回复
+  //   "check": "", // 检查初版回复是否符合 "消息生成条例" 过程中的检查逻辑。
+  //   "finReply": "" // 最终版回复
+  //   "execute":[] // 要运行的指令列表
+  // }
+  const jsonMatch = res.match(/{.*}/s);
+  if (jsonMatch) {
+    res = jsonMatch[0];
+  } else {
+    throw new Error(`LLM provides unexpected response: ${res}`);
+  }
   const LLMResponse = JSON.parse(res);
   if (LLMResponse.status != "success") {
-    if (!AllowErrorFormat)
+    if (!AllowErrorFormat && LLMResponse.status != "skip") {
       throw new Error(`LLM provides unexpected response: ${res}`);
+    } else {
+      console.log(`LLM choose not to reply.`);
+    }
   }
   let finalResponse: string = "";
   if (~LLMResponse.select)
@@ -63,24 +82,66 @@ export function handleResponse(
   if (!AllowErrorFormat) {
     finalResponse += LLMResponse.finReply
       ? LLMResponse.finReply
-      : LLMResponse.replyToID;
+      : LLMResponse.reply;
   } else {
     if (LLMResponse.finReply) finalResponse += LLMResponse.finReply;
-    else if (LLMResponse.replyToID) finalResponse += LLMResponse.replyToID;
+    else if (LLMResponse.reply) finalResponse += LLMResponse.reply;
+    // 盗版回复
     else if (LLMResponse.msg) finalResponse += LLMResponse.msg;
+    else if (LLMResponse.text) finalResponse += LLMResponse.text;
+    else if (LLMResponse.message) finalResponse += LLMResponse.message;
+    else if (LLMResponse.answer) finalResponse += LLMResponse.answer;
     else throw new Error(`LLM provides unexpected response: ${res}`);
   }
+
+  // 使用groupMemberList反转义<at>消息
+  const groupMemberList = session.groupMemberList;
+  const atRegex = /@([^@\s!?,.，。！？]+)/g; // 怎么这么多符号都可能出现在用户名里，我只能挑出这一点点了
+  let match;
+  while ((match = atRegex.exec(finalResponse)) !== null) {
+    const username = match[1];
+    const member = groupMemberList.data.find(
+      (member) => member.nick === username || member.user.name === username
+    );
+    if (member) {
+      finalResponse = finalResponse.replace(`@${username}`, `<at id="${member.user.id}" name="${username}"` );
+    }
+  }
+
+
+
+
   return {
-        res: finalResponse,
-        LLMResponse: LLMResponse,
-        usage: usage,
+    res: finalResponse,
+    LLMResponse: LLMResponse,
+    usage: usage,
   };
 }
 
-export async function processUserContent(session: any): Promise<string> {
+
+/*
+    @description: 处理 人类 的消息
+*/
+export async function processUserContent(session: any): Promise<{ content: string, name: string }> {
+  const groupMemberList = session.groupMemberList;
+  // groupMemberList结构示例:
+  // { data: [
+  //    { user:
+  //      { id: '0',
+  //        name: 'YesImBot',
+  //        userId: '0',
+  //        avatar: 'http://q.qlogo.cn/headimg_dl?dst_uin=0&spec=640',
+  //        username: 'YesImBot'
+  //      },
+  //      nick: 'Athena',
+  //      roles: [ 'member' ]
+  //    }
+  //  ]
+  //}
   const regex = /<at id="([^"]+)"(?:\s+name="([^"]+)")?\s*\/>/g;
-  // 转码 <at> 消息
+  // 转码 <at> 消息，把<at id="0" name="YesImBot" /> 转换为 @Athena 或 @YesImBot
   const matches = Array.from(session.content.matchAll(regex));
+  let finalName = "";
 
   const userContentPromises = matches.map(async (match) => {
 
@@ -88,10 +149,12 @@ export async function processUserContent(session: any): Promise<string> {
     const name = match[2]?.trim(); // 可能获取到 name
 
     try {
-      const user = await session.bot.getUser(id);
+      const member = groupMemberList.data.find((member) => member.user.id === id);
+      // 使用 nick(优先) 或 name，如果都不存在则使用 "UserNotFound"
+      finalName = member ? member.nick : name || "UserNotFound";
       return {
         match: match[0],
-        replacement: `@${name || user.name}`, // 如果 name 存在，则使用它，否则使用 user.name
+        replacement: `@${finalName}`,
       };
     } catch (error) {
       // QQ 官方机器人接口无法使用 session.bot.getUser()，尝试调用备用 API
@@ -101,9 +164,10 @@ export async function processUserContent(session: any): Promise<string> {
           throw new Error(`Failed to fetch user from backup API`);
         }
         const user = await response.json();
+        finalName = name ? name : user.data.name || "UserNotFound";
         return {
           match: match[0],
-          replacement: `@${name || user.data.name || "UserNotFound"}`, // 使用 name 或备用 API 返回的名字
+          replacement: `@${finalName}`, // 使用 name 或备用 API 返回的名字
         };
       } catch (backupError) {
         return { match: match[0], replacement: `@UserNotFound` };
@@ -117,5 +181,5 @@ export async function processUserContent(session: any): Promise<string> {
     userContent = userContent.replace(match, replacement);
   });
   userContent = replaceTags(userContent);
-  return userContent;
+  return { content: userContent, name: finalName };
 }

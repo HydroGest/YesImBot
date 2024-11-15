@@ -16,14 +16,14 @@ export class SendQueue {
   constructor() {
     this.sendQueueMap = new Map<
       string,
-      { id: number; sender: string; sender_id:string, content: string }[]
+      { id: number; sender: string; sender_id: string, content: string }[]
     >();
   }
 
   updateSendQueue(
     group: string,
     sender: string,
-	  sender_id: any,
+    sender_id: any,
     content: string,
     id: any,
     FilterList: any
@@ -63,7 +63,7 @@ export class SendQueue {
       const promptArr = queue.map((item) => ({
         id: item.id,
         author: item.sender,
-		author_id: item.sender_id,
+        author_id: item.sender_id,
         msg: item.content,
       }));
       //ctx.logger.info(JSON.stringify(promptArr, null, 2));

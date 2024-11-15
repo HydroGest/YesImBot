@@ -35,7 +35,7 @@
 	"koishi": {
 		"description": {
 			"zh": "让语言大模型机器人假装群友并和群友聊天！",
-			"en": "A Koishi plugin that allows LLM chat in your channel."
+			"en": "A Koishi plugin that allows LLM chat in your guild."
 		},
 		"browser": true,
 		"service": {
