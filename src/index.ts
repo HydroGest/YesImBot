@@ -6,7 +6,7 @@ import { configSchema } from "./config";
 
 import { genSysPrompt, ensurePromptFileExists } from "./utils/prompt";
 
-import { run } from "./utils/api-adapter";
+import { runChatCompeletion } from "./utils/api-adapter";
 
 import { SendQueue } from "./utils/queue";
 
@@ -184,7 +184,7 @@ export function apply(ctx: Context, config: Config) {
             );
 
         // 获取回答
-        const { response, requestBody } = await run(
+        const { response, requestBody } = await runChatCompeletion(
             config.API.APIList[curAPI].APIType,
             config.API.APIList[curAPI].BaseURL,
             config.API.APIList[curAPI].UID,
