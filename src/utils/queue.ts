@@ -57,12 +57,13 @@ export class SendQueue {
     }
   }
 
-  getPrompt(group: string): string {
+  getPrompt(group: string, session: any): string {
+    const groupMemberList = session.groupMemberList;
     if (this.sendQueueMap.has(group)) {
       const queue = this.sendQueueMap.get(group);
       const promptArr = queue.map((item) => ({
         id: item.id,
-        author: item.sender,
+        author: groupMemberList.data.find((member) => member.user.id === item.sender_id).nick,
         author_id: item.sender_id,
         msg: item.content,
       }));

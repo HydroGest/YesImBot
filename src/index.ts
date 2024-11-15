@@ -134,7 +134,7 @@ export function apply(ctx: Context, config: Config) {
 
     sendQueue.updateSendQueue(
       groupId,
-      userContent.name,
+      session.event.user.name,
       session.event.user.id,
       userContent.content,
       session.messageId,
@@ -148,12 +148,13 @@ export function apply(ctx: Context, config: Config) {
     // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
     // 那么就会执行内部的代码，跳过这个中间件，不向api发送请求
     const isQueueFull = sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize);
-    const isAtMentioned = /<at id="${session.bot.selfId}".*?>/.test(session.content);
+    const isAtMentioned = new RegExp(`<at id="${session.bot.selfId}".*?>`).test(session.content);
     const shouldReactToAt = Random.bool(config.Group.AtReactPossiblilty);
+    ctx.logger.info(`isQueueFull: ${isQueueFull}, isAtMentioned: ${isAtMentioned}, shouldReactToAt: ${Random.bool(config.Group.AtReactPossiblilty)}, isQueueFull && (isAtMentioned && shouldReactToAt): ${isQueueFull && (isAtMentioned && shouldReactToAt)}, session.content: ${session.content}`);
 
     if (!isQueueFull && !(isAtMentioned && shouldReactToAt)) {
       if (config.Debug.DebugAsInfo)
-        ctx.logger.info(sendQueue.getPrompt(groupId));
+        ctx.logger.info(sendQueue.getPrompt(groupId, session));
       return next();
     }
 
@@ -172,7 +173,7 @@ export function apply(ctx: Context, config: Config) {
     );
 
     // 消息队列出队
-    const chatData: string = sendQueue.getPrompt(groupId);
+    const chatData: string = sendQueue.getPrompt(groupId, session);
     sendQueue.resetSendQueue(
       groupId,
       Random.int(config.Group.MinPopNum, config.Group.MaxPopNum)
