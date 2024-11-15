@@ -29,7 +29,8 @@
 		"koishi": "^4.17.9"
 	},
 	"dependencies": {
-		"axios": "^1.7.7"
+		"axios": "^1.7.7",
+    "numjs": "^0.16.0"
 	},
 	"koishi": {
 		"description": {
@@ -39,7 +40,8 @@
 		"browser": true,
 		"service": {
 			"required": [
-				"axios"
+				"axios",
+        "numjs"
 			],
 			"implements": [
 				"yesimbot"
