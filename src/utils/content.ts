@@ -104,7 +104,7 @@ export function handleResponse(
       (member) => member.nick === username || member.user.name === username
     );
     if (member) {
-      finalResponse = finalResponse.replace(`@${username}`, `<at id="${member.user.id}" name="${username}"` );
+      finalResponse = finalResponse.replace(`@${username}`, `<at id="${member.user.id}" name="${username}"/>` );
     }
   }
 
