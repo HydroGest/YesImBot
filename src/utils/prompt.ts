@@ -57,7 +57,7 @@ export async function ensurePromptFileExists(
     });
 
     request.on("error", (err) => {
-      fs.unlink(filePath, () => {});
+      fs.unlink(filePath, () => { });
       if (debug)
         ctx.logger.error("An error occurred while downloading prompt file: ", err.message.toString());
     });
@@ -84,8 +84,8 @@ export async function ensurePromptFileExists(
 
 export async function genSysPrompt(
   config: any,
-  curGroupDescription: string,
-  curGroupName: string
+  curGroupName: string,
+  session: any,
 ): Promise<string> {
   // 获取当前日期与时间
   const currentDate = new Date();
@@ -101,7 +101,7 @@ export async function genSysPrompt(
     "utf-8"
   );
 
-  content = content.replaceAll("${config.Bot.BotName}", config.Bot.BotName);
+  content = content.replaceAll("${config.Bot.BotName}", session.groupMemberList.data.find((member) => member.user.id === session.event.selfId).nick,);
   content = content.replaceAll("${config.Bot.WhoAmI}", config.Bot.WhoAmI);
   content = content.replaceAll(
     "${config.Bot.BotHometown}",
@@ -133,7 +133,6 @@ export async function genSysPrompt(
   content = content.replaceAll("${curMinute}", curMinute.toString());
   content = content.replaceAll("${curSecond}", curSecond.toString());
 
-  content = content.replaceAll("${curGroupDescription}", curGroupDescription);
   content = content.replaceAll("${curGroupName}", curGroupName);
 
   return content;
