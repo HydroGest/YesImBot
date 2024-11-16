@@ -120,15 +120,15 @@ export const configSchema: any = Schema.object({
     })).default([{ key: "do_sample", value: "true" }, { key: "grammar_string", value: "root   ::= object\nobject ::= \"{\\n\\\"status\\\": \" status-value \",\\n\\\"logic\\\": \" logic-value \",\\n\\\"select\\\": \" select-value \",\\n\\\"reply\\\": \" reply-value \",\\n\\\"check\\\": \" check-value \",\\n\\\"finReply\\\": \" finReply-value \",\\n\\\"execute\\\": \" execute-value \"\\n}\"\nstring ::= \"\\\"\" ([^\"\\\\] | \"\\\\\" [\"\\\\/bfnrt])* \"\\\"\"\nnumber ::= [0-9]+\nban-time ::= [1-9][0-9]{1,3} | [1-4][0-3][0-1][0-9][0-9]\nstatus-value  ::= \"\\\"success\\\"\" | \"\\\"skip\\\"\"\nlogic-value   ::= string | \"\\\"\\\"\"\nselect-value  ::= number | \"-1\"\nreply-value   ::= string\ncheck-value   ::= \"\\\"\\\"\"\nfinReply-value::= string\nexecute-value ::= \"[\"( execute-cmds (\", \" execute-cmds )* )? \"]\"\nexecute-cmds  ::= delmsg | ban | reaction\ndelmsg        ::= \"\\\"delmsg \" number \"\\\"\"\nban           ::= \"\\\"ban \" number \" \" ban-time \"\\\"\"\nreaction      ::= \"\\\"reaction-create \" number \" \" number \"\\\"\"" }]).role('table').description("自定义请求体中的其他参数，例如dry_base: 1。\n提示：直接将gbnf内容作为grammar_string的值粘贴至此时，换行符会被转换成空格，需要手动替换为\\n后方可生效"),
   }).description("API 参数"),
 
-  Embedding: Schema.object({
-    APIList: Schema.array(Schema.object({
-      APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"]).default("OpenAI").description("Embedding API 类型"),
-      BaseURL: Schema.string().default("https://api.openai.com/").description("Embedding API 基础 URL"),
-      UID: Schema.string().default("").description("Cloudflare UID（如果适用）"),
-      APIKey: Schema.string().required().description("API 令牌"),
-      EmbeddingModel: Schema.string().default("text-embedding-ada-002").description("Embedding 模型 ID"),
-    })).description("单个 Embedding 模型配置，可配置多个 API 进行负载均衡。"),
-  }).description("Embedding 模型相关配置，可用于存储BOT的记忆"),
+  // Embedding: Schema.object({
+  //   APIList: Schema.array(Schema.object({
+  //     APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"]).default("OpenAI").description("Embedding API 类型"),
+  //     BaseURL: Schema.string().default("https://api.openai.com/").description("Embedding API 基础 URL"),
+  //     UID: Schema.string().default("").description("Cloudflare UID（如果适用）"),
+  //     APIKey: Schema.string().required().description("API 令牌"),
+  //     EmbeddingModel: Schema.string().default("text-embedding-ada-002").description("Embedding 模型 ID"),
+  //   })).description("单个 Embedding 模型配置，可配置多个 API 进行负载均衡。"),
+  // }).description("Embedding 模型相关配置，可用于存储BOT的记忆"),
 
   Verifier: Schema.intersect([
     Schema.object({
