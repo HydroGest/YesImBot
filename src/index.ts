@@ -23,6 +23,7 @@ export interface Config {
   Group: {
     AllowedGroups: any;
     SendQueueSize: number;
+    TriggerCount: number;
     MaxPopNum: number;
     MinPopNum: number;
     AtReactPossiblilty: number;
@@ -116,13 +117,38 @@ export function apply(ctx: Context, config: Config) {
   });
 
   ctx.middleware(async (session: any, next: Next) => {
-    const groupId: string = session.guildId;
-    if (!session.groupMemberList) {
+    const groupId: string = session.guildId ? session.guildId : `private:${session.userId}`;
+    const isPrivateChat = groupId.startsWith("private:");
+    if (!session.groupMemberList && !isPrivateChat) {
       session.groupMemberList = await session.bot.getGuildMemberList(session.guildId);
+    } else if (isPrivateChat) {
+      session.groupMemberList = { data: [
+        { user:
+          { id: `${session.event.user.id}`,
+            name: `${session.event.user.name}`,
+            userId: `${session.event.user.id}`,
+            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.user.id}&spec=640`,
+            username: `${session.event.user.name}`
+          },
+          nick: `${session.event.user.name}`,
+          roles: [ 'member' ]
+        },
+        { user:
+          { id: `${session.event.selfId}`,
+            name: `${session.bot.user.name}`,
+            userId: `${session.event.selfId}`,
+            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.selfId}&spec=640`,
+            username: `${session.bot.user.name}`
+          },
+          nick: `${session.bot.user.name}`,
+          roles: [ 'member' ]
+        }
+       ]
+      };
     }
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(`New message recieved, guildId = ${groupId}`);
+      ctx.logger.info(`New message received, guildId = ${groupId}`);
 
     if (
       !config.Group.AllowedGroups.includes(groupId) &&
@@ -132,27 +158,35 @@ export function apply(ctx: Context, config: Config) {
 
     const userContent = await processUserContent(session);
 
+    // 更新消息队列，把这条消息加入队列
     sendQueue.updateSendQueue(
       groupId,
       session.event.user.name,
       session.event.user.id,
       userContent.content,
       session.messageId,
-      config.Group.Filter
+      config.Group.Filter,
+      session,
+      config.Group.TriggerCount
     );
 
     // 检测是否达到发送次数或被 at
     // 返回 false 的条件：
-    // 发送队列已满 或者 用户消息提及机器人且随机条件命中。也就是说：
-    // 如果发送队列未满 (!isQueueFull)
+    // 达到触发条数 或者 用户消息提及机器人且随机条件命中。也就是说：
+    // 如果触发条数没有达到 (!isTriggerCountReached)
     // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
-    // 那么就会执行内部的代码，跳过这个中间件，不向api发送请求
-    const isQueueFull = sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize);
+    // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
+    const isQueueFull: boolean = sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize);
     const isAtMentioned = new RegExp(`<at id="${session.bot.selfId}".*?>`).test(session.content);
+    const isTriggerCountReached = sendQueue.checkTriggerCount(groupId, Random.int(config.Group.MinPopNum, config.Group.MaxPopNum), isAtMentioned);
     const shouldReactToAt = Random.bool(config.Group.AtReactPossiblilty);
-    ctx.logger.info(`isQueueFull: ${isQueueFull}, isAtMentioned: ${isAtMentioned}, shouldReactToAt: ${Random.bool(config.Group.AtReactPossiblilty)}, isQueueFull && (isAtMentioned && shouldReactToAt): ${isQueueFull && (isAtMentioned && shouldReactToAt)}, session.content: ${session.content}`);
 
-    if (!isQueueFull && !(isAtMentioned && shouldReactToAt)) {
+    // 如果消息队列满了，出队消息到config.Group.SendQueueSize
+    if (isQueueFull) {
+      sendQueue.resetSendQueue(groupId, config.Group.SendQueueSize);
+    }
+
+    if (!isTriggerCountReached && !(isAtMentioned && shouldReactToAt)) {
       if (config.Debug.DebugAsInfo)
         ctx.logger.info(sendQueue.getPrompt(groupId, session));
       return next();
@@ -169,16 +203,10 @@ export function apply(ctx: Context, config: Config) {
     // 获取 Prompt
     const SysPrompt: string = await genSysPrompt(
       config,
-      session.guildName
+      session.guildName,
+      session
     );
-
-    // 消息队列出队
     const chatData: string = sendQueue.getPrompt(groupId, session);
-    sendQueue.resetSendQueue(
-      groupId,
-      Random.int(config.Group.MinPopNum, config.Group.MaxPopNum)
-    );
-
     const curAPI = status.getStatus();
     status.updateStatus(config.API.APIList.length);
 
@@ -249,11 +277,13 @@ export function apply(ctx: Context, config: Config) {
 
     sendQueue.updateSendQueue(
       groupId,
-      config.Bot.BotName,
-      0,
+      session.groupMemberList.data.find((member) => member.user.id === session.event.selfId).nick,
+      session.event.selfId,
       finalRes,
-      0,
-      config.Group.Filter
+      0,  // session.messageId，但是这里是机器人自己发的消息，所以设为0
+      config.Group.Filter,
+      session,
+      config.Group.TriggerCount
     );
 
     // 如果 AI 使用了指令

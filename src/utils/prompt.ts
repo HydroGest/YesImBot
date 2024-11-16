@@ -84,7 +84,8 @@ export async function ensurePromptFileExists(
 
 export async function genSysPrompt(
   config: any,
-  curGroupName: string
+  curGroupName: string,
+  session: any,
 ): Promise<string> {
   // 获取当前日期与时间
   const currentDate = new Date();
@@ -100,7 +101,7 @@ export async function genSysPrompt(
     "utf-8"
   );
 
-  content = content.replaceAll("${config.Bot.BotName}", config.Bot.BotName);
+  content = content.replaceAll("${config.Bot.BotName}", session.groupMemberList.data.find((member) => member.user.id === session.event.selfId).nick,);
   content = content.replaceAll("${config.Bot.WhoAmI}", config.Bot.WhoAmI);
   content = content.replaceAll(
     "${config.Bot.BotHometown}",

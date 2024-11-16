@@ -8,14 +8,17 @@ export const configSchema: any = Schema.object({
       .required()
       .description("允许的群聊"),
     SendQueueSize: Schema.number()
-      .default(20)
-      .description("Bot 接收的上下文数量（消息队列长度）"),
+      .default(20).min(1)
+      .description("Bot 接收的上下文数量（消息队列最大长度）"),
+    TriggerCount: Schema.number()
+      .default(3).min(1)
+      .description("Bot 开始回复消息的初始触发计数"),
     MaxPopNum: Schema.number()
-      .default(10)
-      .description("消息队列每次出队的最大数量"),
+      .default(10).min(1)
+      .description("Bot 两次回复之间的最大消息数"),
     MinPopNum: Schema.number()
-      .default(1)
-      .description("消息队列每次出队的最小数量"),
+      .default(1).min(1)
+      .description("Bot 两次回复之间的最小消息数"),
     AtReactPossiblilty: Schema.number()
       .default(0.5)
       .min(0).max(1).step(0.05)

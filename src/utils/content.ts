@@ -124,20 +124,6 @@ export function handleResponse(
 */
 export async function processUserContent(session: any): Promise<{ content: string, name: string }> {
   const groupMemberList = session.groupMemberList;
-  // groupMemberList结构示例:
-  // { data: [
-  //    { user:
-  //      { id: '0',
-  //        name: 'YesImBot',
-  //        userId: '0',
-  //        avatar: 'http://q.qlogo.cn/headimg_dl?dst_uin=0&spec=640',
-  //        username: 'YesImBot'
-  //      },
-  //      nick: 'Athena',
-  //      roles: [ 'member' ]
-  //    }
-  //  ]
-  //}
   const regex = /<at id="([^"]+)"(?:\s+name="([^"]+)")?\s*\/>/g;
   // 转码 <at> 消息，把<at id="0" name="YesImBot" /> 转换为 @Athena 或 @YesImBot
   const matches = Array.from(session.content.matchAll(regex));
