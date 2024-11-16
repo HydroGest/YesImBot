@@ -1,5 +1,4 @@
 import { runChatCompeletion, runEmbedding } from "./api-adapter";
-var nj = require('numjs');
 
 export class ResponseVerifier {
   private previousResponse: string = "";
@@ -78,12 +77,9 @@ export class ResponseVerifier {
   }
   // 计算向量的余弦相似度
   private calculateCosineSimilarity(vec1: number[], vec2: number[]): number {
-    const vec1Nj = nj.array(vec1);
-    const vec2Nj = nj.array(vec2);
-
-    const dotProduct = nj.dot(vec1Nj, vec2Nj).get(0);
-    const magnitude1 = nj.norm(vec1Nj).get(0);
-    const magnitude2 = nj.norm(vec2Nj).get(0);
+    const dotProduct = vec1.reduce((sum, val, i) => sum + val * vec2[i], 0);
+    const magnitude1 = Math.sqrt(vec1.reduce((sum, val) => sum + val * val, 0));
+    const magnitude2 = Math.sqrt(vec2.reduce((sum, val) => sum + val * val, 0));
 
     const cosineSimilarity = dotProduct / (magnitude1 * magnitude2);
     return (cosineSimilarity + 1) / 2; // Transform from [-1, 1] to [0, 1]
