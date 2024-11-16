@@ -89,7 +89,6 @@ export class SendQueue {
     if (this.sendQueueMap.has(group)) {
       const queue = this.sendQueueMap.get(group);
       const promptArr = queue.map((item) => {
-        console.log(`Sender ID: ${item.sender_id}`);
         return {
           id: item.id,
           author: groupMemberList.data.find((member) => member.user.id === item.sender_id).nick,
