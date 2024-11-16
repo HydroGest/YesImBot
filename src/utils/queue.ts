@@ -61,13 +61,16 @@ export class SendQueue {
   }
 
   // 检查与重置触发计数
-  checkTriggerCount(group: string, nextTriggerCount: number, isAtMentioned: boolean ): boolean {
+  checkTriggerCount(group: string, nextTriggerCount: number, isAtMentioned: boolean): boolean {
     if (this.triggerCountMap.has(group)) {
       const count = this.triggerCountMap.get(group);
       console.log(`距离下一次触发还有: ${count} 条消息`);
-      if (count <= 0 || isAtMentioned) {
+      if (count <= 0) {
         this.triggerCountMap.set(group, nextTriggerCount);
         return true;
+      }
+      if (isAtMentioned) {
+        this.triggerCountMap.set(group, nextTriggerCount);
       }
       return false;
     }
