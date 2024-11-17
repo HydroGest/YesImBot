@@ -82,6 +82,38 @@ export async function ensurePromptFileExists(
   }
 }
 
+export async function getBotName(config: any, session: any): Promise<string> {
+  switch (config.Bot.SelfAwareness) {
+    case "此页面设置的名字":
+    default:
+      return config.Bot.BotName;
+    case "群昵称":
+      const groupMember = session.groupMemberList.data.find(
+        (member: any) => member.user.id === session.event.selfId
+      );
+      return groupMember ? groupMember.nick : config.Bot.BotName;
+    case "用户昵称":
+      return session.bot.user.name;
+  }
+}
+
+export async function getMemberName(config: any, session: any) {
+  if (session.event.selfId === session.event.user.id) {
+    return await getBotName(config, session);
+  }
+
+  switch (config.Bot.NickorName) {
+    case "用户昵称":
+      return session.event.user.name;
+    case "群昵称":
+    default:
+      const member = session.groupMemberList.data.find(
+        (member: any) => member.user.id === session.event.user.id
+      );
+      return member ? member.nick : session.event.user.name;
+  }
+}
+
 export async function genSysPrompt(
   config: any,
   curGroupName: string,
@@ -101,7 +133,7 @@ export async function genSysPrompt(
     "utf-8"
   );
 
-  content = content.replaceAll("${config.Bot.BotName}", session.groupMemberList.data.find((member) => member.user.id === session.event.selfId).nick,);
+  content = content.replaceAll("${config.Bot.BotName}", await getBotName(config, session));
   content = content.replaceAll("${config.Bot.WhoAmI}", config.Bot.WhoAmI);
   content = content.replaceAll(
     "${config.Bot.BotHometown}",
