@@ -181,7 +181,6 @@ export function apply(ctx: Context, config: Config) {
     const isBotOnline = loginStatus.status === 1;
     const atRegex = new RegExp(`<at (id="${session.bot.selfId}".*?|type="all".*?${isBotOnline ? '|type="here"' : ''}).*?/>`);
     const isAtMentioned = atRegex.test(session.content);
-    ctx.logger.info(`isAtMentioned: ${isAtMentioned}`);
     const isTriggerCountReached = sendQueue.checkTriggerCount(groupId, Random.int(config.Group.MinPopNum, config.Group.MaxPopNum), isAtMentioned);
     const shouldReactToAt = Random.bool(config.Group.AtReactPossibility);
 
@@ -192,7 +191,7 @@ export function apply(ctx: Context, config: Config) {
 
     if (!isTriggerCountReached && !(isAtMentioned && shouldReactToAt)) {
       if (config.Debug.DebugAsInfo)
-        ctx.logger.info(sendQueue.getPrompt(groupId, config, session));
+        ctx.logger.info(await sendQueue.getPrompt(groupId, config, session));
       return next();
     }
 
