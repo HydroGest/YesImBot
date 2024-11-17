@@ -168,6 +168,11 @@ export async function processUserContent(config: any, session: any): Promise<{ c
   userContents.forEach(({ match, replacement }) => {
     userContent = userContent.replace(match, replacement);
   });
+
+  // 替换 <at type="all"/> 和 <at type="here"/>
+  userContent = userContent.replace(/<at type="all"\s*\/>/g, '@全体成员');
+  userContent = userContent.replace(/<at type="here"\s*\/>/g, '@在线成员');
+
   userContent = replaceTags(userContent);
   return { content: userContent, name: finalName };
 }
