@@ -26,7 +26,7 @@ export interface Config {
     TriggerCount: number;
     MaxPopNum: number;
     MinPopNum: number;
-    AtReactPossiblilty: number;
+    AtReactPossibility: number;
     Filter: any;
   };
   API: {
@@ -177,9 +177,13 @@ export function apply(ctx: Context, config: Config) {
     // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
     // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
     const isQueueFull: boolean = sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize);
-    const isAtMentioned = new RegExp(`<at id="${session.bot.selfId}".*?/>`).test(session.content);
+    const loginStatus = await session.bot.getLogin();
+    const isBotOnline = loginStatus.status === 1;
+    const atRegex = new RegExp(`<at (id="${session.bot.selfId}".*?|type="all".*?${isBotOnline ? '|type="here"' : ''}).*?/>`);
+    const isAtMentioned = atRegex.test(session.content);
+    ctx.logger.info(`isAtMentioned: ${isAtMentioned}`);
     const isTriggerCountReached = sendQueue.checkTriggerCount(groupId, Random.int(config.Group.MinPopNum, config.Group.MaxPopNum), isAtMentioned);
-    const shouldReactToAt = Random.bool(config.Group.AtReactPossiblilty);
+    const shouldReactToAt = Random.bool(config.Group.AtReactPossibility);
 
     // 如果消息队列满了，出队消息到config.Group.SendQueueSize
     if (isQueueFull) {

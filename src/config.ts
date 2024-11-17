@@ -19,7 +19,7 @@ export const configSchema: any = Schema.object({
     MinPopNum: Schema.number()
       .default(1).min(1)
       .description("Bot 两次回复之间的最小消息数"),
-    AtReactPossiblilty: Schema.number()
+    AtReactPossibility: Schema.number()
       .default(0.5)
       .min(0).max(1).step(0.05)
       .role('slider')

@@ -56,7 +56,7 @@ Group:
     # 最小冷却条数
     MinPopNum: 2
     # 每次收到 @ 消息，机器人马上开始做出回复的概率。 取值范围：[0, 1]
-    AtReactPossiblilty: 0.50
+    AtReactPossibility: 0.50
     # 过滤的消息。这些包含这些关键词的消息将不会加入到上下文。
     # 这主要是为了防止 Bot 遭受提示词注入攻击。
     Filter:
@@ -89,7 +89,7 @@ Bot:
     CuteMode: true
     # Prompt 文件的下载链接
     # 非常重要! 如果你不理解这是什么，请不要修改
-    PromptFileUrl: 
+    PromptFileUrl:
         - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/src/prompt.mdt" # 一代 Prompt，所有 AI 模型适用
         - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/src/prompt-next.mdt" # 下一代 Prompt，效果最佳，如果你是富哥，用的起 Claude 3.5 / GPT-4 等，则推荐使用
         - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/src/prompt-next-short.mdt" # 下一代 Prompt 的删减版，适合 GPT-4o-mini 等低配模型使用

@@ -98,7 +98,6 @@ export function handleResponse(
 
   // 使用 groupMemberList 反转义 <at> 消息
   const groupMemberList: { nick: string; user: { name: string; id: string } }[] = session.groupMemberList.data;
-  const key = config.Bot.NickorName === "群昵称" ? "nick" : "user.name";
 
   if (!["群昵称", "用户昵称"].includes(config.Bot.NickorName)) {
     throw new Error(`Unsupported NickorName value: ${config.Bot.NickorName}`);
@@ -113,7 +112,7 @@ export function handleResponse(
     const atRegex = new RegExp(`(?<!<at id="[^"]*" name=")@${name}(?![^"]*"\s*\/>)`, 'g');
     finalResponse = finalResponse.replace(atRegex, `<at id="${member.user.id}" name="${name}" />`);
   });
-
+  finalResponse = finalResponse.replace(/(?<!<at type=")@全体成员|@所有人|@all(?![^"]*"\s*\/>)/g, '<at type="all"/>');
 
 
 
