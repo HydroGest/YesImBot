@@ -109,7 +109,8 @@ export function handleResponse(
 
   groupMemberList.forEach((member) => {
     const name = getKey(member);
-    const atRegex = new RegExp(`(?<!<at id="[^"]*" name=")@${name}(?![^"]*"\s*\/>)`, 'g');
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const atRegex = new RegExp(`(?<!<at id="[^"]*" name=")@${escapedName}(?![^"]*"\s*\/>)`, 'g');
     finalResponse = finalResponse.replace(atRegex, `<at id="${member.user.id}" name="${name}" />`);
   });
   finalResponse = finalResponse.replace(/(?<!<at type=")@全体成员|@所有人|@all(?![^"]*"\s*\/>)/g, '<at type="all"/>');
@@ -138,28 +139,11 @@ export async function processUserContent(config: any, session: any): Promise<{ c
     const id = match[1].trim();
     const name = match[2]?.trim(); // 可能获取到 name
 
-    try {
-      finalName = getMemberName(config, session) ? getMemberName(config, session) : (name ? name : "UserNotFound");
-      return {
-        match: match[0],
-        replacement: `@${finalName}`,
-      };
-    } catch (error) {
-      // QQ 官方机器人接口无法使用 session.bot.getUser()，尝试调用备用 API
-      try {
-        const response = await fetch(`https://api.usuuu.com/qq/${id}`);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch user from backup API`);
-        }
-        const user = await response.json();
-        finalName = name ? name : user.data.name || "UserNotFound";
-        return {
-          match: match[0],
-          replacement: `@${finalName}`, // 使用 name 或备用 API 返回的名字
-        };
-      } catch (backupError) {
-        return { match: match[0], replacement: `@UserNotFound` };
-      }
+    const memberName = await getMemberName(config, session, id);
+    finalName = memberName ? memberName : (name ? name : "UserNotFound");
+    return {
+      match: match[0],
+      replacement: `@${finalName}`,
     }
   });
 
