@@ -1,3 +1,5 @@
+import { getMemberName } from './prompt';
+
 function containsFilter(sessionContent: string, FilterList: any): boolean {
   for (const filterString of FilterList) {
     if (sessionContent.includes(filterString)) {
@@ -10,14 +12,14 @@ function containsFilter(sessionContent: string, FilterList: any): boolean {
 export class SendQueue {
   private sendQueueMap: Map<
     string,
-    { id: number; sender: string; sender_id: string; content: string; session: any }[]
+    { id: number; sender: string; sender_id: string; content: string }[]
   >;
   private triggerCountMap: Map<string, number>;
 
   constructor() {
     this.sendQueueMap = new Map<
       string,
-      { id: number; sender: string; sender_id: string; content: string; session: any }[]
+      { id: number; sender: string; sender_id: string; content: string }[]
     >();
     this.triggerCountMap = new Map<string, number>();
   }
@@ -30,24 +32,21 @@ export class SendQueue {
     content: string,
     id: any,
     FilterList: any,
-    session: any,
-    TriggerCount: number
+    TriggerCount: number,
+    selfId: string
   ) {
     if (this.sendQueueMap.has(group)) {
       if (containsFilter(content, FilterList)) return;
       const queue = this.sendQueueMap.get(group);
-      queue.push({ id: Number(id), sender: sender, sender_id: sender_id, content: content, session: session });
+      queue.push({ id: Number(id), sender: sender, sender_id: sender_id, content: content });
       this.sendQueueMap.set(group, queue);
     } else {
-      this.sendQueueMap.set(group, [{ id: Number(id), sender: sender, sender_id: sender_id, content: content, session: session }]);
+      this.sendQueueMap.set(group, [{ id: Number(id), sender: sender, sender_id: sender_id, content: content }]);
     }
 
     // 更新触发计数
-    if (this.triggerCountMap.has(group)) {
-      this.triggerCountMap.set(group, this.triggerCountMap.get(group) - 1);
-    } else {
-      this.triggerCountMap.set(group, TriggerCount - 1 );
-    }
+    const currentCount = this.triggerCountMap.get(group) ?? TriggerCount;
+    this.triggerCountMap.set(group, selfId === sender_id ? currentCount : currentCount - 1); // 自己发的消息不计数
   }
 
   // 检查队列长度
@@ -87,18 +86,17 @@ export class SendQueue {
     }
   }
 
-  getPrompt(group: string, session: any): string {
-    const groupMemberList = session.groupMemberList;
+  async getPrompt(group: string, config: any, session: any): Promise<string> {
     if (this.sendQueueMap.has(group)) {
       const queue = this.sendQueueMap.get(group);
-      const promptArr = queue.map((item) => {
+      const promptArr = await Promise.all(queue.map(async (item) => {
         return {
           id: item.id,
-          author: groupMemberList.data.find((member) => member.user.id === item.sender_id).nick,
+          author: await getMemberName(config, session),
           author_id: item.sender_id,
           msg: item.content,
         };
-      });
+      }));
       //ctx.logger.info(JSON.stringify(promptArr, null, 2));
       return JSON.stringify(promptArr, null, 2);
     }

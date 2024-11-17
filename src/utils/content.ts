@@ -1,3 +1,4 @@
+import { getMemberName } from './prompt';
 import { h } from "koishi";
 
 export function replaceTags(str: string): string {
@@ -18,6 +19,7 @@ export function handleResponse(
   APIType: string,
   input: any,
   AllowErrorFormat: boolean,
+  config: any,
   session: any,
 ): {
   res: string;
@@ -94,19 +96,23 @@ export function handleResponse(
     else throw new Error(`LLM provides unexpected response: ${res}`);
   }
 
-  // 使用groupMemberList反转义<at>消息
-  const groupMemberList = session.groupMemberList;
-  const atRegex = /@([^@\s!?,.，。！？]+)/g; // 怎么这么多符号都可能出现在用户名里，我只能挑出这一点点了
-  let match;
-  while ((match = atRegex.exec(finalResponse)) !== null) {
-    const username = match[1];
-    const member = groupMemberList.data.find(
-      (member) => member.nick === username || member.user.name === username
-    );
-    if (member) {
-      finalResponse = finalResponse.replace(`@${username}`, `<at id="${member.user.id}" name="${username}"` );
-    }
+  // 使用 groupMemberList 反转义 <at> 消息
+  const groupMemberList: { nick: string; user: { name: string; id: string } }[] = session.groupMemberList.data;
+  const key = config.Bot.NickorName === "群昵称" ? "nick" : "user.name";
+
+  if (!["群昵称", "用户昵称"].includes(config.Bot.NickorName)) {
+    throw new Error(`Unsupported NickorName value: ${config.Bot.NickorName}`);
   }
+
+  const getKey = (member: { nick: string; user: { name: string } }) => config.Bot.NickorName === "群昵称" ? member.nick : member.user.name;
+
+  groupMemberList.sort((a, b) => getKey(b).length - getKey(a).length);
+
+  groupMemberList.forEach((member) => {
+    const name = getKey(member);
+    const atRegex = new RegExp(`(?<!<at id="[^"]*" name=")@${name}(?![^"]*"\s*\/>)`, 'g');
+    finalResponse = finalResponse.replace(atRegex, `<at id="${member.user.id}" name="${name}" />`);
+  });
 
 
 
@@ -122,8 +128,7 @@ export function handleResponse(
 /*
     @description: 处理 人类 的消息
 */
-export async function processUserContent(session: any): Promise<{ content: string, name: string }> {
-  const groupMemberList = session.groupMemberList;
+export async function processUserContent(config: any, session: any): Promise<{ content: string, name: string }> {
   const regex = /<at id="([^"]+)"(?:\s+name="([^"]+)")?\s*\/>/g;
   // 转码 <at> 消息，把<at id="0" name="YesImBot" /> 转换为 @Athena 或 @YesImBot
   const matches = Array.from(session.content.matchAll(regex));
@@ -135,9 +140,7 @@ export async function processUserContent(session: any): Promise<{ content: strin
     const name = match[2]?.trim(); // 可能获取到 name
 
     try {
-      const member = groupMemberList.data.find((member) => member.user.id === id);
-      // 使用 nick(优先) 或 name，如果都不存在则使用 "UserNotFound"
-      finalName = member ? member.nick : name || "UserNotFound";
+      finalName = getMemberName(config, session) ? getMemberName(config, session) : (name ? name : "UserNotFound");
       return {
         match: match[0],
         replacement: `@${finalName}`,

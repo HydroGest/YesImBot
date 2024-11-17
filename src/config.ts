@@ -206,7 +206,9 @@ export const configSchema: any = Schema.object({
     PromptFileSelected: Schema.number()
       .default(2)
       .description("Prompt 文件编号，从 0 开始。请阅读 readme 再修改!"),
-    BotName: Schema.string().default("Athena").description("Bot 的名字，最好是 Bot 的用户名"),
+    NickorName: Schema.union(["群昵称", "用户昵称"]).default("群昵称").description("Bot 将看到其他人的..."),
+    SelfAwareness: Schema.union(["此页面设置的名字", "群昵称", "用户昵称"]).default("群昵称").description("Bot 将认为自己叫..."),
+    BotName: Schema.string().default("Athena").description("Bot 的名字"),
     WhoAmI: Schema.string()
       .default("一个普通的群友")
       .description("Bot 的简要设定"),

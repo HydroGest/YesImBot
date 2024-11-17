@@ -4,7 +4,7 @@ import { ResponseVerifier } from "./utils/verifier";
 
 import { configSchema } from "./config";
 
-import { genSysPrompt, ensurePromptFileExists } from "./utils/prompt";
+import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
 import { runChatCompeletion } from "./utils/api-adapter";
 
@@ -156,18 +156,18 @@ export function apply(ctx: Context, config: Config) {
     )
       return next();
 
-    const userContent = await processUserContent(session);
+    const userContent = await processUserContent(config, session);
 
     // 更新消息队列，把这条消息加入队列
     sendQueue.updateSendQueue(
       groupId,
-      session.event.user.name,
+      await getMemberName(config, session),
       session.event.user.id,
       userContent.content,
       session.messageId,
       config.Group.Filter,
-      session,
-      config.Group.TriggerCount
+      config.Group.TriggerCount,
+      session.event.selfId
     );
 
     // 检测是否达到发送次数或被 at
@@ -177,7 +177,7 @@ export function apply(ctx: Context, config: Config) {
     // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
     // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
     const isQueueFull: boolean = sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize);
-    const isAtMentioned = new RegExp(`<at id="${session.bot.selfId}".*?>`).test(session.content);
+    const isAtMentioned = new RegExp(`<at id="${session.bot.selfId}".*?/>`).test(session.content);
     const isTriggerCountReached = sendQueue.checkTriggerCount(groupId, Random.int(config.Group.MinPopNum, config.Group.MaxPopNum), isAtMentioned);
     const shouldReactToAt = Random.bool(config.Group.AtReactPossiblilty);
 
@@ -188,7 +188,7 @@ export function apply(ctx: Context, config: Config) {
 
     if (!isTriggerCountReached && !(isAtMentioned && shouldReactToAt)) {
       if (config.Debug.DebugAsInfo)
-        ctx.logger.info(sendQueue.getPrompt(groupId, session));
+        ctx.logger.info(sendQueue.getPrompt(groupId, config, session));
       return next();
     }
 
@@ -206,7 +206,7 @@ export function apply(ctx: Context, config: Config) {
       session.guildName,
       session
     );
-    const chatData: string = sendQueue.getPrompt(groupId, session);
+    const chatData: string = await sendQueue.getPrompt(groupId, config, session);
     const curAPI = status.getStatus();
     status.updateStatus(config.API.APIList.length);
 
@@ -241,6 +241,7 @@ export function apply(ctx: Context, config: Config) {
       config.API.APIList[curAPI].APIType,
       response,
       config.Debug.AllowErrorFormat,
+      config,
       session
     );
 
@@ -277,13 +278,13 @@ export function apply(ctx: Context, config: Config) {
 
     sendQueue.updateSendQueue(
       groupId,
-      session.groupMemberList.data.find((member) => member.user.id === session.event.selfId).nick,
+      await getBotName(config, session),
       session.event.selfId,
       finalRes,
       0,  // session.messageId，但是这里是机器人自己发的消息，所以设为0
       config.Group.Filter,
-      session,
-      config.Group.TriggerCount
+      config.Group.TriggerCount,
+      session.event.selfId
     );
 
     // 如果 AI 使用了指令
