@@ -92,16 +92,6 @@ export const configSchema: any = Schema.object({
     })).default([{ key: "do_sample", value: "true" }, { key: "grammar_string", value: "root   ::= object\nobject ::= \"{\\n\\\"status\\\": \" status-value \",\\n\\\"logic\\\": \" logic-value \",\\n\\\"select\\\": \" select-value \",\\n\\\"reply\\\": \" reply-value \",\\n\\\"check\\\": \" check-value \",\\n\\\"finReply\\\": \" finReply-value \",\\n\\\"execute\\\": \" execute-value \"\\n}\"\nstring ::= \"\\\"\" ([^\"\\\\] | \"\\\\\" [\"\\\\/bfnrt])* \"\\\"\"\nnumber ::= [0-9]+\nban-time ::= [1-9][0-9]{1,3} | [1-4][0-3][0-1][0-9][0-9]\nstatus-value  ::= \"\\\"success\\\"\" | \"\\\"skip\\\"\"\nlogic-value   ::= string | \"\\\"\\\"\"\nselect-value  ::= number | \"-1\"\nreply-value   ::= string\ncheck-value   ::= \"\\\"\\\"\"\nfinReply-value::= string\nexecute-value ::= \"[\"( execute-cmds (\", \" execute-cmds )* )? \"]\"\nexecute-cmds  ::= delmsg | ban | reaction\ndelmsg        ::= \"\\\"delmsg \" number \"\\\"\"\nban           ::= \"\\\"ban \" number \" \" ban-time \"\\\"\"\nreaction      ::= \"\\\"reaction-create \" number \" \" number \"\\\"\"" }]).role('table').description("自定义请求体中的其他参数。有些api可能包含一些特别有用的功能，例如 dry_base 和 response_format。\n如果在调用api时出现400或422错误，请尝试删除此处的自定义参数。\n提示：直接将gbnf内容作为grammar_string的值粘贴至此时，换行符会被转换成空格，需要手动替换为\\n后方可生效"),
   }).description("API 参数"),
 
-  // Embedding: Schema.object({
-  //   APIList: Schema.array(Schema.object({
-  //     APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"]).default("OpenAI").description("Embedding API 类型"),
-  //     BaseURL: Schema.string().default("https://api.openai.com/").description("Embedding API 基础 URL"),
-  //     UID: Schema.string().default("").description("Cloudflare UID（如果适用）"),
-  //     APIKey: Schema.string().required().description("API 令牌"),
-  //     EmbeddingModel: Schema.string().default("text-embedding-ada-002").description("Embedding 模型 ID"),
-  //   })).description("单个 Embedding 模型配置，可配置多个 API 进行负载均衡。"),
-  // }).description("Embedding 模型相关配置，可用于存储BOT的记忆"),
-
   Verifier: Schema.intersect([
     Schema.object({
       Enabled: Schema.boolean().default(false),
@@ -138,7 +128,10 @@ export const configSchema: any = Schema.object({
     ])
   ]),
 
-  // 保留备用
+  // 保留备用。记忆方案：["embedding模型与RAG，结合koishi的database做向量库", "定期发送消息给LLM，总结聊天记录，并塞到后续的请求prompt中", "两者结合，定期发送消息给LLM，总结聊天记录，把总结文本向量化后存入向量库，有请求时把输入向量化和向量库内的总结做比对，提取出相关的总结塞到prompt中"]
+  // 向量库的设想：为每个向量添加时间戳，定期检查并删除超过一定时间的向量；记录每个向量的使用频率，删除使用频率低的向量；查询时，提升更近时间存入的向量的权重 // 遗忘机制 & 减少向量库的大小
+  // 多模态向量库：图像和文本嵌入模型，需要CLIP等多模态模型支持/文本和图像对齐??
+  //
   // Memory: Schema.intersect([
   //     Schema.object({
   //         Enabled: Schema.boolean().default(false),
@@ -166,6 +159,22 @@ export const configSchema: any = Schema.object({
   //         }),
   //     ])
   // ]),
+
+  // ImageViewer: Schema.object({
+  //   How: Schema.union(["LLM API 自带的多模态能力", "图片描述服务", "替换成[图片]", "替换成[图片:summary]", "不做处理，以<img>标签形式呈现"]).default("LLM API 自带的多模态能力")
+  //     .default("替换成[图片]")
+  //     .description("处理图片的方式"),
+  //   Server: Schema.union(["百度AI开放平台", "自己搭建的服务"]).default("百度AI开放平台").description("图片查看器使用的服务提供商"),
+  //   BaseURL: Schema.string()
+  //     .default("http://127.0.0.1")
+  //     .description("自己搭建的图片描述服务基础 URL"),
+  //   RequestBody: Schema.string().description("自己搭建的图片描述服务需要的请求体。\n其中：\n`<url>`（包含尖括号）会被替换成消息中出现的图片的url\n`<question>`（包含尖括号）会被替换成此页面设置的针对输入图片的问题"),
+  //   APIKey: Schema.string()
+  //     .description("图片描述服务可能需要的 API 密钥"),
+  //   Question: Schema.string()
+  //     .default("这张图里有什么？")
+  //     .description("图片描述服务针对输入图片的问题"),
+  // }).description("图片查看器"),
 
   Bot: Schema.object({
     PromptFileUrl: Schema.array(Schema.string())

@@ -133,6 +133,11 @@ export function apply(ctx: Context, config: Config) {
 
     if (!session.groupMemberList && !isPrivateChat) {
       session.groupMemberList = await session.bot.getGuildMemberList(session.guildId);
+      session.groupMemberList.data.forEach(member => {
+        if (!member.nick) {
+          member.nick = member.user.name || member.user.username;
+        }
+      });
     } else if (isPrivateChat) {
       session.groupMemberList = { data: [
         { user:
@@ -252,7 +257,7 @@ export function apply(ctx: Context, config: Config) {
       res: string;
       LLMResponse: any;
       usage: any;
-    } = handleResponse(
+    } = await handleResponse(
       config.API.APIList[curAPI].APIType,
       response,
       config.Debug.AllowErrorFormat,
