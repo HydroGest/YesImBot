@@ -173,7 +173,7 @@ export function apply(ctx: Context, config: Config) {
     // 更新消息队列，把这条消息加入队列
     sendQueue.updateSendQueue(
       groupId,
-      await getMemberName(config, session),
+      await getMemberName(config, session, session.event.user.id),
       session.event.user.id,
       userContent.content,
       session.messageId,

@@ -103,7 +103,7 @@ export class SendQueue {
       const promptArr = await Promise.all(queue.map(async (item) => {
         return {
           id: item.id,
-          author: await getMemberName(config, session),
+          author: await getMemberName(config, session, item.sender_id),
           author_id: item.sender_id,
           msg: item.content,
         };
