@@ -47,7 +47,6 @@ export function handleResponse(
       throw new Error(`不支持的 API 类型: ${APIType}`);
     }
   }
-  console.log(typeof res);
   if (typeof res != "string") {
     res = JSON.stringify(res, null, 2);
   }

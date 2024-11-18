@@ -116,9 +116,21 @@ export function apply(ctx: Context, config: Config) {
     );
   });
 
+  ctx.command('清除记忆 [group]').action(
+    async ({ session }, group) => {
+      const clearGroupId: string = group || (session.guildId ? session.guildId : `private:${session.userId}`);
+      if (sendQueue.clearSendQueue(clearGroupId)) {
+        session.send(`已清除关于 ${clearGroupId} 的记忆。`);
+      } else {
+        session.send(`未找到关于 ${clearGroupId} 的记忆。`);
+      }
+    }
+  );
+
   ctx.middleware(async (session: any, next: Next) => {
     const groupId: string = session.guildId ? session.guildId : `private:${session.userId}`;
     const isPrivateChat = groupId.startsWith("private:");
+
     if (!session.groupMemberList && !isPrivateChat) {
       session.groupMemberList = await session.bot.getGuildMemberList(session.guildId);
     } else if (isPrivateChat) {
@@ -161,7 +173,7 @@ export function apply(ctx: Context, config: Config) {
     // 更新消息队列，把这条消息加入队列
     sendQueue.updateSendQueue(
       groupId,
-      await getMemberName(config, session),
+      await getMemberName(config, session, session.event.user.id),
       session.event.user.id,
       userContent.content,
       session.messageId,

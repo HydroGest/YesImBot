@@ -86,13 +86,24 @@ export class SendQueue {
     }
   }
 
+  // 清空队列
+  clearSendQueue(group: string) {
+    if (this.sendQueueMap.has(group)) {
+      this.sendQueueMap.delete(group);
+      this.triggerCountMap.delete(group);
+      return true;
+    } else {
+      return false;
+    }
+  }
+
   async getPrompt(group: string, config: any, session: any): Promise<string> {
     if (this.sendQueueMap.has(group)) {
       const queue = this.sendQueueMap.get(group);
       const promptArr = await Promise.all(queue.map(async (item) => {
         return {
           id: item.id,
-          author: await getMemberName(config, session),
+          author: await getMemberName(config, session, item.sender_id),
           author_id: item.sender_id,
           msg: item.content,
         };
