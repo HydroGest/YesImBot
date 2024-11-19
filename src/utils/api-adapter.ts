@@ -73,7 +73,8 @@ export async function runChatCompeletion(
   model: string,
   SysInput: string,
   InfoInput: string,
-  parameters: any
+  parameters: any,
+  config: any,
 ): Promise<any> {
   let url: string, requestBody: any;
 
@@ -82,7 +83,14 @@ export async function runChatCompeletion(
   if (parameters.OtherParameters) {
     parameters.OtherParameters.forEach((param: { key: string, value: string }) => {
       const key = param.key.trim();
-      const value = param.value.trim();
+      let value = param.value.trim();
+
+      // 尝试解析 JSON 字符串
+      try {
+        value = JSON.parse(value);
+      } catch (e) {
+        // 如果解析失败，保持原值
+      }
 
       // 转换 value 为适当的类型
       otherParams[key] = value === 'true' ? true :
@@ -92,25 +100,75 @@ export async function runChatCompeletion(
     });
   }
 
+  const extractContent = async (input: string) => {
+    const regex = /<img\s+(?:base64|src)\s*=\s*\\"([^\\"]+)\\"/g;  // 匹配转义的引号
+    let match;
+    const parts = [];
+    let lastIndex = 0;
+
+    while ((match = regex.exec(input)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', text: input.substring(lastIndex, match.index) });
+      }
+
+      const imageUrl = match[1];
+      parts.push({ type: 'image_url', image_url: { url: imageUrl, detail: config.ImageViewer.Detail }});
+
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < input.length) {
+      parts.push({ type: 'text', text: input.substring(lastIndex) });
+    }
+
+    return parts;
+  };
+
+  const createMessages = async (sysInput: string, infoInput: string, config: any) => {
+    if (config.ImageViewer.How === 'LLM API 自带的多模态能力') {
+      return [
+        {
+          role: "system",
+          content: await extractContent(sysInput),
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Resolve OK",
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: await extractContent(infoInput),
+        },
+      ];
+    } else {
+      return [
+        {
+          role: "system",
+          content: sysInput,
+        },
+        {
+          role: "assistant",
+          content: "Resolve OK"
+        },
+        {
+          role: "user",
+          content: infoInput,
+        },
+      ];
+    }
+  };
+
   switch (APIType) {
     case "OpenAI": {
       url = `${BaseURL}/v1/chat/completions`;
       requestBody = {
         model: model,
-        messages: [
-          {
-            role: "system",
-            content: SysInput,
-          },
-          {
-            role: "assistant",
-            content: "Resolve OK",
-          },
-          {
-            role: "user",
-            content: InfoInput,
-          },
-        ],
+        messages: await createMessages(SysInput, InfoInput, config),
         temperature: parameters.Temperature,
         max_tokens: parameters.MaxTokens,
         top_p: parameters.TopP,
@@ -125,16 +183,7 @@ export async function runChatCompeletion(
     case "Cloudflare": {
       url = `${BaseURL}/accounts/${UID}/ai/run/${model}`;
       requestBody = {
-        messages: [
-          {
-            role: "system",
-            content: SysInput,
-          },
-          {
-            role: "system",
-            content: InfoInput,
-          },
-        ],
+        messages: await createMessages(SysInput, InfoInput, config),
       };
       break;
     }
@@ -143,20 +192,7 @@ export async function runChatCompeletion(
       url = `${BaseURL}`;
       requestBody = {
         model: model,
-        messages: [
-          {
-            role: "system",
-            content: SysInput,
-          },
-          {
-            role: "assistant",
-            content: "Resolve OK",
-          },
-          {
-            role: "user",
-            content: InfoInput,
-          },
-        ],
+        messages: await createMessages(SysInput, InfoInput, config),
         temperature: parameters.Temperature,
         max_tokens: parameters.MaxTokens,
         top_p: parameters.TopP,

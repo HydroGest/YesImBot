@@ -1,5 +1,8 @@
 import { getMemberName } from './prompt';
 import { h } from "koishi";
+import https from 'https';
+import axios from 'axios';
+import { replaceImageWith } from './image-viewer';
 
 interface Emoji {
   id: string;
@@ -316,11 +319,11 @@ const emojiManager = new EmojiManager(emojis);
 // 通过表情名称和类型查询ID
 // console.log(emojiManager.getIdByNameAndType('smile', 2)); // 输出: 3
 
-export async function replaceTags(str: string): Promise<string> {
+export async function replaceTags(str: string, config: any): Promise<string> {
   const faceidRegex = /<face id="(\d+)"(?: name="([^"]*)")?(?: platform="[^"]*")?><img src="[^"]*"?\/><\/face>/g;
-  const imgRegex = /<img.*?\/>/g;
-  const videoRegex = /<video.*?\/>/g;
-  const audioRegex = /<audio.*?\/>/g;
+  const imgRegex = /<img[^>]+src\s*=\s*"([^"]+)"[^>]*\/>/g;
+  const videoRegex = /<video[^>]+\/>/g;
+  const audioRegex = /<audio[^>]+\/>/g;
 
   let finalString: string = str;
 
@@ -340,12 +343,54 @@ export async function replaceTags(str: string): Promise<string> {
     finalString = finalString.replace(match, replacement);
   });
 
-  finalString = finalString.replace(imgRegex, "[图片]");
+  if (config.ImageViewer.How !== 'LLM API 自带的多模态能力') {
+    const imgMatches = Array.from(finalString.matchAll(imgRegex));
+    for (const match of imgMatches) {
+      const [fullMatch] = match;
+      const replacement = await replaceImageWith(fullMatch, config);
+      finalString = finalString.replace(fullMatch, replacement);
+    }
+  } else {
+    // 处理图片标签，转换为base64
+    const imgMatches = Array.from(finalString.matchAll(imgRegex));
+    const imgReplacements = await Promise.all(imgMatches.map(async (match) => {
+      const [fullMatch, src] = match;
+      const imageUrl = src.replace(/&amp;/g, '&');
+      try {
+        const response = await axios.get(imageUrl, {
+          responseType: 'arraybuffer',
+          httpsAgent: new https.Agent({ rejectUnauthorized: false }), // 忽略SSL证书验证
+          timeout: 5000  // 5秒超时
+        });
+
+        const buffer = Buffer.from(response.data);
+        const contentType = response.headers['content-type'] || 'image/jpeg';
+        const base64 = `data:${contentType};base64,${buffer.toString('base64')}`;
+
+        return {
+          match: fullMatch,
+          replacement: `<img base64="${base64}"/>`
+        };
+      } catch (error) {
+        console.error('Error converting image to base64:', error.message);
+        return {
+          match: fullMatch,
+          replacement: `<img src="${imageUrl}"/>`
+        };
+      }
+    }));
+
+    for (const { match, replacement } of imgReplacements) {
+      finalString = finalString.replace(match, replacement);
+    }
+  }
+
   finalString = finalString.replace(videoRegex, "[视频]");
   finalString = finalString.replace(audioRegex, "[音频]");
 
   return finalString;
 }
+
 
 /*
     @description: 处理 AI 的消息
@@ -358,6 +403,7 @@ export async function handleResponse(
   session: any,
 ): Promise<{
   res: string;
+  resNoTag: string;
   LLMResponse: any;
   usage: any;
 }> {
@@ -411,10 +457,6 @@ export async function handleResponse(
     }
   }
   let finalResponse: string = "";
-  if (~LLMResponse.select)
-    finalResponse += h("quote", {
-      id: LLMResponse.select,
-    });
   if (!AllowErrorFormat) {
     finalResponse += LLMResponse.finReply
       ? LLMResponse.finReply
@@ -429,6 +471,15 @@ export async function handleResponse(
     else if (LLMResponse.answer) finalResponse += LLMResponse.answer;
     else throw new Error(`LLM provides unexpected response: ${res}`);
   }
+
+  // 复制一份finalResonse为finalResponseNoTag，作为添加到队列中的bot消息内容
+  let finalResponseNoTag = finalResponse;
+
+  // 添加引用消息在finalResponse的开头
+  if (~LLMResponse.select)
+    finalResponse = h("quote", {
+      id: LLMResponse.select,
+    }) + finalResponse;
 
   // 使用 groupMemberList 反转义 <at> 消息
   const groupMemberList: { nick: string; user: { name: string; id: string } }[] = session.groupMemberList.data;
@@ -472,6 +523,7 @@ export async function handleResponse(
 
   return {
     res: finalResponse,
+    resNoTag: finalResponseNoTag,
     LLMResponse: LLMResponse,
     usage: usage,
   };
@@ -510,6 +562,6 @@ export async function processUserContent(config: any, session: any): Promise<{ c
   userContent = userContent.replace(/<at type="all"\s*\/>/g, '@全体成员');
   userContent = userContent.replace(/<at type="here"\s*\/>/g, '@在线成员');
 
-  userContent = await replaceTags(userContent);
+  userContent = await replaceTags(userContent, config);
   return { content: userContent, name: finalName };
 }

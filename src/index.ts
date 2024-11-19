@@ -244,7 +244,8 @@ export function apply(ctx: Context, config: Config) {
       config.API.APIList[curAPI].AIModel,
       SysPrompt,
       chatData,
-      config.Parameters
+      config.Parameters,
+      config
     );
 
     if (config.Debug.DebugAsInfo)
@@ -255,6 +256,7 @@ export function apply(ctx: Context, config: Config) {
 
     const handledRes: {
       res: string;
+      resNoTag: string;
       LLMResponse: any;
       usage: any;
     } = await handleResponse(
@@ -300,7 +302,7 @@ export function apply(ctx: Context, config: Config) {
       groupId,
       await getBotName(config, session),
       session.event.selfId,
-      finalRes,
+      handledRes.resNoTag,
       0,  // session.messageId，但是这里是机器人自己发的消息，所以设为0
       config.Group.Filter,
       config.Group.TriggerCount,

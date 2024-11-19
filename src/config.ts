@@ -131,6 +131,7 @@ export const configSchema: any = Schema.object({
   // 保留备用。记忆方案：["embedding模型与RAG，结合koishi的database做向量库", "定期发送消息给LLM，总结聊天记录，并塞到后续的请求prompt中", "两者结合，定期发送消息给LLM，总结聊天记录，把总结文本向量化后存入向量库，有请求时把输入向量化和向量库内的总结做比对，提取出相关的总结塞到prompt中"]
   // 向量库的设想：为每个向量添加时间戳，定期检查并删除超过一定时间的向量；记录每个向量的使用频率，删除使用频率低的向量；查询时，提升更近时间存入的向量的权重 // 遗忘机制 & 减少向量库的大小
   // 多模态向量库：图像和文本嵌入模型，需要CLIP等多模态模型支持/文本和图像对齐??
+  // 欸以上这些好像mem0都想到了?
   //
   // Memory: Schema.intersect([
   //     Schema.object({
@@ -160,21 +161,27 @@ export const configSchema: any = Schema.object({
   //     ])
   // ]),
 
-  // ImageViewer: Schema.object({
-  //   How: Schema.union(["LLM API 自带的多模态能力", "图片描述服务", "替换成[图片]", "替换成[图片:summary]", "不做处理，以<img>标签形式呈现"]).default("LLM API 自带的多模态能力")
-  //     .default("替换成[图片]")
-  //     .description("处理图片的方式"),
-  //   Server: Schema.union(["百度AI开放平台", "自己搭建的服务"]).default("百度AI开放平台").description("图片查看器使用的服务提供商"),
-  //   BaseURL: Schema.string()
-  //     .default("http://127.0.0.1")
-  //     .description("自己搭建的图片描述服务基础 URL"),
-  //   RequestBody: Schema.string().description("自己搭建的图片描述服务需要的请求体。\n其中：\n`<url>`（包含尖括号）会被替换成消息中出现的图片的url\n`<question>`（包含尖括号）会被替换成此页面设置的针对输入图片的问题"),
-  //   APIKey: Schema.string()
-  //     .description("图片描述服务可能需要的 API 密钥"),
-  //   Question: Schema.string()
-  //     .default("这张图里有什么？")
-  //     .description("图片描述服务针对输入图片的问题"),
-  // }).description("图片查看器"),
+  ImageViewer: Schema.object({
+    How: Schema.union(["LLM API 自带的多模态能力", "图片描述服务", "替换成[图片:summary]", "替换成[图片]", "不做处理，以<img>标签形式呈现"])
+      .default("替换成[图片]")
+      .description("处理图片的方式。失败时会自动尝试后一种方式"),
+    Detail: Schema.union(["low", "high", "auto"]).default("low").description("LLM API 自带的多模态能力的图片处理细节，这关系到 Token 消耗"),
+    Memory: Schema.number()
+      .default(1)
+      .min(-1)
+      .description("使用 LLM API 自带的多模态能力时，LLM 真正能看到的最近的图片数量。设为-1取消此限制"),
+    Server: Schema.union(["百度AI开放平台", "自己搭建的服务"]).default("百度AI开放平台").description("图片查看器使用的服务提供商"),
+    BaseURL: Schema.string()
+      .default("http://127.0.0.1")
+      .description("自己搭建的图片描述服务完整 URL"),
+    RequestBody: Schema.string().description("自己搭建的图片描述服务需要的请求体。\n其中：\n`<url>`（包含尖括号）会被替换成消息中出现的图片的url\n`<base64>`(包含尖括号)会被替换成图片的base64（自带`data:image/jpeg;base64,`头，无需另行添加）\n`<question>`（包含尖括号）会被替换成此页面设置的针对输入图片的问题\n`<apikey>`（包含尖括号）会被替换成此页面设置的图片描述服务可能需要的 API 密钥"),
+    GetDescRegex: Schema.string().description("从自己搭建的图片描述服务提取所需信息的正则表达式。注意转义"),
+    APIKey: Schema.string()
+      .description("图片描述服务可能需要的 API 密钥，对于不同服务，它们的名称可能不同。例如`access_token`"),
+    Question: Schema.string()
+      .default("这张图里有什么？")
+      .description("图片描述服务针对输入图片的问题"),
+  }).description("图片查看器"),
 
   Bot: Schema.object({
     PromptFileUrl: Schema.array(Schema.string())
