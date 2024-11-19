@@ -98,37 +98,30 @@ export async function getBotName(config: any, session: any): Promise<string> {
 }
 
 export async function getMemberName(config: any, session: any, byID?: string): Promise<string> {
+  const fetchUserName = async (id: string) => {
+    try {
+      return await session.bot.getUser(id);
+    } catch {
+      const response = await fetch(`https://api.usuuu.com/qq/${id}`);
+      if (!response.ok) throw new Error(`Failed to fetch user from backup API`);
+      const user = await response.json();
+      return user.data.name;
+    }
+  };
+
   if (session.event.selfId === session.event.user.id) {
     return await getBotName(config, session);
   }
 
-  switch (config.Bot.NickorName) {
-    case "用户昵称":
-      if (byID) {
-        try {
-          const member = session.groupMemberList.data.find(
-            (member: any) => member.user.id === byID
-          );
-          return member ? member.user.name : await session.bot.getUser(byID)
-        } catch (error) {
-          // QQ 官方机器人接口无法使用 session.bot.getUser()，尝试调用备用 API
-          const response = await fetch(`https://api.usuuu.com/qq/${byID}`);
-          if (!response.ok) {
-            throw new Error(`Failed to fetch user from backup API`);
-          }
-          const user = await response.json();
-          return user.data.name;
-        }
-      } else {
-        return session.event.user.name;
-      }
-    case "群昵称":
-    default:
-      const member = session.groupMemberList.data.find(
-        (member: any) => member.user.id === (byID || session.event.user.id)
-      );
-      return member ? member.nick : null;
+  const member = session.groupMemberList.data.find(
+    (member: any) => member.user.id === (byID || session.event.user.id)
+  );
+
+  if (config.Bot.NickorName === "用户昵称") {
+    return byID ? await fetchUserName(byID) : session.event.user.name;
   }
+
+  return member?.nick || (byID ? await fetchUserName(byID) : session.event.user.name);
 }
 
 export async function genSysPrompt(

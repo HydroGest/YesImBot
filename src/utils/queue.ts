@@ -101,6 +101,7 @@ export class SendQueue {
     if (this.sendQueueMap.has(group)) {
       const queue = this.sendQueueMap.get(group);
       const promptArr = await Promise.all(queue.map(async (item) => {
+        // console.log(`item.content: ${item.content}`);
         return {
           id: item.id,
           author: await getMemberName(config, session, item.sender_id),
@@ -108,8 +109,30 @@ export class SendQueue {
           msg: item.content,
         };
       }));
-      //ctx.logger.info(JSON.stringify(promptArr, null, 2));
-      return JSON.stringify(promptArr, null, 2);
+
+      let promptStr = JSON.stringify(promptArr, null, 2);
+
+      // 处理 <img base64="xxx" /> 标签
+      const imgTagRegex = /<img base64=\\"[^\\"]*\\"\s*\/?>/g;
+      const matches = promptStr.match(imgTagRegex);
+      if (matches && config.ImageViewer.Memory !== -1) {
+        const imgCount = matches.length;
+        const imgToKeep = config.ImageViewer.Memory;
+        const imgToReplace = imgCount - imgToKeep;
+
+        if (imgToReplace > 0) {
+          let replacedCount = 0;
+          promptStr = promptStr.replace(imgTagRegex, (match) => {
+            if (replacedCount < imgToReplace) {
+              replacedCount++;
+              return '[图片]';
+            }
+            return match;
+          });
+        }
+      }
+
+      return promptStr;
     }
     return "[]";
   }

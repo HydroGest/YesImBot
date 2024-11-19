@@ -64,7 +64,8 @@ export class ResponseVerifier {
           this.config.Verifier.API.AIModel,
           sysPrompt,
           promptInput,
-          this.config.Parameters
+          this.config.Parameters,
+          this.config
         );
 
         const similarityScore = this.extractSimilarityScore(response);
