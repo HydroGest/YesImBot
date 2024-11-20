@@ -88,7 +88,7 @@ async function baiduImageDescription(src:string, base64: string, question: strin
   };
   const submitData = {
     image: base64.replace(/^data:image\/jpeg;base64,/, ''),
-    // url: src,
+    url: src,
     question: question,
   };
 
@@ -113,7 +113,6 @@ async function baiduImageDescription(src:string, base64: string, question: strin
     } while (retCode === 1);
 
     if (retCode === 0) {
-      console.log('resultResponse:', resultResponse.data);
       return resultResponse.data.result.description;
     } else {
       throw new Error('Failed to get image description');
