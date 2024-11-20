@@ -41,19 +41,40 @@ export interface Config {
   Parameters: {
     Temperature: number;
     MaxTokens: number;
-    TopK: number;
     TopP: number;
-    TypicalP: number;
-    MinP: number;
-    TopA: number;
     FrequencyPenalty: number;
     PresencePenalty: number;
     Stop: string[];
     OtherParameters: any;
   };
+  Verifier: {
+    Enabled: boolean;
+    SimilarityThreshold: number;
+    API: {
+      APIType: string;
+      BaseURL: string;
+      UID: string;
+      APIKey: string;
+      AIModel: string;
+    };
+  };
+  ImageViewer: {
+    How: string;
+    Detail: string;
+    Memory: number;
+    Server: string;
+    BaseURL: string;
+    Model: string;
+    RequestBody: string;
+    GetDescRegex: string;
+    APIKey: string;
+    Question: string;
+  };
   Bot: {
     PromptFileUrl: any;
     PromptFileSelected: number;
+    NickorName: string;
+    SelfAwareness: string;
     BotName: string;
     WhoAmI: string;
     BotHometown: string;
@@ -236,7 +257,7 @@ export function apply(ctx: Context, config: Config) {
       );
 
     // 获取回答
-    const { response, requestBody } = await runChatCompeletion(
+    const response = await runChatCompeletion(
       config.API.APIList[curAPI].APIType,
       config.API.APIList[curAPI].BaseURL,
       config.API.APIList[curAPI].UID,
@@ -245,11 +266,10 @@ export function apply(ctx: Context, config: Config) {
       SysPrompt,
       chatData,
       config.Parameters,
-      config
+      config.ImageViewer.Detail,
+      config.ImageViewer.How,
+      config.Debug.DebugAsInfo
     );
-
-    if (config.Debug.DebugAsInfo)
-      ctx.logger.info(`Request body: ${JSON.stringify(requestBody, null, 2)}`);
 
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(JSON.stringify(response, null, 2));

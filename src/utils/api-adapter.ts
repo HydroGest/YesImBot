@@ -1,6 +1,10 @@
 import axios from "axios";
 
-async function sendRequest(url: string, requestBody: any, APIKey: string): Promise<any> {
+async function sendRequest(url: string, requestBody: any, APIKey: string, debug: boolean): Promise<any> {
+  if (debug) {
+    console.log(`Request body: \n${JSON.stringify(requestBody, null, 2)}`);
+  }
+
   try {
     const response = await axios.post(url, requestBody, {
       headers: {
@@ -15,10 +19,7 @@ async function sendRequest(url: string, requestBody: any, APIKey: string): Promi
     }
 
     const result = await response.data;
-    return {
-      response: result,
-      requestBody: requestBody,
-    }
+    return result;
   } catch (error) {
     throw error;
   }
@@ -31,6 +32,7 @@ export async function runEmbedding(
   APIKey: string,
   model: string,
   text: string,
+  config: any,
 ): Promise<any> {
   let url: string, requestBody: any;
   switch (APIType) {
@@ -62,7 +64,7 @@ export async function runEmbedding(
     }
   }
 
-  return sendRequest(url, requestBody, APIKey);
+  return sendRequest(url, requestBody, APIKey, config.Debug.DebugAsInfo);
 }
 
 export async function runChatCompeletion(
@@ -74,7 +76,9 @@ export async function runChatCompeletion(
   SysInput: string,
   InfoInput: string,
   parameters: any,
-  config: any,
+  detail: string,
+  eyeType: string,
+  debug: boolean,
 ): Promise<any> {
   let url: string, requestBody: any;
 
@@ -101,7 +105,7 @@ export async function runChatCompeletion(
   }
 
   const extractContent = async (input: string) => {
-    const regex = /<img\s+(?:base64|src)\s*=\s*\\"([^\\"]+)\\"/g;  // 匹配转义的引号
+    const regex = /<img\s+(base64|src)\s*=\s*\\?"([^\\"]+)\\?"(?:\s+(base64|src)\s*=\s*\\?"([^\\"]+)\\?")?\s*\/>/g;
     let match;
     const parts = [];
     let lastIndex = 0;
@@ -111,8 +115,8 @@ export async function runChatCompeletion(
         parts.push({ type: 'text', text: input.substring(lastIndex, match.index) });
       }
 
-      const imageUrl = match[1];
-      parts.push({ type: 'image_url', image_url: { url: imageUrl, detail: config.ImageViewer.Detail }});
+      const imageUrl = match[1] === 'base64' ? match[2] : match[4];
+      parts.push({ type: 'image_url', image_url: { url: imageUrl, detail: detail }});
 
       lastIndex = regex.lastIndex;
     }
@@ -124,8 +128,8 @@ export async function runChatCompeletion(
     return parts;
   };
 
-  const createMessages = async (sysInput: string, infoInput: string, config: any) => {
-    if (config.ImageViewer.How === 'LLM API 自带的多模态能力') {
+  const createMessages = async (sysInput: string, infoInput: string, eyeType: any) => {
+    if (eyeType === 'LLM API 自带的多模态能力') {
       return [
         {
           role: "system",
@@ -168,7 +172,7 @@ export async function runChatCompeletion(
       url = `${BaseURL}/v1/chat/completions`;
       requestBody = {
         model: model,
-        messages: await createMessages(SysInput, InfoInput, config),
+        messages: await createMessages(SysInput, InfoInput, eyeType),
         temperature: parameters.Temperature,
         max_tokens: parameters.MaxTokens,
         top_p: parameters.TopP,
@@ -183,7 +187,7 @@ export async function runChatCompeletion(
     case "Cloudflare": {
       url = `${BaseURL}/accounts/${UID}/ai/run/${model}`;
       requestBody = {
-        messages: await createMessages(SysInput, InfoInput, config),
+        messages: await createMessages(SysInput, InfoInput, eyeType),
       };
       break;
     }
@@ -192,7 +196,7 @@ export async function runChatCompeletion(
       url = `${BaseURL}`;
       requestBody = {
         model: model,
-        messages: await createMessages(SysInput, InfoInput, config),
+        messages: await createMessages(SysInput, InfoInput, eyeType),
         temperature: parameters.Temperature,
         max_tokens: parameters.MaxTokens,
         top_p: parameters.TopP,
@@ -209,5 +213,5 @@ export async function runChatCompeletion(
     }
   }
 
-  return sendRequest(url, requestBody, APIKey);
+  return sendRequest(url, requestBody, APIKey, debug);
 }

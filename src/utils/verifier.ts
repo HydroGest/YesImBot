@@ -26,7 +26,8 @@ export class ResponseVerifier {
           this.config.Verifier.API.UID,
           this.config.Verifier.API.APIKey,
           this.config.Verifier.API.AIModel,
-          this.previousResponse
+          this.previousResponse,
+          this.config
         );
 
         const currentEmbedding = await runEmbedding(
@@ -35,7 +36,8 @@ export class ResponseVerifier {
           this.config.Verifier.API.UID,
           this.config.Verifier.API.APIKey,
           this.config.Verifier.API.AIModel,
-          currentResponse
+          currentResponse,
+          this.config
         );
 
         const similarityScore = this.calculateCosineSimilarity(
@@ -53,7 +55,7 @@ export class ResponseVerifier {
 2. 考虑表达的核心意思是否相近
 3. 如果两段文本表达了相同的情感或态度，认为相似度较高
 
-接下来我将给你提供两个句子, 分别用 'A:' 和 'B:' 标识。`;
+如果你理解了我的需求，请回复“Resolve OK”，我将在这之后给你提供要分析相似度的两个句子, 分别用 'A:' 和 'B:' 标识。`;
         const promptInput = `A: ${this.previousResponse}\nB: ${currentResponse}`;
 
         const response = await runChatCompeletion(
@@ -65,7 +67,9 @@ export class ResponseVerifier {
           sysPrompt,
           promptInput,
           this.config.Parameters,
-          this.config
+          this.config.ImageViewer.Detail,
+          this.config.ImageViewer.How,
+          this.config.Debug.DebugAsInfo
         );
 
         const similarityScore = this.extractSimilarityScore(response);
