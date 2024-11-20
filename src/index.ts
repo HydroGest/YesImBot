@@ -236,7 +236,7 @@ export function apply(ctx: Context, config: Config) {
       );
 
     // 获取回答
-    const { response, requestBody } = await runChatCompeletion(
+    const response = await runChatCompeletion(
       config.API.APIList[curAPI].APIType,
       config.API.APIList[curAPI].BaseURL,
       config.API.APIList[curAPI].UID,
@@ -247,9 +247,6 @@ export function apply(ctx: Context, config: Config) {
       config.Parameters,
       config
     );
-
-    if (config.Debug.DebugAsInfo)
-      ctx.logger.info(`Request body: ${JSON.stringify(requestBody, null, 2)}`);
 
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(JSON.stringify(response, null, 2));

@@ -26,7 +26,8 @@ export class ResponseVerifier {
           this.config.Verifier.API.UID,
           this.config.Verifier.API.APIKey,
           this.config.Verifier.API.AIModel,
-          this.previousResponse
+          this.previousResponse,
+          this.config
         );
 
         const currentEmbedding = await runEmbedding(
@@ -35,7 +36,8 @@ export class ResponseVerifier {
           this.config.Verifier.API.UID,
           this.config.Verifier.API.APIKey,
           this.config.Verifier.API.AIModel,
-          currentResponse
+          currentResponse,
+          this.config
         );
 
         const similarityScore = this.calculateCosineSimilarity(

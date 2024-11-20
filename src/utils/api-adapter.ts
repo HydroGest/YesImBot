@@ -1,6 +1,10 @@
 import axios from "axios";
 
-async function sendRequest(url: string, requestBody: any, APIKey: string): Promise<any> {
+async function sendRequest(url: string, requestBody: any, APIKey: string, debug: boolean): Promise<any> {
+  if (debug) {
+    console.log(`Request body: \n${JSON.stringify(requestBody, null, 2)}`);
+  }
+
   try {
     const response = await axios.post(url, requestBody, {
       headers: {
@@ -15,10 +19,7 @@ async function sendRequest(url: string, requestBody: any, APIKey: string): Promi
     }
 
     const result = await response.data;
-    return {
-      response: result,
-      requestBody: requestBody,
-    }
+    return result;
   } catch (error) {
     throw error;
   }
@@ -31,6 +32,7 @@ export async function runEmbedding(
   APIKey: string,
   model: string,
   text: string,
+  config: any,
 ): Promise<any> {
   let url: string, requestBody: any;
   switch (APIType) {
@@ -62,7 +64,7 @@ export async function runEmbedding(
     }
   }
 
-  return sendRequest(url, requestBody, APIKey);
+  return sendRequest(url, requestBody, APIKey, config.Debug.DebugAsInfo);
 }
 
 export async function runChatCompeletion(
@@ -209,5 +211,5 @@ export async function runChatCompeletion(
     }
   }
 
-  return sendRequest(url, requestBody, APIKey);
+  return sendRequest(url, requestBody, APIKey, config.Debug.DebugAsInfo);
 }

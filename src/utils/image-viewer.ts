@@ -5,6 +5,8 @@ export async function replaceImageWith(imgTag: string, config: any){
   const base64Match = imgTag.match(/base64\s*=\s*\"([^"]+)\"/);  // 自带`data:image/jpeg;base64,`头
   const srcMatch = imgTag.match(/src\s*=\s*\"([^"]+)\"/);
   const summaryMatch = imgTag.match(/summary\s*=\s*\"([^"]+)\"/);
+  const src = srcMatch?.[1] ?? "".replace(/&amp;/g, '&');
+  const base64 = base64Match?.[1] ?? "";
   const how = config.ImageViewer.How;
   const server = config.ImageViewer.Server;
   const baseURL = config.ImageViewer.BaseURL;
@@ -18,11 +20,11 @@ export async function replaceImageWith(imgTag: string, config: any){
       try {
         switch (server) {
           case "百度AI开放平台": {
-            return await baiduImageDescription(srcMatch[1], base64Match[1], question, token);
+            return `[图片: ${await baiduImageDescription(src, base64, question, token)}]`;
           }
 
           case "自己搭建的服务": {
-            return await myOwnImageDescription(srcMatch[1], base64Match[1], question, token, baseURL, requestBody, getResponseRegex);
+            return `[图片: ${await myOwnImageDescription(src, base64, question, token, baseURL, requestBody, getResponseRegex)}]`;
           }
         }
       } catch (error) {
@@ -85,8 +87,8 @@ async function baiduImageDescription(src:string, base64: string, question: strin
     'Content-Type': 'application/json',
   };
   const submitData = {
-    image: encodeURIComponent(base64),
-    url: src,
+    image: base64.replace(/^data:image\/jpeg;base64,/, ''),
+    // url: src,
     question: question,
   };
 
@@ -106,11 +108,12 @@ async function baiduImageDescription(src:string, base64: string, question: strin
       resultResponse = await axios.post(resultUrl, JSON.stringify(resultData), { headers });
       retCode = resultResponse.data.result.ret_code;
       if (retCode === 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 等待1秒后重试
+        await new Promise(resolve => setTimeout(resolve, 500)); // 等待0.5秒后重试
       }
     } while (retCode === 1);
 
     if (retCode === 0) {
+      console.log('resultResponse:', resultResponse.data);
       return resultResponse.data.result.description;
     } else {
       throw new Error('Failed to get image description');
