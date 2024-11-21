@@ -1,4 +1,4 @@
-import { Context, Next, Schema, h, Random } from "koishi";
+import { Context, Next, Schema, h, Random, Session } from "koishi";
 
 import { ResponseVerifier } from "./utils/verifier";
 
@@ -6,11 +6,11 @@ import { configSchema } from "./config";
 
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
-import { runChatCompeletion } from "./utils/api-adapter";
-
 import { SendQueue } from "./utils/queue";
 
-import { handleResponse, processUserContent } from "./utils/content";
+import { processUserContent } from "./utils/content";
+
+import * as Adapters from "./adapters";
 
 export const name = "yesimbot";
 
@@ -101,6 +101,8 @@ export interface Config {
 
 export const Config: Schema<Config> = configSchema;
 
+type Adapter = Adapters.OpenAIAdapter | Adapters.CloudflareAdapter | Adapters.OllamaAdapter | Adapters.CustomAdapter
+
 const sendQueue = new SendQueue();
 
 const responseVerifier = new ResponseVerifier();
@@ -108,7 +110,7 @@ const responseVerifier = new ResponseVerifier();
 class APIStatus {
   private currentStatus: number = 0;
 
-  updateStatus(APILength): void {
+  updateStatus(APILength: number): void {
     this.currentStatus++;
     if (this.currentStatus >= APILength) {
       this.currentStatus = 0;
@@ -126,6 +128,10 @@ export const inject = {
 }
 
 export function apply(ctx: Context, config: Config) {
+
+
+  let adapters: Adapter[] = updateAdapters(config.API.APIList);
+
   // 当应用启动时更新 Prompt
   ctx.on("ready", async () => {
     if (!config.Debug.UpdatePromptOnLoad) return;
@@ -135,6 +141,8 @@ export function apply(ctx: Context, config: Config) {
       config.Debug.DebugAsInfo ? ctx : null,
       true
     );
+
+    adapters = updateAdapters(config.API.APIList);
   });
 
   ctx.command('清除记忆 [group]').action(
@@ -233,6 +241,12 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
+    if (adapters.length === 0) {
+      if (config.Debug.DebugAsInfo)
+        ctx.logger.info("No API is available.");
+      return next();
+    }
+
     await ensurePromptFileExists(
       config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
       config.Debug.DebugAsInfo ? ctx : null
@@ -244,12 +258,12 @@ export function apply(ctx: Context, config: Config) {
     // 获取 Prompt
     const SysPrompt: string = await genSysPrompt(
       config,
-      session.guildName,
+      session.event.guild.name,
       session
     );
     const chatData: string = await sendQueue.getPrompt(groupId, config, session);
     const curAPI = status.getStatus();
-    status.updateStatus(config.API.APIList.length);
+    status.updateStatus(adapters.length);
 
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(
@@ -257,19 +271,15 @@ export function apply(ctx: Context, config: Config) {
       );
 
     // 获取回答
-    const response = await runChatCompeletion(
-      config.API.APIList[curAPI].APIType,
-      config.API.APIList[curAPI].BaseURL,
-      config.API.APIList[curAPI].UID,
-      config.API.APIList[curAPI].APIKey,
-      config.API.APIList[curAPI].AIModel,
+    const response = await adapters[curAPI].runChatCompeletion(
       SysPrompt,
       chatData,
       config.Parameters,
       config.ImageViewer.Detail,
       config.ImageViewer.How,
       config.Debug.DebugAsInfo
-    );
+    )
+    
 
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(JSON.stringify(response, null, 2));
@@ -279,8 +289,7 @@ export function apply(ctx: Context, config: Config) {
       resNoTag: string;
       LLMResponse: any;
       usage: any;
-    } = await handleResponse(
-      config.API.APIList[curAPI].APIType,
+    } = await adapters[curAPI].handleResponse(
       response,
       config.Debug.AllowErrorFormat,
       config,
@@ -353,4 +362,46 @@ export function apply(ctx: Context, config: Config) {
       await session.sendQueued(sentence);
     }
   });
+}
+
+
+
+function updateAdapters(APIList: any): Adapter[] {
+  let adapters = [];
+  for (const adapter of APIList) {
+    switch (adapter.APIType) {
+      case "OpenAI":
+        adapters.push(new Adapters.OpenAIAdapter(
+          adapter.BaseURL,
+          adapter.APIKey,
+          adapter.AIModel
+        ));
+        break;
+      case "Cloudflare":
+        adapters.push(new Adapters.CloudflareAdapter(
+          adapter.BaseURL,
+          adapter.APIKey,
+          adapter.UID,
+          adapter.AIModel
+        ));
+        break;
+      case "Ollama":
+        adapters.push(new Adapters.OllamaAdapter(
+          adapter.BaseURL,
+          adapter.APIKey,
+          adapter.AIModel
+      ))
+      case "Custom URL":
+        adapters.push(new Adapters.CustomAdapter(
+          adapter.BaseURL,
+          adapter.APIKey,
+          adapter.AIModel
+        ));
+        break;
+      default:
+        console.log(`Unknown API type: ${adapter.APIType}`);
+    }
+  }
+
+  return adapters;
 }
