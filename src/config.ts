@@ -31,7 +31,7 @@ export const configSchema: any = Schema.object({
 
   API: Schema.object({
     APIList: Schema.array(Schema.object({
-      APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"]).default("OpenAI").description(
+      APIType: Schema.union(["OpenAI", "Cloudflare", "Ollama", "Custom URL"]).default("OpenAI").description(
         "API 类型"
       ),
       BaseURL: Schema.string()

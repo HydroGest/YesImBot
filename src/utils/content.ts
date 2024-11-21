@@ -113,13 +113,6 @@ export async function replaceTags(str: string, config: any): Promise<string> {
   return finalString;
 }
 
-
-/*
-    @description: 处理 AI 的消息
-*/
-
-
-
 /*
     @description: 处理 人类 的消息
 */

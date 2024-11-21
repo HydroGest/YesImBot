@@ -6,8 +6,7 @@ export class CloudflareAdapter extends BaseAdapter {
   private url: string;
 
   constructor(baseUrl: string, apiKey: string, uid: string, model :string) {
-    super();
-    this.adapterName = "Cloudflare";
+    super("Cloudflare");
     this.url = `${baseUrl}/accounts/${uid}/ai/run/${model}`;
     this.apiKey = apiKey;
     this.uid = uid;

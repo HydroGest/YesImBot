@@ -10,7 +10,7 @@ import { SendQueue } from "./utils/queue";
 
 import { processUserContent } from "./utils/content";
 
-import * as Adapters from "./adapters";
+import { Adapter, register } from "./adapters";
 
 export const name = "yesimbot";
 
@@ -91,7 +91,7 @@ export interface Config {
     LogicRedirect: {
       Enabled: boolean;
       Target: string;
-    }
+    };
     DebugAsInfo: boolean;
     DisableGroupFilter: boolean;
     UpdatePromptOnLoad: boolean;
@@ -100,8 +100,6 @@ export interface Config {
 }
 
 export const Config: Schema<Config> = configSchema;
-
-type Adapter = Adapters.OpenAIAdapter | Adapters.CloudflareAdapter | Adapters.OllamaAdapter | Adapters.CustomAdapter
 
 const sendQueue = new SendQueue();
 
@@ -128,10 +126,7 @@ export const inject = {
 }
 
 export function apply(ctx: Context, config: Config) {
-
-
-  let adapters: Adapter[] = updateAdapters(config.API.APIList);
-
+  let adapters: Adapter[];
   // 当应用启动时更新 Prompt
   ctx.on("ready", async () => {
     if (!config.Debug.UpdatePromptOnLoad) return;
@@ -141,7 +136,6 @@ export function apply(ctx: Context, config: Config) {
       config.Debug.DebugAsInfo ? ctx : null,
       true
     );
-
     adapters = updateAdapters(config.API.APIList);
   });
 
@@ -153,8 +147,7 @@ export function apply(ctx: Context, config: Config) {
       } else {
         session.send(`未找到关于 ${clearGroupId} 的记忆。`);
       }
-    }
-  );
+  });
 
   ctx.middleware(async (session: any, next: Next) => {
     const groupId: string = session.guildId ? session.guildId : `private:${session.userId}`;
@@ -278,8 +271,7 @@ export function apply(ctx: Context, config: Config) {
       config.ImageViewer.Detail,
       config.ImageViewer.How,
       config.Debug.DebugAsInfo
-    )
-    
+    );
 
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(JSON.stringify(response, null, 2));
@@ -288,7 +280,7 @@ export function apply(ctx: Context, config: Config) {
       res: string;
       resNoTag: string;
       LLMResponse: any;
-      usage: any;
+      usage?: any;
     } = await adapters[curAPI].handleResponse(
       response,
       config.Debug.AllowErrorFormat,
@@ -304,7 +296,7 @@ export function apply(ctx: Context, config: Config) {
 ---
 逻辑: ${handledRes.LLMResponse.logic}
 ---
-指令：${(handledRes.LLMResponse.execute ? handledRes.LLMResponse.execute : "无")}
+指令：${handledRes.LLMResponse.execute ? handledRes.LLMResponse.execute : "无"}
 ---
 消耗: 输入 ${handledRes.usage["prompt_tokens"]}, 输出 ${handledRes.usage["completion_tokens"]}`;
       await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template);
@@ -364,44 +356,16 @@ export function apply(ctx: Context, config: Config) {
   });
 }
 
-
-
-function updateAdapters(APIList: any): Adapter[] {
-  let adapters = [];
+function updateAdapters(APIList: Config["API"]["APIList"]): Adapter[] {
+  let adapters: Adapter[] = [];
   for (const adapter of APIList) {
-    switch (adapter.APIType) {
-      case "OpenAI":
-        adapters.push(new Adapters.OpenAIAdapter(
-          adapter.BaseURL,
-          adapter.APIKey,
-          adapter.AIModel
-        ));
-        break;
-      case "Cloudflare":
-        adapters.push(new Adapters.CloudflareAdapter(
-          adapter.BaseURL,
-          adapter.APIKey,
-          adapter.UID,
-          adapter.AIModel
-        ));
-        break;
-      case "Ollama":
-        adapters.push(new Adapters.OllamaAdapter(
-          adapter.BaseURL,
-          adapter.APIKey,
-          adapter.AIModel
-      ))
-      case "Custom URL":
-        adapters.push(new Adapters.CustomAdapter(
-          adapter.BaseURL,
-          adapter.APIKey,
-          adapter.AIModel
-        ));
-        break;
-      default:
-        console.log(`Unknown API type: ${adapter.APIType}`);
-    }
+    adapters.push(register(
+      adapter.APIType,
+      adapter.BaseURL,
+      adapter.APIKey,
+      adapter.UID,
+      adapter.AIModel
+    ))
   }
-
   return adapters;
 }
