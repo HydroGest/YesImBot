@@ -192,7 +192,7 @@ export abstract class BaseAdapter {
     if (typeof res != "string") {
       res = JSON.stringify(res, null, 2);
     }
-  
+
     // 正版回复：
     // {
     //   "status": "success", // "success" 或 "skip" (跳过回复)
@@ -233,27 +233,27 @@ export abstract class BaseAdapter {
       else if (LLMResponse.answer) finalResponse += LLMResponse.answer;
       else throw new Error(`LLM provides unexpected response: ${res}`);
     }
-  
+
     // 复制一份finalResonse为finalResponseNoTag，作为添加到队列中的bot消息内容
     let finalResponseNoTag = finalResponse;
-  
+
     // 添加引用消息在finalResponse的开头
     if (~LLMResponse.select)
       finalResponse = h("quote", {
         id: LLMResponse.select,
       }) + finalResponse;
-  
+
     // 使用 groupMemberList 反转义 <at> 消息
     const groupMemberList: { nick: string; user: { name: string; id: string } }[] = session.groupMemberList.data;
-  
+
     if (!["群昵称", "用户昵称"].includes(config.Bot.NickorName)) {
       throw new Error(`Unsupported NickorName value: ${config.Bot.NickorName}`);
     }
-  
+
     const getKey = (member: { nick: string; user: { name: string } }) => config.Bot.NickorName === "群昵称" ? member.nick : member.user.name;
-  
+
     groupMemberList.sort((a, b) => getKey(b).length - getKey(a).length);
-  
+
     groupMemberList.forEach((member) => {
       const name = getKey(member);
       const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -261,28 +261,28 @@ export abstract class BaseAdapter {
       finalResponse = finalResponse.replace(atRegex, `<at id="${member.user.id}" name="${name}" />`);
     });
     finalResponse = finalResponse.replace(/(?<!<at type=")@全体成员|@所有人|@all(?![^"]*"\s*\/>)/g, '<at type="all"/>');
-  
+
     // 反转义 <face> 消息
     const faceRegex = /\[表情[:：]\s*([^\]]+)\]/g;
     const fullMatchRegex = /\[\s*([^\]]+)\s*\]/g;
-  
+
     const matches = Array.from(finalResponse.matchAll(faceRegex)).concat(Array.from(finalResponse.matchAll(fullMatchRegex)));
-  
+
     const replacements = await Promise.all(matches.map(async (match) => {
       const name = match[1];
-      let id = await emojiManager.getIdByNameAndType(name, 1) || await emojiManager.getIdByNameAndType(name, 2) || '500';
+      let id = await emojiManager.getIdByName(name) || await emojiManager.getIdByName(name) || '500';
       return {
         match: match[0],
         replacement: `<face id="${id}"></face>`,
       };
     }));
-  
+
     replacements.forEach(({ match, replacement }) => {
       finalResponse = finalResponse.replace(match, replacement);
     });
-  
-  
-  
+
+
+
     return {
       res: finalResponse,
       resNoTag: finalResponseNoTag,

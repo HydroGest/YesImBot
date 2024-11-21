@@ -129,6 +129,8 @@ export function apply(ctx: Context, config: Config) {
   let adapters: Adapter[];
   // 当应用启动时更新 Prompt
   ctx.on("ready", async () => {
+    // Return 之前，更新一下 adapters 吧
+    adapters = updateAdapters(config.API.APIList);
     if (!config.Debug.UpdatePromptOnLoad) return;
     ctx.logger.info("正在尝试更新 Prompt 文件...");
     await ensurePromptFileExists(
@@ -136,18 +138,24 @@ export function apply(ctx: Context, config: Config) {
       config.Debug.DebugAsInfo ? ctx : null,
       true
     );
-    adapters = updateAdapters(config.API.APIList);
   });
 
-  ctx.command('清除记忆 [group]').action(
-    async ({ session }, group) => {
-      const clearGroupId: string = group || (session.guildId ? session.guildId : `private:${session.userId}`);
-      if (sendQueue.clearSendQueue(clearGroupId)) {
-        session.send(`已清除关于 ${clearGroupId} 的记忆。`);
-      } else {
-        session.send(`未找到关于 ${clearGroupId} 的记忆。`);
+  ctx.command('清除记忆', '清除 BOT 对会话的记忆')
+    .option('target', '-t <target> 指定要清除记忆的会话。使用 private:指定私聊会话', { authority: 3 })
+    .usage('注意：如果使用 清除记忆 <target> 来清除记忆而不带-t参数，将会清除当前会话的记忆！')
+    .example('清除记忆')
+    .example('清除记忆 -t private:1234567890')
+    .example('清除记忆 -t 987654321')
+    .action(
+      async ({ session, options }) => {
+        const clearGroupId: string = options.target || (session.guildId ? session.guildId : `private:${session.userId}`);
+        if (sendQueue.clearSendQueue(clearGroupId)) {
+          return (`已清除关于 ${clearGroupId} 的记忆`);
+        } else {
+          return (`未找到关于 ${clearGroupId} 的记忆`);
+        }
       }
-  });
+    );
 
   ctx.middleware(async (session: any, next: Next) => {
     const groupId: string = session.guildId ? session.guildId : `private:${session.userId}`;
@@ -161,29 +169,36 @@ export function apply(ctx: Context, config: Config) {
         }
       });
     } else if (isPrivateChat) {
-      session.groupMemberList = { data: [
-        { user:
-          { id: `${session.event.user.id}`,
-            name: `${session.event.user.name}`,
-            userId: `${session.event.user.id}`,
-            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.user.id}&spec=640`,
-            username: `${session.event.user.name}`
+      session.groupMemberList = {
+        data: [
+          {
+            user:
+            {
+              id: `${session.event.user.id}`,
+              name: `${session.event.user.name}`,
+              userId: `${session.event.user.id}`,
+              avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.user.id}&spec=640`,
+              username: `${session.event.user.name}`
+            },
+            nick: `${session.event.user.name}`,
+            roles: ['member']
           },
-          nick: `${session.event.user.name}`,
-          roles: [ 'member' ]
-        },
-        { user:
-          { id: `${session.event.selfId}`,
-            name: `${session.bot.user.name}`,
-            userId: `${session.event.selfId}`,
-            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.selfId}&spec=640`,
-            username: `${session.bot.user.name}`
-          },
-          nick: `${session.bot.user.name}`,
-          roles: [ 'member' ]
-        }
-       ]
+          {
+            user:
+            {
+              id: `${session.event.selfId}`,
+              name: `${session.bot.user.name}`,
+              userId: `${session.event.selfId}`,
+              avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.selfId}&spec=640`,
+              username: `${session.bot.user.name}`
+            },
+            nick: `${session.bot.user.name}`,
+            roles: ['member']
+          }
+        ]
       };
+
+      session.guildName = `与${session.bot.user.name}的私聊`;
     }
 
     if (config.Debug.DebugAsInfo)
@@ -234,9 +249,8 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
-    if (adapters.length === 0) {
-      if (config.Debug.DebugAsInfo)
-        ctx.logger.info("No API is available.");
+    if (!adapters || adapters.length === 0) { // 忘了设置 API 的情况，也是No API is available
+      ctx.logger.info("无可用的 API，请检查配置");
       return next();
     }
 
@@ -248,10 +262,12 @@ export function apply(ctx: Context, config: Config) {
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(`Request sent, awaiting for response...`);
 
+    ctx.logger.info(session.guildName);
+
     // 获取 Prompt
     const SysPrompt: string = await genSysPrompt(
       config,
-      session.event.guild.name,
+      session.guildName, // 使用完整写法session.event.guild.name会导致私聊时由于session.event.guild未定义导致报错
       session
     );
     const chatData: string = await sendQueue.getPrompt(groupId, config, session);
