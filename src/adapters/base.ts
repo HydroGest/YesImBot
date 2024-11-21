@@ -67,7 +67,7 @@ export abstract class BaseAdapter {
                 value;
         }
       );
-      parameters.OtherParameters = otherParams;
+      parameters = { ...parameters, ...otherParams };
     }
 
     return this.generateResponse(
