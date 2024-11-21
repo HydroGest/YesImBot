@@ -8,40 +8,40 @@ import { replaceImageWith } from './image-viewer';
 interface Emoji {
   id: string;
   name: string;
-  type: number;
 }
 
 class EmojiManager {
-  private idToNameType: { [key: string]: { name: string, type: number } } = {};
-  private nameTypeToId: { [key: string]: string } = {};
+  private idToName: { [key: string]: string } = {};
+  private nameToId: { [key: string]: string } = {};
 
   constructor() {
     const emojisFile = path.join(__dirname, '../../data/emojis.json');
     const emojis: Emoji[] = JSON.parse(readFileSync(emojisFile, 'utf-8'));
 
     emojis.forEach(emoji => {
-      this.idToNameType[emoji.id] = { name: emoji.name, type: emoji.type };
-      this.nameTypeToId[`${emoji.name}-${emoji.type}`] = emoji.id;
+      this.idToName[emoji.id] = emoji.name;
+      this.nameToId[emoji.name] = emoji.id;
     });
   }
 
-  async getNameById(id: string): Promise<{ name: string, type: number } | undefined> {
-    return this.idToNameType[id];
+  async getNameById(id: string): Promise<string | undefined> {
+    return this.idToName[id];
   }
 
-  async getIdByNameAndType(name: string, type: number): Promise<string | undefined> {
-    return this.nameTypeToId[`${name}-${type}`];
+  async getIdByName(name: string): Promise<string | undefined> {
+    return this.nameToId[name];
   }
 }
 
-
 export const emojiManager = new EmojiManager();
 
-// 通过ID查询表情名称和类型
-// console.log(emojiManager.getNameById('1')); // 输出: { name: 'smile', type: 1 }
+// 通过ID查询表情名称
+// console.log(emojiManager.getNameById('1')); // 输出: '撇嘴'
 
-// 通过表情名称和类型查询ID
-// console.log(emojiManager.getIdByNameAndType('smile', 2)); // 输出: 3
+// 通过表情名称查询ID
+// console.log(emojiManager.getIdByName('撇嘴')); // 输出: '1'
+
+// 对于QQ，只有type为1的表情才是QQ表情，其他的是普通emoji，无需转义。移除对type的处理
 
 export async function replaceTags(str: string, config: any): Promise<string> {
   const faceidRegex = /<face id="(\d+)"(?: name="([^"]*)")?(?: platform="[^"]*")?><img src="[^"]*"?\/><\/face>/g;
@@ -55,8 +55,8 @@ export async function replaceTags(str: string, config: any): Promise<string> {
   const faceidReplacements = await Promise.all(faceidMatches.map(async (match) => {
     let [, id, name] = match;
     if (!name) {
-      const emoji = await emojiManager.getNameById(id);
-      name = emoji ? emoji.name : "未知";
+      const emojiName = await emojiManager.getNameById(id);
+      name = emojiName ? emojiName : "未知";
     }
     return {
       match: match[0],

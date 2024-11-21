@@ -129,6 +129,8 @@ export function apply(ctx: Context, config: Config) {
   let adapters: Adapter[];
   // 当应用启动时更新 Prompt
   ctx.on("ready", async () => {
+    // Return 之前，更新一下 adapters 吧
+    adapters = updateAdapters(config.API.APIList);
     if (!config.Debug.UpdatePromptOnLoad) return;
     ctx.logger.info("正在尝试更新 Prompt 文件...");
     await ensurePromptFileExists(
@@ -136,7 +138,6 @@ export function apply(ctx: Context, config: Config) {
       config.Debug.DebugAsInfo ? ctx : null,
       true
     );
-    adapters = updateAdapters(config.API.APIList);
   });
 
   ctx.command('清除记忆', '清除 BOT 对会话的记忆')
@@ -196,6 +197,8 @@ export function apply(ctx: Context, config: Config) {
           }
         ]
       };
+
+      session.guildName = `与${session.bot.user.name}的私聊`;
     }
 
     if (config.Debug.DebugAsInfo)
@@ -246,9 +249,8 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
-    if (adapters.length === 0) {
-      if (config.Debug.DebugAsInfo)
-        ctx.logger.info("No API is available.");
+    if (!adapters || adapters.length === 0) { // 忘了设置 API 的情况，也是No API is available
+      ctx.logger.info("无可用的 API，请检查配置");
       return next();
     }
 
@@ -260,10 +262,12 @@ export function apply(ctx: Context, config: Config) {
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(`Request sent, awaiting for response...`);
 
+    ctx.logger.info(session.guildName);
+
     // 获取 Prompt
     const SysPrompt: string = await genSysPrompt(
       config,
-      session.event.guild.name,
+      session.guildName, // 使用完整写法session.event.guild.name会导致私聊时由于session.event.guild未定义导致报错
       session
     );
     const chatData: string = await sendQueue.getPrompt(groupId, config, session);
