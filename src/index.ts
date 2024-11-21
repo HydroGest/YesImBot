@@ -1,4 +1,4 @@
-import { Context, Next, Schema, h, Random } from "koishi";
+import { Context, Next, Schema, h, Random, Session } from "koishi";
 
 import { ResponseVerifier } from "./utils/verifier";
 
@@ -6,11 +6,11 @@ import { configSchema } from "./config";
 
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
-import { runChatCompeletion } from "./utils/api-adapter";
-
 import { SendQueue } from "./utils/queue";
 
-import { handleResponse, processUserContent } from "./utils/content";
+import { processUserContent } from "./utils/content";
+
+import { Adapter, register } from "./adapters";
 
 export const name = "yesimbot";
 
@@ -91,7 +91,7 @@ export interface Config {
     LogicRedirect: {
       Enabled: boolean;
       Target: string;
-    }
+    };
     DebugAsInfo: boolean;
     DisableGroupFilter: boolean;
     UpdatePromptOnLoad: boolean;
@@ -108,7 +108,7 @@ const responseVerifier = new ResponseVerifier();
 class APIStatus {
   private currentStatus: number = 0;
 
-  updateStatus(APILength): void {
+  updateStatus(APILength: number): void {
     this.currentStatus++;
     if (this.currentStatus >= APILength) {
       this.currentStatus = 0;
@@ -126,6 +126,7 @@ export const inject = {
 }
 
 export function apply(ctx: Context, config: Config) {
+  let adapters: Adapter[];
   // 当应用启动时更新 Prompt
   ctx.on("ready", async () => {
     if (!config.Debug.UpdatePromptOnLoad) return;
@@ -135,6 +136,7 @@ export function apply(ctx: Context, config: Config) {
       config.Debug.DebugAsInfo ? ctx : null,
       true
     );
+    adapters = updateAdapters(config.API.APIList);
   });
 
   ctx.command('清除记忆', '清除 BOT 对会话的记忆')
@@ -244,6 +246,12 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
+    if (adapters.length === 0) {
+      if (config.Debug.DebugAsInfo)
+        ctx.logger.info("No API is available.");
+      return next();
+    }
+
     await ensurePromptFileExists(
       config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
       config.Debug.DebugAsInfo ? ctx : null
@@ -255,12 +263,12 @@ export function apply(ctx: Context, config: Config) {
     // 获取 Prompt
     const SysPrompt: string = await genSysPrompt(
       config,
-      session.guildName,
+      session.event.guild.name,
       session
     );
     const chatData: string = await sendQueue.getPrompt(groupId, config, session);
     const curAPI = status.getStatus();
-    status.updateStatus(config.API.APIList.length);
+    status.updateStatus(adapters.length);
 
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(
@@ -268,12 +276,7 @@ export function apply(ctx: Context, config: Config) {
       );
 
     // 获取回答
-    const response = await runChatCompeletion(
-      config.API.APIList[curAPI].APIType,
-      config.API.APIList[curAPI].BaseURL,
-      config.API.APIList[curAPI].UID,
-      config.API.APIList[curAPI].APIKey,
-      config.API.APIList[curAPI].AIModel,
+    const response = await adapters[curAPI].runChatCompeletion(
       SysPrompt,
       chatData,
       config.Parameters,
@@ -289,9 +292,8 @@ export function apply(ctx: Context, config: Config) {
       res: string;
       resNoTag: string;
       LLMResponse: any;
-      usage: any;
-    } = await handleResponse(
-      config.API.APIList[curAPI].APIType,
+      usage?: any;
+    } = await adapters[curAPI].handleResponse(
       response,
       config.Debug.AllowErrorFormat,
       config,
@@ -306,7 +308,7 @@ export function apply(ctx: Context, config: Config) {
 ---
 逻辑: ${handledRes.LLMResponse.logic}
 ---
-指令：${(handledRes.LLMResponse.execute ? handledRes.LLMResponse.execute : "无")}
+指令：${handledRes.LLMResponse.execute ? handledRes.LLMResponse.execute : "无"}
 ---
 消耗: 输入 ${handledRes.usage["prompt_tokens"]}, 输出 ${handledRes.usage["completion_tokens"]}`;
       await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template);
@@ -364,4 +366,18 @@ export function apply(ctx: Context, config: Config) {
       await session.sendQueued(sentence);
     }
   });
+}
+
+function updateAdapters(APIList: Config["API"]["APIList"]): Adapter[] {
+  let adapters: Adapter[] = [];
+  for (const adapter of APIList) {
+    adapters.push(register(
+      adapter.APIType,
+      adapter.BaseURL,
+      adapter.APIKey,
+      adapter.UID,
+      adapter.AIModel
+    ))
+  }
+  return adapters;
 }

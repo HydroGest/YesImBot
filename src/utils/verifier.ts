@@ -1,4 +1,5 @@
-import { runChatCompeletion, runEmbedding } from "./api-adapter";
+import { register } from "../adapters";
+import { runEmbedding } from "./api-adapter";
 
 export class ResponseVerifier {
   private previousResponse: string = "";
@@ -57,13 +58,14 @@ export class ResponseVerifier {
 
 如果你理解了我的需求，请回复“Resolve OK”，我将在这之后给你提供要分析相似度的两个句子, 分别用 'A:' 和 'B:' 标识。`;
         const promptInput = `A: ${this.previousResponse}\nB: ${currentResponse}`;
-
-        const response = await runChatCompeletion(
+        const adapter = register(
           this.config.Verifier.API.APIType,
           this.config.Verifier.API.BaseURL,
-          this.config.Verifier.API.UID,
           this.config.Verifier.API.APIKey,
-          this.config.Verifier.API.AIModel,
+          this.config.Verifier.API.UID,
+          this.config.Verifier.API.AIModel
+        )
+        const response = await adapter.runChatCompeletion(
           sysPrompt,
           promptInput,
           this.config.Parameters,
