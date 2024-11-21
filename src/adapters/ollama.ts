@@ -1,13 +1,13 @@
 import { sendRequest } from "../utils/tools";
 import { BaseAdapter } from "./base";
 
-export class OllamaAdapter  extends BaseAdapter {
+export class OllamaAdapter extends BaseAdapter {
   private url: string;
   private apiKey: string;
   private model: string;
 
   constructor(baseUrl: string, apiKey: string, model: string) {
-    super("Ollama")
+    super("Ollama");
     this.url = `${baseUrl}/api/chat`;
     this.apiKey = apiKey;
     this.model = model;
@@ -23,20 +23,9 @@ export class OllamaAdapter  extends BaseAdapter {
   ) {
     const requestBody = {
       model: this.model,
-      messages: [
-        {
-          role: "system",
-          content: sysPrompt,
-        },
-        {
-          role: "assistant",
-          content: "Resolve OK",
-        },
-        {
-          role: "user",
-          content: userPrompt,
-        },
-      ],
+      stream: false,
+      format: "json",
+      messages: await this.createMessages(sysPrompt, userPrompt, eyeType, detail),
       options: {
         top_p: parameters.TopP,
         temperature: parameters.Temperature,

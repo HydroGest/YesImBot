@@ -67,7 +67,7 @@ export abstract class BaseAdapter {
                 value;
         }
       );
-      parameters.OtherParameters = otherParams;
+      parameters = { ...parameters, ...otherParams };
     }
 
     return this.generateResponse(
@@ -145,6 +145,9 @@ export abstract class BaseAdapter {
     }
   }
 
+  /*
+      @description: 处理 AI 的消息
+  */
   async handleResponse(
     input: any,
     AllowErrorFormat: boolean,
@@ -154,7 +157,7 @@ export abstract class BaseAdapter {
     res: string;
     resNoTag: string;
     LLMResponse: any;
-    usage: any;
+    usage?: Usage;
   }> {
     let usage: any;
     let res: string;
@@ -174,12 +177,13 @@ export abstract class BaseAdapter {
         break;
       }
       case "Ollama": {
-        res = input.messages[0].content;
+        res = input.message.content;
         usage = {
-          prompt_tokens: input.prompt_tokens,
-          completion_tokens: input.completion_tokens,
-          total_tokens: input.total_tokens
+          prompt_tokens: input.prompt_eval_count,
+          completion_tokens: input.eval_count,
+          total_tokens: input.eval_count + input.prompt_eval_count
         }
+        break;
       }
       default: {
         throw new Error(`不支持的 API 类型: ${this.adapterName}`);
@@ -200,12 +204,13 @@ export abstract class BaseAdapter {
     //   "execute":[] // 要运行的指令列表
     // }
     const jsonMatch = res.match(/{.*}/s);
+    let LLMResponse: Response;
     if (jsonMatch) {
       res = jsonMatch[0];
+      LLMResponse = JSON.parse(res);
     } else {
       throw new Error(`LLM provides unexpected response: ${res}`);
     }
-    const LLMResponse = JSON.parse(res);
     if (LLMResponse.status != "success") {
       if (!AllowErrorFormat && LLMResponse.status != "skip") {
         throw new Error(`LLM provides unexpected response: ${res}`);
