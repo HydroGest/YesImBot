@@ -1,5 +1,7 @@
 import { Context, Next, Schema, h, Random, Session } from "koishi";
 
+import JSON5 from "json5";
+
 import { ResponseVerifier } from "./utils/verifier";
 
 import { configSchema } from "./config";
@@ -262,14 +264,14 @@ export function apply(ctx: Context, config: Config) {
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(`Request sent, awaiting for response...`);
 
-    ctx.logger.info(session.guildName);
+    // ctx.logger.info(session.guildName); 奇怪，为什么群聊时这里也是 undefined？
 
     // 获取 Prompt
     const SysPrompt: string = await genSysPrompt(
       config,
       // TODO: 私聊提示词
-      // 使用完整写法 `session.event.guild.name` 会导致私聊时由于 `ession.event.guild` 未定义导致报错
-      session.guildName ? session.guildName : session.event.user?.name, 
+      // 使用完整写法 `session.event.guild.name` 会导致私聊时由于 `session.event.guild` 未定义而报错
+      session.guildName ? session.guildName : session.event.user?.name,
       session
     );
     const chatData: string = await sendQueue.getPrompt(groupId, config, session);
@@ -292,7 +294,7 @@ export function apply(ctx: Context, config: Config) {
     );
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(JSON.stringify(response, null, 2));
+      ctx.logger.info(JSON5.stringify(response, null, 2));
 
     const handledRes: {
       res: string;

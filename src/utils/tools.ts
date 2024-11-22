@@ -1,8 +1,9 @@
 import axios from "axios";
+import JSON5 from "json5";
 
 export async function sendRequest(url: string, APIKey: string, requestBody: any,  debug: boolean): Promise<any> {
   if (debug) {
-    console.log(`Request body: \n${JSON.stringify(requestBody, null, 2)}`);
+    console.log(`Request body: \n${JSON5.stringify(requestBody, null, 2)}`);
   }
 
   try {

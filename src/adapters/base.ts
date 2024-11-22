@@ -1,4 +1,5 @@
 import { h } from "koishi";
+import JSON5 from "json5";
 import { emojiManager } from "../utils/content";
 
 interface Response {
@@ -54,7 +55,7 @@ export abstract class BaseAdapter {
 
           // 尝试解析 JSON 字符串
           try {
-            value = JSON.parse(value);
+            value = JSON5.parse(value);
           } catch (e) {
             // 如果解析失败，保持原值
           }
@@ -190,7 +191,7 @@ export abstract class BaseAdapter {
       }
     }
     if (typeof res != "string") {
-      res = JSON.stringify(res, null, 2);
+      res = JSON5.stringify(res, null, 2);
     }
 
     // 正版回复：
@@ -207,7 +208,7 @@ export abstract class BaseAdapter {
     let LLMResponse: Response;
     if (jsonMatch) {
       res = jsonMatch[0];
-      LLMResponse = JSON.parse(res);
+      LLMResponse = JSON5.parse(res);
     } else {
       throw new Error(`LLM provides unexpected response: ${res}`);
     }

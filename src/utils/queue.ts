@@ -1,4 +1,5 @@
 import { getMemberName } from './prompt';
+import JSON5 from "json5";
 
 function containsFilter(sessionContent: string, FilterList: any): boolean {
   for (const filterString of FilterList) {
@@ -110,7 +111,7 @@ export class SendQueue {
         };
       }));
 
-      let promptStr = JSON.stringify(promptArr, null, 2);
+      let promptStr = JSON5.stringify(promptArr, null, 2);
 
       // 处理 <img base64="xxx" /> 标签
       const imgTagRegex = /<img base64=\\"[^\\"]*\\"\s*\/?>/g;

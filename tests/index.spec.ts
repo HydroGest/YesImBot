@@ -128,7 +128,7 @@ class Test {
       };
     };
 
-    this.client.bot.getUser = async (id, guildId) => { 
+    this.client.bot.getUser = async (id, guildId) => {
       return createUser(id)
     }
 
