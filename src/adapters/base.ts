@@ -224,14 +224,20 @@ export abstract class BaseAdapter {
         ? LLMResponse.finReply
         : LLMResponse.reply;
     } else {
-      if (LLMResponse.finReply) finalResponse += LLMResponse.finReply;
-      else if (LLMResponse.reply) finalResponse += LLMResponse.reply;
       // 盗版回复
-      else if (LLMResponse.msg) finalResponse += LLMResponse.msg;
-      else if (LLMResponse.text) finalResponse += LLMResponse.text;
-      else if (LLMResponse.message) finalResponse += LLMResponse.message;
-      else if (LLMResponse.answer) finalResponse += LLMResponse.answer;
-      else throw new Error(`LLM provides unexpected response: ${res}`);
+      const possibleResponse = [
+        LLMResponse.finReply,
+        LLMResponse.reply,
+        //@ts-ignore
+        LLMResponse.msg, LLMResponse.text, LLMResponse.message, LLMResponse.answer
+      ];
+      for (const resp of possibleResponse) {
+        if (resp) {
+          finalResponse += resp;
+          break;
+        }
+      }
+      if (finalResponse === "") throw new Error(`LLM provides unexpected response: ${res}`);
     }
 
     // 复制一份finalResonse为finalResponseNoTag，作为添加到队列中的bot消息内容

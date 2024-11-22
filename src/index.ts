@@ -126,7 +126,7 @@ export const inject = {
 }
 
 export function apply(ctx: Context, config: Config) {
-  let adapters: Adapter[];
+  let adapters: Adapter[] = [];
   // 当应用启动时更新 Prompt
   ctx.on("ready", async () => {
     // Return 之前，更新一下 adapters 吧
@@ -267,7 +267,9 @@ export function apply(ctx: Context, config: Config) {
     // 获取 Prompt
     const SysPrompt: string = await genSysPrompt(
       config,
-      session.guildName, // 使用完整写法session.event.guild.name会导致私聊时由于session.event.guild未定义导致报错
+      // TODO: 私聊提示词
+      // 使用完整写法 `session.event.guild.name` 会导致私聊时由于 `ession.event.guild` 未定义导致报错
+      session.guildName ? session.guildName : session.event.user?.name, 
       session
     );
     const chatData: string = await sendQueue.getPrompt(groupId, config, session);
@@ -314,7 +316,7 @@ export function apply(ctx: Context, config: Config) {
 ---
 指令：${handledRes.LLMResponse.execute ? handledRes.LLMResponse.execute : "无"}
 ---
-消耗: 输入 ${handledRes.usage["prompt_tokens"]}, 输出 ${handledRes.usage["completion_tokens"]}`;
+消耗: 输入 ${handledRes?.usage["prompt_tokens"]}, 输出 ${handledRes?.usage["completion_tokens"]}`;
       await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template);
     }
 
@@ -340,7 +342,7 @@ export function apply(ctx: Context, config: Config) {
       await getBotName(config, session),
       session.event.selfId,
       handledRes.resNoTag,
-      0,  // session.messageId，但是这里是机器人自己发的消息，所以设为0
+      0, // session.messageId，但是这里是机器人自己发的消息，所以设为0
       config.Group.Filter,
       config.Group.TriggerCount,
       session.event.selfId
@@ -349,8 +351,12 @@ export function apply(ctx: Context, config: Config) {
     // 如果 AI 使用了指令
     if (handledRes.LLMResponse.execute) {
       handledRes.LLMResponse.execute.forEach(async (command) => {
-        await session.sendQueued(h('execute', {}, command)); // 执行每个指令
-        ctx.logger.info(`已执行指令：${command}`)
+        try {
+          await session.sendQueued(h("execute", {}, command)); // 执行每个指令
+          ctx.logger.info(`已执行指令：${command}`);
+        } catch (error) {
+          ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`)
+        }
       });
     }
 

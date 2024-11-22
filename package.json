@@ -1,49 +1,57 @@
 {
-	"name": "koishi-plugin-yesimbot",
-	"description": "Yes! I'm Bot! 机械壳，人类心",
-	"version": "1.5.1",
-	"main": "lib/index.js",
-	"typings": "lib/index.d.ts",
-	"homepage": "https://github.com/HydroGest/YesImBot",
-	"files": [
-		"lib",
-		"dist"
-	],
-	"contributors": [
-		"HydroGest <2445691453@qq.com>",
-		"Dispure <3116716016@qq.com>"
-	],
-	"license": "MIT",
-	"scripts": {},
-	"keywords": [
-		"chatbot",
-		"koishi",
-		"plugin",
-		"ai"
-	],
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/HydroGest/YesImBot.git"
-	},
-	"peerDependencies": {
-		"koishi": "^4.17.9"
-	},
-	"dependencies": {
-		"axios": "^1.7.7"
-	},
-	"koishi": {
-		"description": {
-			"zh": "让语言大模型机器人假装群友并和群友聊天！",
-			"en": "A Koishi plugin that allows LLM chat in your guild."
-		},
-		"browser": true,
-		"service": {
-			"required": [
-				"axios"
-			],
-			"implements": [
-				"yesimbot"
-			]
-		}
-	}
+    "name": "koishi-plugin-yesimbot",
+    "description": "Yes! I'm Bot! 机械壳，人类心",
+    "version": "1.5.1",
+    "main": "lib/index.js",
+    "typings": "lib/index.d.ts",
+    "homepage": "https://github.com/HydroGest/YesImBot",
+    "files": [
+        "lib",
+        "dist"
+    ],
+    "contributors": [
+        "HydroGest <2445691453@qq.com>",
+        "Dispure <3116716016@qq.com>"
+    ],
+    "license": "MIT",
+    "scripts": {
+        "test": "jest"
+    },
+    "keywords": [
+        "chatbot",
+        "koishi",
+        "plugin",
+        "ai"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/HydroGest/YesImBot.git"
+    },
+    "peerDependencies": {
+        "koishi": "^4.17.9"
+    },
+    "dependencies": {
+        "axios": "^1.7.7"
+    },
+    "koishi": {
+        "description": {
+            "zh": "让语言大模型机器人假装群友并和群友聊天！",
+            "en": "A Koishi plugin that allows LLM chat in your guild."
+        },
+        "browser": true,
+        "service": {
+            "required": [
+                "axios"
+            ],
+            "implements": [
+                "yesimbot"
+            ]
+        }
+    },
+    "devDependencies": {
+        "@jest/globals": "^29.7.0",
+        "@koishijs/plugin-mock": "^2.6.6",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.2.5"
+    }
 }
