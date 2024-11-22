@@ -161,6 +161,15 @@ export const configSchema: any = Schema.object({
   //     ])
   // ]),
 
+  Embedding: Schema.object({
+    APIType: Schema.union(["OpenAI", "Custom"]).default("OpenAI").description("Embedding API 类型"),
+    BaseURL: Schema.string().default("https://api.openai.com").description("Embedding API 基础 URL"),
+    APIKey: Schema.string().required().description("API 令牌"),
+    EmbeddingModel: Schema.string().default("text-embedding-3-large").description("Embedding 模型 ID"),
+    RequestBody: Schema.string().description("自定义请求体。其中：`<text>`（包含尖括号）会被替换成用于计算嵌入向量的文本；`<apikey>`（包含尖括号）会被替换成此页面设置的 API 密钥；<model>（包含尖括号）会被替换成此页面设置的模型名称"),
+    GetVecRegex: Schema.string().description("从自定义Embedding服务提取嵌入向量的正则表达式。注意转义"),
+  }).description("Embedding 模型相关配置，用于表情语义相似度验证"), // 日后可能也会用于记忆中枢
+
   ImageViewer: Schema.object({
     How: Schema.union(["LLM API 自带的多模态能力", "图片描述服务", "替换成[图片:summary]", "替换成[图片]", "不做处理，以<img>标签形式呈现"])
       .default("替换成[图片]")

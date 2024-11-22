@@ -1,5 +1,5 @@
 import { register } from "../adapters";
-import { runEmbedding } from "./api-adapter";
+import { runEmbedding, calculateCosineSimilarity } from "./tools";
 
 export class ResponseVerifier {
   private previousResponse: string = "";
@@ -24,26 +24,24 @@ export class ResponseVerifier {
         const previousEmbedding = await runEmbedding(
           this.config.Verifier.API.APIType,
           this.config.Verifier.API.BaseURL,
-          this.config.Verifier.API.UID,
           this.config.Verifier.API.APIKey,
           this.config.Verifier.API.AIModel,
           this.previousResponse,
-          this.config
+          this.config.Debug.DebugAsInfo
         );
 
         const currentEmbedding = await runEmbedding(
           this.config.Verifier.API.APIType,
           this.config.Verifier.API.BaseURL,
-          this.config.Verifier.API.UID,
           this.config.Verifier.API.APIKey,
           this.config.Verifier.API.AIModel,
           currentResponse,
-          this.config
+          this.config.Debug.DebugAsInfo
         );
 
-        const similarityScore = this.calculateCosineSimilarity(
-          previousEmbedding.response.data[0].embedding,
-          currentEmbedding.response.data[0].embedding
+        const similarityScore = calculateCosineSimilarity(
+          previousEmbedding,
+          currentEmbedding
         );
 
         return similarityScore <= this.config.Verifier.SimilarityThreshold;
@@ -81,15 +79,6 @@ export class ResponseVerifier {
       console.error("Verification failed:", error);
       return true;
     }
-  }
-  // 计算向量的余弦相似度
-  private calculateCosineSimilarity(vec1: number[], vec2: number[]): number {
-    const dotProduct = vec1.reduce((sum, val, i) => sum + val * vec2[i], 0);
-    const magnitude1 = Math.sqrt(vec1.reduce((sum, val) => sum + val * val, 0));
-    const magnitude2 = Math.sqrt(vec2.reduce((sum, val) => sum + val * val, 0));
-
-    const cosineSimilarity = dotProduct / (magnitude1 * magnitude2);
-    return (cosineSimilarity + 1) / 2; // Transform from [-1, 1] to [0, 1]
   }
 
   private extractSimilarityScore(response: any): number {
