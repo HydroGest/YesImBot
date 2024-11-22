@@ -1,4 +1,5 @@
 import axios from 'axios';
+import JSON5 from "json5";
 import { CustomAdapter } from '../adapters';
 
 export async function replaceImageWith(imgTag: string, config: any){
@@ -64,7 +65,7 @@ async function myOwnImageDescription(src: string, base64: string, question: any,
     .replace('<apikey>', token);
 
   try {
-    const response = await axios.post(baseURL, JSON.parse(requestBodyParsed), {
+    const response = await axios.post(baseURL, JSON5.parse(requestBodyParsed), {
       headers: {
         'Content-Type': 'application/json',
       },
@@ -72,7 +73,7 @@ async function myOwnImageDescription(src: string, base64: string, question: any,
 
     const responseData = response.data;
     const regex = new RegExp(getResponseRegex);
-    const match = regex.exec(JSON.stringify(responseData));
+    const match = regex.exec(JSON5.stringify(responseData));
 
     if (match && match[1]) {
       return match[1];
@@ -99,7 +100,7 @@ async function baiduImageDescription(src:string, base64: string, question: strin
 
   try {
     // 提交请求
-    const submitResponse = await axios.post(submitUrl, JSON.stringify(submitData), { headers });
+    const submitResponse = await axios.post(submitUrl, JSON5.stringify(submitData), { headers });
     const taskId = submitResponse.data.result.task_id;
 
     // 获取结果
@@ -110,7 +111,7 @@ async function baiduImageDescription(src:string, base64: string, question: strin
     let retCode;
 
     do {
-      resultResponse = await axios.post(resultUrl, JSON.stringify(resultData), { headers });
+      resultResponse = await axios.post(resultUrl, JSON5.stringify(resultData), { headers });
       retCode = resultResponse.data.result.ret_code;
       if (retCode === 1) {
         await new Promise(resolve => setTimeout(resolve, 500)); // 等待0.5秒后重试

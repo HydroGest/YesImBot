@@ -3,6 +3,7 @@ import https from 'https';
 import axios from 'axios';
 import {readFileSync} from 'fs';
 import path from 'path';
+import JSON5 from "json5";
 import { replaceImageWith } from './image-viewer';
 
 interface Emoji {
@@ -16,7 +17,7 @@ class EmojiManager {
 
   constructor() {
     const emojisFile = path.join(__dirname, '../../data/emojis.json');
-    const emojis: Emoji[] = JSON.parse(readFileSync(emojisFile, 'utf-8'));
+    const emojis: Emoji[] = JSON5.parse(readFileSync(emojisFile, 'utf-8'));
 
     emojis.forEach(emoji => {
       this.idToName[emoji.id] = emoji.name;
