@@ -31,7 +31,6 @@ export default {
       },
     ],
   },
-
   Bot: {},
   Debug: {
     DebugAsInfo: false,
@@ -39,4 +38,12 @@ export default {
     AllowErrorFormat: true,
     UpdatePromptOnLoad: false,
   },
+  Embedding: {
+    APIType: "Custom",
+    BaseURL: "http://localhost:11434/api/embeddings",
+    APIKey: "sk-xxxxxxx",
+    EmbeddingModel: "nomic-embed-text",
+    RequestBody: "{\"prompt\": \"<text>\", \"model\": \"<model>\"}",
+    GetVecRegex: "(?<=\"embedding\":).*?(?=})"
+  }
 };
