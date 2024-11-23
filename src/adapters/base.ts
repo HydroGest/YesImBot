@@ -271,13 +271,12 @@ export abstract class BaseAdapter {
 
     // 反转义 <face> 消息
     const faceRegex = /\[表情[:：]\s*([^\]]+)\]/g;
-    const fullMatchRegex = /\[\s*([^\]]+)\s*\]/g;
 
-    const matches = Array.from(finalResponse.matchAll(faceRegex)).concat(Array.from(finalResponse.matchAll(fullMatchRegex)));
+    const matches = Array.from(finalResponse.matchAll(faceRegex))
 
     const replacements = await Promise.all(matches.map(async (match) => {
       const name = match[1];
-      let id = await emojiManager.getIdByName(name) || await emojiManager.getIdByName(name) || '500';
+      let id = await emojiManager.getIdByName(name) || await emojiManager.getIdByName(await emojiManager.getNameByTextSimilarity(name, config)) || '500';
       return {
         match: match[0],
         replacement: `<face id="${id}"></face>`,

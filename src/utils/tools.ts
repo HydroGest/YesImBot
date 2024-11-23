@@ -1,8 +1,11 @@
 import axios from "axios";
 import JSON5 from "json5";
+import path from 'path';
+import fs from 'fs';
 
 export async function sendRequest(url: string, APIKey: string, requestBody: any,  debug: boolean): Promise<any> {
   if (debug) {
+    console.log(`Request URL: ${url}`);
     console.log(`Request body: \n${JSON5.stringify(requestBody, null, 2)}`);
   }
 
@@ -15,13 +18,171 @@ export async function sendRequest(url: string, APIKey: string, requestBody: any,
     });
 
     if (response.status !== 200) {
-      const errorMessage = response.data;
+      const errorMessage = JSON5.stringify(response.data);
       throw new Error(`请求失败: ${response.status} - ${errorMessage}`);
     }
 
     const result = await response.data;
     return result;
   } catch (error) {
+    if (error.response) {
+      throw new Error(`请求失败: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+    }
     throw error;
   }
+}
+
+
+// 缓存相关 考虑把它们放到一个单独的文件中
+function getCacheDir(): string {
+  const cacheDir = path.join(__dirname, '../../data/.vector_cache');
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true });
+  }
+  return cacheDir;
+}
+
+function getCacheFileName(model: string, text: string): string {
+  // 创建模型专用的子目录
+  const modelDir = path.join(getCacheDir(), model);
+  if (!fs.existsSync(modelDir)) {
+    fs.mkdirSync(modelDir, { recursive: true });
+  }
+
+  const safeText = text.slice(0, 100)
+
+  return path.join(modelDir, `${safeText}.json`);
+}
+function saveToCache(fileName: string, vector: number[]): void {
+  // 确保目标目录存在
+  const dir = path.dirname(fileName);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(fileName, JSON.stringify(vector));
+}
+
+function loadFromCache(fileName: string): number[] | null {
+  if (fs.existsSync(fileName)) {
+    try {
+      return JSON.parse(fs.readFileSync(fileName, 'utf-8'));
+    } catch (error) {
+      console.warn(`读取缓存文件失败: ${fileName}`, error);
+      return null;
+    }
+  }
+  return null;
+}
+
+export async function runEmbedding(
+  apiType: "OpenAI" | "Custom" | "Custom URL" | "Cloudflare",
+  baseURL: string,
+  apiKey: string,
+  embeddingModel: string,
+  text: string,
+  debug: boolean,
+  requestBody?: string,
+  getVecRegex?: string,
+): Promise<number[]> {
+  // 检查缓存
+  const cacheFile = getCacheFileName(embeddingModel, text);
+  const cachedVector = loadFromCache(cacheFile);
+  if (cachedVector) {
+    if (debug) {
+      console.log('Using cached embedding vector');
+    }
+    return cachedVector;
+  }
+
+  let url: string;
+  let finalRequestBody: any;
+
+  try {
+    switch (apiType) {
+      case "OpenAI": {
+        url = `${baseURL}/v1/embeddings`;
+        finalRequestBody = {
+          input: text,
+          model: embeddingModel,
+        };
+        break;
+      }
+
+      case "Custom URL": {
+        url = baseURL;
+        finalRequestBody = {
+          input: text,
+          model: embeddingModel,
+        };
+        break;
+      }
+
+      case "Cloudflare": {
+        console.log("Cloudflare 暂不支持");
+        break;
+      }
+
+      case "Custom": {
+        url = baseURL;
+        if (!getVecRegex) {
+          throw new Error("Custom API 需要提供 getVecRegex 参数");
+        }
+
+        if (requestBody) {
+          const processedBody = requestBody
+            .replace(/<text>/g, text)
+            .replace(/<apikey>/g, apiKey)
+            .replace(/<model>/g, embeddingModel);
+
+          try {
+            finalRequestBody = JSON5.parse(processedBody);
+          } catch (e) {
+            throw new Error(`自定义请求体解析失败: ${e.message}`);
+          }
+        } else {
+          finalRequestBody = {
+            input: text,
+            model: embeddingModel,
+          };
+        }
+        break;
+      }
+    }
+
+    const response = await sendRequest(url, apiKey, finalRequestBody, debug);
+    let vector: number[];
+
+    if (apiType === "OpenAI" || apiType === "Custom URL") {
+      vector = response.data[0].embedding;
+      saveToCache(cacheFile, vector);
+      return vector;
+    } else {
+      const regex = new RegExp(getVecRegex);
+      const match = JSON.stringify(response).match(regex);
+      if (!match) {
+        throw new Error("无法从响应中提取向量");
+      }
+      try {
+        vector = JSON.parse(match[1]);
+        saveToCache(cacheFile, vector);
+        return vector;
+      } catch (e) {
+        throw new Error(`向量解析失败: ${e.message}`);
+      }
+    }
+  } catch (error) {
+    throw new Error(`Embedding 请求失败: ${error.message}`);
+  }
+}
+
+// 计算向量的余弦相似度
+export function calculateCosineSimilarity(vec1: number[], vec2: number[]): number {
+  if (vec1.length !== vec2.length) {
+    throw new Error('向量维度不匹配');
+  }
+  const dotProduct = vec1.reduce((sum, val, i) => sum + val * vec2[i], 0);
+  const magnitude1 = Math.sqrt(vec1.reduce((sum, val) => sum + val * val, 0));
+  const magnitude2 = Math.sqrt(vec2.reduce((sum, val) => sum + val * val, 0));
+  const cosineSimilarity = dotProduct / (magnitude1 * magnitude2);
+  return (cosineSimilarity + 1) / 2; // Transform from [-1, 1] to [0, 1]
 }
