@@ -1,11 +1,12 @@
 import { register } from "../adapters";
+import { Config } from "../config";
 import { runEmbedding, calculateCosineSimilarity } from "./tools";
 
 export class ResponseVerifier {
   private previousResponse: string = "";
-  private config: any;
+  private config: Config;
 
-  loadConfig(config: any) {
+  loadConfig(config: Config) {
     this.config = config;
   }
 

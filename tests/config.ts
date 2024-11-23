@@ -1,3 +1,5 @@
+import { Config } from "../src";
+
 export default {
   Group: {
     AllowedGroups: ["123"],
@@ -47,5 +49,5 @@ export default {
     EmbeddingModel: "nomic-embed-text",
     RequestBody: "{\"prompt\": \"<text>\", \"model\": \"<model>\"}",
     GetVecRegex: "(?<=\"embedding\":).*?(?=})"
-  }
-};
+  },
+} as Config;
