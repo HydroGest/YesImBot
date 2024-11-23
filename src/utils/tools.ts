@@ -163,7 +163,7 @@ export async function runEmbedding(
         throw new Error("无法从响应中提取向量");
       }
       try {
-        vector = JSON.parse(match[1]);
+        vector = JSON.parse(match[0]);
         saveToCache(cacheFile, vector);
         return vector;
       } catch (e) {

@@ -166,6 +166,16 @@ export function apply(ctx: Context, config: Config) {
     if (!session.groupMemberList && !isPrivateChat) {
       session.groupMemberList = await session.bot.getGuildMemberList(session.guildId);
       session.groupMemberList.data.forEach(member => {
+        // 沙盒获取到的 member 数据不一样
+        if (member.userId === member.username && !member.user) {
+          member.user = {
+            id: member.userId,
+            name: member.username,
+            userId: member.userId,
+          };
+          member.nick = member.username;
+          member.roles = ['member'];
+        }
         if (!member.nick) {
           member.nick = member.user.name || member.user.username;
         }
@@ -305,7 +315,7 @@ export function apply(ctx: Context, config: Config) {
       response,
       config.Debug.AllowErrorFormat,
       config,
-      session
+      session.groupMemberList.data
     );
 
     const finalRes: string = handledRes.res;

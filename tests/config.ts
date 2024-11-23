@@ -31,12 +31,21 @@ export default {
       },
     ],
   },
-
-  Bot: {},
+  Bot: {
+    NickorName: "用户昵称"
+  },
   Debug: {
     DebugAsInfo: false,
     DisableGroupFilter: true,
     AllowErrorFormat: true,
     UpdatePromptOnLoad: false,
   },
+  Embedding: {
+    APIType: "Custom",
+    BaseURL: "http://localhost:11434/api/embeddings",
+    APIKey: "sk-xxxxxxx",
+    EmbeddingModel: "nomic-embed-text",
+    RequestBody: "{\"prompt\": \"<text>\", \"model\": \"<model>\"}",
+    GetVecRegex: "(?<=\"embedding\":).*?(?=})"
+  }
 };
