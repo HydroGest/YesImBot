@@ -21,3 +21,6 @@ yarn.lock
 
 coverage
 data/logs
+data/.vector_cache
+data/queue.json
+data/emojis.json
