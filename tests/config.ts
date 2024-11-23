@@ -31,7 +31,9 @@ export default {
       },
     ],
   },
-  Bot: {},
+  Bot: {
+    NickorName: "用户昵称"
+  },
   Debug: {
     DebugAsInfo: false,
     DisableGroupFilter: true,

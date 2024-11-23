@@ -153,7 +153,7 @@ export abstract class BaseAdapter {
     input: any,
     AllowErrorFormat: boolean,
     config: any,
-    session: any,
+    groupMemberList: any,
   ): Promise<{
     res: string;
     resNoTag: string;
@@ -238,7 +238,7 @@ export abstract class BaseAdapter {
           break;
         }
       }
-      if (finalResponse === "") throw new Error(`LLM provides unexpected response: ${res}`);
+      if (finalResponse === "" && !LLMResponse.execute?.length) throw new Error(`LLM provides unexpected response: ${res}`);
     }
 
     // 复制一份finalResonse为finalResponseNoTag，作为添加到队列中的bot消息内容
@@ -251,7 +251,7 @@ export abstract class BaseAdapter {
       }) + finalResponse;
 
     // 使用 groupMemberList 反转义 <at> 消息
-    const groupMemberList: { nick: string; user: { name: string; id: string } }[] = session.groupMemberList.data;
+    // const groupMemberList: { nick: string; user: { name: string; id: string } }[] =  groupMemberList.data;
 
     if (!["群昵称", "用户昵称"].includes(config.Bot.NickorName)) {
       throw new Error(`Unsupported NickorName value: ${config.Bot.NickorName}`);

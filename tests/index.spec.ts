@@ -9,6 +9,7 @@ import * as yesimbot from "../src/index";
 
 import config from "./config";
 import { emojiManager } from "../src/utils/content";
+import { CustomAdapter } from "../src/adapters";
 
 // 拦截 sendRequest 函数请求
 jest.mock("../src/utils/tools", () => {
@@ -195,6 +196,49 @@ class Test {
         await emojiManager.getNameByTextSimilarity("火力全开", config),
         "怄火"
       );
+    });
+
+    it("handleResponse", async () => {
+      const adapter = new CustomAdapter(
+        "/custom/static",
+        "",
+        "static"
+      );
+
+      const content = JSON.stringify({
+        "status": "success",
+        "logic": "",
+        "select": -1,
+        "reply": "",
+        "check": "", //
+        "finReply": "",
+        "execute": [
+          "echo 123"
+        ]
+      })
+
+      const input = {
+        choices: [
+          {
+            message: {
+              content: content,
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 4922,
+          completion_tokens: 253,
+          total_tokens: 5175,
+        },
+      };
+
+      const { res, resNoTag, LLMResponse, usage } = await adapter.handleResponse(
+        input,
+        true,
+        config,
+        //@ts-ignore
+        (await this.client.bot.getGuildMemberList(this.client.channelId)).data
+      )
     });
   }
 }

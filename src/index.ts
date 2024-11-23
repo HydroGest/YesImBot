@@ -315,7 +315,7 @@ export function apply(ctx: Context, config: Config) {
       response,
       config.Debug.AllowErrorFormat,
       config,
-      session
+      session.groupMemberList.data
     );
 
     const finalRes: string = handledRes.res;
