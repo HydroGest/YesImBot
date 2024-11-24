@@ -301,14 +301,14 @@ export function apply(ctx: Context, config: Config) {
 
     // 如果 AI 使用了指令
     if (handledRes.LLMResponse.execute) {
-      for (const command of handledRes.LLMResponse.execute) {
-      try {
-        await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)); // 执行每个指令
-        ctx.logger.info(`已执行指令：${command}`);
-      } catch (error) {
-        ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`)
-      }
-      }
+      handledRes.LLMResponse.execute.forEach(async (command) => {
+        try {
+          await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)); // 执行每个指令
+          ctx.logger.info(`已执行指令：${command}`);
+        } catch (error) {
+          ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`)
+        }
+      });
     }
 
     let sentencesCopy = [...sentences];
