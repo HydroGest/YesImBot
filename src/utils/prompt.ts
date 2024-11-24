@@ -2,6 +2,7 @@ import fs from "fs";
 import https from "https";
 import { Context } from "koishi";
 import { promisify } from "util";
+import { Config } from "../config";
 
 export function getFileNameFromUrl(url: string): string {
   try {
@@ -82,7 +83,7 @@ export async function ensurePromptFileExists(
   }
 }
 
-export async function getBotName(config: any, session: any): Promise<string> {
+export async function getBotName(config: Config, session: any): Promise<string> {
   switch (config.Bot.SelfAwareness) {
     case "此页面设置的名字":
     default:
@@ -97,7 +98,7 @@ export async function getBotName(config: any, session: any): Promise<string> {
   }
 }
 
-export async function getMemberName(config: any, session: any, byID?: string): Promise<string> {
+export async function getMemberName(config: Config, session: any, byID?: string): Promise<string> {
   const fetchUserName = async (id: string) => {
     try {
       return await session.bot.getUser(id);
@@ -125,7 +126,7 @@ export async function getMemberName(config: any, session: any, byID?: string): P
 }
 
 export async function genSysPrompt(
-  config: any,
+  config: Config,
   curGroupName: string,
   session: any,
 ): Promise<string> {
@@ -166,7 +167,7 @@ export async function genSysPrompt(
     "${config.Bot.BotBackground}",
     config.Bot.BotBackground
   );
-  content = content.replaceAll("${config.Bot.CuteMode}", config.Bot.CuteMode);
+  content = content.replaceAll("${config.Bot.CuteMode}", `${config.Bot.CuteMode ? "开启" : "关闭"}`);
 
   content = content.replaceAll("${curYear}", curYear.toString());
   content = content.replaceAll("${curMonth}", curMonth.toString());

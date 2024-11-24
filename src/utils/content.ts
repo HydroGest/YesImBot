@@ -6,6 +6,8 @@ import path from 'path';
 import JSON5 from "json5";
 import { replaceImageWith } from './image-viewer';
 import { runEmbedding, calculateCosineSimilarity } from './tools';
+import { Config } from '../config';
+import { Session } from 'koishi';
 
 interface Emoji {
   id: string;
@@ -28,7 +30,7 @@ class EmojiManager {
     });
   }
 
-  private async getEmbedding(text: string, config: any): Promise<number[]> {
+  private async getEmbedding(text: string, config: Config): Promise<number[]> {
     try {
       const vec = await runEmbedding(
         config.Embedding.APIType,
@@ -47,7 +49,7 @@ class EmojiManager {
     }
   }
 
-  private async initializeEmbeddings(config: any): Promise<void> {
+  private async initializeEmbeddings(config: Config): Promise<void> {
     const currentModel = config.Embedding?.EmbeddingModel;
     const needsRecompute =
         Object.keys(this.nameEmbeddings).length === 0 ||
@@ -75,7 +77,7 @@ class EmojiManager {
     return this.nameToId[name];
   }
 
-  async getNameByTextSimilarity(name: string, config: any): Promise<string | undefined> {
+  async getNameByTextSimilarity(name: string, config: Config): Promise<string | undefined> {
     try {
       // 确保已初始化所有表情名称的嵌入向量
       await this.initializeEmbeddings(config);
@@ -113,7 +115,7 @@ export const emojiManager = new EmojiManager();
 
 // 对于QQ，只有type为1的表情才是QQ表情，其他的是普通emoji，无需转义。移除对type的处理
 
-export async function replaceTags(str: string, config: any): Promise<string> {
+export async function replaceTags(str: string, config: Config): Promise<string> {
   const faceidRegex = /<face id="(\d+)"(?: name="([^"]*)")?(?: platform="[^"]*")?><img src="[^"]*"?\/><\/face>/g;
   const imgRegex = /<img[^>]+src\s*=\s*"([^"]+)"[^>]*\/>/g;
   const videoRegex = /<video[^>]+\/>/g;
@@ -186,7 +188,7 @@ export async function replaceTags(str: string, config: any): Promise<string> {
 /*
     @description: 处理 人类 的消息
 */
-export async function processUserContent(config: any, session: any): Promise<{ content: string, name: string }> {
+export async function processUserContent(config: Config, session: Session): Promise<{ content: string, name: string }> {
   const regex = /<at id="([^"]+)"(?:\s+name="([^"]+)")?\s*\/>/g;
   // 转码 <at> 消息，把<at id="0" name="YesImBot" /> 转换为 @Athena 或 @YesImBot
   const matches = Array.from(session.content.matchAll(regex));

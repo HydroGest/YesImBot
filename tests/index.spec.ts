@@ -7,7 +7,8 @@ import * as help from "@koishijs/plugin-help";
 import * as logger from "@koishijs/plugin-logger";
 import * as yesimbot from "../src/index";
 
-import config from "./config";
+import testConfig from "./config";
+
 import { emojiManager } from "../src/utils/content";
 import { CustomAdapter } from "../src/adapters";
 
@@ -99,7 +100,7 @@ class Test {
     this.app.plugin(help);
     this.app.plugin(logger);
     //@ts-ignore
-    this.app.plugin(yesimbot, config);
+    this.app.plugin(yesimbot, testConfig);
 
     // 创建一个群组客户端
     this.client = this.app.mock.client("12345678", "114514");
@@ -186,14 +187,14 @@ class Test {
 
     it("表情解析Embedding", async () => {
       assert.equal(
-        await emojiManager.getNameByTextSimilarity("征服世界", config),
+        await emojiManager.getNameByTextSimilarity("征服世界", testConfig),
         "奋斗"
       );
     });
 
     it("表情解析Embedding", async () => {
       assert.equal(
-        await emojiManager.getNameByTextSimilarity("火力全开", config),
+        await emojiManager.getNameByTextSimilarity("火力全开", testConfig),
         "怄火"
       );
     });
@@ -235,7 +236,7 @@ class Test {
       const { res, resNoTag, LLMResponse, usage } = await adapter.handleResponse(
         input,
         true,
-        config,
+        testConfig,
         //@ts-ignore
         (await this.client.bot.getGuildMemberList(this.client.channelId)).data
       )
