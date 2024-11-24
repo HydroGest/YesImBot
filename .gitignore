@@ -19,6 +19,7 @@ yarn.lock
 *.njsproj
 *.sln
 
+*.mdt
 coverage
 data/logs
 data/.vector_cache

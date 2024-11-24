@@ -1,3 +1,4 @@
+import { Config } from '../config';
 import { getMemberName } from './prompt';
 import JSON5 from "json5";
 import fs from 'fs';
@@ -139,7 +140,7 @@ export class SendQueue {
     }
   }
 
-  async getPrompt(group: string, config: any, session: any): Promise<string> {
+  async getPrompt(group: string, config: Config, session: any): Promise<string> {
     if (this.sendQueueMap.has(group)) {
       const queue = this.sendQueueMap.get(group);
       const promptArr = await Promise.all(queue.map(async (item) => {

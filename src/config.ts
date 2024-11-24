@@ -1,26 +1,132 @@
 import { Schema } from "koishi";
 
-export const configSchema: any = Schema.object({
+export interface Config {
+  Group: {
+    AllowedGroups: string[];
+    SendQueueSize: number;
+    TriggerCount: number;
+    MaxPopNum: number;
+    MinPopNum: number;
+    AtReactPossibility?: number;
+    Filter: string[];
+  };
+  API: {
+    APIList: {
+      APIType: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
+      BaseURL: string;
+      UID: string;
+      APIKey: string;
+      AIModel: string;
+    }[];
+  };
+  Parameters: {
+    Temperature: number;
+    MaxTokens: number;
+    TopP: number;
+    FrequencyPenalty: number;
+    PresencePenalty: number;
+    Stop: string[];
+    OtherParameters: {
+      key: string;
+      value: string;
+    }[];
+  };
+  Verifier: {
+    Enabled?: boolean;
+    API?: {
+      APIType: string;
+      BaseURL: string;
+      UID: string;
+      APIKey: string;
+      AIModel: string;
+    };
+    SimilarityThreshold?: number;
+  };
+  Embedding: {
+    Enabled?: boolean;
+    APIType?: string;
+    BaseURL?: string;
+    APIKey?: string;
+    EmbeddingModel?: string;
+    RequestBody?: string;
+    GetVecRegex?: string;
+  };
+  ImageViewer: {
+    How:
+      | "LLM API 自带的多模态能力"
+      | "图片描述服务"
+      | "替换成[图片:summary]"
+      | "替换成[图片]"
+      | "不做处理，以<img>标签形式呈现";
+    Detail: "low" | "high" | "auto";
+    Memory: number;
+    Server: "百度AI开放平台" | "自己搭建的服务" | "另一个LLM";
+    BaseURL: string;
+    Model: string;
+    RequestBody: string;
+    GetDescRegex: string;
+    APIKey: string;
+    Question: string;
+  };
+  Bot: {
+    PromptFileUrl: string[];
+    PromptFileSelected: number;
+    NickorName: "群昵称" | "用户昵称";
+    SelfAwareness: "此页面设置的名字" | "群昵称" | "用户昵称";
+    BotName: string;
+    WhoAmI: string;
+    BotHometown: string;
+    SendDirectly: boolean;
+    BotYearold: string;
+    BotPersonality: string;
+    BotGender: string;
+    BotHabbits: string;
+    BotBackground: string;
+    CuteMode: boolean;
+    BotSentencePostProcess: {
+      replacethis: string;
+      tothis: string;
+    }[];
+  };
+  Debug: {
+    LogicRedirect: {
+      Enabled?: boolean;
+      Target?: string;
+    };
+    DebugAsInfo: boolean;
+    DisableGroupFilter: boolean;
+    UpdatePromptOnLoad: boolean;
+    AllowErrorFormat: boolean;
+  };
+}
+
+export const Config: Schema<Config> = Schema.object({
   Group: Schema.object({
     AllowedGroups: Schema.array(Schema.string())
       .required()
       .description("允许的群聊"),
     SendQueueSize: Schema.number()
-      .default(20).min(1)
+      .default(20)
+      .min(1)
       .description("Bot 接收的上下文数量（消息队列最大长度）"),
     TriggerCount: Schema.number()
-      .default(3).min(1)
+      .default(3)
+      .min(1)
       .description("Bot 开始回复消息的初始触发计数"),
     MaxPopNum: Schema.number()
-      .default(10).min(1)
+      .default(10)
+      .min(1)
       .description("Bot 两次回复之间的最大消息数"),
     MinPopNum: Schema.number()
-      .default(1).min(1)
+      .default(1)
+      .min(1)
       .description("Bot 两次回复之间的最小消息数"),
     AtReactPossibility: Schema.number()
       .default(0.5)
-      .min(0).max(1).step(0.05)
-      .role('slider')
+      .min(0)
+      .max(1)
+      .step(0.05)
+      .role("slider")
       .description("立即回复 @ 消息的概率"),
     Filter: Schema.array(Schema.string())
       .default(["你是", "You are", "吧", "呢"])
@@ -28,21 +134,23 @@ export const configSchema: any = Schema.object({
   }).description("群聊设置"),
 
   API: Schema.object({
-    APIList: Schema.array(Schema.object({
-      APIType: Schema.union(["OpenAI", "Cloudflare", "Ollama", "Custom URL"]).default("OpenAI").description(
-        "API 类型"
-      ),
-      BaseURL: Schema.string()
-        .default("https://api.openai.com/")
-        .description("API 基础 URL, 设置为“Custom URL”需要填写完整的 URL"),
-      UID: Schema.string()
-        .default("若非 Cloudflare 可不填")
-        .description("Cloudflare UID"),
-      APIKey: Schema.string().required().description("你的 API 令牌"),
-      AIModel: Schema.string()
-        .default("@cf/meta/llama-3-8b-instruct")
-        .description("模型 ID"),
-    })).description("单个 LLM API 配置，可配置多个 API 进行负载均衡。"),
+    APIList: Schema.array(
+      Schema.object({
+        APIType: Schema.union(["OpenAI", "Cloudflare", "Ollama", "Custom URL"])
+          .default("OpenAI")
+          .description("API 类型"),
+        BaseURL: Schema.string()
+          .default("https://api.openai.com/")
+          .description("API 基础 URL, 设置为“Custom URL”需要填写完整的 URL"),
+        UID: Schema.string()
+          .default("若非 Cloudflare 可不填")
+          .description("Cloudflare UID"),
+        APIKey: Schema.string().required().description("你的 API 令牌"),
+        AIModel: Schema.string()
+          .default("@cf/meta/llama-3-8b-instruct")
+          .description("模型 ID"),
+      })
+    ).description("单个 LLM API 配置，可配置多个 API 进行负载均衡。"),
   }).description("LLM API 相关配置"),
 
   Parameters: Schema.object({
@@ -51,7 +159,7 @@ export const configSchema: any = Schema.object({
       .min(0)
       .max(2)
       .step(0.01)
-      .role('slider')
+      .role("slider")
       .description("采样器的温度。数值越大，回复越随机；数值越小，回复越确定"),
     MaxTokens: Schema.number()
       .default(4096)
@@ -64,36 +172,48 @@ export const configSchema: any = Schema.object({
       .min(0)
       .max(1)
       .step(0.01)
-      .role('slider')
+      .role("slider")
       .description("核心采样。模型生成的所有候选 Tokens 按照其概率从高到低排序后，依次累加这些概率，直到达到或超过此预设的阈值，剩余的 Tokens 会被丢弃。值为1时表示关闭"),
     FrequencyPenalty: Schema.number()
       .default(0)
       .min(-2)
       .max(2)
       .step(0.01)
-      .role('slider')
+      .role("slider")
       .description("数值为正时，会根据 Token 在前文出现的频率进行惩罚，降低模型反复重复同一个词的概率。这是一个乘数"),
     PresencePenalty: Schema.number()
       .default(0)
       .min(-2)
       .max(2)
       .step(0.01)
-      .role('slider')
+      .role("slider")
       .description("数值为正时，如果 Token 在前文出现过，就对其进行惩罚，降低它再次出现的概率，提高模型谈论新话题的可能性。这是一个加数"),
     Stop: Schema.array(Schema.string())
       .default(["<|endoftext|>"])
-      .role('table')
+      .role("table")
       .description("自定义停止词。对于 OpenAI 官方的api，最多可以设置4个自定义停止词。生成会在遇到这些停止词时停止"),
-    OtherParameters: Schema.array(Schema.object({
-      key: Schema.string().description("键名"),
-      value: Schema.string().description("键值"),
-    })).default([{ key: "do_sample", value: "true" }, { key: "grammar_string", value: "root   ::= object\nobject ::= \"{\\n\\\"status\\\": \" status-value \",\\n\\\"logic\\\": \" logic-value \",\\n\\\"select\\\": \" select-value \",\\n\\\"reply\\\": \" reply-value \",\\n\\\"check\\\": \" check-value \",\\n\\\"finReply\\\": \" finReply-value \",\\n\\\"execute\\\": \" execute-value \"\\n}\"\nstring ::= \"\\\"\" ([^\"\\\\] | \"\\\\\" [\"\\\\/bfnrt])* \"\\\"\"\nnumber ::= [0-9]+\nban-time ::= [1-9][0-9]{1,3} | [1-4][0-3][0-1][0-9][0-9]\nstatus-value  ::= \"\\\"success\\\"\" | \"\\\"skip\\\"\"\nlogic-value   ::= string | \"\\\"\\\"\"\nselect-value  ::= number | \"-1\"\nreply-value   ::= string\ncheck-value   ::= \"\\\"\\\"\"\nfinReply-value::= string\nexecute-value ::= \"[\"( execute-cmds (\", \" execute-cmds )* )? \"]\"\nexecute-cmds  ::= delmsg | ban | reaction\ndelmsg        ::= \"\\\"delmsg \" number \"\\\"\"\nban           ::= \"\\\"ban \" number \" \" ban-time \"\\\"\"\nreaction      ::= \"\\\"reaction-create \" number \" \" number \"\\\"\"" }]).role('table').description("自定义请求体中的其他参数。有些api可能包含一些特别有用的功能，例如 dry_base 和 response_format。\n如果在调用api时出现400或422错误，请尝试删除此处的自定义参数。\n提示：直接将gbnf内容作为grammar_string的值粘贴至此时，换行符会被转换成空格，需要手动替换为\\n后方可生效"),
+    OtherParameters: Schema.array(
+      Schema.object({
+        key: Schema.string().description("键名"),
+        value: Schema.string().description("键值"),
+      })
+    )
+      .default([
+        { key: "do_sample", value: "true" },
+        {
+          key: "grammar_string",
+          value:
+            'root   ::= object\nobject ::= "{\\n\\"status\\": " status-value ",\\n\\"logic\\": " logic-value ",\\n\\"select\\": " select-value ",\\n\\"reply\\": " reply-value ",\\n\\"check\\": " check-value ",\\n\\"finReply\\": " finReply-value ",\\n\\"execute\\": " execute-value "\\n}"\nstring ::= "\\"" ([^"\\\\] | "\\\\" ["\\\\/bfnrt])* "\\""\nnumber ::= [0-9]+\nban-time ::= [1-9][0-9]{1,3} | [1-4][0-3][0-1][0-9][0-9]\nstatus-value  ::= "\\"success\\"" | "\\"skip\\""\nlogic-value   ::= string | "\\"\\""\nselect-value  ::= number | "-1"\nreply-value   ::= string\ncheck-value   ::= "\\"\\""\nfinReply-value::= string\nexecute-value ::= "["( execute-cmds (", " execute-cmds )* )? "]"\nexecute-cmds  ::= delmsg | ban | reaction\ndelmsg        ::= "\\"delmsg " number "\\""\nban           ::= "\\"ban " number " " ban-time "\\""\nreaction      ::= "\\"reaction-create " number " " number "\\""',
+        },
+      ])
+      .role("table")
+      .description("自定义请求体中的其他参数。有些api可能包含一些特别有用的功能，例如 dry_base 和 response_format。\n如果在调用api时出现400或422错误，请尝试删除此处的自定义参数。\n提示：直接将gbnf内容作为grammar_string的值粘贴至此时，换行符会被转换成空格，需要手动替换为\\n后方可生效"),
   }).description("API 参数"),
 
   Verifier: Schema.intersect([
     Schema.object({
       Enabled: Schema.boolean().default(false),
-    }).description('是否启用相似度验证'),
+    }).description("是否启用相似度验证"),
     Schema.union([
       Schema.object({
         Enabled: Schema.const(true).required(),
@@ -119,11 +239,11 @@ export const configSchema: any = Schema.object({
           .min(0)
           .max(1)
           .step(0.05)
-          .role('slider')
+          .role("slider")
           .description("相似度阈值，超过此值的回复将被过滤"),
       }),
-      Schema.object({})
-    ])
+      Schema.object({}),
+    ]),
   ]),
 
   // 保留备用。记忆方案：["embedding模型与RAG，结合koishi的database做向量库", "定期发送消息给LLM，总结聊天记录，并塞到后续的请求prompt中", "两者结合，定期发送消息给LLM，总结聊天记录，把总结文本向量化后存入向量库，有请求时把输入向量化和向量库内的总结做比对，提取出相关的总结塞到prompt中"]
@@ -162,39 +282,56 @@ export const configSchema: any = Schema.object({
   Embedding: Schema.intersect([
     Schema.object({
       Enabled: Schema.boolean().default(false),
-    }).description('是否启用 Embedding'),
+    }).description("是否启用 Embedding"),
     Schema.union([
       Schema.object({
         Enabled: Schema.const(true).required(),
-        APIType: Schema.union(["OpenAI", "Custom"]).default("OpenAI").description("Embedding API 类型"),
-        BaseURL: Schema.string().default("https://api.openai.com").description("Embedding API 基础 URL"),
+        APIType: Schema.union(["OpenAI", "Custom"])
+          .default("OpenAI")
+          .description("Embedding API 类型"),
+        BaseURL: Schema.string()
+          .default("https://api.openai.com")
+          .description("Embedding API 基础 URL"),
         APIKey: Schema.string().required().description("API 令牌"),
-        EmbeddingModel: Schema.string().default("text-embedding-3-large").description("Embedding 模型 ID"),
+        EmbeddingModel: Schema.string()
+          .default("text-embedding-3-large")
+          .description("Embedding 模型 ID"),
         RequestBody: Schema.string().description("自定义请求体。其中：`<text>`（包含尖括号）会被替换成用于计算嵌入向量的文本；`<apikey>`（包含尖括号）会被替换成此页面设置的 API 密钥；<model>（包含尖括号）会被替换成此页面设置的模型名称"),
         GetVecRegex: Schema.string().description("从自定义Embedding服务提取嵌入向量的正则表达式。注意转义"),
       }),
-      Schema.object({})
-    ])
+      Schema.object({}),
+    ]),
   ]),
 
   ImageViewer: Schema.object({
-    How: Schema.union(["LLM API 自带的多模态能力", "图片描述服务", "替换成[图片:summary]", "替换成[图片]", "不做处理，以<img>标签形式呈现"])
+    How: Schema.union([
+      "LLM API 自带的多模态能力",
+      "图片描述服务",
+      "替换成[图片:summary]",
+      "替换成[图片]",
+      "不做处理，以<img>标签形式呈现",
+    ])
       .default("替换成[图片]")
       .description("处理图片的方式。失败时会自动尝试后一种方式"),
-    Detail: Schema.union(["low", "high", "auto"]).default("low").description("使用 LLM 时的图片处理细节，这关系到 Token 消耗"),
+    Detail: Schema.union(["low", "high", "auto"])
+      .default("low")
+      .description("使用 LLM 时的图片处理细节，这关系到 Token 消耗"),
     Memory: Schema.number()
       .default(1)
       .min(-1)
       .description("使用 LLM API 自带的多模态能力时，LLM 真正能看到的最近的图片数量。设为-1取消此限制"),
-    Server: Schema.union(["百度AI开放平台", "自己搭建的服务", "另一个LLM"]).default("百度AI开放平台").description("图片查看器使用的服务提供商"),
+    Server: Schema.union(["百度AI开放平台", "自己搭建的服务", "另一个LLM"])
+      .default("百度AI开放平台")
+      .description("图片查看器使用的服务提供商"),
     BaseURL: Schema.string()
       .default("http://127.0.0.1")
       .description("自己搭建的图片描述服务或另一个LLM的完整 URL"),
-    Model: Schema.string().default("gpt-4o-mini").description("使用另一个LLM时的模型名称"),
+    Model: Schema.string()
+      .default("gpt-4o-mini")
+      .description("使用另一个LLM时的模型名称"),
     RequestBody: Schema.string().description("自己搭建的图片描述服务需要的请求体。其中：`<url>`（包含尖括号）会被替换成消息中出现的图片的url；`<base64>`(包含尖括号)会被替换成图片的base64（自带`data:image/jpeg;base64,`头，无需另行添加）；`<question>`（包含尖括号）会被替换成此页面设置的针对输入图片的问题；`<apikey>`（包含尖括号）会被替换成此页面设置的图片描述服务可能需要的 API 密钥"),
     GetDescRegex: Schema.string().description("从自己搭建的图片描述服务提取所需信息的正则表达式。注意转义"),
-    APIKey: Schema.string()
-      .description("图片描述服务可能需要的 API 密钥，对于不同服务，它们的名称可能不同。例如`access_token`"),
+    APIKey: Schema.string().description("图片描述服务可能需要的 API 密钥，对于不同服务，它们的名称可能不同。例如`access_token`"),
     Question: Schema.string()
       .default("这张图里有什么？")
       .description("图片描述服务针对输入图片的问题"),
@@ -211,8 +348,12 @@ export const configSchema: any = Schema.object({
     PromptFileSelected: Schema.number()
       .default(2)
       .description("Prompt 文件编号，从 0 开始。请阅读 readme 再修改!"),
-    NickorName: Schema.union(["群昵称", "用户昵称"]).default("群昵称").description("Bot 将看到其他人的..."),
-    SelfAwareness: Schema.union(["此页面设置的名字", "群昵称", "用户昵称"]).default("群昵称").description("Bot 将认为自己叫..."),
+    NickorName: Schema.union(["群昵称", "用户昵称"])
+      .default("群昵称")
+      .description("Bot 将看到其他人的..."),
+    SelfAwareness: Schema.union(["此页面设置的名字", "群昵称", "用户昵称"])
+      .default("群昵称")
+      .description("Bot 将认为自己叫..."),
     BotName: Schema.string().default("Athena").description("Bot 的名字"),
     WhoAmI: Schema.string()
       .default("一个普通的群友")
@@ -230,16 +371,24 @@ export const configSchema: any = Schema.object({
     BotBackground: Schema.string()
       .default("高中女生")
       .description("Bot 的背景"),
-    BotSentencePostProcess: Schema.array(Schema.object({
-      replacethis: Schema.string().description("需要替换的文本"),
-      tothis: Schema.string().description("替换为的文本"),
-    })).default([{ replacethis: "。$", tothis: "" }]).role('table').description("Bot 生成的句子后处理，用于替换文本。每行一个替换规则，从上往下依次替换，支持正则表达式"),
+    BotSentencePostProcess: Schema.array(
+      Schema.object({
+        replacethis: Schema.string().description("需要替换的文本"),
+        tothis: Schema.string().description("替换为的文本"),
+      })
+    )
+      .default([{ replacethis: "。$", tothis: "" }])
+      .role("table")
+      .description("Bot 生成的句子后处理，用于替换文本。每行一个替换规则，从上往下依次替换，支持正则表达式"),
     CuteMode: Schema.boolean().default(false).description("原神模式（迫真"),
   }).description("机器人设定"),
+
   Debug: Schema.object({
     LogicRedirect: Schema.intersect([
       Schema.object({
-        Enabled: Schema.boolean().default(false).description('是否开启逻辑重定向'),
+        Enabled: Schema.boolean()
+          .default(false)
+          .description("是否开启逻辑重定向"),
       }),
       Schema.union([
         Schema.object({
@@ -249,7 +398,7 @@ export const configSchema: any = Schema.object({
             .description("将 Bot 的发言逻辑重定向到群组"),
         }),
         Schema.object({}),
-      ])
+      ]),
     ]),
     DebugAsInfo: Schema.boolean()
       .default(false)

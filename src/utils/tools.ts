@@ -2,6 +2,7 @@ import axios from "axios";
 import JSON5 from "json5";
 import path from 'path';
 import fs from 'fs';
+import { Config } from "../config";
 
 export async function sendRequest(url: string, APIKey: string, requestBody: any,  debug: boolean): Promise<any> {
   if (debug) {
@@ -75,7 +76,7 @@ function loadFromCache(fileName: string): number[] | null {
 }
 
 export async function runEmbedding(
-  apiType: "OpenAI" | "Custom" | "Custom URL" | "Cloudflare",
+  apiType: Config["Embedding"]["APIType"],
   baseURL: string,
   apiKey: string,
   embeddingModel: string,

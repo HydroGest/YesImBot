@@ -1,6 +1,7 @@
 import { h } from "koishi";
 import JSON5 from "json5";
 import { emojiManager } from "../utils/content";
+import { Config } from "../config";
 
 interface Response {
   status: "skip" | "success";
@@ -152,7 +153,7 @@ export abstract class BaseAdapter {
   async handleResponse(
     input: any,
     AllowErrorFormat: boolean,
-    config: any,
+    config: Config,
     groupMemberList: any,
   ): Promise<{
     res: string;
@@ -286,8 +287,6 @@ export abstract class BaseAdapter {
     replacements.forEach(({ match, replacement }) => {
       finalResponse = finalResponse.replace(match, replacement);
     });
-
-
 
     return {
       res: finalResponse,

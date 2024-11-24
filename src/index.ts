@@ -1,10 +1,10 @@
-import { Context, Next, Schema, h, Random, Session } from "koishi";
+import { Context, Next, h, Random, Session } from "koishi";
 
 import JSON5 from "json5";
 
 import { ResponseVerifier } from "./utils/verifier";
 
-import { configSchema } from "./config";
+import { Config } from "./config";
 
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
@@ -21,87 +21,11 @@ export const usage = `\"Yes! I'm Bot!\" 是一个能让你的机器人激活灵�
 官方交流 & 测试群：[857518324](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=k3O5_1kNFJMERGxBOj1ci43jHvLvfru9&authKey=TkOxmhIa6kEQxULtJ0oMVU9FxoY2XNiA%2B7bQ4K%2FNx5%2F8C8ToakYZeDnQjL%2B31Rx%2B&noverify=0&group_code=857518324)
 `;
 
-export interface Config {
-  Group: {
-    AllowedGroups: any;
-    SendQueueSize: number;
-    TriggerCount: number;
-    MaxPopNum: number;
-    MinPopNum: number;
-    AtReactPossibility: number;
-    Filter: any;
-  };
-  API: {
-    APIList: {
-      APIType: any;
-      BaseURL: string;
-      UID: string;
-      APIKey: string;
-      AIModel: string;
-    }[];
-  };
-  Parameters: {
-    Temperature: number;
-    MaxTokens: number;
-    TopP: number;
-    FrequencyPenalty: number;
-    PresencePenalty: number;
-    Stop: string[];
-    OtherParameters: any;
-  };
-  Verifier: {
-    Enabled: boolean;
-    SimilarityThreshold: number;
-    API: {
-      APIType: string;
-      BaseURL: string;
-      UID: string;
-      APIKey: string;
-      AIModel: string;
-    };
-  };
-  ImageViewer: {
-    How: string;
-    Detail: string;
-    Memory: number;
-    Server: string;
-    BaseURL: string;
-    Model: string;
-    RequestBody: string;
-    GetDescRegex: string;
-    APIKey: string;
-    Question: string;
-  };
-  Bot: {
-    PromptFileUrl: any;
-    PromptFileSelected: number;
-    NickorName: string;
-    SelfAwareness: string;
-    BotName: string;
-    WhoAmI: string;
-    BotHometown: string;
-    SendDirectly: boolean;
-    BotYearold: string;
-    BotPersonality: string;
-    BotGender: string;
-    BotHabbits: string;
-    BotBackground: string;
-    CuteMode: boolean;
-    BotSentencePostProcess: any;
-  };
-  Debug: {
-    LogicRedirect: {
-      Enabled: boolean;
-      Target: string;
-    };
-    DebugAsInfo: boolean;
-    DisableGroupFilter: boolean;
-    UpdatePromptOnLoad: boolean;
-    AllowErrorFormat: boolean;
-  };
-}
+export { Config } from "./config";
 
-export const Config: Schema<Config> = configSchema;
+export const inject = {
+  optional: ['qmanager', 'interactions']
+}
 
 const sendQueue = new SendQueue();
 
@@ -122,10 +46,6 @@ class APIStatus {
 }
 
 const status = new APIStatus();
-
-export const inject = {
-  optional: ['qmanager', 'interactions']
-}
 
 export function apply(ctx: Context, config: Config) {
   let adapters: Adapter[] = [];
