@@ -6,6 +6,8 @@ import { ResponseVerifier } from "./utils/verifier";
 
 import { Config } from "./config";
 
+import { isGroupAllowed } from "./utils/tools";
+
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
 import { SendQueue } from "./utils/queue";
@@ -130,17 +132,17 @@ export function apply(ctx: Context, config: Config) {
         ]
       };
 
-      session.guildName = `与${session.bot.user.name}的私聊`;
+      session.guildName = `${session.bot.user.name}与${session.event.user.name}的私聊`;
     }
 
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(`New message received, guildId = ${groupId}`);
 
-    if (
-      !config.Group.AllowedGroups.includes(groupId) &&
-      !config.Debug.DisableGroupFilter
-    )
-      return next();
+    if (!config.Group.AllowedGroups?.length) return next();
+
+    const [isGuildAllowed, matchedConfig] = isGroupAllowed(groupId, config.Group.AllowedGroups, config.Debug.FirsttoAll);
+    if (!isGuildAllowed) return next();
+    const mergeQueueFrom = matchedConfig;
 
     const userContent = await processUserContent(config, session);
 
@@ -163,6 +165,7 @@ export function apply(ctx: Context, config: Config) {
     // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
     // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
     const isQueueFull: boolean = sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize);
+    const isMixedQueueFull: boolean = sendQueue.checkMixedQueueSize(mergeQueueFrom, config.Group.SendQueueSize);
     const loginStatus = await session.bot.getLogin();
     const isBotOnline = loginStatus.status === 1;
     const atRegex = new RegExp(`<at (id="${session.bot.selfId}".*?|type="all".*?${isBotOnline ? '|type="here"' : ''}).*?/>`);
@@ -174,10 +177,13 @@ export function apply(ctx: Context, config: Config) {
     if (isQueueFull) {
       sendQueue.resetSendQueue(groupId, config.Group.SendQueueSize);
     }
+    if (isMixedQueueFull) {
+      ctx.logger.info("记忆槽位已满，超出的旧消息将被遗忘");
+    }
 
     if (!isTriggerCountReached && !(isAtMentioned && shouldReactToAt)) {
       if (config.Debug.DebugAsInfo)
-        ctx.logger.info(await sendQueue.getPrompt(groupId, config, session));
+        ctx.logger.info(await sendQueue.getPrompt(mergeQueueFrom, config, session));
       return next();
     }
 
@@ -204,7 +210,7 @@ export function apply(ctx: Context, config: Config) {
       session.guildName ? session.guildName : session.event.user?.name,
       session
     );
-    const chatData: string = await sendQueue.getPrompt(groupId, config, session);
+    const chatData: string = await sendQueue.getPrompt(mergeQueueFrom, config, session);
     const curAPI = status.getStatus();
     status.updateStatus(adapters.length);
 
@@ -229,6 +235,8 @@ export function apply(ctx: Context, config: Config) {
     const handledRes: {
       res: string;
       resNoTag: string;
+      replyTo: string;
+      quote: number;
       LLMResponse: any;
       usage?: any;
     } = await adapters[curAPI].handleResponse(
@@ -239,9 +247,20 @@ export function apply(ctx: Context, config: Config) {
     );
 
     const finalRes: string = handledRes.res;
+    let finalReplyTo: string = handledRes.replyTo;
+
+    if (sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom) === null) {
+      if (config.Debug.DebugAsInfo) {
+        ctx.logger.info(
+          `Quote message not found, using session_id.`
+        );
+      }
+    } else {
+      finalReplyTo = sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom);
+    }
 
     if (config.Debug.LogicRedirect.Enabled) {
-      const template = `回复于 ${groupId} 的消息已生成，来自 API ${curAPI}:
+      const template = `回复于 ${finalReplyTo} 的消息已生成，来自 API ${curAPI}:
 内容: ${(handledRes.LLMResponse.finReply ? handledRes.LLMResponse.finReply : handledRes.LLMResponse.reply)}
 ---
 逻辑: ${handledRes.LLMResponse.logic}
@@ -270,7 +289,7 @@ export function apply(ctx: Context, config: Config) {
     const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
 
     sendQueue.updateSendQueue(
-      groupId,
+      finalReplyTo,
       await getBotName(config, session),
       session.event.selfId,
       handledRes.resNoTag,
@@ -284,7 +303,7 @@ export function apply(ctx: Context, config: Config) {
     if (handledRes.LLMResponse.execute) {
       handledRes.LLMResponse.execute.forEach(async (command) => {
         try {
-          await session.sendQueued(h("execute", {}, command)); // 执行每个指令
+          await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)); // 执行每个指令
           ctx.logger.info(`已执行指令：${command}`);
         } catch (error) {
           ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`)
@@ -305,7 +324,11 @@ export function apply(ctx: Context, config: Config) {
         }
       });
       if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence); }
-      await session.sendQueued(sentence);
+
+      // 按照字数等待
+      const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
+      await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
+      await session.bot.sendMessage(finalReplyTo, sentence);
     }
   });
 }

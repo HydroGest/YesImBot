@@ -5,6 +5,7 @@ import { Config } from "../config";
 
 interface Response {
   status: "skip" | "success";
+  session_id: string;
   logic: string;
   reply: string;
   select: number;
@@ -158,6 +159,8 @@ export abstract class BaseAdapter {
   ): Promise<{
     res: string;
     resNoTag: string;
+    replyTo: string;
+    quote: number;
     LLMResponse: any;
     usage?: Usage;
   }> {
@@ -198,8 +201,9 @@ export abstract class BaseAdapter {
     // 正版回复：
     // {
     //   "status": "success", // "success" 或 "skip" (跳过回复)
+    //   "session_id": "123456789", // 要把finReply发送到的会话id
     //   "logic": "", // LLM思考过程
-    //   "select": -1, // 回复引用的消息id
+    //   "select": "-1", // 回复引用的消息id
     //   "reply": "", // 初版回复
     //   "check": "", // 检查初版回复是否符合 "消息生成条例" 过程中的检查逻辑。
     //   "finReply": "" // 最终版回复
@@ -291,6 +295,8 @@ export abstract class BaseAdapter {
     return {
       res: finalResponse,
       resNoTag: finalResponseNoTag,
+      replyTo: LLMResponse.session_id,
+      quote: LLMResponse.select,
       LLMResponse: LLMResponse,
       usage: usage,
     };

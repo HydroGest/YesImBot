@@ -34,11 +34,11 @@ export default {
     ],
   },
   Bot: {
-    NickorName: "用户昵称"
+    NickorName: "用户昵称",
+    WordsPerSecond: 2,
   },
   Debug: {
     DebugAsInfo: false,
-    DisableGroupFilter: true,
     AllowErrorFormat: true,
     UpdatePromptOnLoad: false,
   },
