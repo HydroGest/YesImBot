@@ -210,7 +210,7 @@ export function apply(ctx: Context, config: Config) {
         ]
       };
 
-      session.guildName = `与${session.bot.user.name}的私聊`;
+      session.guildName = `${session.bot.user.name}与${session.event.user.name}的私聊`;
     }
 
     if (config.Debug.DebugAsInfo)

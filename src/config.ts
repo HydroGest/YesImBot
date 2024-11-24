@@ -189,7 +189,7 @@ export const configSchema: any = Schema.object({
     Server: Schema.union(["百度AI开放平台", "自己搭建的服务", "另一个LLM"]).default("百度AI开放平台").description("图片查看器使用的服务提供商"),
     BaseURL: Schema.string()
       .default("http://127.0.0.1")
-      .description("另一个LLM或自己搭建的图片描述服务或另一个LLM的完整 URL"),
+      .description("自己搭建的图片描述服务或另一个LLM的完整 URL"),
     Model: Schema.string().default("gpt-4o-mini").description("使用另一个LLM时的模型名称"),
     RequestBody: Schema.string().description("自己搭建的图片描述服务需要的请求体。其中：`<url>`（包含尖括号）会被替换成消息中出现的图片的url；`<base64>`(包含尖括号)会被替换成图片的base64（自带`data:image/jpeg;base64,`头，无需另行添加）；`<question>`（包含尖括号）会被替换成此页面设置的针对输入图片的问题；`<apikey>`（包含尖括号）会被替换成此页面设置的图片描述服务可能需要的 API 密钥"),
     GetDescRegex: Schema.string().description("从自己搭建的图片描述服务提取所需信息的正则表达式。注意转义"),
