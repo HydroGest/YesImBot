@@ -22,4 +22,6 @@ yarn.lock
 *.mdt
 coverage
 data/logs
-data/.vector_cache/nomic-embed-text
+data/.vector_cache
+data/queue.json
+data/emojis.json

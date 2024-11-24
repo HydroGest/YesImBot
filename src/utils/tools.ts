@@ -34,7 +34,7 @@ export async function sendRequest(url: string, APIKey: string, requestBody: any,
 }
 
 
-// 缓存相关 考虑把它们放到一个单独的文件中
+// 缓存相关 考虑把它们放到一个单独的文件中 这样做基于md5的图片缓存的时候也可以用到
 function getCacheDir(): string {
   const cacheDir = path.join(__dirname, '../../data/.vector_cache');
   if (!fs.existsSync(cacheDir)) {
