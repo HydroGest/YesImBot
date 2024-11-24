@@ -82,6 +82,7 @@ export interface Config {
     BotGender: string;
     BotHabbits: string;
     BotBackground: string;
+    WordsPerSecond: number;
     CuteMode: boolean;
     BotSentencePostProcess: {
       replacethis: string;
@@ -94,7 +95,7 @@ export interface Config {
       Target?: string;
     };
     DebugAsInfo: boolean;
-    DisableGroupFilter: boolean;
+    FirsttoAll: boolean;
     UpdatePromptOnLoad: boolean;
     AllowErrorFormat: boolean;
   };
@@ -104,7 +105,8 @@ export const Config: Schema<Config> = Schema.object({
   Group: Schema.object({
     AllowedGroups: Schema.array(Schema.string())
       .required()
-      .description("允许的群聊"),
+      .role("table")
+      .description("记忆槽位。填入一个或多个群号，用半角逗号分隔。用\"private:\"指定私聊，用\"all\"指定所有群聊，用\"private:all\"指定所有私聊。同一个槽位的聊天将共用同一份记忆。如果多个槽位都包含同一群号，第一个包含该群号的槽位将被应用"),
     SendQueueSize: Schema.number()
       .default(20)
       .min(1)
@@ -371,6 +373,13 @@ export const Config: Schema<Config> = Schema.object({
     BotBackground: Schema.string()
       .default("高中女生")
       .description("Bot 的背景"),
+    WordsPerSecond: Schema.number()
+      .default(2)
+      .min(0.1)
+      .max(360)
+      .step(0.1)
+      .role("slider")
+      .description("Bot 的打字速度（每秒字数）"),
     BotSentencePostProcess: Schema.array(
       Schema.object({
         replacethis: Schema.string().description("需要替换的文本"),
@@ -403,9 +412,9 @@ export const Config: Schema<Config> = Schema.object({
     DebugAsInfo: Schema.boolean()
       .default(false)
       .description("在控制台显示 Debug 消息"),
-    DisableGroupFilter: Schema.boolean()
+    FirsttoAll: Schema.boolean()
       .default(false)
-      .description("禁用聊群筛选器，接收并回复所有群的消息"),
+      .description("记忆槽位的行为改为：如果多个槽位都包含同一群号，所有包含该群号的槽位都将被应用"),
     UpdatePromptOnLoad: Schema.boolean()
       .default(true)
       .description("每次启动时尝试更新 Prompt 文件"),
