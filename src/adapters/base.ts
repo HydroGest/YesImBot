@@ -6,9 +6,9 @@ import { Config } from "../config";
 interface Response {
   status: "skip" | "success";
   session_id: string | number;
+  nextReplyIn: string | number;
   logic: string;
   reply: string;
-  select: string | number;
   check: string;
   finReply: string;
   execute: Array<string>;
@@ -24,14 +24,21 @@ function correctInvalidFormat(str: string) {
    throw new Error("Not implemented");
 }
 
-function convertStringToNumber(value: string | number): number {
+function convertStringToNumber(value?: string | number ): number {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) {
+    return null;
+  }
   const num = typeof value === 'number' ? value : Number(value);
   if (isNaN(num)) {
     throw new Error(`Invalid number value: ${value}`);
   }
   return num;
 }
-function convertNumberToString(value: number | string): string {
+
+function convertNumberToString(value?: number | string): string {
+  if (value == null) {
+    return '';
+  }
   if (typeof value === 'string') {
     return value;
   }
@@ -175,6 +182,7 @@ export abstract class BaseAdapter {
     resNoTag: string;
     replyTo: string;
     quote: string;
+    nextTriggerCount: number;
     LLMResponse: any;
     usage?: Usage;
   }> {
@@ -216,11 +224,11 @@ export abstract class BaseAdapter {
     // {
     //   "status": "success", // "success" 或 "skip" (跳过回复)
     //   "session_id": "123456789", // 要把finReply发送到的会话id
+    //   "nextReplyIn": "2", // 由LLM决定的下一次回复的冷却条数
     //   "logic": "", // LLM思考过程
-    //   "select": "-1", // 回复引用的消息id
     //   "reply": "", // 初版回复
     //   "check": "", // 检查初版回复是否符合 "消息生成条例" 过程中的检查逻辑。
-    //   "finReply": "" // 最终版回复
+    //   "finReply": "" // 最终版回复，引用回复<quote id=\\"\\"/>由 LLM 生成，转义和双引号一定要带
     //   "execute":[] // 要运行的指令列表
     // }
     const jsonMatch = res.match(/{.*}/s);
@@ -260,14 +268,17 @@ export abstract class BaseAdapter {
       if (finalResponse === "" && !LLMResponse.execute?.length) throw new Error(`LLM provides unexpected response: ${res}`);
     }
 
-    // 复制一份finalResonse为finalResponseNoTag，作为添加到队列中的bot消息内容
-    let finalResponseNoTag = finalResponse;
+    // 从回复中提取 <quote> 标签，将其放在回复的最前面
+    const quoteMatch = finalResponse.match(/<quote\s+id=\\*["']?(\d+)\\*["']?\s*\/?>/);
+    if (quoteMatch) {
+      // 移除所有的 <quote> 标签
+      finalResponse = finalResponse.replace(/<quote\s+id=\\*["']?\d+\\*["']?\s*\/?>/g, '');
+      // 把第一个 <quote> 标签放在回复的最前面
+      finalResponse = h("quote", { id: quoteMatch[1] }) + finalResponse;
+    }
 
-    // 添加引用消息在finalResponse的开头
-    if (convertStringToNumber(LLMResponse.select) !== -1)
-      finalResponse = h("quote", {
-        id: convertNumberToString(LLMResponse.select),
-      }) + finalResponse;
+    // 复制一份finalResonse为finalResponseNoTag，作为添加到队列中的bot消息内容
+    let finalResponseNoTag = finalResponse; // 这里让finalResponseNoTag中包含<quote>标签，是故意的
 
     // 使用 groupMemberList 反转义 <at> 消息
     // const groupMemberList: { nick: string; user: { name: string; id: string } }[] =  groupMemberList.data;
@@ -310,7 +321,8 @@ export abstract class BaseAdapter {
       res: finalResponse,
       resNoTag: finalResponseNoTag,
       replyTo: convertNumberToString(LLMResponse.session_id),
-      quote: convertNumberToString(LLMResponse.select),
+      quote: quoteMatch ? quoteMatch[1] : '',
+      nextTriggerCount: convertStringToNumber(LLMResponse.nextReplyIn),
       LLMResponse: LLMResponse,
       usage: usage,
     };

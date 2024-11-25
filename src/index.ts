@@ -66,13 +66,15 @@ export function apply(ctx: Context, config: Config) {
 
   // 某些适配器无法在中间件中获取到手动发送的来自 BOT 的消息，但是如果适配器支持的话，可能重复处理 BOT 的消息，这点不知道怎么解决
   ctx.on('message', async (session) => {
+    const groupId: string = session.guildId ? session.guildId : `private:${session.userId}`;
+    await ensureGroupMemberList(session, groupId);
     // 把仙人顶号发送的消息也加入队列
     if (session.author?.id === session.bot.selfId && config.Debug.AddAllMsgtoQueue) {
       sendQueue.updateSendQueue(
         session.guildId,
         await getBotName(config, session),
         session.bot.selfId,
-        session.content,
+        addQuoteTag(session, session.content),
         session.messageId,
         config.Group.Filter,
         config.Group.TriggerCount,
@@ -98,7 +100,7 @@ export function apply(ctx: Context, config: Config) {
           msgDestination,
           await getMemberName(config, session, session.event.user.id),
           session.event.user.id,
-          userContent.content,
+          addQuoteTag(session, userContent.content),
           session.messageId,
           config.Group.Filter,
           config.Group.TriggerCount,
@@ -115,15 +117,14 @@ export function apply(ctx: Context, config: Config) {
           msgDestination,
           await getBotName(config, session),
           session.event.selfId,
-          msg,
-          0,
+          msg, // 此处无需添加引用Tag
+          (await session.bot.sendMessage(msgDestination, msg))[0], // 发送消息并获取消息ID
           config.Group.Filter,
           config.Group.TriggerCount,
           session.event.selfId
         );
       }
-
-      return msg;
+      return;
     });
 
   ctx.middleware(async (session: any, next: Next) => {
@@ -132,7 +133,7 @@ export function apply(ctx: Context, config: Config) {
     session.guildName = `${session.bot.user.name}与${session.event.user.name}的私聊`;
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(`New message received, guildId = ${groupId}`);
+      ctx.logger.info(`New message received, guildId = ${groupId}, content = ${session.content}`);
 
     if (!config.Group.AllowedGroups?.length) return next();
 
@@ -147,7 +148,7 @@ export function apply(ctx: Context, config: Config) {
       groupId,
       await getMemberName(config, session, session.event.user.id),
       session.event.user.id,
-      userContent.content,
+      addQuoteTag(session, userContent.content),
       session.messageId,
       config.Group.Filter,
       config.Group.TriggerCount,
@@ -166,7 +167,7 @@ export function apply(ctx: Context, config: Config) {
     const isBotOnline = loginStatus.status === 1;
     const atRegex = new RegExp(`<at (id="${session.bot.selfId}".*?|type="all".*?${isBotOnline ? '|type="here"' : ''}).*?/>`);
     const isAtMentioned = atRegex.test(session.content);
-    const isTriggerCountReached = sendQueue.checkTriggerCount(groupId, Random.int(config.Group.MinPopNum, config.Group.MaxPopNum), isAtMentioned);
+    const isTriggerCountReached = sendQueue.checkTriggerCount(groupId);
     const shouldReactToAt = Random.bool(config.Group.AtReactPossibility);
 
     // 如果消息队列满了，出队消息到config.Group.SendQueueSize
@@ -233,6 +234,7 @@ export function apply(ctx: Context, config: Config) {
       resNoTag: string;
       replyTo: string;
       quote: string;
+      nextTriggerCount: number;
       LLMResponse: any;
       usage?: any;
     } = await adapters[curAPI].handleResponse(
@@ -244,12 +246,29 @@ export function apply(ctx: Context, config: Config) {
 
     const finalRes: string = handledRes.res;
     let finalReplyTo: string = handledRes.replyTo;
+    const nextTriggerCountbyLLM: number = Math.max(
+      config.Group.MinPopNum,
+      Math.min(
+        handledRes.nextTriggerCount ?? config.Group.MinPopNum,
+        config.Group.MaxPopNum
+      )
+    );
+    const nextTriggerCountbyConfig: number = Random.int(config.Group.MinPopNum, config.Group.MaxPopNum + 1); // 双闭区间
 
-    if (sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom) === null) {
+    // 更新触发次数
+    sendQueue.resetTriggerCount(groupId, handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig);
+
+    if (sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom) == null) {
       if (config.Debug.DebugAsInfo) {
-        ctx.logger.info(
-          `Quote message not found, using session_id.`
-        );
+        if (handledRes.quote === "") {
+          ctx.logger.info(
+            `There's no quote message, using session_id.`
+          );
+        } else {
+          ctx.logger.info(
+            `Quote message not found, using session_id.`
+          );
+        }
       }
     } else {
       finalReplyTo = sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom);
@@ -264,14 +283,14 @@ export function apply(ctx: Context, config: Config) {
 指令：${handledRes.LLMResponse.execute ? handledRes.LLMResponse.execute : "无"}
 ---
 消耗: 输入 ${handledRes?.usage["prompt_tokens"]}, 输出 ${handledRes?.usage["completion_tokens"]}`;
-      await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template);
+      const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template))[0];
       if (config.Debug.AddAllMsgtoQueue) {
         sendQueue.updateSendQueue(
           config.Debug.LogicRedirect.Target,
           await getBotName(config, session),
           session.event.selfId,
           template,
-          0,
+          botMessageId,
           config.Group.Filter,
           config.Group.TriggerCount,
           session.event.selfId
@@ -297,31 +316,20 @@ export function apply(ctx: Context, config: Config) {
     const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
     const sentencesNoTag = handledRes.resNoTag.split(/(?<=[。?!？！])\s*/);
 
-    if (!config.Debug.WholetoSplit) {
-      sendQueue.updateSendQueue(
-        finalReplyTo,
-        await getBotName(config, session),
-        session.event.selfId,
-        handledRes.resNoTag,
-        0, // session.messageId，但是这里是机器人自己发的消息，所以设为0
-        config.Group.Filter,
-        config.Group.TriggerCount,
-        session.event.selfId
-      );
-    }
+
 
     // 如果 AI 使用了指令
     if (handledRes.LLMResponse.execute) {
       handledRes.LLMResponse.execute.forEach(async (command) => {
         try {
-          await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)); // 执行每个指令
+          const botMessageId = (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)))[0]; // 执行每个指令，获取返回的消息ID字符串数组
           if (config.Debug.AddAllMsgtoQueue) {
             sendQueue.updateSendQueue(
               finalReplyTo,
               await getBotName(config, session),
               session.event.selfId,
               h("execute", {}, command).toString(),
-              0,
+              botMessageId,
               config.Group.Filter,
               config.Group.TriggerCount,
               session.event.selfId
@@ -334,9 +342,9 @@ export function apply(ctx: Context, config: Config) {
       });
     }
 
-    let sentencesCopy = [...sentences];
-    while (sentencesCopy.length > 0) {
-      let sentence = sentencesCopy.shift();
+    let finalBotMsgId: string = "";
+    while (sentences.length > 0) {
+      let sentence = sentences.shift();
       let sentenceNoTag = sentencesNoTag.shift();
       if (!sentence) { continue; }
       config.Bot.BotSentencePostProcess.forEach(rule => {
@@ -354,19 +362,32 @@ export function apply(ctx: Context, config: Config) {
       // 按照字数等待
       const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
       await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
-      await session.bot.sendMessage(finalReplyTo, sentence);
-      if (config.Debug.WholetoSplit){
+      finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence))[0];
+      ctx.logger.info(`已发送消息：${finalBotMsgId}`);
+      if (config.Debug.WholetoSplit) {
         sendQueue.updateSendQueue(
           finalReplyTo,
           await getBotName(config, session),
           session.event.selfId,
           sentenceNoTag,
-          0,
+          finalBotMsgId,
           config.Group.Filter,
           config.Group.TriggerCount,
           session.event.selfId
         )
       }
+    }
+    if (!config.Debug.WholetoSplit) {
+      sendQueue.updateSendQueue(
+        finalReplyTo,
+        await getBotName(config, session),
+        session.event.selfId,
+        handledRes.resNoTag,
+        finalBotMsgId, // session.messageId，这里是机器人自己发的消息，设为最后一条消息的消息ID
+        config.Group.Filter,
+        config.Group.TriggerCount,
+        session.event.selfId
+      );
     }
   });
 }
@@ -434,4 +455,12 @@ function updateAdapters(APIList: Config["API"]["APIList"]): Adapter[] {
     ))
   }
   return adapters;
+}
+
+function addQuoteTag(session: Session, content: string): string {
+  if (session.event.message.quote) {
+    return `<quote id="${session.event.message.quote.id}"/>${content}`;
+  } else {
+    return content;
+  }
 }
