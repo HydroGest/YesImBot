@@ -89,7 +89,7 @@ export async function getBotName(config: Config, session: any): Promise<string> 
     default:
       return config.Bot.BotName;
     case "群昵称":
-      const groupMember = session.groupMemberList.data.find(
+      const groupMember = session.groupMemberList?.data.find(
         (member: any) => member.user.id === session.event.selfId
       );
       return groupMember ? groupMember.nick : config.Bot.BotName;

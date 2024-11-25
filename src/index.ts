@@ -64,6 +64,23 @@ export function apply(ctx: Context, config: Config) {
     );
   });
 
+  // 某些适配器无法在中间件中获取到手动发送的来自 BOT 的消息，但是如果适配器支持的话，可能重复处理 BOT 的消息，这点不知道怎么解决
+  ctx.on('message', async (session) => {
+    // 把仙人顶号发送的消息也加入队列
+    if (session.author?.id === session.bot.selfId && config.Debug.AddAllMsgtoQueue) {
+      sendQueue.updateSendQueue(
+        session.guildId,
+        await getBotName(config, session),
+        session.bot.selfId,
+        session.content,
+        session.messageId,
+        config.Group.Filter,
+        config.Group.TriggerCount,
+        session.bot.selfId
+      )
+    }
+  });
+
   ctx.command('清除记忆', '清除 BOT 对会话的记忆')
     .option('target', '-t <target> 指定要清除记忆的会话。使用 private:指定私聊会话', { authority: 3 })
     .usage('注意：如果使用 清除记忆 <target> 来清除记忆而不带-t参数，将会清除当前会话的记忆！')
@@ -72,12 +89,36 @@ export function apply(ctx: Context, config: Config) {
     .example('清除记忆 -t 987654321')
     .action(
       async ({ session, options }) => {
-        const clearGroupId: string = options.target || (session.guildId ? session.guildId : `private:${session.userId}`);
-        if (sendQueue.clearSendQueue(clearGroupId)) {
-          return (`已清除关于 ${clearGroupId} 的记忆`);
-        } else {
-          return (`未找到关于 ${clearGroupId} 的记忆`);
+
+        const msgDestination = session.guildId ? session.guildId : `private:${session.userId}`
+        const clearGroupId: string = options.target || msgDestination;
+        const userContent = await processUserContent(config, session);
+        if (config.Debug.AddAllMsgtoQueue) {
+          sendQueue.updateSendQueue(
+            msgDestination,
+            await getMemberName(config, session, session.event.user.id),
+            session.event.user.id,
+            userContent.content,
+            session.messageId,
+            config.Group.Filter,
+            config.Group.TriggerCount,
+            session.event.selfId
+          )
         }
+        const msg = sendQueue.clearSendQueue(clearGroupId) ? `已清除关于 ${clearGroupId} 的记忆` : `未找到关于 ${clearGroupId} 的记忆`;
+        if (config.Debug.AddAllMsgtoQueue) {
+          sendQueue.updateSendQueue(
+            msgDestination,
+            await getBotName(config, session),
+            session.event.selfId,
+            msg,
+            0,
+            config.Group.Filter,
+            config.Group.TriggerCount,
+            session.event.selfId
+          )
+        }
+        return msg;
       }
     );
 
@@ -236,7 +277,7 @@ export function apply(ctx: Context, config: Config) {
       res: string;
       resNoTag: string;
       replyTo: string;
-      quote: number;
+      quote: string;
       LLMResponse: any;
       usage?: any;
     } = await adapters[curAPI].handleResponse(
@@ -269,6 +310,18 @@ export function apply(ctx: Context, config: Config) {
 ---
 消耗: 输入 ${handledRes?.usage["prompt_tokens"]}, 输出 ${handledRes?.usage["completion_tokens"]}`;
       await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template);
+      if (config.Debug.AddAllMsgtoQueue) {
+        sendQueue.updateSendQueue(
+          config.Debug.LogicRedirect.Target,
+          await getBotName(config, session),
+          session.event.selfId,
+          template,
+          0,
+          config.Group.Filter,
+          config.Group.TriggerCount,
+          session.event.selfId
+        )
+      }
     }
 
     responseVerifier.loadConfig(config);
@@ -287,23 +340,38 @@ export function apply(ctx: Context, config: Config) {
     responseVerifier.setPreviousResponse(finalRes);
 
     const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
+    const sentencesNoTag = handledRes.resNoTag.split(/(?<=[。?!？！])\s*/);
 
-    sendQueue.updateSendQueue(
-      finalReplyTo,
-      await getBotName(config, session),
-      session.event.selfId,
-      handledRes.resNoTag,
-      0, // session.messageId，但是这里是机器人自己发的消息，所以设为0
-      config.Group.Filter,
-      config.Group.TriggerCount,
-      session.event.selfId
-    );
+    if (!config.Debug.WholetoSplit) {
+      sendQueue.updateSendQueue(
+        finalReplyTo,
+        await getBotName(config, session),
+        session.event.selfId,
+        handledRes.resNoTag,
+        0, // session.messageId，但是这里是机器人自己发的消息，所以设为0
+        config.Group.Filter,
+        config.Group.TriggerCount,
+        session.event.selfId
+      );
+    }
 
     // 如果 AI 使用了指令
     if (handledRes.LLMResponse.execute) {
       handledRes.LLMResponse.execute.forEach(async (command) => {
         try {
           await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)); // 执行每个指令
+          if (config.Debug.AddAllMsgtoQueue) {
+            sendQueue.updateSendQueue(
+              finalReplyTo,
+              await getBotName(config, session),
+              session.event.selfId,
+              h("execute", {}, command).toString(),
+              0,
+              config.Group.Filter,
+              config.Group.TriggerCount,
+              session.event.selfId
+            )
+          }
           ctx.logger.info(`已执行指令：${command}`);
         } catch (error) {
           ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`)
@@ -314,13 +382,16 @@ export function apply(ctx: Context, config: Config) {
     let sentencesCopy = [...sentences];
     while (sentencesCopy.length > 0) {
       let sentence = sentencesCopy.shift();
+      let sentenceNoTag = sentencesNoTag.shift();
       if (!sentence) { continue; }
       config.Bot.BotSentencePostProcess.forEach(rule => {
         const regex = new RegExp(rule.replacethis, "g");
         if (!rule.tothis) {
           sentence = sentence.replace(regex, "");
+          sentenceNoTag = sentenceNoTag.replace(regex, "");
         } else {
           sentence = sentence.replace(regex, rule.tothis);
+          sentenceNoTag = sentenceNoTag.replace(regex, rule.tothis);
         }
       });
       if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence); }
@@ -329,6 +400,18 @@ export function apply(ctx: Context, config: Config) {
       const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
       await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
       await session.bot.sendMessage(finalReplyTo, sentence);
+      if (config.Debug.WholetoSplit){
+        sendQueue.updateSendQueue(
+          finalReplyTo,
+          await getBotName(config, session),
+          session.event.selfId,
+          sentenceNoTag,
+          0,
+          config.Group.Filter,
+          config.Group.TriggerCount,
+          session.event.selfId
+        )
+      }
     }
   });
 }
