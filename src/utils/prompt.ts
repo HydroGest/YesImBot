@@ -114,7 +114,7 @@ export async function getMemberName(config: Config, session: any, byID?: string)
     return await getBotName(config, session);
   }
 
-  const member = session.groupMemberList.data.find(
+  const member = session.groupMemberList?.data.find(
     (member: any) => member.user.id === (byID || session.event.user.id)
   );
 
