@@ -363,7 +363,6 @@ export function apply(ctx: Context, config: Config) {
       const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
       await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
       finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence))[0];
-      ctx.logger.info(`已发送消息：${finalBotMsgId}`);
       if (config.Debug.WholetoSplit) {
         sendQueue.updateSendQueue(
           finalReplyTo,
