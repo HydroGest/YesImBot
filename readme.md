@@ -42,21 +42,24 @@ YesImBot / Athena 是一个 [Koishi](https://koishi.chat/zh-CN/) 插件，旨在
 下面来讲解配置文件的用法:
 
 ```yaml
-# 群聊设置
+# 会话设置
 Group:
-    # 允许机器人说话的群聊
+    # 记忆槽位，每一个记忆槽位都可以填入一个或多个会话id（群号或private:私聊账号），在一个槽位中的会话id会共享上下文
     AllowedGroups:
-        - 114514
-        - 1919810
+        - 114514 # 收到来自114514的消息时，优先使用这个槽位，意味着bot在此群中无其他会话的记忆
+        - 114514, private:1919810 # 收到来自1919810的私聊消息时，优先使用这个槽位，意味着bot此时拥有两个会话的记忆
+        - private:1919810, 12085141, 2551991321520
     # 规定机器人能阅读的上下文数量
-    SendQueueSize: 7
-    # 以下是每次机器人发送消息后的冷却条数取随机数的区间。
+    SendQueueSize: 100
+    # 机器人在每个会话开始发言所需的消息数量，即首次触发条数
+    TriggerCount: 2
+    # 以下是每次机器人发送消息后的冷却条数取随机数的区间
     # 最大冷却条数
     MaxPopNum: 4
     # 最小冷却条数
     MinPopNum: 2
     # 每次收到 @ 消息，机器人马上开始做出回复的概率。 取值范围：[0, 1]
-    AtReactPossibility: 0.50
+    AtReactPossibility: 0.50 # 以前这里写错成了 AtReactPossiblilty，现在已经修正了
     # 过滤的消息。这些包含这些关键词的消息将不会加入到上下文。
     # 这主要是为了防止 Bot 遭受提示词注入攻击。
     Filter:
@@ -87,7 +90,7 @@ Bot:
     BotName: 胡梨
     # 原神模式（什
     CuteMode: true
-    # Prompt 文件的下载链接
+    # Prompt 文件的下载链接或文件名。如果下载失败，请手动下载文件并放入 koishi.yml 所在目录
     # 非常重要! 如果你不理解这是什么，请不要修改
     PromptFileUrl:
         - "https://raw.githubusercontent.com/HydroGest/promptHosting/main/src/prompt.mdt" # 一代 Prompt，所有 AI 模型适用
@@ -105,9 +108,19 @@ Bot:
     BotHabbits: 辩论
     # 机器人的背景
     BotBackground: 校辩论队选手
+    ... # 其他应用于prompt的角色设定。如果这些配置项没有被写入prompt文件，那么这些配置项将不会体现作用
+    # 机器人消息后处理，用于在机器人发送消息前的最后一个关头替换消息中的内容，支持正则表达式
+    BotSentencePostProcess:
+        - replacethis: 。$
+          tothis: ''
+        - replacethis: 哈哈哈哈
+          tothis: 嘎哈哈哈
+    # 机器人的打字速度
+    WordsPerSecond: 30 # 30 字每秒
+... # 其他配置项参见文档站
 ```
 
-然后，将机器人拉到对应的群组中。机器人首先会潜水一段时间，这取决于 `Group.SendQueueSize` 的配置。当新消息条数达到这个值之后，Bot 就要开始参与讨论了（这也非常还原真实人类的情况，不是吗）。
+然后，将机器人拉到对应的群组中。机器人首先会潜水一段时间，这取决于 `Group.TriggerCount` 的配置。当新消息条数达到这个值之后，Bot 就要开始参与讨论了（这也非常还原真实人类的情况，不是吗）。
 
 > [!TIP]
 > 如果你认为 Bot 太活跃了，你也可以将 `Group.MinPopNum` 数值调高。
@@ -119,6 +132,73 @@ Bot:
 
 > [!NOTE]
 > 经过测试, Claude 3.5 模型在此场景下表现最佳。
+
+## 📃 自定义系统提示词
+将prompt.mdt文件下载到本地后，如果你觉得我们写得不好，或者是有自己新奇的想法，你可能会想要自定义这部分内容。接下来我们就来教你如何这么做。
+
+首先，你需要在插件的配置中关闭 `每次启动时尝试更新 Prompt 文件` 这个选项，它在配置页面最下面的调试工具配置项中。之后，你可以在koishi的资源管理器中找到prompt.mdt这个文件。你可以在koishi自带的编辑器中自由地修改这个文件，不过下面有几点你需要注意：
+
+- 某些字段会被替换，下面是所有会被替换的字段：
+```
+${config.Bot.BotName} -> 机器人的名字
+${config.Bot.WhoAmI} -> 机器人的自我认知
+${config.Bot.BotHometown} -> 机器人的家乡
+${config.Bot.BotYearold} -> 机器人的年龄
+${config.Bot.BotPersonality} -> 机器人的性格
+${config.Bot.BotGender} -> 机器人的性别
+${config.Bot.BotHabbits} -> 机器人的习惯
+${config.Bot.BotBackground} -> 机器人的背景
+${config.Bot.CuteMode} -> 开启|关闭
+
+${curYear} -> 当前年份 # 2024
+${curMonth} -> 当前月份 # 11
+${curDate} -> 当前日期 # 25
+${curHour} -> 当前小时 # 10
+${curMinute} -> 当前分钟 # 30
+${curSecond} -> 当前秒数 # 15
+
+${curGroupName} -> 触发此次调用的消息所在会话的名字。如果是私聊，则为“bot与xxx的私聊”
+
+<img src="https://xxxxx.jpg base64="xx_xxxx"> -> 将交由图片查看器处理的图片 # 没想到吧系统提示词里也可以插图片
+```
+- 当前，消息队列呈现给 LLM 的格式是这样的：
+```
+[
+  {
+    time: "",  // 时间戳，格式为yyyy/mm/dd/hh/min/sec
+    session_id: "",  // 此消息所在的会话id，示例："123456789"，"private:9876543210"
+    id: "",  // 消息id，bot在需要引用消息时，用它来确定在select中填写的值
+    author: "",  // 消息发送者的名字
+    author_id: "",  // 消息发送者的id
+    msg: ""  // 消息本体
+  },
+  {
+    time: "",
+    session_id: "",
+    id: "",
+    author: "",
+    author_id: "",
+    msg: ""
+  },
+  ...
+]
+```
+- 当前，Athena 希望 LLM 返回的格式是这样的：
+```
+{
+      "status": "success", // "success" 或 "skip" (跳过回复)
+      "session_id": "123456789", // 要把finReply发送到的会话id
+      "logic": "", // LLM思考过程
+      "select": "-1", // 回复引用的消息id
+      "reply": "", // 初版回复
+      "check": "", // 检查初版回复是否符合 "消息生成条例" 过程中的检查逻辑。
+      "finReply": "", // 最终版回复
+      "execute":[] // 要运行的指令列表
+}
+```
+
+> [!NOTE]
+> 自己修改prompt时，请确保 LLM 的回复符合要求的JSON格式。~~但缺少某些条目好像也没关系？Σ(っ °Д °;)っ~~
 
 ## 🌼 推荐的 API 提供商
 
@@ -136,10 +216,13 @@ Bot:
 我们的终极目标是——即使哪一天你的账号接入了 Athena，群友也不能发现任何端倪——我们一切的改进都是朝这方面努力的。
 
 - [x] At 消息识别
-- [ ] 表情发送
+- [x] 表情发送
+- [x] 图片多模态与基于图像识别的伪多模态
 - [ ] 转发消息拾取
-- [ ] TTS 文字转语音
-- [ ] OCR 图像识别
+- [ ] TTS/STT 文字转语音
+- [ ] RAG 记忆库
+- [ ] 读取文件
+- [ ] 工具调用
 
 ## 💫 贡献者
 
