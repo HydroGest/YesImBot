@@ -64,76 +64,72 @@ export function apply(ctx: Context, config: Config) {
     );
   });
 
+  // 某些适配器无法在中间件中获取到手动发送的来自 BOT 的消息，但是如果适配器支持的话，可能重复处理 BOT 的消息，这点不知道怎么解决
+  ctx.on('message', async (session) => {
+    // 把仙人顶号发送的消息也加入队列
+    if (session.author?.id === session.bot.selfId && config.Debug.AddAllMsgtoQueue) {
+      sendQueue.updateSendQueue(
+        session.guildId,
+        await getBotName(config, session),
+        session.bot.selfId,
+        session.content,
+        session.messageId,
+        config.Group.Filter,
+        config.Group.TriggerCount,
+        session.bot.selfId
+      )
+    }
+  });
+
   ctx.command('清除记忆', '清除 BOT 对会话的记忆')
     .option('target', '-t <target> 指定要清除记忆的会话。使用 private:指定私聊会话', { authority: 3 })
     .usage('注意：如果使用 清除记忆 <target> 来清除记忆而不带-t参数，将会清除当前会话的记忆！')
     .example('清除记忆')
     .example('清除记忆 -t private:1234567890')
     .example('清除记忆 -t 987654321')
-    .action(
-      async ({ session, options }) => {
-        const clearGroupId: string = options.target || (session.guildId ? session.guildId : `private:${session.userId}`);
-        if (sendQueue.clearSendQueue(clearGroupId)) {
-          return (`已清除关于 ${clearGroupId} 的记忆`);
-        } else {
-          return (`未找到关于 ${clearGroupId} 的记忆`);
-        }
+    .action(async ({ session, options }) => {
+      const msgDestination = session.guildId || `private:${session.userId}`;
+      const clearGroupId = options.target || msgDestination;
+      const userContent = await processUserContent(config, session);
+
+      if (config.Debug.AddAllMsgtoQueue) {
+        await ensureGroupMemberList(session, msgDestination);
+        sendQueue.updateSendQueue(
+          msgDestination,
+          await getMemberName(config, session, session.event.user.id),
+          session.event.user.id,
+          userContent.content,
+          session.messageId,
+          config.Group.Filter,
+          config.Group.TriggerCount,
+          session.event.selfId
+        );
       }
-    );
+
+      const msg = sendQueue.clearSendQueue(clearGroupId)
+        ? `已清除关于 ${clearGroupId} 的记忆`
+        : `未找到关于 ${clearGroupId} 的记忆`;
+
+      if (config.Debug.AddAllMsgtoQueue) {
+        sendQueue.updateSendQueue(
+          msgDestination,
+          await getBotName(config, session),
+          session.event.selfId,
+          msg,
+          0,
+          config.Group.Filter,
+          config.Group.TriggerCount,
+          session.event.selfId
+        );
+      }
+
+      return msg;
+    });
 
   ctx.middleware(async (session: any, next: Next) => {
     const groupId: string = session.guildId ? session.guildId : `private:${session.userId}`;
-    const isPrivateChat = groupId.startsWith("private:");
-
-    if (!session.groupMemberList && !isPrivateChat) {
-      session.groupMemberList = await session.bot.getGuildMemberList(session.guildId);
-      session.groupMemberList.data.forEach(member => {
-        // 沙盒获取到的 member 数据不一样
-        if (member.userId === member.username && !member.user) {
-          member.user = {
-            id: member.userId,
-            name: member.username,
-            userId: member.userId,
-          };
-          member.nick = member.username;
-          member.roles = ['member'];
-        }
-        if (!member.nick) {
-          member.nick = member.user.name || member.user.username;
-        }
-      });
-    } else if (isPrivateChat) {
-      session.groupMemberList = {
-        data: [
-          {
-            user:
-            {
-              id: `${session.event.user.id}`,
-              name: `${session.event.user.name}`,
-              userId: `${session.event.user.id}`,
-              avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.user.id}&spec=640`,
-              username: `${session.event.user.name}`
-            },
-            nick: `${session.event.user.name}`,
-            roles: ['member']
-          },
-          {
-            user:
-            {
-              id: `${session.event.selfId}`,
-              name: `${session.bot.user.name}`,
-              userId: `${session.event.selfId}`,
-              avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.selfId}&spec=640`,
-              username: `${session.bot.user.name}`
-            },
-            nick: `${session.bot.user.name}`,
-            roles: ['member']
-          }
-        ]
-      };
-
-      session.guildName = `${session.bot.user.name}与${session.event.user.name}的私聊`;
-    }
+    await ensureGroupMemberList(session, groupId);
+    session.guildName = `${session.bot.user.name}与${session.event.user.name}的私聊`;
 
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(`New message received, guildId = ${groupId}`);
@@ -236,7 +232,7 @@ export function apply(ctx: Context, config: Config) {
       res: string;
       resNoTag: string;
       replyTo: string;
-      quote: number;
+      quote: string;
       LLMResponse: any;
       usage?: any;
     } = await adapters[curAPI].handleResponse(
@@ -269,6 +265,18 @@ export function apply(ctx: Context, config: Config) {
 ---
 消耗: 输入 ${handledRes?.usage["prompt_tokens"]}, 输出 ${handledRes?.usage["completion_tokens"]}`;
       await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template);
+      if (config.Debug.AddAllMsgtoQueue) {
+        sendQueue.updateSendQueue(
+          config.Debug.LogicRedirect.Target,
+          await getBotName(config, session),
+          session.event.selfId,
+          template,
+          0,
+          config.Group.Filter,
+          config.Group.TriggerCount,
+          session.event.selfId
+        )
+      }
     }
 
     responseVerifier.loadConfig(config);
@@ -287,23 +295,38 @@ export function apply(ctx: Context, config: Config) {
     responseVerifier.setPreviousResponse(finalRes);
 
     const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
+    const sentencesNoTag = handledRes.resNoTag.split(/(?<=[。?!？！])\s*/);
 
-    sendQueue.updateSendQueue(
-      finalReplyTo,
-      await getBotName(config, session),
-      session.event.selfId,
-      handledRes.resNoTag,
-      0, // session.messageId，但是这里是机器人自己发的消息，所以设为0
-      config.Group.Filter,
-      config.Group.TriggerCount,
-      session.event.selfId
-    );
+    if (!config.Debug.WholetoSplit) {
+      sendQueue.updateSendQueue(
+        finalReplyTo,
+        await getBotName(config, session),
+        session.event.selfId,
+        handledRes.resNoTag,
+        0, // session.messageId，但是这里是机器人自己发的消息，所以设为0
+        config.Group.Filter,
+        config.Group.TriggerCount,
+        session.event.selfId
+      );
+    }
 
     // 如果 AI 使用了指令
     if (handledRes.LLMResponse.execute) {
       handledRes.LLMResponse.execute.forEach(async (command) => {
         try {
           await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)); // 执行每个指令
+          if (config.Debug.AddAllMsgtoQueue) {
+            sendQueue.updateSendQueue(
+              finalReplyTo,
+              await getBotName(config, session),
+              session.event.selfId,
+              h("execute", {}, command).toString(),
+              0,
+              config.Group.Filter,
+              config.Group.TriggerCount,
+              session.event.selfId
+            )
+          }
           ctx.logger.info(`已执行指令：${command}`);
         } catch (error) {
           ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`)
@@ -314,13 +337,16 @@ export function apply(ctx: Context, config: Config) {
     let sentencesCopy = [...sentences];
     while (sentencesCopy.length > 0) {
       let sentence = sentencesCopy.shift();
+      let sentenceNoTag = sentencesNoTag.shift();
       if (!sentence) { continue; }
       config.Bot.BotSentencePostProcess.forEach(rule => {
         const regex = new RegExp(rule.replacethis, "g");
         if (!rule.tothis) {
           sentence = sentence.replace(regex, "");
+          sentenceNoTag = sentenceNoTag.replace(regex, "");
         } else {
           sentence = sentence.replace(regex, rule.tothis);
+          sentenceNoTag = sentenceNoTag.replace(regex, rule.tothis);
         }
       });
       if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence); }
@@ -329,8 +355,71 @@ export function apply(ctx: Context, config: Config) {
       const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
       await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
       await session.bot.sendMessage(finalReplyTo, sentence);
+      if (config.Debug.WholetoSplit){
+        sendQueue.updateSendQueue(
+          finalReplyTo,
+          await getBotName(config, session),
+          session.event.selfId,
+          sentenceNoTag,
+          0,
+          config.Group.Filter,
+          config.Group.TriggerCount,
+          session.event.selfId
+        )
+      }
     }
   });
+}
+
+async function ensureGroupMemberList(session: any, groupId?: string) {
+  const isPrivateChat = groupId.startsWith("private:");
+  if (!session.groupMemberList && !isPrivateChat) {
+    session.groupMemberList = await session.bot.getGuildMemberList(session.guildId);
+    session.groupMemberList.data.forEach(member => {
+      // 沙盒获取到的 member 数据不一样
+      if (member.userId === member.username && !member.user) {
+        member.user = {
+          id: member.userId,
+          name: member.username,
+          userId: member.userId,
+        };
+        member.nick = member.username;
+        member.roles = ['member'];
+      }
+      if (!member.nick) {
+        member.nick = member.user.name || member.user.username;
+      }
+    });
+  } else if (isPrivateChat) {
+    session.groupMemberList = {
+      data: [
+        {
+          user:
+          {
+            id: `${session.event.user.id}`,
+            name: `${session.event.user.name}`,
+            userId: `${session.event.user.id}`,
+            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.user.id}&spec=640`,
+            username: `${session.event.user.name}`
+          },
+          nick: `${session.event.user.name}`,
+          roles: ['member']
+        },
+        {
+          user:
+          {
+            id: `${session.event.selfId}`,
+            name: `${session.bot.user.name}`,
+            userId: `${session.event.selfId}`,
+            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.selfId}&spec=640`,
+            username: `${session.bot.user.name}`
+          },
+          nick: `${session.bot.user.name}`,
+          roles: ['member']
+        }
+      ]
+    };
+  }
 }
 
 function updateAdapters(APIList: Config["API"]["APIList"]): Adapter[] {

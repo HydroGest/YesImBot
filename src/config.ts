@@ -96,6 +96,8 @@ export interface Config {
     };
     DebugAsInfo: boolean;
     FirsttoAll: boolean;
+    AddAllMsgtoQueue: boolean;
+    WholetoSplit: boolean;
     UpdatePromptOnLoad: boolean;
     AllowErrorFormat: boolean;
   };
@@ -415,6 +417,12 @@ export const Config: Schema<Config> = Schema.object({
     FirsttoAll: Schema.boolean()
       .default(false)
       .description("记忆槽位的行为改为：如果多个槽位都包含同一群号，所有包含该群号的槽位都将被应用"),
+    AddAllMsgtoQueue: Schema.boolean()
+      .default(false)
+      .description("将所有消息添加到消息队列，即使它们不是由 LLM 生成的"),
+    WholetoSplit: Schema.boolean()
+      .default(false)
+      .description("BOT的消息是否按照实际的分条存入消息队列，关闭表示一次调用API的消息在消息队列中会呈现为一条，开启表示按照实际发送的分条存入消息队列"),
     UpdatePromptOnLoad: Schema.boolean()
       .default(true)
       .description("每次启动时尝试更新 Prompt 文件"),

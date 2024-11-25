@@ -5,10 +5,10 @@ import { Config } from "../config";
 
 interface Response {
   status: "skip" | "success";
-  session_id: string;
+  session_id: string | number;
   logic: string;
   reply: string;
-  select: number;
+  select: string | number;
   check: string;
   finReply: string;
   execute: Array<string>;
@@ -22,6 +22,20 @@ interface Usage {
 
 function correctInvalidFormat(str: string) {
    throw new Error("Not implemented");
+}
+
+function convertStringToNumber(value: string | number): number {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (isNaN(num)) {
+    throw new Error(`Invalid number value: ${value}`);
+  }
+  return num;
+}
+function convertNumberToString(value: number | string): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  return value.toString();
 }
 
 export abstract class BaseAdapter {
@@ -160,7 +174,7 @@ export abstract class BaseAdapter {
     res: string;
     resNoTag: string;
     replyTo: string;
-    quote: number;
+    quote: string;
     LLMResponse: any;
     usage?: Usage;
   }> {
@@ -250,9 +264,9 @@ export abstract class BaseAdapter {
     let finalResponseNoTag = finalResponse;
 
     // 添加引用消息在finalResponse的开头
-    if (~LLMResponse.select)
+    if (convertStringToNumber(LLMResponse.select) !== -1)
       finalResponse = h("quote", {
-        id: LLMResponse.select,
+        id: convertNumberToString(LLMResponse.select),
       }) + finalResponse;
 
     // 使用 groupMemberList 反转义 <at> 消息
@@ -295,8 +309,8 @@ export abstract class BaseAdapter {
     return {
       res: finalResponse,
       resNoTag: finalResponseNoTag,
-      replyTo: LLMResponse.session_id,
-      quote: LLMResponse.select,
+      replyTo: convertNumberToString(LLMResponse.session_id),
+      quote: convertNumberToString(LLMResponse.select),
       LLMResponse: LLMResponse,
       usage: usage,
     };
