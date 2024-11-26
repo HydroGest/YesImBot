@@ -53,7 +53,7 @@ Group:
     SendQueueSize: 100
     # 机器人在每个会话开始发言所需的消息数量，即首次触发条数
     TriggerCount: 2
-    # 以下是每次机器人发送消息后的冷却条数取随机数的区间
+    # 以下是每次机器人发送消息后的冷却条数由LLM确定或取随机数的区间
     # 最大冷却条数
     MaxPopNum: 4
     # 最小冷却条数
@@ -188,11 +188,11 @@ ${curGroupName} -> 触发此次调用的消息所在会话的名字。如果是�
 {
       "status": "success", // "success" 或 "skip" (跳过回复)
       "session_id": "123456789", // 要把finReply发送到的会话id
+      "nextReplyIn": 2, // 下次回复的冷却条数，让LLM参与控制发言频率
       "logic": "", // LLM思考过程
-      "select": "-1", // 回复引用的消息id
       "reply": "", // 初版回复
       "check": "", // 检查初版回复是否符合 "消息生成条例" 过程中的检查逻辑。
-      "finReply": "", // 最终版回复
+      "finReply": "", // 最终版回复，让LLM在开头添加<quote id=""/>来指定引用回复的消息id
       "execute":[] // 要运行的指令列表
 }
 ```

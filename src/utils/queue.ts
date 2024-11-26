@@ -154,21 +154,26 @@ export class SendQueue {
     return totalLength >= size;
   }
 
-  // 检查与重置触发计数
-  checkTriggerCount(group: string, nextTriggerCount: number, isAtMentioned: boolean): boolean {
+  // 检查触发计数
+  checkTriggerCount(group: string): boolean {
     if (this.triggerCountMap.has(group)) {
       const count = this.triggerCountMap.get(group);
       console.log(`距离下一次触发还有: ${count} 条消息`);
       if (count <= 0) {
-        this.triggerCountMap.set(group, nextTriggerCount);
-        this.saveToFile();
         return true;
       }
-      if (isAtMentioned) {
-        this.triggerCountMap.set(group, nextTriggerCount);
-        this.saveToFile();
-      }
       return false;
+    }
+    return false;
+  }
+
+  // 重置触发计数
+  resetTriggerCount(group: string, nextTriggerCount: number):boolean {
+    if (this.triggerCountMap.has(group)) {
+      this.triggerCountMap.set(group, nextTriggerCount);
+      this.saveToFile();
+      console.log(`已设置下一次触发计数为 ${nextTriggerCount}`);
+      return true;
     }
     return false;
   }

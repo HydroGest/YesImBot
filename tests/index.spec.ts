@@ -126,7 +126,7 @@ class Test {
   }
 
   test() {
-    
+
     // 依次测试每个适配器, 保证能正确处理 ai 消息
     it("适配器解析", async () => {
       await this.client.shouldReply(`<at id="${this.client.bot.selfId}" name="" /> 你好`);
@@ -209,7 +209,7 @@ class Test {
       const content = JSON.stringify({
         "status": "success",
         "logic": "",
-        "select": -1,
+        "nextReplyIn": "",
         "reply": "",
         "check": "", //
         "finReply": "",
