@@ -207,9 +207,12 @@ ${curGroupName} -> 触发此次调用的消息所在会话的名字。如果是�
 - [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r)
 
 ## ✨ 效果
-
-![](https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/screenshot-1.png)
+<details>
+  <summary>截图</summary>
+  
+  ![](https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/screenshot-1.png)
 ![](https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/screenshot-2.png)
+</details>
 
 ## 🍧 TODO
 
@@ -233,3 +236,7 @@ ${curGroupName} -> 触发此次调用的消息所在会话的名字。如果是�
 ## 💡反馈
 
 欢迎发布 issue，或是直接加入 Athena 官方交流 & 测试群：[857518324](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=k3O5_1kNFJMERGxBOj1ci43jHvLvfru9&authKey=TkOxmhIa6kEQxULtJ0oMVU9FxoY2XNiA%2B7bQ4K%2FNx5%2F8C8ToakYZeDnQjL%2B31Rx%2B&noverify=0&group_code=857518324)，我们随时欢迎你的来访！
+
+## ⭐Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Hydrogest/Yesimbot&type=Date)](https://star-history.com/#Hydrogest/Yesimbot&Date)
