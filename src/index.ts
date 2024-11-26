@@ -65,20 +65,20 @@ export function apply(ctx: Context, config: Config) {
   });
 
   // 某些适配器无法在中间件中获取到手动发送的来自 BOT 的消息，但是如果适配器支持的话，可能重复处理 BOT 的消息，这点不知道怎么解决
-  ctx.on('message', async (session) => {
-    const groupId: string = session.guildId ? session.guildId : `private:${session.userId}`;
+  ctx.on('message-created', async (session) => {
+    const groupId: string = session.guildId || session.channelId;
     await ensureGroupMemberList(session, groupId);
     // 把仙人顶号发送的消息也加入队列
-    if (session.author?.id === session.bot.selfId && config.Debug.AddAllMsgtoQueue) {
+    if (session.userId == session.selfId && config.Debug.AddAllMsgtoQueue) {
       sendQueue.updateSendQueue(
-        session.guildId,
+        groupId,
         await getBotName(config, session),
-        session.bot.selfId,
+        session.selfId,
         addQuoteTag(session, session.content),
         session.messageId,
         config.Group.Filter,
         config.Group.TriggerCount,
-        session.bot.selfId
+        session.selfId
       )
     }
   });
@@ -90,7 +90,7 @@ export function apply(ctx: Context, config: Config) {
     .example('清除记忆 -t private:1234567890')
     .example('清除记忆 -t 987654321')
     .action(async ({ session, options }) => {
-      const msgDestination = session.guildId || `private:${session.userId}`;
+      const msgDestination = session.guildId || session.channelId;
       const clearGroupId = options.target || msgDestination;
       const userContent = await processUserContent(config, session);
 
@@ -128,7 +128,7 @@ export function apply(ctx: Context, config: Config) {
     });
 
   ctx.middleware(async (session: any, next: Next) => {
-    const groupId: string = session.guildId ? session.guildId : `private:${session.userId}`;
+    const groupId: string = session.guildId || session.channelId;
     await ensureGroupMemberList(session, groupId);
     session.guildName = `${session.bot.user.name}与${session.event.user.name}的私聊`;
 
@@ -258,20 +258,17 @@ export function apply(ctx: Context, config: Config) {
     // 更新触发次数
     sendQueue.resetTriggerCount(groupId, handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig);
 
-    if (sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom) == null) {
+    const quoteGroup = sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom);
+    if (quoteGroup == null) {
       if (config.Debug.DebugAsInfo) {
-        if (handledRes.quote === "") {
-          ctx.logger.info(
-            `There's no quote message, using session_id.`
-          );
-        } else {
-          ctx.logger.info(
-            `Quote message not found, using session_id.`
-          );
-        }
+        ctx.logger.info(
+          handledRes.quote === ''
+            ? "There's no quote message, using session_id."
+            : "Quote message not found, using session_id."
+        );
       }
     } else {
-      finalReplyTo = sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom);
+      finalReplyTo = quoteGroup;
     }
 
     if (config.Debug.LogicRedirect.Enabled) {
