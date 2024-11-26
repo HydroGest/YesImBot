@@ -203,6 +203,9 @@ export class SendQueue {
 
   // 根据消息id和群号字符串集合查找消息所在会话
   findGroupByMessageId(messageId: string, groups: Set<string>): string | null {
+    if (messageId.trim() === '') {
+      return null;
+    }
     for (const group of groups) {
       if (this.sendQueueMap.has(group)) {
         const queue = this.sendQueueMap.get(group);
