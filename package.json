@@ -1,7 +1,7 @@
 {
     "name": "koishi-plugin-yesimbot",
     "description": "Yes! I'm Bot! 机械壳，人类心",
-    "version": "1.5.1",
+    "version": "1.7.0",
     "main": "lib/index.js",
     "typings": "lib/index.d.ts",
     "homepage": "https://github.com/HydroGest/YesImBot",
@@ -31,7 +31,8 @@
         "koishi": "^4.17.9"
     },
     "dependencies": {
-        "axios": "^1.7.7"
+        "axios": "^1.7.7",
+        "json5": "^2.2.3"
     },
     "koishi": {
         "description": {
