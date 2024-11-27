@@ -20,10 +20,6 @@ interface Usage {
   total_tokens: number;
 }
 
-function correctInvalidFormat(str: string) {
-  throw new Error("Not implemented");
-}
-
 function escapeUnicodeCharacters(str: string) {
    return str.replace(/[\u0080-\uffff]/g, function(ch) {
      return "\\u" + ("0000" + ch.charCodeAt(0).toString(16)).slice(-4);
