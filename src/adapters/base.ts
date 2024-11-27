@@ -287,9 +287,10 @@ export abstract class BaseAdapter {
     if (quoteMatch) {
       // 移除所有的 <quote> 标签
       finalResponse = finalResponse.replace(/<quote\s+id=\\*["']?\d+\\*["']?\s*\/?>/g, '');
-      finalResponseNoTag = finalResponse.replace(/<quote\s+id=\\*["']?\d+\\*["']?\s*\/?>/g, `[引用回复: ${quoteMatch[1]}]`);
+      finalResponseNoTag = finalResponse;
       // 把第一个 <quote> 标签放在回复的最前面
       finalResponse = h("quote", { id: quoteMatch[1] }) + finalResponse;
+      finalResponseNoTag = `[引用回复: ${quoteMatch[1]}]\n` + finalResponseNoTag;
     }
 
     // 复制一份finalResonse为finalResponseNoTagExceptQuote，作为添加到队列中的bot消息内容

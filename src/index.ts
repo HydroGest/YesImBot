@@ -314,7 +314,7 @@ ${handledRes.originalRes}`);
 // 有时候 LLM 就算跳过回复，也会生成内容，这个时候应该无视跳过，发送内容
 // 有时候 LLM 会生成空内容，这个时候就算是success也不应该发送内容，但是如果有执行指令，应该执行
       const templateNoTag = template.replace(handledRes.res, handledRes.resNoTag);
-      const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template))[0];
+      const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, templateNoTag))[0];
       if (config.Debug.AddAllMsgtoQueue) {
       sendQueue.updateSendQueue(
         config.Debug.LogicRedirect.Target,
