@@ -2,6 +2,7 @@ import { h } from "koishi";
 import JSON5 from "json5";
 import { emojiManager } from "../utils/content";
 import { Config } from "../config";
+import { stat } from "fs";
 
 interface Response {
   status: "skip" | "success";
@@ -21,7 +22,9 @@ interface Usage {
 }
 
 function correctInvalidFormat(str: string) {
-   throw new Error("Not implemented");
+   return str.replace(/[\u0080-\uffff]/g, function(ch) {
+     return "\\u" + ("0000" + ch.charCodeAt(0).toString(16)).slice(-4);
+   });
 }
 
 function convertStringToNumber(value?: string | number ): number {
@@ -178,12 +181,16 @@ export abstract class BaseAdapter {
     config: Config,
     groupMemberList: any,
   ): Promise<{
-    res: string;
-    resNoTag: string;
-    replyTo: string;
-    quote: string;
-    nextTriggerCount: number;
-    LLMResponse: any;
+    status: string; // status, if fail, "fail"
+    originalRes: string; // res
+    res: string; // finReply || reply
+    resNoTag: string; // (finReply || reply).removeTag
+    resNoTagExceptQuote: string; // (finReply || reply).removeTagExceptQuote
+    replyTo: string; // session_id
+    quote: string; // extract from (finReply || reply)
+    nextTriggerCount: number; // nextReplyIn
+    logic: string; // logic
+    execute: Array<string>; // execute
     usage?: Usage;
   }> {
     let usage: any;
@@ -213,6 +220,7 @@ export abstract class BaseAdapter {
         break;
       }
       default: {
+        res = `不支持的 API 类型: ${this.adapterName}`
         throw new Error(`不支持的 API 类型: ${this.adapterName}`);
       }
     }
@@ -231,31 +239,37 @@ export abstract class BaseAdapter {
     //   "finReply": "" // 最终版回复，引用回复<quote id=\\"\\"/>由 LLM 生成，转义和双引号一定要带
     //   "execute":[] // 要运行的指令列表
     // }
+
+    let status: string = "success";
+    let finalResponse: string = "";
+
     const jsonMatch = res.match(/{.*}/s);
     let LLMResponse: Response;
     if (jsonMatch) {
-      res = jsonMatch[0];
-      LLMResponse = JSON5.parse(res);
-    } else {
-      throw new Error(`LLM provides unexpected response: ${res}`);
-    }
-    if (LLMResponse.status != "success") {
-      if (!AllowErrorFormat && LLMResponse.status != "skip") {
-        throw new Error(`LLM provides unexpected response: ${res}`);
-      } else {
-        console.log(`LLM choose not to reply.`);
+      try {
+        const resJSON = jsonMatch[0];
+        LLMResponse = JSON5.parse(correctInvalidFormat(resJSON));
+      } catch (e) {
+        status = "fail";
       }
-    }
-    let finalResponse: string = "";
-    if (!AllowErrorFormat) {
-      finalResponse += LLMResponse.finReply
-        ? LLMResponse.finReply
-        : LLMResponse.reply;
     } else {
+      status = "fail";
+    }
+    if (LLMResponse.status === "success" || LLMResponse.status === "skip"){
+      status = LLMResponse.status;
+    } else {
+      status = "fail";
+    }
+    if (!AllowErrorFormat) {
+      try {
+        finalResponse += LLMResponse.finReply || LLMResponse.reply;
+      } catch (e) {
+        status = "fail";
+      }
+    } else {
+      finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
       // 盗版回复
       const possibleResponse = [
-        LLMResponse.finReply,
-        LLMResponse.reply,
         //@ts-ignore
         LLMResponse.msg, LLMResponse.text, LLMResponse.message, LLMResponse.answer
       ];
@@ -265,27 +279,24 @@ export abstract class BaseAdapter {
           break;
         }
       }
-      if (finalResponse === "" && !LLMResponse.execute?.length) throw new Error(`LLM provides unexpected response: ${res}`);
     }
 
     // 从回复中提取 <quote> 标签，将其放在回复的最前面
     const quoteMatch = finalResponse.match(/<quote\s+id=\\*["']?(\d+)\\*["']?\s*\/?>/);
+    let finalResponseNoTag = finalResponse;
     if (quoteMatch) {
       // 移除所有的 <quote> 标签
       finalResponse = finalResponse.replace(/<quote\s+id=\\*["']?\d+\\*["']?\s*\/?>/g, '');
+      finalResponseNoTag = finalResponse.replace(/<quote\s+id=\\*["']?\d+\\*["']?\s*\/?>/g, `[引用回复: ${quoteMatch[1]}]`);
       // 把第一个 <quote> 标签放在回复的最前面
       finalResponse = h("quote", { id: quoteMatch[1] }) + finalResponse;
     }
 
-    // 复制一份finalResonse为finalResponseNoTag，作为添加到队列中的bot消息内容
-    let finalResponseNoTag = finalResponse; // 这里让finalResponseNoTag中包含<quote>标签，是故意的
+    // 复制一份finalResonse为finalResponseNoTagExceptQuote，作为添加到队列中的bot消息内容
+    let finalResponseNoTagExceptQuote = finalResponse;
 
     // 使用 groupMemberList 反转义 <at> 消息
     // const groupMemberList: { nick: string; user: { name: string; id: string } }[] =  groupMemberList.data;
-
-    if (!["群昵称", "用户昵称"].includes(config.Bot.NickorName)) {
-      throw new Error(`Unsupported NickorName value: ${config.Bot.NickorName}`);
-    }
 
     const getKey = (member: { nick: string; user: { name: string } }) => config.Bot.NickorName === "群昵称" ? member.nick : member.user.name;
 
@@ -318,12 +329,16 @@ export abstract class BaseAdapter {
     });
 
     return {
+      status: status,
+      originalRes: res,
       res: finalResponse,
+      resNoTagExceptQuote: finalResponseNoTagExceptQuote,
       resNoTag: finalResponseNoTag,
       replyTo: convertNumberToString(LLMResponse.session_id),
       quote: quoteMatch ? quoteMatch[1] : '',
       nextTriggerCount: convertStringToNumber(LLMResponse.nextReplyIn),
-      LLMResponse: LLMResponse,
+      logic: LLMResponse.logic || '',
+      execute: LLMResponse.execute || [],
       usage: usage,
     };
   }
