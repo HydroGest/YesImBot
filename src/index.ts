@@ -112,13 +112,15 @@ export function apply(ctx: Context, config: Config) {
         ? `已清除关于 ${clearGroupId} 的记忆`
         : `未找到关于 ${clearGroupId} 的记忆`;
 
+      const commandResponseId = (await session.bot.sendMessage(msgDestination, msg))[0];
+
       if (config.Debug.AddAllMsgtoQueue) {
         sendQueue.updateSendQueue(
           msgDestination,
           await getBotName(config, session),
           session.event.selfId,
           msg, // 此处无需添加引用Tag
-          (await session.bot.sendMessage(msgDestination, msg))[0], // 发送消息并获取消息ID
+          commandResponseId, // 发送消息并获取消息ID
           config.Group.Filter,
           config.Group.TriggerCount,
           session.event.selfId
@@ -230,12 +232,16 @@ export function apply(ctx: Context, config: Config) {
       ctx.logger.info(JSON5.stringify(response, null, 2));
 
     const handledRes: {
+      status: string;
+      originalRes: string;
       res: string;
       resNoTag: string;
+      resNoTagExceptQuote: string;
       replyTo: string;
       quote: string;
       nextTriggerCount: number;
-      LLMResponse: any;
+      logic: string;
+      execute: Array<string>;
       usage?: any;
     } = await adapters[curAPI].handleResponse(
       response,
@@ -271,16 +277,46 @@ export function apply(ctx: Context, config: Config) {
       finalReplyTo = quoteGroup;
     }
 
+    if (handledRes.status === "fail") {
+      if (config.Debug.LogicRedirect.Enabled) {
+        const failTemplate = `LLM 的响应无法正确解析。
+原始响应:
+${handledRes.originalRes}
+---
+消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
+        const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, failTemplate))[0];
+        if (config.Debug.AddAllMsgtoQueue) {
+          sendQueue.updateSendQueue(
+            config.Debug.LogicRedirect.Target,
+            await getBotName(config, session),
+            session.event.selfId,
+            failTemplate,
+            botMessageId,
+            config.Group.Filter,
+            config.Group.TriggerCount,
+            session.event.selfId
+          )
+        }
+      }
+      throw new Error(`LLM provides unexpected response:
+${handledRes.originalRes}`);
+    }
+
     if (config.Debug.LogicRedirect.Enabled) {
-      const template = `回复于 ${finalReplyTo} 的消息已生成，来自 API ${curAPI}:
-内容: ${(handledRes.LLMResponse.finReply ? handledRes.LLMResponse.finReply : handledRes.LLMResponse.reply)}
+      const template = `${handledRes.status === "skip" ? `${await getBotName(config, session)}想要跳过此次回复` : `回复于 ${finalReplyTo} 的消息已生成，来自 API ${curAPI}:
+状态: ${handledRes.status}`}
 ---
-逻辑: ${handledRes.LLMResponse.logic}
+内容: ${handledRes.res && handledRes.res.trim() ? handledRes.res : "无"}
 ---
-指令：${handledRes.LLMResponse.execute ? handledRes.LLMResponse.execute : "无"}
+逻辑: ${handledRes.logic}
 ---
-消耗: 输入 ${handledRes?.usage["prompt_tokens"]}, 输出 ${handledRes?.usage["completion_tokens"]}`;
-      const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, template))[0];
+指令：${handledRes.execute?.length ? handledRes.execute : "无"}
+---
+消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
+      // 有时候 LLM 就算跳过回复，也会生成内容，这个时候应该无视跳过，发送内容
+      // 有时候 LLM 会生成空内容，这个时候就算是success也不应该发送内容，但是如果有执行指令，应该执行
+      const templateNoTag = template.replace(handledRes.res, handledRes.resNoTag);
+      const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, templateNoTag))[0];
       if (config.Debug.AddAllMsgtoQueue) {
         sendQueue.updateSendQueue(
           config.Debug.LogicRedirect.Target,
@@ -291,7 +327,7 @@ export function apply(ctx: Context, config: Config) {
           config.Group.Filter,
           config.Group.TriggerCount,
           session.event.selfId
-        )
+        );
       }
     }
 
@@ -311,13 +347,13 @@ export function apply(ctx: Context, config: Config) {
     responseVerifier.setPreviousResponse(finalRes);
 
     const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
-    const sentencesNoTag = handledRes.resNoTag.split(/(?<=[。?!？！])\s*/);
+    const sentencesNoTag = handledRes.resNoTagExceptQuote.split(/(?<=[。?!？！])\s*/);
 
 
 
     // 如果 AI 使用了指令
-    if (handledRes.LLMResponse.execute) {
-      handledRes.LLMResponse.execute.forEach(async (command) => {
+    if (handledRes.execute) {
+      handledRes.execute.forEach(async (command) => {
         try {
           const botMessageId = (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)))[0]; // 执行每个指令，获取返回的消息ID字符串数组
           if (config.Debug.AddAllMsgtoQueue) {
@@ -380,7 +416,7 @@ export function apply(ctx: Context, config: Config) {
         finalReplyTo,
         await getBotName(config, session),
         session.event.selfId,
-        handledRes.resNoTag,
+        handledRes.resNoTagExceptQuote,
         finalBotMsgId, // session.messageId，这里是机器人自己发的消息，设为最后一条消息的消息ID
         config.Group.Filter,
         config.Group.TriggerCount,

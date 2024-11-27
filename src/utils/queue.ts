@@ -195,8 +195,10 @@ export class SendQueue {
       this.sendQueueMap.delete(group);
       this.triggerCountMap.delete(group);
       this.saveToFile();
+      console.log(`已清空此会话: ${group}`);
       return true;
     } else {
+      console.log(`此会话不存在: ${group}`);
       return false;
     }
   }
