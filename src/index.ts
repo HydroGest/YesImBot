@@ -273,6 +273,12 @@ export function apply(ctx: Context, config: Config) {
             : "Quote message not found, using session_id."
         );
       }
+      if (!finalReplyTo) {
+        finalReplyTo = groupId;
+        if (config.Debug.DebugAsInfo) {
+          ctx.logger.info(`There's no session_id, using ${groupId} Instead.`);
+        }
+      }
     } else {
       finalReplyTo = quoteGroup;
     }
