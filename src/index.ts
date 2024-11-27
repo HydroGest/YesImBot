@@ -112,13 +112,15 @@ export function apply(ctx: Context, config: Config) {
         ? `已清除关于 ${clearGroupId} 的记忆`
         : `未找到关于 ${clearGroupId} 的记忆`;
 
+      const commandResponseId = (await session.bot.sendMessage(msgDestination, msg))[0];
+
       if (config.Debug.AddAllMsgtoQueue) {
         sendQueue.updateSendQueue(
           msgDestination,
           await getBotName(config, session),
           session.event.selfId,
           msg, // 此处无需添加引用Tag
-          (await session.bot.sendMessage(msgDestination, msg))[0], // 发送消息并获取消息ID
+          commandResponseId, // 发送消息并获取消息ID
           config.Group.Filter,
           config.Group.TriggerCount,
           session.event.selfId
