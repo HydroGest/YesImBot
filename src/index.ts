@@ -311,21 +311,21 @@ ${handledRes.originalRes}`);
 指令：${handledRes.execute?.length ? handledRes.execute : "无"}
 ---
 消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
-// 有时候 LLM 就算跳过回复，也会生成内容，这个时候应该无视跳过，发送内容
-// 有时候 LLM 会生成空内容，这个时候就算是success也不应该发送内容，但是如果有执行指令，应该执行
+      // 有时候 LLM 就算跳过回复，也会生成内容，这个时候应该无视跳过，发送内容
+      // 有时候 LLM 会生成空内容，这个时候就算是success也不应该发送内容，但是如果有执行指令，应该执行
       const templateNoTag = template.replace(handledRes.res, handledRes.resNoTag);
       const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, templateNoTag))[0];
       if (config.Debug.AddAllMsgtoQueue) {
-      sendQueue.updateSendQueue(
-        config.Debug.LogicRedirect.Target,
-        await getBotName(config, session),
-        session.event.selfId,
-        templateNoTag,
-        botMessageId,
-        config.Group.Filter,
-        config.Group.TriggerCount,
-        session.event.selfId
-      );
+        sendQueue.updateSendQueue(
+          config.Debug.LogicRedirect.Target,
+          await getBotName(config, session),
+          session.event.selfId,
+          templateNoTag,
+          botMessageId,
+          config.Group.Filter,
+          config.Group.TriggerCount,
+          session.event.selfId
+        );
       }
     }
 
