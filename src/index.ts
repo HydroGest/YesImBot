@@ -320,7 +320,7 @@ ${handledRes.originalRes}`);
           config.Debug.LogicRedirect.Target,
           await getBotName(config, session),
           session.event.selfId,
-          templateNoTag,
+          template,
           botMessageId,
           config.Group.Filter,
           config.Group.TriggerCount,
