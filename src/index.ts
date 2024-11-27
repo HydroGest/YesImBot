@@ -222,7 +222,7 @@ export function apply(ctx: Context, config: Config) {
     const response = await adapters[curAPI].runChatCompeletion(
       SysPrompt,
       chatData,
-      config.Parameters,
+      Object.create(config.Parameters),
       config.ImageViewer.Detail,
       config.ImageViewer.How,
       config.Debug.DebugAsInfo
