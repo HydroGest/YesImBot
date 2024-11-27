@@ -372,11 +372,11 @@ export const Config: Schema<Config> = Schema.object({
       .description("Bot 的背景"),
     WordsPerSecond: Schema.number()
       .default(2)
-      .min(0.1)
+      .min(0)
       .max(360)
       .step(0.1)
       .role("slider")
-      .description("Bot 的打字速度（每秒字数）"),
+      .description("Bot 的打字速度（每秒字数）。设为 0 取消打字间隔。"),
     BotSentencePostProcess: Schema.array(
       Schema.object({
         replacethis: Schema.string().description("需要替换的文本"),

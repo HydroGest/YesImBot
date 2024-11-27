@@ -21,8 +21,7 @@ class EmojiManager {
   private lastEmbeddingModel: string | null = null;
 
   constructor() {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    const emojisFile = path.join(__dirname, isDevelopment ? '../../data/emojis.json' : '../data/emojis.json');
+    const emojisFile = path.join(__dirname, '../../data/emojis.json');
     const emojis: Emoji[] = JSON5.parse(readFileSync(emojisFile, 'utf-8'));
 
     emojis.forEach(emoji => {
