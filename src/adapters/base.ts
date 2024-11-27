@@ -2,7 +2,6 @@ import { h } from "koishi";
 import JSON5 from "json5";
 import { emojiManager } from "../utils/content";
 import { Config } from "../config";
-import { stat } from "fs";
 
 interface Response {
   status: "skip" | "success";
@@ -22,6 +21,10 @@ interface Usage {
 }
 
 function correctInvalidFormat(str: string) {
+  throw new Error("Not implemented");
+}
+
+function escapeUnicodeCharacters(str: string) {
    return str.replace(/[\u0080-\uffff]/g, function(ch) {
      return "\\u" + ("0000" + ch.charCodeAt(0).toString(16)).slice(-4);
    });
@@ -248,7 +251,7 @@ export abstract class BaseAdapter {
     if (jsonMatch) {
       try {
         const resJSON = jsonMatch[0];
-        LLMResponse = JSON5.parse(correctInvalidFormat(resJSON));
+        LLMResponse = JSON5.parse(escapeUnicodeCharacters(resJSON));
       } catch (e) {
         status = "fail";
       }
