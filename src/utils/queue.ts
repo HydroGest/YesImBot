@@ -29,8 +29,7 @@ export class SendQueue {
   private readonly filePath: string;
 
   constructor() {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    this.filePath = path.join(__dirname, isDevelopment ? '../../data/queue.json' : '../data/queue.json');
+    this.filePath = path.join(__dirname, '../../data/queue.json');
     this.sendQueueMap = new Map<
       string,
       {

@@ -51,9 +51,6 @@
         }
     },
     "devDependencies": {
-        "@jest/globals": "^29.7.0",
-        "@koishijs/plugin-mock": "^2.6.6",
-        "jest": "^29.7.0",
-        "ts-jest": "^29.2.5"
+        "@koishijs/plugin-mock": "^2.6.6"
     }
 }
