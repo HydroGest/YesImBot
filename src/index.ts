@@ -1,4 +1,4 @@
-import { Context, Next, h, Random, Session } from "koishi";
+import { Context, Next, h, Random, Session, sleep } from "koishi";
 
 import JSON5 from "json5";
 
@@ -356,9 +356,11 @@ export function apply(ctx: Context, config: Config) {
       });
       if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence); }
 
-      // 按照字数等待
-      const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
-      await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
+      if (config.Bot.WordsPerSecond > 0) {
+        // 按照字数等待
+        const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
+        await sleep(waitTime * 1000);
+      }
       finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence))[0];
       if (config.Debug.WholetoSplit) {
         sendQueue.updateSendQueue(
