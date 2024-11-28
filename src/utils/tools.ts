@@ -3,11 +3,12 @@ import JSON5 from "json5";
 import path from 'path';
 import fs from 'fs';
 import { Config } from "../config";
+import https from 'https';
 
 export async function sendRequest(url: string, APIKey: string, requestBody: any,  debug: boolean): Promise<any> {
   if (debug) {
     console.log(`Request URL: ${url}`);
-    console.log(`Request body: \n${JSON5.stringify(requestBody, null, 2)}`);
+    console.log(`Request body: \n${foldText(JSON5.stringify(requestBody, null, 2), 2100)}`);
   }
 
   try {
@@ -236,4 +237,39 @@ export function isGroupAllowed(groupId: string, allowedGroups: string[], debug: 
   }
 
   return [false, new Set()];
+}
+
+// 从URL获取图片的base64编码
+export async function convertUrltoBase64 (url: string): Promise<string> {
+  url = url.replace(/&amp;/g, '&');
+  try {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }), // 忽略SSL证书验证
+      timeout: 5000  // 5秒超时
+    });
+
+    const buffer = Buffer.from(response.data);
+    const contentType = response.headers['content-type'] || 'image/jpeg';
+    const base64 = `data:${contentType};base64,${buffer.toString('base64')}`;
+
+    return base64;
+  } catch (error) {
+    console.error('Error converting image to base64:', error.message);
+    return "";
+  }
+}
+
+// 折叠文本中间部分
+export function foldText(text: string, maxLength: number): string {
+  if (text.length > maxLength) {
+    const halfLength = Math.floor(maxLength / 2);
+    const foldedChars = text.length - maxLength;
+    return text.slice(0, halfLength) +
+           '\x1b[33m...[已折叠 ' +
+           '\x1b[33;1m' + foldedChars +
+           '\x1b[0m\x1b[33m 个字符]...\x1b[0m' +
+           text.slice(-halfLength);
+  }
+  return text;
 }

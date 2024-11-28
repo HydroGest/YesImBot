@@ -6,7 +6,7 @@ import { ResponseVerifier } from "./utils/verifier";
 
 import { Config } from "./config";
 
-import { isGroupAllowed } from "./utils/tools";
+import { isGroupAllowed, foldText } from "./utils/tools";
 
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
@@ -135,7 +135,7 @@ export function apply(ctx: Context, config: Config) {
     session.guildName = `${session.bot.user.name}与${session.event.user.name}的私聊`;
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(`New message received, guildId = ${groupId}, content = ${session.content}`);
+      ctx.logger.info(`New message received, guildId = ${groupId}, content = ${foldText(session.content, 1000)}`);
 
     if (!config.Group.AllowedGroups?.length) return next();
 
@@ -182,7 +182,7 @@ export function apply(ctx: Context, config: Config) {
 
     if (!isTriggerCountReached && !(isAtMentioned && shouldReactToAt)) {
       if (config.Debug.DebugAsInfo)
-        ctx.logger.info(await sendQueue.getPrompt(mergeQueueFrom, config, session));
+        ctx.logger.info(foldText((await sendQueue.getPrompt(mergeQueueFrom, config, session)), 2048));
       return next();
     }
 
@@ -229,7 +229,7 @@ export function apply(ctx: Context, config: Config) {
     );
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(JSON5.stringify(response, null, 2));
+      ctx.logger.info(foldText(JSON5.stringify(response, null, 2), 3500));
 
     const handledRes: {
       status: string;
@@ -396,7 +396,7 @@ ${handledRes.originalRes}`);
           sentenceNoTag = sentenceNoTag.replace(regex, rule.tothis);
         }
       });
-      if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence); }
+      if (config.Debug.DebugAsInfo) { ctx.logger.info(foldText(sentence, 1000)); }
 
       // 按照字数等待
       const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
