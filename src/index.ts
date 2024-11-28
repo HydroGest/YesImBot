@@ -426,7 +426,26 @@ ${handledRes.originalRes}`);
 
       // 过滤空字符串并去除首尾空格
       const sentences = result.filter(s => s.trim()).map(s => s.trim());
-      return sentences;
+
+      // 合并标签前后的文本
+      const mergedSentences: string[] = [];
+      for (let i = 0; i < sentences.length; i++) {
+        if (sentences[i].startsWith('<') && sentences[i].endsWith('>')) {
+          if (i > 0) {
+            mergedSentences[mergedSentences.length - 1] += sentences[i];
+          } else {
+            mergedSentences.push(sentences[i]);
+          }
+          if (i < sentences.length - 1 && !sentences[i + 1].startsWith('<')) {
+            mergedSentences[mergedSentences.length - 1] += sentences[i + 1];
+            i++;
+          }
+        } else {
+          mergedSentences.push(sentences[i]);
+        }
+      }
+
+      return mergedSentences;
     };
 
     const sentences = splitByTags(finalRes);
