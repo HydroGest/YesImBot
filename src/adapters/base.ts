@@ -71,10 +71,9 @@ export abstract class BaseAdapter {
     debug: boolean
   ): Promise<any> {
     // 解析其他参数
-    const otherParams = {};
+    const otherParams: Record<string, any> = {};
     if (parameters.OtherParameters) {
-      parameters.OtherParameters.forEach(
-        (param: { key: string; value: string }) => {
+      parameters.OtherParameters.forEach((param: { key: string; value: string }) => {
           const key = param.key.trim();
           let value = param.value.trim();
 
@@ -86,14 +85,19 @@ export abstract class BaseAdapter {
           }
 
           // 转换 value 为适当的类型
-          //@ts-ignore
-          otherParams[key] = value === 'true' ? true :
-            value === 'false' ? false :
-              !isNaN(value as any) ? Number(value) :
-                value;
+          if (value === 'true') {
+            otherParams[key] = true;
+          } else if (value === 'false') {
+            otherParams[key] = false;
+            //@ts-ignore
+          } else if (!isNaN(value)) {
+            otherParams[key] = Number(value);
+          } else {
+            otherParams[key] = value;
+          }
         }
       );
-      parameters = { ...parameters, ...otherParams };
+      parameters.OtherParameters = otherParams;
     }
 
     return this.generateResponse(
@@ -250,6 +254,9 @@ export abstract class BaseAdapter {
         LLMResponse = JSON5.parse(escapeUnicodeCharacters(resJSON));
       } catch (e) {
         status = "fail";
+        // 此时 LLMResponse 还是 undefined
+        //@ts-ignore
+        LLMResponse = {};
       }
     } else {
       status = "fail";
