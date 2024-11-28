@@ -352,8 +352,81 @@ ${handledRes.originalRes}`);
 
     responseVerifier.setPreviousResponse(finalRes);
 
-    const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
-    const sentencesNoTag = handledRes.resNoTagExceptQuote.split(/(?<=[。?!？！])\s*/);
+    const splitByTags = (text: string): string[] => {
+      // 用于追踪标签的栈
+      const stack: { tag: string; start: number }[] = [];
+      // 存储分割后的文本片段
+      const splits: { text: string; start: number; end: number }[] = [];
+      const splitRegex = /(?<=[。?!？！])\s*/;
+      let currentText = '';
+      let i = 0;
+
+      while (i < text.length) {
+        if (text[i] === '<') {
+          // 找到标签的开始
+          let tagEnd = text.indexOf('>', i);
+          if (tagEnd === -1) break;
+
+          let tag = text.substring(i + 1, tagEnd);
+          if (tag.startsWith('/')) {
+            // 处理结束标签
+            const openTag = stack.pop();
+            if (openTag) {
+              splits.push({
+                text: text.substring(openTag.start, tagEnd + 1),
+                start: openTag.start,
+                end: tagEnd + 1
+              });
+            }
+          } else if (tag.endsWith('/')) {
+            // 处理自闭合标签
+            splits.push({
+              text: text.substring(i, tagEnd + 1),
+              start: i,
+              end: tagEnd + 1
+            });
+          } else {
+            // 处理开始标签
+            stack.push({ tag, start: i });
+          }
+          i = tagEnd + 1;
+        } else {
+          currentText += text[i];
+          i++;
+        }
+      }
+
+      // 按标点符号分割剩余文本
+      const result: string[] = [];
+      let lastEnd = 0;
+
+      // 按开始位置对分割进行排序
+      splits.sort((a, b) => a.start - b.start);
+
+      for (const split of splits) {
+        // 添加标签前的文本
+        const beforeTag = text.substring(lastEnd, split.start);
+        if (beforeTag) {
+          result.push(...beforeTag.split(splitRegex));
+        }
+        // 将完整标签添加到结果中
+        result.push(split.text);
+        lastEnd = split.end;
+      }
+
+      // 添加最后一个标签后的剩余文本
+      const afterLastTag = text.substring(lastEnd);
+      if (afterLastTag) {
+        result.push(...afterLastTag.split(splitRegex));
+      }
+
+      // 过滤空字符串并去除首尾空格
+      const sentences = result.filter(s => s.trim()).map(s => s.trim());
+      return sentences;
+    };
+
+    const sentences = splitByTags(finalRes);
+    const sentencesNoTag = splitByTags(handledRes.resNoTagExceptQuote);
 
 
 
