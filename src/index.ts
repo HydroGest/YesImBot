@@ -264,8 +264,8 @@ export function apply(ctx: Context, config: Config) {
     // 正式更新触发条数
     const nextTriggerCountShouldBe = handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig;
     const finalNextTriggerCount = nextTriggerCountShouldBe + sendQueue.getTriggerCount(groupId, config.Group.TriggerCount);
-    if (finalNextTriggerCount <= 0) {
-      sendQueue.resetTriggerCount(groupId, 0);
+    if (finalNextTriggerCount <= 1) {
+      sendQueue.resetTriggerCount(groupId, 1);
     } else {
       sendQueue.resetTriggerCount(groupId, handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig);
     }
