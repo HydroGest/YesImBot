@@ -54,7 +54,8 @@ export async function replaceImageWith(imgTag: string, config: Config) {
 
     case "替换成[图片:summary]": {
       if (summaryMatch) {
-        return `[图片:${summaryMatch[1]}]`;
+        const summary = summaryMatch[1].replace(/^\[|\]$/g, '');
+        return `[图片:${summary}]`;
       } else {
         return "[图片]";
       }
