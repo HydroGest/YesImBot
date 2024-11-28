@@ -1,6 +1,5 @@
 import { Config } from '../config';
 import { getMemberName } from './prompt';
-import JSON5 from "json5";
 import fs from 'fs';
 import path from 'path';
 
@@ -29,8 +28,7 @@ export class SendQueue {
   private readonly filePath: string;
 
   constructor() {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    this.filePath = path.join(__dirname, isDevelopment ? '../../data/queue.json' : '../data/queue.json');
+    this.filePath = path.join(__dirname, '../../data/queue.json');
     this.sendQueueMap = new Map<
       string,
       {
@@ -263,7 +261,7 @@ export class SendQueue {
     }));
 
     // 转换为字符串
-    let promptStr = JSON5.stringify(promptArr, null, 2);
+    let promptStr = JSON.stringify(promptArr);
 
     // 处理 <img base64="xxx" /> 标签
     const imgTagRegex = /<img base64=\\"[^\\"]*\\"\s*\/?>/g;

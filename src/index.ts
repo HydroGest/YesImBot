@@ -1,6 +1,4 @@
-import { Context, Next, h, Random, Session } from "koishi";
-
-import JSON5 from "json5";
+import { Context, Next, h, Random, Session, sleep } from "koishi";
 
 import { ResponseVerifier } from "./utils/verifier";
 
@@ -114,7 +112,7 @@ export function apply(ctx: Context, config: Config) {
         ? `已清除关于 ${clearGroupId} 的记忆`
         : `未找到关于 ${clearGroupId} 的记忆`;
 
-      const commandResponseId = (await session.bot.sendMessage(msgDestination, msg))[0];
+      const commandResponseId = (await session.bot.sendMessage(msgDestination, msg, null, { session }))[0];
 
       if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
         sendQueue.updateSendQueue(
@@ -218,22 +216,20 @@ export function apply(ctx: Context, config: Config) {
     status.updateStatus(adapters.length);
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(
-        `Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseURL}.`
-      );
+      ctx.logger.info(`Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseURL}.`);
 
     // 获取回答
     const response = await adapters[curAPI].runChatCompeletion(
       SysPrompt,
       chatData,
-      config.Parameters,
+      Object.create(config.Parameters),
       config.ImageViewer.Detail,
       config.ImageViewer.How,
       config.Debug.DebugAsInfo
     );
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(foldText(JSON5.stringify(response, null, 2), 3500));
+      ctx.logger.info(foldText(JSON.stringify(response, null, 2), 3500));
 
     const handledRes: {
       status: string;
@@ -451,13 +447,11 @@ ${handledRes.originalRes}`);
     const sentences = splitByTags(finalRes);
     const sentencesNoTag = splitByTags(handledRes.resNoTagExceptQuote);
 
-
-
     // 如果 AI 使用了指令
     if (handledRes.execute) {
       handledRes.execute.forEach(async (command) => {
         try {
-          const botMessageId = (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)))[0]; // 执行每个指令，获取返回的消息ID字符串数组
+          const botMessageId = (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command), null, { session }))[0]; // 执行每个指令，获取返回的消息ID字符串数组
           if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息") { // 虽然 LLM 使用的指令本身并不会发到消息界面，但为了防止 LLM 忘记自己用过指令，加入队列
             sendQueue.updateSendQueue(
               finalReplyTo,
@@ -494,10 +488,12 @@ ${handledRes.originalRes}`);
       });
       if (config.Debug.DebugAsInfo) { ctx.logger.info(foldText(sentence, 1000)); }
 
-      // 按照字数等待
-      const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
-      await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
-      finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence))[0];
+      if (config.Bot.WordsPerSecond > 0) {
+        // 按照字数等待
+        const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
+        await sleep(waitTime * 1000);
+      }
+      finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence, null, { session }))[0];
       if (config.Debug.WholetoSplit && (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息")) {
         sendQueue.updateSendQueue(
           finalReplyTo,

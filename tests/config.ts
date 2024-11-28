@@ -2,7 +2,10 @@ import { Config } from "../src";
 
 export default {
   Group: {
-    AllowedGroups: ["123"],
+    AllowedGroups: [
+      "all",
+      "private:all"
+    ],
     AtReactPossibility: 1,
   },
   API: {
@@ -35,10 +38,10 @@ export default {
   },
   Bot: {
     NickorName: "用户昵称",
-    WordsPerSecond: 2,
+    WordsPerSecond: 0,
   },
   Debug: {
-    DebugAsInfo: false,
+    DebugAsInfo: true,
     AllowErrorFormat: true,
     UpdatePromptOnLoad: false,
   },
