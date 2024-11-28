@@ -4,7 +4,7 @@ import { ResponseVerifier } from "./utils/verifier";
 
 import { Config } from "./config";
 
-import { isGroupAllowed } from "./utils/tools";
+import { isGroupAllowed, foldText } from "./utils/tools";
 
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
@@ -62,22 +62,24 @@ export function apply(ctx: Context, config: Config) {
     );
   });
 
-  // 某些适配器无法在中间件中获取到手动发送的来自 BOT 的消息，但是如果适配器支持的话，可能重复处理 BOT 的消息，这点不知道怎么解决
   ctx.on('message-created', async (session) => {
     const groupId: string = session.guildId || session.channelId;
     await ensureGroupMemberList(session, groupId);
-    // 把仙人顶号发送的消息也加入队列
-    if (session.userId == session.selfId && config.Debug.AddAllMsgtoQueue) {
+    const [, matchedConfig] = isGroupAllowed(groupId, config.Group.AllowedGroups, config.Debug.FirsttoAll);
+    const mergeQueueFrom = matchedConfig;
+
+    if ((session.userId === session.selfId || mergeQueueFrom.has(groupId)) && config.Debug.AddWhattoQueue === "所有消息") {
+      const senderName = session.userId === session.selfId ? await getBotName(config, session) : await getMemberName(config, session, session.userId);
       sendQueue.updateSendQueue(
         groupId,
-        await getBotName(config, session),
-        session.selfId,
+        senderName,
+        session.userId,
         addQuoteTag(session, session.content),
         session.messageId,
         config.Group.Filter,
         config.Group.TriggerCount,
         session.selfId
-      )
+      );
     }
   });
 
@@ -92,7 +94,7 @@ export function apply(ctx: Context, config: Config) {
       const clearGroupId = options.target || msgDestination;
       const userContent = await processUserContent(config, session);
 
-      if (config.Debug.AddAllMsgtoQueue) {
+      if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
         await ensureGroupMemberList(session, msgDestination);
         sendQueue.updateSendQueue(
           msgDestination,
@@ -112,7 +114,7 @@ export function apply(ctx: Context, config: Config) {
 
       const commandResponseId = (await session.bot.sendMessage(msgDestination, msg, null, { session }))[0];
 
-      if (config.Debug.AddAllMsgtoQueue) {
+      if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
         sendQueue.updateSendQueue(
           msgDestination,
           await getBotName(config, session),
@@ -133,7 +135,7 @@ export function apply(ctx: Context, config: Config) {
     session.guildName = `${session.bot.user.name}与${session.event.user.name}的私聊`;
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(`New message received, guildId = ${groupId}, content = ${session.content}`);
+      ctx.logger.info(`New message received, guildId = ${groupId}, content = ${foldText(session.content, 1000)}`);
 
     if (!config.Group.AllowedGroups?.length) return next();
 
@@ -144,16 +146,18 @@ export function apply(ctx: Context, config: Config) {
     const userContent = await processUserContent(config, session);
 
     // 更新消息队列，把这条消息加入队列
-    sendQueue.updateSendQueue(
-      groupId,
-      await getMemberName(config, session, session.event.user.id),
-      session.event.user.id,
-      addQuoteTag(session, userContent.content),
-      session.messageId,
-      config.Group.Filter,
-      config.Group.TriggerCount,
-      session.event.selfId
-    );
+    if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息") {
+      sendQueue.updateSendQueue(
+        groupId,
+        await getMemberName(config, session, session.event.user.id),
+        session.event.user.id,
+        addQuoteTag(session, userContent.content),
+        session.messageId,
+        config.Group.Filter,
+        config.Group.TriggerCount,
+        session.event.selfId
+      );
+    }
 
     // 检测是否达到发送次数或被 at
     // 返回 false 的条件：
@@ -169,6 +173,7 @@ export function apply(ctx: Context, config: Config) {
     const isAtMentioned = atRegex.test(session.content);
     const isTriggerCountReached = sendQueue.checkTriggerCount(groupId);
     const shouldReactToAt = Random.bool(config.Group.AtReactPossibility);
+    const nextTriggerCountbyConfig: number = Random.int(config.Group.MinPopNum, config.Group.MaxPopNum + 1); // 双闭区间
 
     // 如果消息队列满了，出队消息到config.Group.SendQueueSize
     if (isQueueFull) {
@@ -180,7 +185,7 @@ export function apply(ctx: Context, config: Config) {
 
     if (!isTriggerCountReached && !(isAtMentioned && shouldReactToAt)) {
       if (config.Debug.DebugAsInfo)
-        ctx.logger.info(await sendQueue.getPrompt(mergeQueueFrom, config, session));
+        ctx.logger.info(foldText((await sendQueue.getPrompt(mergeQueueFrom, config, session)), 2048));
       return next();
     }
 
@@ -214,6 +219,9 @@ export function apply(ctx: Context, config: Config) {
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(`Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseURL}.`);
 
+    // 设置临时触发计数，在 LLM 回复之后会被再次更新
+    sendQueue.resetTriggerCount(groupId, nextTriggerCountbyConfig);
+
     // 获取回答
     const response = await adapters[curAPI].runChatCompeletion(
       SysPrompt,
@@ -225,7 +233,7 @@ export function apply(ctx: Context, config: Config) {
     );
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(JSON.stringify(response, null, 2));
+      ctx.logger.info(foldText(JSON.stringify(response, null, 2), 3500));
 
     const handledRes: {
       status: string;
@@ -255,9 +263,8 @@ export function apply(ctx: Context, config: Config) {
         config.Group.MaxPopNum
       )
     );
-    const nextTriggerCountbyConfig: number = Random.int(config.Group.MinPopNum, config.Group.MaxPopNum + 1); // 双闭区间
 
-    // 更新触发次数
+    // 正式更新触发次数
     sendQueue.resetTriggerCount(groupId, handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig);
 
     const quoteGroup = sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom);
@@ -268,6 +275,12 @@ export function apply(ctx: Context, config: Config) {
             ? "There's no quote message, using session_id."
             : "Quote message not found, using session_id."
         );
+      }
+      if (!finalReplyTo) {
+        finalReplyTo = groupId;
+        if (config.Debug.DebugAsInfo) {
+          ctx.logger.info(`There's no session_id, using ${groupId} Instead.`);
+        }
       }
     } else {
       finalReplyTo = quoteGroup;
@@ -281,7 +294,7 @@ ${handledRes.originalRes}
 ---
 消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
         const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, failTemplate))[0];
-        if (config.Debug.AddAllMsgtoQueue) {
+        if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
           sendQueue.updateSendQueue(
             config.Debug.LogicRedirect.Target,
             await getBotName(config, session),
@@ -313,7 +326,7 @@ ${handledRes.originalRes}`);
       // 有时候 LLM 会生成空内容，这个时候就算是success也不应该发送内容，但是如果有执行指令，应该执行
       const templateNoTag = template.replace(handledRes.res, handledRes.resNoTag);
       const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, templateNoTag))[0];
-      if (config.Debug.AddAllMsgtoQueue) {
+      if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
         sendQueue.updateSendQueue(
           config.Debug.LogicRedirect.Target,
           await getBotName(config, session),
@@ -342,15 +355,107 @@ ${handledRes.originalRes}`);
 
     responseVerifier.setPreviousResponse(finalRes);
 
-    const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
-    const sentencesNoTag = handledRes.resNoTagExceptQuote.split(/(?<=[。?!？！])\s*/);
+    const splitByTags = (text: string): string[] => {
+      // 用于追踪标签的栈
+      const stack: { tag: string; start: number }[] = [];
+      // 存储分割后的文本片段
+      const splits: { text: string; start: number; end: number }[] = [];
+      const splitRegex = /(?<=[。?!？！])\s*/;
+      let currentText = '';
+      let i = 0;
+
+      while (i < text.length) {
+        if (text[i] === '<') {
+          // 找到标签的开始
+          let tagEnd = text.indexOf('>', i);
+          if (tagEnd === -1) break;
+
+          let tag = text.substring(i + 1, tagEnd);
+          if (tag.startsWith('/')) {
+            // 处理结束标签
+            const openTag = stack.pop();
+            if (openTag) {
+              splits.push({
+                text: text.substring(openTag.start, tagEnd + 1),
+                start: openTag.start,
+                end: tagEnd + 1
+              });
+            }
+          } else if (tag.endsWith('/')) {
+            // 处理自闭合标签
+            splits.push({
+              text: text.substring(i, tagEnd + 1),
+              start: i,
+              end: tagEnd + 1
+            });
+          } else {
+            // 处理开始标签
+            stack.push({ tag, start: i });
+          }
+          i = tagEnd + 1;
+        } else {
+          currentText += text[i];
+          i++;
+        }
+      }
+
+      // 按标点符号分割剩余文本
+      const result: string[] = [];
+      let lastEnd = 0;
+
+      // 按开始位置对分割进行排序
+      splits.sort((a, b) => a.start - b.start);
+
+      for (const split of splits) {
+        // 添加标签前的文本
+        const beforeTag = text.substring(lastEnd, split.start);
+        if (beforeTag) {
+          result.push(...beforeTag.split(splitRegex));
+        }
+        // 将完整标签添加到结果中
+        result.push(split.text);
+        lastEnd = split.end;
+      }
+
+      // 添加最后一个标签后的剩余文本
+      const afterLastTag = text.substring(lastEnd);
+      if (afterLastTag) {
+        result.push(...afterLastTag.split(splitRegex));
+      }
+
+      // 过滤空字符串
+      const sentences = result.filter(s => s.trim());
+
+      // 合并标签前后的文本
+      const mergedSentences: string[] = [];
+      for (let i = 0; i < sentences.length; i++) {
+        if (sentences[i].startsWith('<') && sentences[i].endsWith('>')) {
+          if (i > 0) {
+            mergedSentences[mergedSentences.length - 1] += sentences[i];
+          } else {
+            mergedSentences.push(sentences[i]);
+          }
+          if (i < sentences.length - 1 && !sentences[i + 1].startsWith('<')) {
+            mergedSentences[mergedSentences.length - 1] += sentences[i + 1];
+            i++;
+          }
+        } else {
+          mergedSentences.push(sentences[i]);
+        }
+      }
+
+      return mergedSentences;
+    };
+
+    const sentences = splitByTags(finalRes);
+    const sentencesNoTag = splitByTags(handledRes.resNoTagExceptQuote);
 
     // 如果 AI 使用了指令
     if (handledRes.execute) {
       handledRes.execute.forEach(async (command) => {
         try {
           const botMessageId = (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command), null, { session }))[0]; // 执行每个指令，获取返回的消息ID字符串数组
-          if (config.Debug.AddAllMsgtoQueue) {
+          if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息") { // 虽然 LLM 使用的指令本身并不会发到消息界面，但为了防止 LLM 忘记自己用过指令，加入队列
             sendQueue.updateSendQueue(
               finalReplyTo,
               await getBotName(config, session),
@@ -384,7 +489,7 @@ ${handledRes.originalRes}`);
           sentenceNoTag = sentenceNoTag.replace(regex, rule.tothis);
         }
       });
-      if (config.Debug.DebugAsInfo) { ctx.logger.info(sentence); }
+      if (config.Debug.DebugAsInfo) { ctx.logger.info(foldText(sentence, 1000)); }
 
       if (config.Bot.WordsPerSecond > 0) {
         // 按照字数等待
@@ -392,7 +497,7 @@ ${handledRes.originalRes}`);
         await sleep(waitTime * 1000);
       }
       finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence, null, { session }))[0];
-      if (config.Debug.WholetoSplit) {
+      if (config.Debug.WholetoSplit && (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息")) {
         sendQueue.updateSendQueue(
           finalReplyTo,
           await getBotName(config, session),
@@ -405,7 +510,7 @@ ${handledRes.originalRes}`);
         )
       }
     }
-    if (!config.Debug.WholetoSplit) {
+    if (!config.Debug.WholetoSplit && (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息")) {
       sendQueue.updateSendQueue(
         finalReplyTo,
         await getBotName(config, session),

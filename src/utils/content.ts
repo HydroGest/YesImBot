@@ -1,11 +1,9 @@
 import { getMemberName } from './prompt';
-import https from 'https';
-import axios from 'axios';
-import {readFileSync} from 'fs';
+import { readFileSync } from 'fs';
 import path from 'path';
 import JSON5 from "json5";
 import { replaceImageWith } from './image-viewer';
-import { runEmbedding, calculateCosineSimilarity } from './tools';
+import { runEmbedding, calculateCosineSimilarity, convertUrltoBase64 } from './tools';
 import { Config } from '../config';
 import { Session } from 'koishi';
 
@@ -52,22 +50,22 @@ class EmojiManager {
   private async initializeEmbeddings(config: Config): Promise<void> {
     const currentModel = config.Embedding?.EmbeddingModel;
     const needsRecompute =
-        Object.keys(this.nameEmbeddings).length === 0 ||
-        this.lastEmbeddingModel !== currentModel;
+      Object.keys(this.nameEmbeddings).length === 0 ||
+      this.lastEmbeddingModel !== currentModel;
 
     if (needsRecompute) {
-        // 清空现有嵌入
-        this.nameEmbeddings = {};
+      // 清空现有嵌入
+      this.nameEmbeddings = {};
 
-        const names = Object.values(this.idToName);
-        for (const name of names) {
-            this.nameEmbeddings[name] = await this.getEmbedding(name, config);
-        }
+      const names = Object.values(this.idToName);
+      for (const name of names) {
+        this.nameEmbeddings[name] = await this.getEmbedding(name, config);
+      }
 
-        // 更新已使用的模型记录
-        this.lastEmbeddingModel = currentModel;
+      // 更新已使用的模型记录
+      this.lastEmbeddingModel = currentModel;
     }
-}
+  }
 
   async getNameById(id: string): Promise<string | undefined> {
     return this.idToName[id];
@@ -139,44 +137,20 @@ export async function replaceTags(str: string, config: Config): Promise<string> 
     finalString = finalString.replace(match, replacement);
   });
 
-  // url 转 base64 添加到 img 标签中
   const imgMatches = Array.from(finalString.matchAll(imgRegex));
-  const imgReplacements = await Promise.all(imgMatches.map(async (match) => {
+  for (const match of imgMatches) {
     const [fullMatch, src] = match;
     const imageUrl = src.replace(/&amp;/g, '&');
-    try {
-      const response = await axios.get(imageUrl, {
-        responseType: 'arraybuffer',
-        httpsAgent: new https.Agent({ rejectUnauthorized: false }), // 忽略SSL证书验证
-        timeout: 5000  // 5秒超时
-      });
+    let replacement = fullMatch;
 
-      const buffer = Buffer.from(response.data);
-      const contentType = response.headers['content-type'] || 'image/jpeg';
-      const base64 = `data:${contentType};base64,${buffer.toString('base64')}`;
+    if (config.ImageViewer.How === 'LLM API 自带的多模态能力') {
+      const base64 = await convertUrltoBase64(imageUrl);
+      replacement = `<img base64="${base64}" src="${imageUrl}"/>`;
+    } else {
+      replacement = await replaceImageWith(fullMatch, config);
+    }
 
-      return {
-        match: fullMatch,
-        replacement: `<img base64="${base64}" src="${imageUrl}"/>`
-      };
-    } catch (error) {
-      console.error('Error converting image to base64:', error.message);
-      return {
-        match: fullMatch,
-        replacement: `<img src="${imageUrl}"/>`
-      };
-    }
-  }));
-
-  if (config.ImageViewer.How !== 'LLM API 自带的多模态能力') {
-    for (const { match, replacement } of imgReplacements) {
-      const newReplacement = await replaceImageWith(replacement, config);
-      finalString = finalString.replace(match, newReplacement);
-    }
-  } else {
-    for (const { match, replacement } of imgReplacements) {
-      finalString = finalString.replace(match, replacement);
-    }
+    finalString = finalString.replace(fullMatch, replacement);
   }
 
   finalString = finalString.replace(videoRegex, "[视频]");
