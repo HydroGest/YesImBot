@@ -158,12 +158,20 @@ export class SendQueue {
     if (this.triggerCountMap.has(group)) {
       const count = this.triggerCountMap.get(group);
       console.log(`距离下一次触发还有: ${count} 条消息`);
-      if (count <= 0) {
+      if (count === 0) {
         return true;
       }
       return false;
     }
     return false;
+  }
+
+  // 读取触发计数
+  getTriggerCount(group: string, nextTriggerCount: number): number {
+    if (this.triggerCountMap.has(group)) {
+      return this.triggerCountMap.get(group) ?? nextTriggerCount;
+    }
+    return nextTriggerCount;
   }
 
   // 重置触发计数

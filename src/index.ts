@@ -219,9 +219,6 @@ export function apply(ctx: Context, config: Config) {
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(`Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseURL}.`);
 
-    // 设置临时触发计数，在 LLM 回复之后会被再次更新
-    sendQueue.resetTriggerCount(groupId, nextTriggerCountbyConfig);
-
     // 获取回答
     const response = await adapters[curAPI].runChatCompeletion(
       SysPrompt,
@@ -264,8 +261,14 @@ export function apply(ctx: Context, config: Config) {
       )
     );
 
-    // 正式更新触发次数
-    sendQueue.resetTriggerCount(groupId, handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig);
+    // 正式更新触发条数
+    const nextTriggerCountShouldBe = handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig;
+    const finalNextTriggerCount = nextTriggerCountShouldBe + sendQueue.getTriggerCount(groupId, config.Group.TriggerCount);
+    if (finalNextTriggerCount <= 0) {
+      sendQueue.resetTriggerCount(groupId, 0);
+    } else {
+      sendQueue.resetTriggerCount(groupId, handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig);
+    }
 
     const quoteGroup = sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom);
     if (quoteGroup == null) {
