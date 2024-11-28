@@ -173,6 +173,7 @@ export function apply(ctx: Context, config: Config) {
     const isAtMentioned = atRegex.test(session.content);
     const isTriggerCountReached = sendQueue.checkTriggerCount(groupId);
     const shouldReactToAt = Random.bool(config.Group.AtReactPossibility);
+    const nextTriggerCountbyConfig: number = Random.int(config.Group.MinPopNum, config.Group.MaxPopNum + 1); // 双闭区间
 
     // 如果消息队列满了，出队消息到config.Group.SendQueueSize
     if (isQueueFull) {
@@ -218,6 +219,9 @@ export function apply(ctx: Context, config: Config) {
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(`Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseURL}.`);
 
+    // 设置临时触发计数，在 LLM 回复之后会被再次更新
+    sendQueue.resetTriggerCount(groupId, nextTriggerCountbyConfig);
+
     // 获取回答
     const response = await adapters[curAPI].runChatCompeletion(
       SysPrompt,
@@ -247,7 +251,7 @@ export function apply(ctx: Context, config: Config) {
       response,
       config.Debug.AllowErrorFormat,
       config,
-      session.groupMemberList.data
+      session.groupMemberList.datas
     );
 
     const finalRes: string = handledRes.res;
@@ -259,9 +263,8 @@ export function apply(ctx: Context, config: Config) {
         config.Group.MaxPopNum
       )
     );
-    const nextTriggerCountbyConfig: number = Random.int(config.Group.MinPopNum, config.Group.MaxPopNum + 1); // 双闭区间
 
-    // 更新触发次数
+    // 正式更新触发次数
     sendQueue.resetTriggerCount(groupId, handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig);
 
     const quoteGroup = sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom);
