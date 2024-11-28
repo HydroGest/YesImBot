@@ -96,7 +96,7 @@ export interface Config {
     };
     DebugAsInfo: boolean;
     FirsttoAll: boolean;
-    AddAllMsgtoQueue: boolean;
+    AddWhattoQueue: "所有消息" | "所有此插件发送和接收的消息" | "所有和LLM交互的消息";
     WholetoSplit: boolean;
     UpdatePromptOnLoad: boolean;
     AllowErrorFormat: boolean;
@@ -412,9 +412,13 @@ export const Config: Schema<Config> = Schema.object({
     FirsttoAll: Schema.boolean()
       .default(false)
       .description("记忆槽位的行为改为：如果多个槽位都包含同一群号，所有包含该群号的槽位都将被应用"),
-    AddAllMsgtoQueue: Schema.boolean()
-      .default(false)
-      .description("将所有消息添加到消息队列，即使它们不是由 LLM 生成的"),
+    AddWhattoQueue: Schema.union([
+      "所有消息",
+      "所有此插件发送和接收的消息",
+      "所有和LLM交互的消息",
+    ])
+      .default("所有和LLM交互的消息")
+      .description("将哪些消息添加到消息队列。选择“所有消息”时，将使用事件监听器来更新消息队列，请打开自身消息上报，这将导致WholetoSplit失效(始终以实际的分条存入消息队列)"),
     WholetoSplit: Schema.boolean()
       .default(false)
       .description("BOT的消息是否按照实际的分条存入消息队列，关闭表示一次调用API的消息在消息队列中会呈现为一条，开启表示按照实际发送的分条存入消息队列"),

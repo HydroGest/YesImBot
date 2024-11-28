@@ -64,22 +64,24 @@ export function apply(ctx: Context, config: Config) {
     );
   });
 
-  // 某些适配器无法在中间件中获取到手动发送的来自 BOT 的消息，但是如果适配器支持的话，可能重复处理 BOT 的消息，这点不知道怎么解决
   ctx.on('message-created', async (session) => {
     const groupId: string = session.guildId || session.channelId;
     await ensureGroupMemberList(session, groupId);
-    // 把仙人顶号发送的消息也加入队列
-    if (session.userId == session.selfId && config.Debug.AddAllMsgtoQueue) {
+    const [, matchedConfig] = isGroupAllowed(groupId, config.Group.AllowedGroups, config.Debug.FirsttoAll);
+    const mergeQueueFrom = matchedConfig;
+
+    if ((session.userId === session.selfId || mergeQueueFrom.has(groupId)) && config.Debug.AddWhattoQueue === "所有消息") {
+      const senderName = session.userId === session.selfId ? await getBotName(config, session) : await getMemberName(config, session, session.userId);
       sendQueue.updateSendQueue(
         groupId,
-        await getBotName(config, session),
-        session.selfId,
+        senderName,
+        session.userId,
         addQuoteTag(session, session.content),
         session.messageId,
         config.Group.Filter,
         config.Group.TriggerCount,
         session.selfId
-      )
+      );
     }
   });
 
@@ -94,7 +96,7 @@ export function apply(ctx: Context, config: Config) {
       const clearGroupId = options.target || msgDestination;
       const userContent = await processUserContent(config, session);
 
-      if (config.Debug.AddAllMsgtoQueue) {
+      if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
         await ensureGroupMemberList(session, msgDestination);
         sendQueue.updateSendQueue(
           msgDestination,
@@ -114,7 +116,7 @@ export function apply(ctx: Context, config: Config) {
 
       const commandResponseId = (await session.bot.sendMessage(msgDestination, msg))[0];
 
-      if (config.Debug.AddAllMsgtoQueue) {
+      if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
         sendQueue.updateSendQueue(
           msgDestination,
           await getBotName(config, session),
@@ -146,16 +148,18 @@ export function apply(ctx: Context, config: Config) {
     const userContent = await processUserContent(config, session);
 
     // 更新消息队列，把这条消息加入队列
-    sendQueue.updateSendQueue(
-      groupId,
-      await getMemberName(config, session, session.event.user.id),
-      session.event.user.id,
-      addQuoteTag(session, userContent.content),
-      session.messageId,
-      config.Group.Filter,
-      config.Group.TriggerCount,
-      session.event.selfId
-    );
+    if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息") {
+      sendQueue.updateSendQueue(
+        groupId,
+        await getMemberName(config, session, session.event.user.id),
+        session.event.user.id,
+        addQuoteTag(session, userContent.content),
+        session.messageId,
+        config.Group.Filter,
+        config.Group.TriggerCount,
+        session.event.selfId
+      );
+    }
 
     // 检测是否达到发送次数或被 at
     // 返回 false 的条件：
@@ -291,7 +295,7 @@ ${handledRes.originalRes}
 ---
 消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
         const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, failTemplate))[0];
-        if (config.Debug.AddAllMsgtoQueue) {
+        if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
           sendQueue.updateSendQueue(
             config.Debug.LogicRedirect.Target,
             await getBotName(config, session),
@@ -323,7 +327,7 @@ ${handledRes.originalRes}`);
       // 有时候 LLM 会生成空内容，这个时候就算是success也不应该发送内容，但是如果有执行指令，应该执行
       const templateNoTag = template.replace(handledRes.res, handledRes.resNoTag);
       const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, templateNoTag))[0];
-      if (config.Debug.AddAllMsgtoQueue) {
+      if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
         sendQueue.updateSendQueue(
           config.Debug.LogicRedirect.Target,
           await getBotName(config, session),
@@ -435,7 +439,7 @@ ${handledRes.originalRes}`);
       handledRes.execute.forEach(async (command) => {
         try {
           const botMessageId = (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)))[0]; // 执行每个指令，获取返回的消息ID字符串数组
-          if (config.Debug.AddAllMsgtoQueue) {
+          if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息") { // 虽然 LLM 使用的指令本身并不会发到消息界面，但为了防止 LLM 忘记自己用过指令，加入队列
             sendQueue.updateSendQueue(
               finalReplyTo,
               await getBotName(config, session),
@@ -475,7 +479,7 @@ ${handledRes.originalRes}`);
       const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
       await new Promise((resolve) => setTimeout(resolve, waitTime * 1000));
       finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence))[0];
-      if (config.Debug.WholetoSplit) {
+      if (config.Debug.WholetoSplit && (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息")) {
         sendQueue.updateSendQueue(
           finalReplyTo,
           await getBotName(config, session),
@@ -488,7 +492,7 @@ ${handledRes.originalRes}`);
         )
       }
     }
-    if (!config.Debug.WholetoSplit) {
+    if (!config.Debug.WholetoSplit && (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息")) {
       sendQueue.updateSendQueue(
         finalReplyTo,
         await getBotName(config, session),

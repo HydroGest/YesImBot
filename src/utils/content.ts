@@ -1,6 +1,4 @@
 import { getMemberName } from './prompt';
-import https from 'https';
-import axios from 'axios';
 import { readFileSync } from 'fs';
 import path from 'path';
 import JSON5 from "json5";
