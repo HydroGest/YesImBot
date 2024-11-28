@@ -1,7 +1,5 @@
 import { Context, Next, h, Random, Session, sleep } from "koishi";
 
-import JSON5 from "json5";
-
 import { ResponseVerifier } from "./utils/verifier";
 
 import { Config } from "./config";
@@ -112,7 +110,7 @@ export function apply(ctx: Context, config: Config) {
         ? `已清除关于 ${clearGroupId} 的记忆`
         : `未找到关于 ${clearGroupId} 的记忆`;
 
-      const commandResponseId = (await session.bot.sendMessage(msgDestination, msg))[0];
+      const commandResponseId = (await session.bot.sendMessage(msgDestination, msg, null, { session }))[0];
 
       if (config.Debug.AddAllMsgtoQueue) {
         sendQueue.updateSendQueue(
@@ -214,9 +212,7 @@ export function apply(ctx: Context, config: Config) {
     status.updateStatus(adapters.length);
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(
-        `Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseURL}.`
-      );
+      ctx.logger.info(`Using API ${curAPI}, BaseURL ${config.API.APIList[curAPI].BaseURL}.`);
 
     // 获取回答
     const response = await adapters[curAPI].runChatCompeletion(
@@ -229,7 +225,7 @@ export function apply(ctx: Context, config: Config) {
     );
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(JSON5.stringify(response, null, 2));
+      ctx.logger.info(JSON.stringify(response, null, 2));
 
     const handledRes: {
       status: string;
@@ -349,13 +345,11 @@ ${handledRes.originalRes}`);
     const sentences = finalRes.split(/(?<=[。?!？！])\s*/);
     const sentencesNoTag = handledRes.resNoTagExceptQuote.split(/(?<=[。?!？！])\s*/);
 
-
-
     // 如果 AI 使用了指令
     if (handledRes.execute) {
       handledRes.execute.forEach(async (command) => {
         try {
-          const botMessageId = (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)))[0]; // 执行每个指令，获取返回的消息ID字符串数组
+          const botMessageId = (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command), null, { session }))[0]; // 执行每个指令，获取返回的消息ID字符串数组
           if (config.Debug.AddAllMsgtoQueue) {
             sendQueue.updateSendQueue(
               finalReplyTo,
@@ -397,7 +391,7 @@ ${handledRes.originalRes}`);
         const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
         await sleep(waitTime * 1000);
       }
-      finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence))[0];
+      finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence, null, { session }))[0];
       if (config.Debug.WholetoSplit) {
         sendQueue.updateSendQueue(
           finalReplyTo,
