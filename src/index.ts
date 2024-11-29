@@ -53,7 +53,7 @@ export function apply(ctx: Context, config: Config) {
   ctx.on("ready", async () => {
     // Return 之前，更新一下 adapters 吧
     adapters = updateAdapters(config.API.APIList);
-    if (!config.Debug.UpdatePromptOnLoad) return;
+    if (!config.Settings.UpdatePromptOnLoad) return;
     ctx.logger.info("正在尝试更新 Prompt 文件...");
     await ensurePromptFileExists(
       config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
@@ -65,10 +65,10 @@ export function apply(ctx: Context, config: Config) {
   ctx.on('message-created', async (session) => {
     const groupId: string = session.guildId || session.channelId;
     await ensureGroupMemberList(session, groupId);
-    const [, matchedConfig] = isGroupAllowed(groupId, config.Group.AllowedGroups, config.Debug.FirsttoAll);
+    const [, matchedConfig] = isGroupAllowed(groupId, config.Group.AllowedGroups, config.Settings.FirsttoAll);
     const mergeQueueFrom = matchedConfig;
 
-    if ((session.userId === session.selfId || mergeQueueFrom.has(groupId)) && config.Debug.AddWhattoQueue === "所有消息") {
+    if ((session.userId === session.selfId || mergeQueueFrom.has(groupId)) && config.Settings.AddWhattoQueue === "所有消息") {
       const senderName = session.userId === session.selfId ? await getBotName(config, session) : await getMemberName(config, session, session.userId);
       sendQueue.updateSendQueue(
         groupId,
@@ -94,7 +94,7 @@ export function apply(ctx: Context, config: Config) {
       const clearGroupId = options.target || msgDestination;
       const userContent = await processUserContent(config, session);
 
-      if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
+      if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息") {
         await ensureGroupMemberList(session, msgDestination);
         sendQueue.updateSendQueue(
           msgDestination,
@@ -112,9 +112,11 @@ export function apply(ctx: Context, config: Config) {
         ? `已清除关于 ${clearGroupId} 的记忆`
         : `未找到关于 ${clearGroupId} 的记忆`;
 
-      const commandResponseId = (await session.bot.sendMessage(msgDestination, msg, null, { session }))[0];
+      const commandResponseId = config.Debug.TestMode
+      ? (await session.bot.sendMessage(msgDestination, msg, null, { session }))[0]
+      : (await session.bot.sendMessage(msgDestination, msg))[0];
 
-      if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
+      if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息") {
         sendQueue.updateSendQueue(
           msgDestination,
           await getBotName(config, session),
@@ -139,14 +141,14 @@ export function apply(ctx: Context, config: Config) {
 
     if (!config.Group.AllowedGroups?.length) return next();
 
-    const [isGuildAllowed, matchedConfig] = isGroupAllowed(groupId, config.Group.AllowedGroups, config.Debug.FirsttoAll);
+    const [isGuildAllowed, matchedConfig] = isGroupAllowed(groupId, config.Group.AllowedGroups, config.Settings.FirsttoAll);
     if (!isGuildAllowed) return next();
     const mergeQueueFrom = matchedConfig;
 
     const userContent = await processUserContent(config, session);
 
     // 更新消息队列，把这条消息加入队列
-    if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息") {
+    if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息") {
       sendQueue.updateSendQueue(
         groupId,
         await getMemberName(config, session, session.event.user.id),
@@ -249,7 +251,7 @@ export function apply(ctx: Context, config: Config) {
       usage?: any;
     } = await adapters[curAPI].handleResponse(
       response,
-      config.Debug.AllowErrorFormat,
+      config.Settings.AllowErrorFormat,
       config,
       session.groupMemberList.data
     );
@@ -287,16 +289,18 @@ export function apply(ctx: Context, config: Config) {
     }
 
     if (handledRes.status === "fail") {
-      if (config.Debug.LogicRedirect.Enabled) {
+      if (config.Settings.LogicRedirect.Enabled) {
         const failTemplate = `LLM 的响应无法正确解析。
 原始响应:
 ${handledRes.originalRes}
 ---
 消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
-        const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, failTemplate))[0];
-        if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
+        const botMessageId = config.Debug.TestMode
+        ? (await session.bot.sendMessage(config.Settings.LogicRedirect.Target, failTemplate, null, { session }))[0]
+        : (await session.bot.sendMessage(config.Settings.LogicRedirect.Target, failTemplate))[0];
+        if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息") {
           sendQueue.updateSendQueue(
-            config.Debug.LogicRedirect.Target,
+            config.Settings.LogicRedirect.Target,
             await getBotName(config, session),
             session.event.selfId,
             failTemplate,
@@ -311,7 +315,7 @@ ${handledRes.originalRes}
 ${handledRes.originalRes}`);
     }
 
-    if (config.Debug.LogicRedirect.Enabled) {
+    if (config.Settings.LogicRedirect.Enabled) {
       const template = `${handledRes.status === "skip" ? `${await getBotName(config, session)}想要跳过此次回复` : `回复于 ${finalReplyTo} 的消息已生成，来自 API ${curAPI}:
 状态: ${handledRes.status}`}
 ---
@@ -325,10 +329,12 @@ ${handledRes.originalRes}`);
       // 有时候 LLM 就算跳过回复，也会生成内容，这个时候应该无视跳过，发送内容
       // 有时候 LLM 会生成空内容，这个时候就算是success也不应该发送内容，但是如果有执行指令，应该执行
       const templateNoTag = template.replace(handledRes.res, handledRes.resNoTag);
-      const botMessageId = (await session.bot.sendMessage(config.Debug.LogicRedirect.Target, templateNoTag))[0];
-      if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息") {
+      const botMessageId = config.Debug.TestMode
+      ? (await session.bot.sendMessage(config.Settings.LogicRedirect.Target, templateNoTag, null, { session }))[0]
+      : (await session.bot.sendMessage(config.Settings.LogicRedirect.Target, templateNoTag))[0];
+      if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息") {
         sendQueue.updateSendQueue(
-          config.Debug.LogicRedirect.Target,
+          config.Settings.LogicRedirect.Target,
           await getBotName(config, session),
           session.event.selfId,
           template,
@@ -454,8 +460,10 @@ ${handledRes.originalRes}`);
     if (handledRes.execute) {
       handledRes.execute.forEach(async (command) => {
         try {
-          const botMessageId = (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command), null, { session }))[0]; // 执行每个指令，获取返回的消息ID字符串数组
-          if (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息") { // 虽然 LLM 使用的指令本身并不会发到消息界面，但为了防止 LLM 忘记自己用过指令，加入队列
+          const botMessageId = config.Debug.TestMode
+          ? (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command), null, { session }))[0]
+          : (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)))[0]; // 执行每个指令，获取返回的消息ID字符串数组
+          if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息") { // 虽然 LLM 使用的指令本身并不会发到消息界面，但为了防止 LLM 忘记自己用过指令，加入队列
             sendQueue.updateSendQueue(
               finalReplyTo,
               await getBotName(config, session),
@@ -496,8 +504,10 @@ ${handledRes.originalRes}`);
         const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
         await sleep(waitTime * 1000);
       }
-      finalBotMsgId = (await session.bot.sendMessage(finalReplyTo, sentence, null, { session }))[0];
-      if (config.Debug.WholetoSplit && (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息")) {
+      finalBotMsgId = config.Debug.TestMode
+      ? (await session.bot.sendMessage(finalReplyTo, sentence, null, { session }))[0]
+      : (await session.bot.sendMessage(finalReplyTo, sentence))[0];
+      if (config.Settings.WholetoSplit && (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息")) {
         sendQueue.updateSendQueue(
           finalReplyTo,
           await getBotName(config, session),
@@ -510,7 +520,7 @@ ${handledRes.originalRes}`);
         )
       }
     }
-    if (!config.Debug.WholetoSplit && (config.Debug.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Debug.AddWhattoQueue === "所有和LLM交互的消息")) {
+    if (!config.Settings.WholetoSplit && (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息")) {
       sendQueue.updateSendQueue(
         finalReplyTo,
         await getBotName(config, session),
