@@ -239,7 +239,7 @@ export class SendQueue {
     });
 
     // 如果超过长度限制，丢弃旧的消息
-    const maxSize = config.Group.SendQueueSize;
+    const maxSize = config.MemorySlot.SlotSize;
     if (messages.length > maxSize) {
       messages = messages.slice(-maxSize);
     }

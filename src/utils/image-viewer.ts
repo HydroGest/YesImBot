@@ -170,7 +170,7 @@ async function anotherLLMImageDescription(src: string, base64: string, question:
     const response = await adapter.runChatCompeletion(
       SysPrompt,
       chatData,
-      config.Parameters,
+      Object.create(config.Parameters),
       config.ImageViewer.Detail,
       "LLM API 自带的多模态能力",
       config.Debug.DebugAsInfo,

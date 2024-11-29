@@ -21,12 +21,12 @@ interface Usage {
 }
 
 function escapeUnicodeCharacters(str: string) {
-   return str.replace(/[\u0080-\uffff]/g, function(ch) {
-     return "\\u" + ("0000" + ch.charCodeAt(0).toString(16)).slice(-4);
-   });
+  return str.replace(/[\u0080-\uffff]/g, function (ch) {
+    return "\\u" + ("0000" + ch.charCodeAt(0).toString(16)).slice(-4);
+  });
 }
 
-function convertStringToNumber(value?: string | number ): number {
+function convertStringToNumber(value?: string | number): number {
   if (value == null || (typeof value === 'string' && value.trim() === '')) {
     return null;
   }
@@ -74,28 +74,28 @@ export abstract class BaseAdapter {
     const otherParams: Record<string, any> = {};
     if (parameters.OtherParameters) {
       parameters.OtherParameters.forEach((param: { key: string; value: string }) => {
-          const key = param.key.trim();
-          let value = param.value.trim();
+        const key = param.key.trim();
+        let value = param.value.trim();
 
-          // 尝试解析 JSON 字符串
-          try {
-            value = JSON5.parse(value);
-          } catch (e) {
-            // 如果解析失败，保持原值
-          }
-
-          // 转换 value 为适当的类型
-          if (value === 'true') {
-            otherParams[key] = true;
-          } else if (value === 'false') {
-            otherParams[key] = false;
-            //@ts-ignore
-          } else if (!isNaN(value)) {
-            otherParams[key] = Number(value);
-          } else {
-            otherParams[key] = value;
-          }
+        // 尝试解析 JSON 字符串
+        try {
+          value = JSON5.parse(value);
+        } catch (e) {
+          // 如果解析失败，保持原值
         }
+
+        // 转换 value 为适当的类型
+        if (value === 'true') {
+          otherParams[key] = true;
+        } else if (value === 'false') {
+          otherParams[key] = false;
+          //@ts-ignore
+        } else if (!isNaN(value)) {
+          otherParams[key] = Number(value);
+        } else {
+          otherParams[key] = value;
+        }
+      }
       );
       parameters.OtherParameters = otherParams;
     }
@@ -253,24 +253,24 @@ export abstract class BaseAdapter {
         const resJSON = jsonMatch[0];
         LLMResponse = JSON5.parse(escapeUnicodeCharacters(resJSON));
       } catch (e) {
-        status = "fail";
+        status = "fail"; // JSON 解析失败
         // 此时 LLMResponse 还是 undefined
         //@ts-ignore
         LLMResponse = {};
       }
     } else {
-      status = "fail";
+      status = "fail"; // 没有找到 JSON
     }
-    if (LLMResponse.status === "success" || LLMResponse.status === "skip"){
+    if (LLMResponse.status === "success" || LLMResponse.status === "skip") {
       status = LLMResponse.status;
     } else {
-      status = "fail";
+      status = "fail"; // status 不是 "success" 或 "skip"
     }
     if (!AllowErrorFormat) {
-      try {
-        finalResponse += LLMResponse.finReply || LLMResponse.reply;
-      } catch (e) {
-        status = "fail";
+      if (LLMResponse.finReply || LLMResponse.reply) {
+        finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
+      } else {
+        status = "fail"; // 回复格式错误
       }
     } else {
       finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
@@ -281,7 +281,7 @@ export abstract class BaseAdapter {
       ];
       for (const resp of possibleResponse) {
         if (resp) {
-          finalResponse += resp;
+          finalResponse += resp || "";
           break;
         }
       }

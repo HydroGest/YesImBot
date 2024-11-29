@@ -1,12 +1,12 @@
 import { Schema } from "koishi";
 
 export interface Config {
-  Group: {
-    AllowedGroups: string[];
-    SendQueueSize: number;
-    TriggerCount: number;
-    MaxPopNum: number;
-    MinPopNum: number;
+  MemorySlot: {
+    SlotContains: string[];
+    SlotSize: number;
+    FirstTriggerCount: number;
+    MaxTriggerCount: number;
+    MinTriggerCount: number;
     AtReactPossibility?: number;
     Filter: string[];
   };
@@ -89,39 +89,42 @@ export interface Config {
       tothis: string;
     }[];
   };
-  Debug: {
+  Settings: {
     LogicRedirect: {
       Enabled?: boolean;
       Target?: string;
     };
-    DebugAsInfo: boolean;
     FirsttoAll: boolean;
     AddWhattoQueue: "所有消息" | "所有此插件发送和接收的消息" | "所有和LLM交互的消息";
     WholetoSplit: boolean;
     UpdatePromptOnLoad: boolean;
     AllowErrorFormat: boolean;
   };
+  Debug: {
+    DebugAsInfo: boolean;
+    TestMode: boolean;
+  };
 }
 
 export const Config: Schema<Config> = Schema.object({
-  Group: Schema.object({
-    AllowedGroups: Schema.array(Schema.string())
+  MemorySlot: Schema.object({
+    SlotContains: Schema.array(Schema.string())
       .required()
       .role("table")
-      .description("记忆槽位。填入一个或多个群号，用半角逗号分隔。用\"private:\"指定私聊，用\"all\"指定所有群聊，用\"private:all\"指定所有私聊。同一个槽位的聊天将共用同一份记忆。如果多个槽位都包含同一群号，第一个包含该群号的槽位将被应用"),
-    SendQueueSize: Schema.number()
+      .description("记忆槽位。填入一个或多个会话ID，用半角逗号分隔。群聊的会话ID是群号，私聊的会话ID是带有\"private:\" + 用户账号。用\"all\"指定所有群聊，用\"private:all\"指定所有私聊。同一个槽位的聊天将共用同一份记忆。如果多个槽位都包含同一会话ID，第一个包含该会话ID的槽位将被应用"),
+    SlotSize: Schema.number()
       .default(20)
       .min(1)
       .description("Bot 接收的上下文数量（消息队列最大长度）"),
-    TriggerCount: Schema.number()
+    FirstTriggerCount: Schema.number()
       .default(3)
       .min(1)
       .description("Bot 开始回复消息的初始触发计数"),
-    MaxPopNum: Schema.number()
+    MaxTriggerCount: Schema.number()
       .default(10)
       .min(1)
       .description("Bot 两次回复之间的最大消息数"),
-    MinPopNum: Schema.number()
+    MinTriggerCount: Schema.number()
       .default(1)
       .min(1)
       .description("Bot 两次回复之间的最小消息数"),
@@ -135,7 +138,7 @@ export const Config: Schema<Config> = Schema.object({
     Filter: Schema.array(Schema.string())
       .default(["你是", "You are", "吧", "呢"])
       .description("过滤的词汇（防止被调皮群友/机器人自己搞傻）"),
-  }).description("群聊设置"),
+  }).description("记忆槽位设置"),
 
   API: Schema.object({
     APIList: Schema.array(
@@ -389,7 +392,7 @@ export const Config: Schema<Config> = Schema.object({
     CuteMode: Schema.boolean().default(false).description("原神模式（迫真"),
   }).description("机器人设定"),
 
-  Debug: Schema.object({
+  Settings: Schema.object({
     LogicRedirect: Schema.intersect([
       Schema.object({
         Enabled: Schema.boolean()
@@ -406,9 +409,6 @@ export const Config: Schema<Config> = Schema.object({
         Schema.object({}),
       ]),
     ]),
-    DebugAsInfo: Schema.boolean()
-      .default(false)
-      .description("在控制台显示 Debug 消息"),
     FirsttoAll: Schema.boolean()
       .default(false)
       .description("记忆槽位的行为改为：如果多个槽位都包含同一群号，所有包含该群号的槽位都将被应用"),
@@ -428,5 +428,14 @@ export const Config: Schema<Config> = Schema.object({
     AllowErrorFormat: Schema.boolean()
       .default(false)
       .description("兼容几种较为常见的大模型错误输出格式"),
-  }).description("调试工具"),
+  }).description("插件设置"),
+
+  Debug: Schema.object({
+    DebugAsInfo: Schema.boolean()
+      .default(false)
+      .description("在控制台显示 Debug 消息"),
+    TestMode: Schema.boolean()
+      .default(false)
+      .description("测试模式。如果你不知道这是什么，不要开启"),
+  }).description("调试设置"),
 });

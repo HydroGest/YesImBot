@@ -1,8 +1,8 @@
 import { Config } from "../src";
 
 export default {
-  Group: {
-    AllowedGroups: [
+  MemorySlot: {
+    SlotContains: [
       "all",
       "private:all"
     ],
@@ -40,10 +40,13 @@ export default {
     NickorName: "用户昵称",
     WordsPerSecond: 0,
   },
-  Debug: {
-    DebugAsInfo: true,
+  Settings: {
     AllowErrorFormat: true,
     UpdatePromptOnLoad: false,
+  },
+  Debug: {
+    DebugAsInfo: true,
+    TestMode: true,
   },
   Embedding: {
     APIType: "Custom",
