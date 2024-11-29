@@ -65,7 +65,7 @@ export function apply(ctx: Context, config: Config) {
   ctx.on('message-created', async (session) => {
     const groupId: string = session.guildId || session.channelId;
     await ensureGroupMemberList(session, groupId);
-    const [, matchedConfig] = isGroupAllowed(groupId, config.Group.AllowedGroups, config.Settings.FirsttoAll);
+    const [, matchedConfig] = isGroupAllowed(groupId, config.MemorySlot.SlotContains, config.Settings.FirsttoAll);
     const mergeQueueFrom = matchedConfig;
 
     if ((session.userId === session.selfId || mergeQueueFrom.has(groupId)) && config.Settings.AddWhattoQueue === "所有消息") {
@@ -76,8 +76,8 @@ export function apply(ctx: Context, config: Config) {
         session.userId,
         addQuoteTag(session, session.content),
         session.messageId,
-        config.Group.Filter,
-        config.Group.TriggerCount,
+        config.MemorySlot.Filter,
+        config.MemorySlot.FirstTriggerCount,
         session.selfId
       );
     }
@@ -102,8 +102,8 @@ export function apply(ctx: Context, config: Config) {
           session.event.user.id,
           addQuoteTag(session, userContent.content),
           session.messageId,
-          config.Group.Filter,
-          config.Group.TriggerCount,
+          config.MemorySlot.Filter,
+          config.MemorySlot.FirstTriggerCount,
           session.event.selfId
         );
       }
@@ -123,8 +123,8 @@ export function apply(ctx: Context, config: Config) {
           session.event.selfId,
           msg, // 此处无需添加引用Tag
           commandResponseId, // 发送消息并获取消息ID
-          config.Group.Filter,
-          config.Group.TriggerCount,
+          config.MemorySlot.Filter,
+          config.MemorySlot.FirstTriggerCount,
           session.event.selfId
         );
       }
@@ -139,9 +139,9 @@ export function apply(ctx: Context, config: Config) {
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(`New message received, guildId = ${groupId}, content = ${foldText(session.content, 1000)}`);
 
-    if (!config.Group.AllowedGroups?.length) return next();
+    if (!config.MemorySlot.SlotContains?.length) return next();
 
-    const [isGuildAllowed, matchedConfig] = isGroupAllowed(groupId, config.Group.AllowedGroups, config.Settings.FirsttoAll);
+    const [isGuildAllowed, matchedConfig] = isGroupAllowed(groupId, config.MemorySlot.SlotContains, config.Settings.FirsttoAll);
     if (!isGuildAllowed) return next();
     const mergeQueueFrom = matchedConfig;
 
@@ -155,8 +155,8 @@ export function apply(ctx: Context, config: Config) {
         session.event.user.id,
         addQuoteTag(session, userContent.content),
         session.messageId,
-        config.Group.Filter,
-        config.Group.TriggerCount,
+        config.MemorySlot.Filter,
+        config.MemorySlot.FirstTriggerCount,
         session.event.selfId
       );
     }
@@ -167,19 +167,19 @@ export function apply(ctx: Context, config: Config) {
     // 如果触发条数没有达到 (!isTriggerCountReached)
     // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
     // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
-    const isQueueFull: boolean = sendQueue.checkQueueSize(groupId, config.Group.SendQueueSize);
-    const isMixedQueueFull: boolean = sendQueue.checkMixedQueueSize(mergeQueueFrom, config.Group.SendQueueSize);
+    const isQueueFull: boolean = sendQueue.checkQueueSize(groupId, config.MemorySlot.SlotSize);
+    const isMixedQueueFull: boolean = sendQueue.checkMixedQueueSize(mergeQueueFrom, config.MemorySlot.SlotSize);
     const loginStatus = await session.bot.getLogin();
     const isBotOnline = loginStatus.status === 1;
     const atRegex = new RegExp(`<at (id="${session.bot.selfId}".*?|type="all".*?${isBotOnline ? '|type="here"' : ''}).*?/>`);
     const isAtMentioned = atRegex.test(session.content);
     const isTriggerCountReached = sendQueue.checkTriggerCount(groupId);
-    const shouldReactToAt = Random.bool(config.Group.AtReactPossibility);
-    const nextTriggerCountbyConfig: number = Random.int(config.Group.MinPopNum, config.Group.MaxPopNum + 1); // 双闭区间
+    const shouldReactToAt = Random.bool(config.MemorySlot.AtReactPossibility);
+    const nextTriggerCountbyConfig: number = Random.int(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount + 1); // 双闭区间
 
-    // 如果消息队列满了，出队消息到config.Group.SendQueueSize
+    // 如果消息队列满了，出队消息到config.MemorySlot.SlotSize
     if (isQueueFull) {
-      sendQueue.resetSendQueue(groupId, config.Group.SendQueueSize);
+      sendQueue.resetSendQueue(groupId, config.MemorySlot.SlotSize);
     }
     if (isMixedQueueFull) {
       ctx.logger.info("记忆槽位已满，超出的旧消息将被遗忘");
@@ -259,10 +259,10 @@ export function apply(ctx: Context, config: Config) {
     const finalRes: string = handledRes.res;
     let finalReplyTo: string = handledRes.replyTo;
     const nextTriggerCountbyLLM: number = Math.max(
-      config.Group.MinPopNum,
+      config.MemorySlot.MinTriggerCount,
       Math.min(
-        handledRes.nextTriggerCount ?? config.Group.MinPopNum,
-        config.Group.MaxPopNum
+        handledRes.nextTriggerCount ?? config.MemorySlot.MinTriggerCount,
+        config.MemorySlot.MaxTriggerCount
       )
     );
 
@@ -305,8 +305,8 @@ ${handledRes.originalRes}
             session.event.selfId,
             failTemplate,
             botMessageId,
-            config.Group.Filter,
-            config.Group.TriggerCount,
+            config.MemorySlot.Filter,
+            config.MemorySlot.FirstTriggerCount,
             session.event.selfId
           )
         }
@@ -339,8 +339,8 @@ ${handledRes.originalRes}`);
           session.event.selfId,
           template,
           botMessageId,
-          config.Group.Filter,
-          config.Group.TriggerCount,
+          config.MemorySlot.Filter,
+          config.MemorySlot.FirstTriggerCount,
           session.event.selfId
         );
       }
@@ -470,8 +470,8 @@ ${handledRes.originalRes}`);
               session.event.selfId,
               h("execute", {}, command).toString(),
               botMessageId,
-              config.Group.Filter,
-              config.Group.TriggerCount,
+              config.MemorySlot.Filter,
+              config.MemorySlot.FirstTriggerCount,
               session.event.selfId
             )
           }
@@ -514,8 +514,8 @@ ${handledRes.originalRes}`);
           session.event.selfId,
           sentenceNoTag,
           finalBotMsgId,
-          config.Group.Filter,
-          config.Group.TriggerCount,
+          config.MemorySlot.Filter,
+          config.MemorySlot.FirstTriggerCount,
           session.event.selfId
         )
       }
@@ -527,8 +527,8 @@ ${handledRes.originalRes}`);
         session.event.selfId,
         handledRes.resNoTagExceptQuote,
         finalBotMsgId, // session.messageId，这里是机器人自己发的消息，设为最后一条消息的消息ID
-        config.Group.Filter,
-        config.Group.TriggerCount,
+        config.MemorySlot.Filter,
+        config.MemorySlot.FirstTriggerCount,
         session.event.selfId
       );
     }
