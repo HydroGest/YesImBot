@@ -4,8 +4,9 @@ import path from 'path';
 import fs from 'fs';
 import { Config } from "../config";
 import https from 'https';
+import sharp from 'sharp';
 
-export async function sendRequest(url: string, APIKey: string, requestBody: any,  debug: boolean): Promise<any> {
+export async function sendRequest(url: string, APIKey: string, requestBody: any, debug: boolean): Promise<any> {
   if (debug) {
     console.log(`Request URL: ${url}`);
     console.log(`Request body: \n${foldText(JSON5.stringify(requestBody, null, 2), 2100)}`);
@@ -239,7 +240,7 @@ export function isGroupAllowed(groupId: string, allowedGroups: string[], debug: 
 }
 
 // 从URL获取图片的base64编码
-export async function convertUrltoBase64 (url: string): Promise<string> {
+export async function convertUrltoBase64(url: string): Promise<string> {
   url = url.replace(/&amp;/g, '&');
   try {
     const response = await axios.get(url, {
@@ -248,10 +249,20 @@ export async function convertUrltoBase64 (url: string): Promise<string> {
       timeout: 5000  // 5秒超时
     });
 
-    const buffer = Buffer.from(response.data);
+    let buffer = Buffer.from(response.data);
     const contentType = response.headers['content-type'] || 'image/jpeg';
-    const base64 = `data:${contentType};base64,${buffer.toString('base64')}`;
 
+    // 如果图片大小大于10MB，压缩图片到10MB以内
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (buffer.length > maxSize) {
+      do {
+        buffer = await sharp(buffer)
+          .jpeg({ quality: Math.max(10, Math.floor((maxSize / buffer.length) * 80)) }) // 动态调整质量
+          .toBuffer();
+      } while (buffer.length > maxSize);
+    }
+
+    const base64 = `data:${contentType};base64,${buffer.toString('base64')}`;
     return base64;
   } catch (error) {
     console.error('Error converting image to base64:', error.message);
@@ -265,10 +276,10 @@ export function foldText(text: string, maxLength: number): string {
     const halfLength = Math.floor(maxLength / 2);
     const foldedChars = text.length - maxLength;
     return text.slice(0, halfLength) +
-           '\x1b[33m...[已折叠 ' +
-           '\x1b[33;1m' + foldedChars +
-           '\x1b[0m\x1b[33m 个字符]...\x1b[0m' +
-           text.slice(-halfLength);
+      '\x1b[33m...[已折叠 ' +
+      '\x1b[33;1m' + foldedChars +
+      '\x1b[0m\x1b[33m 个字符]...\x1b[0m' +
+      text.slice(-halfLength);
   }
   return text;
 }
