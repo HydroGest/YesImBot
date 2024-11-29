@@ -74,7 +74,7 @@ export function apply(ctx: Context, config: Config) {
         groupId,
         senderName,
         session.userId,
-        addQuoteTag(session, session.content),
+        addQuoteTag(session, (await processUserContent(config, session)).content),
         session.messageId,
         config.MemorySlot.Filter,
         config.MemorySlot.FirstTriggerCount,
