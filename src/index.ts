@@ -191,7 +191,7 @@ export function apply(ctx: Context, config: Config) {
     }
 
     // 启动静默检查
-    if (config.MemorySlot.MaxTriggerTime > 0) {
+    if (config.MemorySlot.MaxTriggerTime > 0 && mergeQueueFrom.has(groupId)) {
       sendQueue.startQuietCheck(groupId, async () => {
         // 当静默期到达时获取回复
         ctx.logger.info("静默期到达，获取回复");
