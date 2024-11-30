@@ -7,6 +7,8 @@ export interface Config {
     FirstTriggerCount: number;
     MaxTriggerCount: number;
     MinTriggerCount: number;
+    MaxTriggerTime: number;
+    MinTriggerTime: number;
     AtReactPossibility?: number;
     Filter: string[];
   };
@@ -128,6 +130,15 @@ export const Config: Schema<Config> = Schema.object({
       .default(1)
       .min(1)
       .description("Bot 两次回复之间的最小消息数"),
+    MaxTriggerTime: Schema.number()
+      .default(0)
+      .min(0)
+      .max(2147483)
+      .description("Bot 能容忍冷场的最长时间（秒），距离会话最后一条消息达到此时间时，将主动触发一次Bot回复，设为 0 表示 285427 年"),
+    MinTriggerTime: Schema.number()
+      .default(1000)
+      .min(0)
+      .description("Bot 单次触发冷却（毫秒），冷却期间如又触发回复，将处理新触发回复，跳过本次触发"),
     AtReactPossibility: Schema.number()
       .default(0.5)
       .min(0)

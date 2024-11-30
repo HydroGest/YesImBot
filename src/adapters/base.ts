@@ -267,7 +267,7 @@ export abstract class BaseAdapter {
       status = "fail"; // status 不是 "success" 或 "skip"
     }
     if (!AllowErrorFormat) {
-      if (LLMResponse.finReply || LLMResponse.reply) {
+      if (LLMResponse.finReply || LLMResponse.reply || status === "skip") {
         finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
       } else {
         status = "fail"; // 回复格式错误
@@ -285,6 +285,14 @@ export abstract class BaseAdapter {
           break;
         }
       }
+    }
+
+    let finalLogic: string = LLMResponse.logic || "";
+
+    const logicQuoteMatch = finalLogic.match(/<quote\s+id=\\*["']?(\d+)\\*["']?\s*\/?>/);
+    if (logicQuoteMatch) {
+      finalLogic = finalLogic.replace(/<quote\s+id=\\*["']?\d+\\*["']?\s*\/?>/g, '');
+      finalLogic = `[引用回复: ${logicQuoteMatch[1]}]\n` + finalLogic;
     }
 
     // 从回复中提取 <quote> 标签，将其放在回复的最前面
@@ -344,7 +352,7 @@ export abstract class BaseAdapter {
       replyTo: convertNumberToString(LLMResponse.session_id),
       quote: quoteMatch ? quoteMatch[1] : '',
       nextTriggerCount: convertStringToNumber(LLMResponse.nextReplyIn),
-      logic: LLMResponse.logic || '',
+      logic: finalLogic || '',
       execute: LLMResponse.execute || [],
       usage: usage,
     };

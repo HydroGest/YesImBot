@@ -25,9 +25,13 @@ export class SendQueue {
     }[]
   >;
   private triggerCountMap: Map<string, number>;
+  private lastTriggerTimeMap: Map<string, number>;
+  private quietTimeoutMap: Map<string, NodeJS.Timeout>;
+  private readonly quietPeriod: number;
   private readonly filePath: string;
 
-  constructor() {
+  constructor(config: Config) {
+    const MAX_TIMEOUT = 2147483647;
     this.filePath = path.join(__dirname, '../../data/queue.json');
     this.sendQueueMap = new Map<
       string,
@@ -41,6 +45,12 @@ export class SendQueue {
       }[]
     >();
     this.triggerCountMap = new Map<string, number>();
+    this.lastTriggerTimeMap = new Map();
+    this.quietTimeoutMap = new Map();
+    // 0 表示不静默，设为一个极大值
+    this.quietPeriod = config.MemorySlot.MaxTriggerTime === 0
+      ? MAX_TIMEOUT
+      : (config.MemorySlot.MaxTriggerTime*1000 || MAX_TIMEOUT);
     this.loadFromFile();
   }
 
@@ -65,7 +75,8 @@ export class SendQueue {
     try {
       const data = {
         sendQueueMap: Object.fromEntries(this.sendQueueMap),
-        triggerCountMap: Object.fromEntries(this.triggerCountMap)
+        triggerCountMap: Object.fromEntries(this.triggerCountMap),
+        lastTriggerTimeMap: Object.fromEntries(this.lastTriggerTimeMap),
       };
       fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2));
     } catch (error) {
@@ -91,6 +102,7 @@ export class SendQueue {
           ])
         );
         this.triggerCountMap = new Map(Object.entries(data.triggerCountMap));
+        this.lastTriggerTimeMap = new Map(Object.entries(data.lastTriggerTimeMap || {}));
 
         console.log('已从文件加载队列数据');
       }
@@ -126,6 +138,38 @@ export class SendQueue {
     const currentCount = this.triggerCountMap.get(group) ?? TriggerCount;
     this.triggerCountMap.set(group, selfId === sender_id ? currentCount : currentCount - 1); // 自己发的消息不计数
     this.saveToFile();
+  }
+
+  startQuietCheck(groupId: string, callback: () => void): void {
+    // 清除之前的定时器
+    this.clearQuietTimeout(groupId);
+
+    // 设置新的定时器
+    const timeout = setTimeout(() => {
+      callback();
+      this.quietTimeoutMap.delete(groupId);
+    }, this.quietPeriod);
+
+    this.quietTimeoutMap.set(groupId, timeout);
+  }
+
+  clearQuietTimeout(groupId: string): void {
+    const existingTimeout = this.quietTimeoutMap.get(groupId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      this.quietTimeoutMap.delete(groupId);
+    }
+  }
+
+  // 获取最后触发时间
+  getLastTriggerTime(groupId: string): number {
+    return this.lastTriggerTimeMap.get(groupId) || 0;
+  }
+
+  // 更新最后触发时间
+  updateLastTriggerTime(groupId: string): void {
+    this.lastTriggerTimeMap.set(groupId, Date.now());
+    this.clearQuietTimeout(groupId);
   }
 
   // 检查队列长度
@@ -167,7 +211,7 @@ export class SendQueue {
   }
 
   // 重置触发计数
-  resetTriggerCount(group: string, nextTriggerCount: number):boolean {
+  resetTriggerCount(group: string, nextTriggerCount: number): boolean {
     if (this.triggerCountMap.has(group)) {
       this.triggerCountMap.set(group, nextTriggerCount);
       this.saveToFile();
