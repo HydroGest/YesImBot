@@ -134,7 +134,7 @@ export const Config: Schema<Config> = Schema.object({
       .default(0)
       .min(0)
       .max(2147483)
-      .description("Bot 能容忍冷场的最长时间（秒），距离会话最后一条消息达到此时间时，将主动触发一次Bot回复，设为 0 表示 285427 年"),
+      .description("Bot 能容忍冷场的最长时间（秒），距离会话最后一条消息达到此时间时，将主动触发一次Bot回复，设为 0 表示关闭此功能"),
     MinTriggerTime: Schema.number()
       .default(1000)
       .min(0)
