@@ -3,11 +3,13 @@ import JSON5 from "json5";
 import path from 'path';
 import fs from 'fs';
 import { Config } from "../config";
+import https from 'https';
+import sharp from 'sharp';
 
-export async function sendRequest(url: string, APIKey: string, requestBody: any,  debug: boolean): Promise<any> {
+export async function sendRequest(url: string, APIKey: string, requestBody: any, debug: boolean): Promise<any> {
   if (debug) {
     console.log(`Request URL: ${url}`);
-    console.log(`Request body: \n${JSON5.stringify(requestBody, null, 2)}`);
+    console.log(`Request body: \n${foldText(JSON5.stringify(requestBody, null, 2), 2100)}`);
   }
 
   try {
@@ -36,8 +38,7 @@ export async function sendRequest(url: string, APIKey: string, requestBody: any,
 
 // 缓存相关 考虑把它们放到一个单独的文件中 这样做基于md5的图片缓存的时候也可以用到
 function getCacheDir(): string {
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  const cacheDir = path.join(__dirname, isDevelopment ? '../../data/.vector_cache' : '../data/.vector_cache');
+  const cacheDir = path.join(__dirname, '../../data/.vector_cache');
   if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir, { recursive: true });
   }
@@ -236,4 +237,49 @@ export function isGroupAllowed(groupId: string, allowedGroups: string[], debug: 
   }
 
   return [false, new Set()];
+}
+
+// 从URL获取图片的base64编码
+export async function convertUrltoBase64(url: string): Promise<string> {
+  url = url.replace(/&amp;/g, '&');
+  try {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }), // 忽略SSL证书验证
+      timeout: 5000  // 5秒超时
+    });
+
+    let buffer = Buffer.from(response.data);
+    const contentType = response.headers['content-type'] || 'image/jpeg';
+
+    // 如果图片大小大于10MB，压缩图片到10MB以内
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (buffer.length > maxSize) {
+      do {
+        buffer = await sharp(buffer)
+          .jpeg({ quality: Math.max(10, Math.floor((maxSize / buffer.length) * 80)) }) // 动态调整质量
+          .toBuffer();
+      } while (buffer.length > maxSize);
+    }
+
+    const base64 = `data:${contentType};base64,${buffer.toString('base64')}`;
+    return base64;
+  } catch (error) {
+    console.error('Error converting image to base64:', error.message);
+    return "";
+  }
+}
+
+// 折叠文本中间部分
+export function foldText(text: string, maxLength: number): string {
+  if (text.length > maxLength) {
+    const halfLength = Math.floor(maxLength / 2);
+    const foldedChars = text.length - maxLength;
+    return text.slice(0, halfLength) +
+      '\x1b[33m...[已折叠 ' +
+      '\x1b[33;1m' + foldedChars +
+      '\x1b[0m\x1b[33m 个字符]...\x1b[0m' +
+      text.slice(-halfLength);
+  }
+  return text;
 }

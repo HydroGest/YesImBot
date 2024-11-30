@@ -1,8 +1,11 @@
 import { Config } from "../src";
 
 export default {
-  Group: {
-    AllowedGroups: ["123"],
+  MemorySlot: {
+    SlotContains: [
+      "all",
+      "private:all"
+    ],
     AtReactPossibility: 1,
   },
   API: {
@@ -35,12 +38,15 @@ export default {
   },
   Bot: {
     NickorName: "用户昵称",
-    WordsPerSecond: 2,
+    WordsPerSecond: 0,
   },
-  Debug: {
-    DebugAsInfo: false,
+  Settings: {
     AllowErrorFormat: true,
     UpdatePromptOnLoad: false,
+  },
+  Debug: {
+    DebugAsInfo: true,
+    TestMode: true,
   },
   Embedding: {
     APIType: "Custom",

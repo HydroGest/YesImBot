@@ -67,7 +67,7 @@ export class ResponseVerifier {
         const response = await adapter.runChatCompeletion(
           sysPrompt,
           promptInput,
-          this.config.Parameters,
+          Object.create(this.config.Parameters),
           this.config.ImageViewer.Detail,
           this.config.ImageViewer.How,
           this.config.Debug.DebugAsInfo
