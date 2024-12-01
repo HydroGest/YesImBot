@@ -183,7 +183,7 @@ export class SendQueue {
   }
 
   // 获取应该包含的队列
-  getShouldIncludeQueue(groups: Set<string>, groupId?: string): Set<string> {
+  getShouldIncludeQueue(groups: Set<string>, groupId?: string): { included: Set<string>, excluded: Set<string> } {
     const hasPrivateAll = groups.has('private:all');
     const hasAll = groups.has('all');
 
@@ -198,15 +198,28 @@ export class SendQueue {
       ? [...this.sendQueueMap.keys(), groupId]
       : [...this.sendQueueMap.keys()];
 
-    return new Set(keysToCheck.filter(shouldIncludeQueue));
+    const included = new Set<string>();
+    const excluded = new Set<string>();
+
+    keysToCheck.forEach(key => {
+      if (shouldIncludeQueue(key)) {
+        included.add(key);
+      } else {
+        if (groups.has(key)) {
+          excluded.add(key);
+        }
+      }
+    });
+
+    return { included, excluded };
   }
 
   // 检查记忆槽位长度
   checkMixedQueueSize(groups: Set<string>, size: number): boolean {
     const includeGroups = this.getShouldIncludeQueue(groups);
 
-    const totalLength = Array.from(includeGroups)
-      .reduce((sum, key) => sum + this.sendQueueMap.get(key).length, 0);
+    const totalLength = Array.from(includeGroups.included)
+      .reduce((sum, key) => sum + (this.sendQueueMap.get(key)?.length || 0), 0);
 
     console.log(`记忆槽位的容量: ${totalLength} / ${size}`);
     return totalLength >= size;
@@ -252,6 +265,7 @@ export class SendQueue {
     if (this.sendQueueMap.has(group)) {
       this.sendQueueMap.delete(group);
       this.triggerCountMap.delete(group);
+      this.lastTriggerTimeMap.delete(group);
       this.saveToFile();
       console.log(`已清空此会话: ${group}`);
       return true;
