@@ -90,7 +90,7 @@ export function apply(ctx: Context, config: Config) {
     const groupId: string = session.guildId || session.channelId;
     await ensureGroupMemberList(session, groupId);
     const [, matchedConfig] = isGroupAllowed(groupId, config.MemorySlot.SlotContains, config.Settings.FirsttoAll);
-    const mergeQueueFrom = matchedConfig;
+    const mergeQueueFrom = sendQueue.getShouldIncludeQueue(matchedConfig, groupId).included;
 
     if ((session.userId === session.selfId || mergeQueueFrom.has(groupId)) && config.Settings.AddWhattoQueue === "所有消息") {
       const senderName = session.userId === session.selfId ? await getBotName(config, session) : await getMemberName(config, session, session.userId);
@@ -115,18 +115,24 @@ export function apply(ctx: Context, config: Config) {
   });
 
   ctx.command('清除记忆', '清除 BOT 对会话的记忆')
-    .option('target', '-t <target> 指定要清除记忆的会话。使用 private:指定私聊会话', { authority: 3 })
+    .option('target', '-t <target> 指定要清除记忆的会话。使用 private:指定私聊会话，使用 all 或 private:all 分别清除所有群聊或私聊记忆', { authority: 3 })
+    .option('person', '-p <person> 从所有会话中清除指定用户的记忆', { authority: 3 })
     .usage('注意：如果使用 清除记忆 <target> 来清除记忆而不带-t参数，将会清除当前会话的记忆！')
-    .example('清除记忆')
-    .example('清除记忆 -t private:1234567890')
-    .example('清除记忆 -t 987654321')
+    .example([
+      '清除记忆',
+      '清除记忆 -t private:1234567890',
+      '清除记忆 -t 987654321',
+      '清除记忆 -t all',
+      '清除记忆 -t private:all',
+      '清除记忆 -p 1234567890'
+    ].join('\n'))
     .action(async ({ session, options }) => {
       const msgDestination = session.guildId || session.channelId;
-      const clearGroupId = options.target || msgDestination;
-      const userContent = await processUserContent(config, session);
 
+      // 保存其他人发送的消息
       if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息") {
         await ensureGroupMemberList(session, msgDestination);
+        const userContent = await processUserContent(config, session);
         sendQueue.updateSendQueue(
           msgDestination,
           await getMemberName(config, session, session.event.user.id),
@@ -137,12 +143,56 @@ export function apply(ctx: Context, config: Config) {
           config.MemorySlot.FirstTriggerCount,
           session.event.selfId
         );
-        sendQueue.clearQuietTimeout(msgDestination); // 收
+        sendQueue.clearQuietTimeout(msgDestination);
       }
 
-      const msg = sendQueue.clearSendQueue(clearGroupId)
-        ? `已清除关于 ${clearGroupId} 的记忆`
-        : `未找到关于 ${clearGroupId} 的记忆`;
+      let msg: string;
+
+      if (options.person) {
+        // 按用户QQ清除记忆
+        const cleared = sendQueue.clearSendQueueByQQ(options.person);
+        msg = cleared ? `已清除关于用户 ${options.person} 的记忆` : `未找到关于用户 ${options.person} 的记忆`;
+      } else {
+        const clearGroupId = options.target || msgDestination;
+        // 要清除的会话集合
+        const targetGroups = clearGroupId.split(",")
+          .map(g => g.trim())
+          .filter(Boolean);
+        const { included } = sendQueue.getShouldIncludeQueue(new Set(targetGroups), msgDestination);
+
+        // 清除记忆
+        const clearResults = Array.from(included)
+          .map(id => ({ id, cleared: sendQueue.clearSendQueue(id) }))
+          .filter(r => r.cleared);
+
+        const messages = [];
+        if (clearResults.length > 0) {
+          const clearedIds = clearResults.map(r => r.id);
+          messages.push(`已清除关于 ${clearedIds.slice(0, 3).join(', ')}${clearedIds.length > 3 ? ' 等会话' : ''} 的记忆`);
+          // 从 targetGroups 中移除已清除的会话
+          clearResults.forEach(r => {
+            const index = targetGroups.indexOf(r.id);
+            if (index > -1) {
+              targetGroups.splice(index, 1);
+            }
+          });
+        }
+
+        // 移除 "private:all" 和 "all"
+        const specialGroups = ["private:all", "all"];
+        specialGroups.forEach(group => {
+          const index = targetGroups.indexOf(group);
+          if (index > -1) {
+            targetGroups.splice(index, 1);
+          }
+        });
+
+        if (targetGroups.length > 0) {
+          messages.push(`未找到关于 ${targetGroups.join(', ')} 的记忆`);
+        }
+
+        msg = messages.join('，');
+      }
 
       const commandResponseId = config.Debug.TestMode
         ? (await session.bot.sendMessage(msgDestination, msg, null, { session }))[0]
@@ -176,7 +226,7 @@ export function apply(ctx: Context, config: Config) {
 
     const [isGuildAllowed, matchedConfig] = isGroupAllowed(groupId, config.MemorySlot.SlotContains, config.Settings.FirsttoAll);
     if (!isGuildAllowed) return next();
-    const mergeQueueFrom = matchedConfig;
+    const mergeQueueFrom = sendQueue.getShouldIncludeQueue(matchedConfig, groupId).included;
 
     // 更新消息队列，把这条消息加入队列
     if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息") {
@@ -195,7 +245,7 @@ export function apply(ctx: Context, config: Config) {
     }
 
     // 启动静默检查
-    if (config.MemorySlot.MaxTriggerTime > 0) {
+    if (config.MemorySlot.MaxTriggerTime > 0 && isGuildAllowed) {
       sendQueue.startQuietCheck(groupId, async () => {
         // 当静默期到达时获取回复
         ctx.logger.info("静默期到达，获取回复");
@@ -361,7 +411,8 @@ export function apply(ctx: Context, config: Config) {
       );
 
       // 正式更新触发次数
-      sendQueue.resetTriggerCount(groupId, handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig);
+      const nextTriggerCount = handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig;
+      sendQueue.resetTriggerCount(groupId, nextTriggerCount);
 
       const quoteGroup = sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom);
       if (quoteGroup == null) {
@@ -418,6 +469,8 @@ ${handledRes.originalRes}`);
 逻辑: ${handledRes.logic}
 ---
 指令：${handledRes.execute?.length ? handledRes.execute : "无"}
+---
+距离下次：${nextTriggerCountbyLLM} -> ${nextTriggerCount}
 ---
 消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
         // 有时候 LLM 就算跳过回复，也会生成内容，这个时候应该无视跳过，发送内容

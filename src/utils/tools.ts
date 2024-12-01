@@ -16,7 +16,7 @@ export function isGroupAllowed(groupId: string, allowedGroups: string[], debug: 
       // 检查全局允许
       if (!isPrivate && group === "all") {
         if (debug) {
-          matchedGroups.add(groupConfig);
+          groups.forEach(g => matchedGroups.add(g));
         } else {
           return [true, groups];
         }
@@ -24,7 +24,7 @@ export function isGroupAllowed(groupId: string, allowedGroups: string[], debug: 
       // 检查全局私聊允许
       if (isPrivate && group === "private:all") {
         if (debug) {
-          matchedGroups.add(groupConfig);
+          groups.forEach(g => matchedGroups.add(g));
         } else {
           return [true, groups];
         }
@@ -32,7 +32,7 @@ export function isGroupAllowed(groupId: string, allowedGroups: string[], debug: 
       // 精确匹配
       if (groupId === group) {
         if (debug) {
-          matchedGroups.add(groupConfig);
+          groups.forEach(g => matchedGroups.add(g));
         } else {
           return [true, groups];
         }
