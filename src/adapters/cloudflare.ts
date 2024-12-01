@@ -34,7 +34,25 @@ export class CloudflareAdapter extends BaseAdapter {
       stop: parameters.Stop,
       ...parameters.OtherParameters,
     };
-    
-    return sendRequest(this.url, this.apiKey, requestBody, debug);
+    let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
+    try {
+      return {
+        model: "",
+        created_at: "",
+        message: {
+          role: response.result.role,
+          content: response.result.response,
+          images: [],
+        },
+        usage: {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0
+        },
+      }
+    } catch (error) {
+      console.error("Error parsing response:", error);
+      console.error("Response:", response);
+    }
   }
 }

@@ -1,17 +1,14 @@
 import { h } from "koishi";
 import JSON5 from "json5";
-import { emojiManager } from "../utils/content";
-import { Config } from "../config";
 
-interface Response {
-  status: "skip" | "success";
-  session_id: string | number;
-  nextReplyIn: string | number;
-  logic: string;
-  reply: string;
-  check: string;
-  finReply: string;
-  execute: Array<string>;
+import { emojiManager } from "../managers/emojiManager";
+import { Config } from "../config";
+import { convertNumberToString, convertStringToNumber, escapeUnicodeCharacters } from "../utils/string";
+
+export interface Message {
+  role: "system" | "assistant" | "user";
+  content: string;
+  images?: string[];
 }
 
 interface Usage {
@@ -20,56 +17,34 @@ interface Usage {
   total_tokens: number;
 }
 
-function escapeUnicodeCharacters(str: string) {
-  return str.replace(/[\u0080-\uffff]/g, function (ch) {
-    return "\\u" + ("0000" + ch.charCodeAt(0).toString(16)).slice(-4);
-  });
-}
-
-function convertStringToNumber(value?: string | number): number {
-  if (value == null || (typeof value === 'string' && value.trim() === '')) {
-    return null;
-  }
-  const num = typeof value === 'number' ? value : Number(value);
-  if (isNaN(num)) {
-    throw new Error(`Invalid number value: ${value}`);
-  }
-  return num;
-}
-
-function convertNumberToString(value?: number | string): string {
-  if (value == null) {
-    return '';
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  return value.toString();
+interface Response {
+  model: string;
+  created_at: string;
+  message: Message;
+  usage: Usage;
 }
 
 export abstract class BaseAdapter {
-  protected adapterName: string;
-  constructor(adapterName) {
-    this.adapterName = adapterName;
+  constructor(protected adapterName: string) {
     console.log(`Adapter: ${this.adapterName} registered`);
   }
   protected abstract generateResponse(
     sysPrompt: string,
-    userPrompt: string,
+    userPrompt: string | Message,
     parameters: any,
     detail: string,
     eyeType: string,
     debug: boolean
-  ): Promise<any>;
+  ): Promise<Response>;
 
   async runChatCompeletion(
-    SysInput: string,
-    InfoInput: string,
+    sysInput: string,
+    infoInput: string | Message,
     parameters: any,
     detail: string,
     eyeType: string,
     debug: boolean
-  ): Promise<any> {
+  ): Promise<Response> {
     // 解析其他参数
     const otherParams: Record<string, any> = {};
     if (parameters.OtherParameters) {
@@ -101,8 +76,8 @@ export abstract class BaseAdapter {
     }
 
     return this.generateResponse(
-      SysInput,
-      InfoInput,
+      sysInput,
+      infoInput,
       parameters,
       detail,
       eyeType,
@@ -179,7 +154,7 @@ export abstract class BaseAdapter {
       @description: 处理 AI 的消息
   */
   async handleResponse(
-    input: any,
+    input: Response,
     AllowErrorFormat: boolean,
     config: Config,
     groupMemberList: any,
@@ -196,37 +171,9 @@ export abstract class BaseAdapter {
     execute: Array<string>; // execute
     usage?: Usage;
   }> {
-    let usage: any;
-    let res: string;
-    switch (this.adapterName) {
-      case "OpenAI": {
-        res = input.choices[0].message.content;
-        usage = input.usage;
-        break;
-      }
-      case "Custom URL": {
-        res = input.choices[0].message.content;
-        usage = input.usage;
-        break;
-      }
-      case "Cloudflare": {
-        res = input.result.response;
-        break;
-      }
-      case "Ollama": {
-        res = input.message.content;
-        usage = {
-          prompt_tokens: input.prompt_eval_count,
-          completion_tokens: input.eval_count,
-          total_tokens: input.eval_count + input.prompt_eval_count
-        }
-        break;
-      }
-      default: {
-        res = `不支持的 API 类型: ${this.adapterName}`
-        throw new Error(`不支持的 API 类型: ${this.adapterName}`);
-      }
-    }
+    let usage = input.usage;
+    let res = input.message.content;
+
     if (typeof res != "string") {
       res = JSON5.stringify(res, null, 2);
     }
@@ -247,7 +194,7 @@ export abstract class BaseAdapter {
     let finalResponse: string = "";
 
     const jsonMatch = res.match(/{.*}/s);
-    let LLMResponse: Response;
+    let LLMResponse;
     if (jsonMatch) {
       try {
         const resJSON = jsonMatch[0];
@@ -353,7 +300,7 @@ export abstract class BaseAdapter {
       quote: quoteMatch ? quoteMatch[1] : '',
       nextTriggerCount: convertStringToNumber(LLMResponse.nextReplyIn),
       logic: finalLogic || '',
-      execute: LLMResponse.execute || [],
+      execute: (LLMResponse.execute instanceof Array) ? LLMResponse.execute : [],
       usage: usage,
     };
   }

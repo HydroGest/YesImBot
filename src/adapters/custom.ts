@@ -32,7 +32,21 @@ export class CustomAdapter extends BaseAdapter {
       stop: parameters.Stop,
       ...parameters.OtherParameters,
     };
-
-    return sendRequest(this.url, this.apiKey, requestBody, debug);
+    let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
+    try {
+      return {
+        model: response.model,
+        created_at: response.created,
+        message: {
+          role: response.choices[0].message.role,
+          content: response.choices[0].message.content,
+          images: response.choices[0].message?.images,
+        },
+        usage: response.usage,
+      }
+    } catch (error) {
+      console.error("Error parsing response:", error);
+      console.error("Response:", response);
+    }
   }
 }

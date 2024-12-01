@@ -1,4 +1,6 @@
-import { Context, Next, h, Random, Session, sleep } from "koishi";
+import { Context, Next, Random, Session } from "koishi";
+
+import { sleep, clone, h } from "koishi";
 
 import { ResponseVerifier } from "./utils/verifier";
 
@@ -320,7 +322,7 @@ export function apply(ctx: Context, config: Config) {
       const response = await adapters[curAPI].runChatCompeletion(
         SysPrompt,
         chatData,
-        Object.create(config.Parameters),
+        clone(config.Parameters),
         config.ImageViewer.Detail,
         config.ImageViewer.How,
         config.Debug.DebugAsInfo
