@@ -38,7 +38,7 @@ export class CloudflareAdapter extends BaseAdapter {
     try {
       return {
         model: "",
-        created_at: "",
+        created: "",
         message: {
           role: response.result.role,
           content: response.result.response,

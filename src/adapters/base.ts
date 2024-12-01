@@ -19,7 +19,7 @@ interface Usage {
 
 interface Response {
   model: string;
-  created_at: string;
+  created: string;
   message: Message;
   usage: Usage;
 }

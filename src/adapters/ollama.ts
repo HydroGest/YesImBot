@@ -39,7 +39,7 @@ export class OllamaAdapter extends BaseAdapter {
     try {
       return {
         model: response.model,
-        created_at: response.created_at,
+        created: response.created_at,
         message: {
           role: response.message.role,
           content: response.message.content,
@@ -47,7 +47,7 @@ export class OllamaAdapter extends BaseAdapter {
         usage: {
           prompt_tokens: response.prompt_eval_count,
           completion_tokens: response.eval_count,
-          total_tokens: 0
+          total_tokens: response.prompt_eval_count + response.eval_count,
         },
       }
     } catch (error) {

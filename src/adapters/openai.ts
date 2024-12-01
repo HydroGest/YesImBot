@@ -36,11 +36,10 @@ export class OpenAIAdapter extends BaseAdapter {
     try {
       return {
         model: response.model,
-        created_at: response.created,
+        created: response.created,
         message: {
           role: response.choices[0].message.role,
-          content: response.choices[0].message.content,
-          images: response.choices[0].message?.images,
+          content: response.choices[0].message.content
         },
         usage: response.usage,
       }

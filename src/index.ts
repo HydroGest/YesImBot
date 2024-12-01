@@ -6,11 +6,11 @@ import { ResponseVerifier } from "./utils/verifier";
 
 import { Config } from "./config";
 
-import { isGroupAllowed } from "./utils/tools";
+import { isGroupAllowed } from "./utils/toolkit";
 
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
-import { SendQueue } from "./utils/queue";
+import { SendQueue } from "./services/sendQueue";
 
 import { processUserContent } from "./utils/content";
 

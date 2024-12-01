@@ -46,3 +46,13 @@ export function isGroupAllowed(groupId: string, allowedGroups: string[], debug: 
 
   return [false, new Set()];
 }
+
+
+export function containsFilter(sessionContent: string, FilterList: any): boolean {
+  for (const filterString of FilterList) {
+    if (sessionContent.includes(filterString)) {
+      return true;
+    }
+  }
+  return false;
+}

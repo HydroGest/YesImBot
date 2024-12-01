@@ -4,7 +4,7 @@ import { clone } from 'koishi';
 
 import { register } from '../adapters';
 import { Config } from '../config';
-import { convertUrltoBase64 } from './imageUtils';
+import { convertUrltoBase64 } from '../utils/imageUtils';
 
 interface BaiduImageSubmitData {
   url: string;
