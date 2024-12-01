@@ -112,17 +112,18 @@ export function apply(ctx: Context, config: Config) {
 
   ctx.command('清除记忆', '清除 BOT 对会话的记忆')
     .option('target', '-t <target> 指定要清除记忆的会话。使用 private:指定私聊会话，使用 all 或 private:all 分别清除所有群聊或私聊记忆', { authority: 3 })
+    .option('person', '-p <person> 从所有会话中清除指定用户的记忆', { authority: 3 })
     .usage('注意：如果使用 清除记忆 <target> 来清除记忆而不带-t参数，将会清除当前会话的记忆！')
     .example([
       '清除记忆',
       '清除记忆 -t private:1234567890',
       '清除记忆 -t 987654321',
       '清除记忆 -t all',
-      '清除记忆 -t private:all'
+      '清除记忆 -t private:all',
+      '清除记忆 -p 1234567890'
     ].join('\n'))
     .action(async ({ session, options }) => {
       const msgDestination = session.guildId || session.channelId;
-      const clearGroupId = options.target || msgDestination;
 
       // 保存其他人发送的消息
       if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息") {
@@ -141,44 +142,53 @@ export function apply(ctx: Context, config: Config) {
         sendQueue.clearQuietTimeout(msgDestination);
       }
 
-      // 要清除的会话集合
-      const targetGroups = clearGroupId.split(",")
-        .map(g => g.trim())
-        .filter(Boolean);
-      const { included } = sendQueue.getShouldIncludeQueue(new Set(targetGroups), msgDestination);
+      let msg: string;
 
-      // 清除记忆
-      const clearResults = Array.from(included)
-        .map(id => ({ id, cleared: sendQueue.clearSendQueue(id) }))
-        .filter(r => r.cleared);
+      if (options.person) {
+        // 按用户QQ清除记忆
+        const cleared = sendQueue.clearSendQueueByQQ(options.person);
+        msg = cleared ? `已清除关于用户 ${options.person} 的记忆` : `未找到关于用户 ${options.person} 的记忆`;
+      } else {
+        const clearGroupId = options.target || msgDestination;
+        // 要清除的会话集合
+        const targetGroups = clearGroupId.split(",")
+          .map(g => g.trim())
+          .filter(Boolean);
+        const { included } = sendQueue.getShouldIncludeQueue(new Set(targetGroups), msgDestination);
 
-      const messages = [];
-      if (clearResults.length > 0) {
-        const clearedIds = clearResults.map(r => r.id);
-        messages.push(`已清除关于 ${clearedIds.slice(0, 3).join(', ')}${clearedIds.length > 3 ? ' 等会话' : ''} 的记忆`);
-        // 从 targetGroups 中移除已清除的会话
-        clearResults.forEach(r => {
-          const index = targetGroups.indexOf(r.id);
+        // 清除记忆
+        const clearResults = Array.from(included)
+          .map(id => ({ id, cleared: sendQueue.clearSendQueue(id) }))
+          .filter(r => r.cleared);
+
+        const messages = [];
+        if (clearResults.length > 0) {
+          const clearedIds = clearResults.map(r => r.id);
+          messages.push(`已清除关于 ${clearedIds.slice(0, 3).join(', ')}${clearedIds.length > 3 ? ' 等会话' : ''} 的记忆`);
+          // 从 targetGroups 中移除已清除的会话
+          clearResults.forEach(r => {
+            const index = targetGroups.indexOf(r.id);
+            if (index > -1) {
+              targetGroups.splice(index, 1);
+            }
+          });
+        }
+
+        // 移除 "private:all" 和 "all"
+        const specialGroups = ["private:all", "all"];
+        specialGroups.forEach(group => {
+          const index = targetGroups.indexOf(group);
           if (index > -1) {
             targetGroups.splice(index, 1);
           }
         });
-      }
 
-      // 移除 "private:all" 和 "all"
-      const specialGroups = ["private:all", "all"];
-      specialGroups.forEach(group => {
-        const index = targetGroups.indexOf(group);
-        if (index > -1) {
-          targetGroups.splice(index, 1);
+        if (targetGroups.length > 0) {
+          messages.push(`未找到关于 ${targetGroups.join(', ')} 的记忆`);
         }
-      });
 
-      if (targetGroups.length > 0) {
-        messages.push(`未找到关于 ${targetGroups.join(', ')} 的记忆`);
+        msg = messages.join('，');
       }
-
-      const msg = messages.join('，');
 
       const commandResponseId = config.Debug.TestMode
         ? (await session.bot.sendMessage(msgDestination, msg, null, { session }))[0]

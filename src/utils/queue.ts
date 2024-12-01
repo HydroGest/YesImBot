@@ -275,6 +275,38 @@ export class SendQueue {
     }
   }
 
+  // 按QQ号清除记忆
+  clearSendQueueByQQ(sender_id: string): boolean {
+    let hasCleared = false;
+
+    // 清除非私聊消息
+    for (const [group, messages] of this.sendQueueMap.entries()) {
+      if (!group.startsWith('private:')) {
+        const originalLength = messages.length;
+        const filteredMessages = messages.filter(msg => msg.sender_id !== sender_id);
+        if (filteredMessages.length < originalLength) {
+          this.sendQueueMap.set(group, filteredMessages);
+          hasCleared = true;
+        }
+      }
+    }
+
+    // 清除私聊消息
+    const privatePrefix = `private:${sender_id}`;
+    for (const group of this.sendQueueMap.keys()) {
+      if (group.startsWith(privatePrefix)) {
+        this.sendQueueMap.delete(group);
+        hasCleared = true;
+      }
+    }
+
+    if (hasCleared) {
+      this.saveToFile();
+    }
+
+    return hasCleared;
+  }
+
   // 根据消息id和群号字符串集合查找消息所在会话
   findGroupByMessageId(messageId: string, groups: Set<string>): string | null {
     if (messageId.trim() === '') {
