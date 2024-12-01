@@ -5,7 +5,9 @@
     "outDir": "lib",
     "declaration": true,
     "declarationDir": "types",
-    "emitDeclarationOnly": false
+    "emitDeclarationOnly": false,
+    "moduleResolution": "node",
+    "module": "CommonJS"
   },
   "include": [
     "src"
