@@ -466,7 +466,7 @@ ${handledRes.originalRes}`);
 ---
 指令：${handledRes.execute?.length ? handledRes.execute : "无"}
 ---
-距离下次：${nextTriggerCount}
+距离下次：${nextTriggerCountbyLLM} -> ${nextTriggerCount}
 ---
 消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
         // 有时候 LLM 就算跳过回复，也会生成内容，这个时候应该无视跳过，发送内容
