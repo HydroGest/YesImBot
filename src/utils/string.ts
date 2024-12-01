@@ -14,3 +14,30 @@ export function foldText(text: string, maxLength: number): string {
   }
   return text;
 }
+
+export function escapeUnicodeCharacters(str: string) {
+  return str.replace(/[\u0080-\uffff]/g, function (ch) {
+    return "\\u" + ("0000" + ch.charCodeAt(0).toString(16)).slice(-4);
+  });
+}
+
+export function convertStringToNumber(value?: string | number): number {
+  if (value == null || (typeof value === 'string' && value.trim() === '')) {
+    return null;
+  }
+  const num = typeof value === 'number' ? value : Number(value);
+  if (isNaN(num)) {
+    throw new Error(`Invalid number value: ${value}`);
+  }
+  return num;
+}
+
+export function convertNumberToString(value?: number | string): string {
+  if (value == null) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  return value.toString();
+}

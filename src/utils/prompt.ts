@@ -102,11 +102,16 @@ export async function getMemberName(config: Config, session: any, byID?: string)
   const fetchUserName = async (id: string) => {
     try {
       return await session.bot.getUser(id);
-    } catch {
-      const response = await fetch(`https://api.usuuu.com/qq/${id}`);
-      if (!response.ok) throw new Error(`Failed to fetch user from backup API`);
-      const user = await response.json();
-      return user.data.name;
+    } catch (error) {
+      try {
+        const response = await fetch(`https://api.usuuu.com/qq/${id}`);
+        const userData = await response.json();
+        if (!response.ok)
+          throw new Error(`Failed to fetch user from backup API`);
+        return userData.data.name;
+      } catch {
+        throw new Error(`Failed to fetch user from backup API`);
+      }
     }
   };
 
