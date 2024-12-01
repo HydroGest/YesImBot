@@ -4,7 +4,7 @@ import { ResponseVerifier } from "./utils/verifier";
 
 import { Config } from "./config";
 
-import { isGroupAllowed, foldText } from "./utils/tools";
+import { isGroupAllowed } from "./utils/tools";
 
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
@@ -13,6 +13,8 @@ import { SendQueue } from "./utils/queue";
 import { processUserContent } from "./utils/content";
 
 import { Adapter, register } from "./adapters";
+
+import { foldText } from "./utils/string";
 
 export const name = "yesimbot";
 

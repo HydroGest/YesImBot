@@ -2,6 +2,7 @@ import { Config } from '../config';
 import { getMemberName } from './prompt';
 import fs from 'fs';
 import path from 'path';
+import { getCurrentTimestamp, parseTimestamp } from './timeUtils';
 
 function containsFilter(sessionContent: string, FilterList: any): boolean {
   for (const filterString of FilterList) {
@@ -54,21 +55,6 @@ export class SendQueue {
     this.loadFromFile();
   }
 
-  private parseTimestamp(timestamp: string): Date {
-    const [yyyy, mm, dd, hh, min, sec] = timestamp.split('/').map(Number);
-    return new Date(yyyy, mm - 1, dd, hh, min, sec);
-  }
-
-  private getCurrentTimestamp(): string {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const hh = String(now.getHours()).padStart(2, '0');
-    const min = String(now.getMinutes()).padStart(2, '0');
-    const sec = String(now.getSeconds()).padStart(2, '0');
-    return `${yyyy}/${mm}/${dd}/${hh}/${min}/${sec}`;
-  }
 
   // 保存数据到文件
   public saveToFile(): void {
@@ -122,7 +108,7 @@ export class SendQueue {
     TriggerCount: number,
     selfId: string
   ) {
-    const timestamp = this.getCurrentTimestamp();
+    const timestamp = getCurrentTimestamp();
     if (this.sendQueueMap.has(group)) {
       if (containsFilter(content, FilterList)) return;
       const queue = this.sendQueueMap.get(group);
@@ -279,7 +265,7 @@ export class SendQueue {
 
     // 按照时间戳排序
     messages.sort((a, b) => {
-      return this.parseTimestamp(a.timestamp).getTime() - this.parseTimestamp(b.timestamp).getTime();
+      return parseTimestamp(a.timestamp).getTime() - parseTimestamp(b.timestamp).getTime();
     });
 
     // 如果超过长度限制，丢弃旧的消息
