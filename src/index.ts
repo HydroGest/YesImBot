@@ -86,7 +86,7 @@ export function apply(ctx: Context, config: Config) {
     const groupId: string = session.guildId || session.channelId;
     await ensureGroupMemberList(session, groupId);
     const [, matchedConfig] = isGroupAllowed(groupId, config.MemorySlot.SlotContains, config.Settings.FirsttoAll);
-    const mergeQueueFrom = matchedConfig;
+    const mergeQueueFrom = sendQueue.getShouldIncludeQueue(matchedConfig, groupId);
 
     if ((session.userId === session.selfId || mergeQueueFrom.has(groupId)) && config.Settings.AddWhattoQueue === "所有消息") {
       const senderName = session.userId === session.selfId ? await getBotName(config, session) : await getMemberName(config, session, session.userId);
@@ -172,7 +172,7 @@ export function apply(ctx: Context, config: Config) {
 
     const [isGuildAllowed, matchedConfig] = isGroupAllowed(groupId, config.MemorySlot.SlotContains, config.Settings.FirsttoAll);
     if (!isGuildAllowed) return next();
-    const mergeQueueFrom = matchedConfig;
+    const mergeQueueFrom = sendQueue.getShouldIncludeQueue(matchedConfig, groupId);
 
     // 更新消息队列，把这条消息加入队列
     if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息") {
@@ -191,7 +191,7 @@ export function apply(ctx: Context, config: Config) {
     }
 
     // 启动静默检查
-    if (config.MemorySlot.MaxTriggerTime > 0 && mergeQueueFrom.has(groupId)) {
+    if (config.MemorySlot.MaxTriggerTime > 0 && isGuildAllowed) {
       sendQueue.startQuietCheck(groupId, async () => {
         // 当静默期到达时获取回复
         ctx.logger.info("静默期到达，获取回复");
@@ -357,7 +357,8 @@ export function apply(ctx: Context, config: Config) {
       );
 
       // 正式更新触发次数
-      sendQueue.resetTriggerCount(groupId, handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig);
+      const nextTriggerCount = handledRes.nextTriggerCount ? nextTriggerCountbyLLM : nextTriggerCountbyConfig;
+      sendQueue.resetTriggerCount(groupId, nextTriggerCount);
 
       const quoteGroup = sendQueue.findGroupByMessageId(handledRes.quote, mergeQueueFrom);
       if (quoteGroup == null) {
@@ -414,6 +415,8 @@ ${handledRes.originalRes}`);
 逻辑: ${handledRes.logic}
 ---
 指令：${handledRes.execute?.length ? handledRes.execute : "无"}
+---
+距离下次：${nextTriggerCount}
 ---
 消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
         // 有时候 LLM 就算跳过回复，也会生成内容，这个时候应该无视跳过，发送内容

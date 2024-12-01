@@ -50,7 +50,7 @@ export class SendQueue {
     // 0 表示不静默，设为一个极大值
     this.quietPeriod = config.MemorySlot.MaxTriggerTime === 0
       ? MAX_TIMEOUT
-      : (config.MemorySlot.MaxTriggerTime*1000 || MAX_TIMEOUT);
+      : (config.MemorySlot.MaxTriggerTime * 1000 || MAX_TIMEOUT);
     this.loadFromFile();
   }
 
@@ -182,16 +182,31 @@ export class SendQueue {
     return false;
   }
 
+  // 获取应该包含的队列
+  getShouldIncludeQueue(groups: Set<string>, groupId?: string): Set<string> {
+    const hasPrivateAll = groups.has('private:all');
+    const hasAll = groups.has('all');
+
+    const shouldIncludeQueue = (key: string): boolean => {
+      if (hasPrivateAll && hasAll) return true;
+      if (hasPrivateAll) return key.startsWith('private:') || groups.has(key);
+      if (hasAll) return !key.startsWith('private:') || groups.has(key);
+      return groups.has(key);
+    };
+
+    const keysToCheck = groupId
+      ? [...this.sendQueueMap.keys(), groupId]
+      : [...this.sendQueueMap.keys()];
+
+    return new Set(keysToCheck.filter(shouldIncludeQueue));
+  }
+
   // 检查记忆槽位长度
   checkMixedQueueSize(groups: Set<string>, size: number): boolean {
-    let totalLength = 0;
+    const includeGroups = this.getShouldIncludeQueue(groups);
 
-    for (const group of groups) {
-      if (this.sendQueueMap.has(group)) {
-        const queue = this.sendQueueMap.get(group);
-        totalLength += queue.length;
-      }
-    }
+    const totalLength = Array.from(includeGroups)
+      .reduce((sum, key) => sum + this.sendQueueMap.get(key).length, 0);
 
     console.log(`记忆槽位的容量: ${totalLength} / ${size}`);
     return totalLength >= size;
