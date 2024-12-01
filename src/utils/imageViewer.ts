@@ -2,7 +2,7 @@ import axios from 'axios';
 import JSON5 from "json5";
 import { CustomAdapter } from '../adapters';
 import { Config } from '../config';
-import { convertUrltoBase64 } from './tools';
+import { convertUrltoBase64 } from './imageUtils';
 
 interface BaiduImageSubmitData {
   url: string;

@@ -1,7 +1,7 @@
 import { Session } from 'koishi';
 
 import { getMemberName } from './prompt';
-import { replaceImageWith } from './image-viewer';
+import { replaceImageWith } from './imageViewer';
 import { Config } from '../config';
 import { emojiManager } from '../managers/emojiManager';
 import { convertUrltoBase64 } from './imageUtils';
