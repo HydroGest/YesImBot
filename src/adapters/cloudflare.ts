@@ -1,4 +1,4 @@
-import { sendRequest } from "../utils/tools";
+import { sendRequest } from "../utils/http";
 import { BaseAdapter } from "./base";
 
 export class CloudflareAdapter extends BaseAdapter {
