@@ -296,6 +296,8 @@ export class SendQueue {
     for (const group of this.sendQueueMap.keys()) {
       if (group.startsWith(privatePrefix)) {
         this.sendQueueMap.delete(group);
+        this.triggerCountMap.delete(group);
+        this.lastTriggerTimeMap.delete(group);
         hasCleared = true;
       }
     }
