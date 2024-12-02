@@ -5,10 +5,63 @@ import { emojiManager } from "../managers/emojiManager";
 import { Config } from "../config";
 import { convertNumberToString, convertStringToNumber, escapeUnicodeCharacters } from "../utils/string";
 
+export interface TextComponent {
+  type: "text",
+  text: string
+}
+export function TextComponent(text: string): TextComponent {
+  return {
+    type: "text",
+    text,
+  }
+}
+export interface ImageComponent {
+  type: "image_url",
+  image_url: {
+    url: string,
+    detail?: "low" | "high" | "auto"
+  }
+}
+export function ImageComponent(url: string, detail?: "low" | "high" | "auto"): ImageComponent {
+  return {
+    type: "image_url",
+    image_url: {
+      url,
+      detail,
+    }
+  }
+}
+export type Component = TextComponent | ImageComponent
 export interface Message {
   role: "system" | "assistant" | "user";
-  content: string;
-  images?: string[];
+  content: string | Component[];
+}
+export interface SystemMessage extends Message {
+  role: "system";
+}
+export function SystemMessage(content: string | Component[]): SystemMessage {
+  return {
+    role: "system",
+    content,
+  }
+}
+export interface UserMessage extends Message {
+  role: "user";
+}
+export function UserMessage(content: string | Component[]): UserMessage {
+  return {
+    role: "user",
+    content,
+  }
+}
+export interface AssistantMessage extends Message {
+  role: "assistant";
+}
+export function AssistantMessage(content: string | Component[]): AssistantMessage {
+  return {
+    role: "assistant",
+    content,
+  }
 }
 
 interface Usage {
@@ -20,7 +73,10 @@ interface Usage {
 interface Response {
   model: string;
   created: string;
-  message: Message;
+  message: {
+    role: "system" | "assistant" | "user";
+    content: string;
+  };
   usage: Usage;
 }
 
@@ -85,11 +141,11 @@ export abstract class BaseAdapter {
     );
   }
 
-  async extractContent(input: string, detail: string) {
+  async extractContent(input: string, detail: Config["ImageViewer"]["Detail"]): Promise<Component[]> {
     const regex =
       /<img\s+(base64|src)\s*=\s*\\?"([^\\"]+)\\?"(?:\s+(base64|src)\s*=\s*\\?"([^\\"]+)\\?")?\s*\/>/g;
     let match;
-    const parts = [];
+    const parts: Component[] = [];
     let lastIndex = 0;
     while ((match = regex.exec(input)) !== null) {
       if (match.index > lastIndex) {
@@ -111,41 +167,24 @@ export abstract class BaseAdapter {
     return parts;
   }
 
-  async createMessages(sysInput: string, infoInput: string, eyeType: any, detail: string) {
+  async createMessages(sysInput: string, infoInput: string, eyeType: any, detail: Config["ImageViewer"]["Detail"]) {
     if (eyeType === "LLM API 自带的多模态能力") {
       return [
-        {
-          role: "system",
-          content: await this.extractContent(sysInput, detail),
-        },
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: "Resolve OK",
-            },
-          ],
-        },
-        {
-          role: "user",
-          content: await this.extractContent(infoInput, detail),
-        },
+        SystemMessage(
+          await this.extractContent(sysInput, detail),
+        ),
+        AssistantMessage([
+          TextComponent("Resolve OK")
+        ]),
+        UserMessage(
+          await this.extractContent(infoInput, detail),
+        )
       ];
     } else {
       return [
-        {
-          role: "system",
-          content: sysInput,
-        },
-        {
-          role: "assistant",
-          content: "Resolve OK",
-        },
-        {
-          role: "user",
-          content: infoInput,
-        },
+        SystemMessage(sysInput),
+        AssistantMessage("Resolve OK"),
+        UserMessage(infoInput),
       ];
     }
   }

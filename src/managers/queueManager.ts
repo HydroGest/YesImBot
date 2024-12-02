@@ -1,8 +1,7 @@
-import fs from "fs";
-
 import { Config } from "../config";
 import { getCurrentTimestamp } from "../utils/timeUtils";
 import { containsFilter } from "../utils/toolkit";
+import { CacheManager } from "./cacheManager";
 
 export interface QueueItem {
   id: string;
@@ -14,58 +13,21 @@ export interface QueueItem {
 }
 
 export class QueueManager {
-  private sendQueueMap: Map<string, QueueItem[]>;
+  private cacheManager: CacheManager<QueueItem[]>;
 
   constructor(private filePath: string) {
-    this.sendQueueMap = new Map();
-    this.loadFromFile();
+    this.cacheManager = new CacheManager<QueueItem[]>(this.filePath);
   }
 
   getQueue(group: string): QueueItem[] {
-    return this.sendQueueMap.get(group) || [];
+    return this.cacheManager.get(group) || [];
   }
 
   setQueue(group: string, queue: QueueItem[]): void {
-    this.sendQueueMap.set(group, queue);
+    this.cacheManager.set(group, queue);
   }
 
-
-  // 保存数据到文件
-  public saveToFile(): void {
-    try {
-      const data = {
-        sendQueueMap: Object.fromEntries(this.sendQueueMap),
-      };
-      fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2));
-    } catch (error) {
-      console.error('存档队列数据失败:', error);
-    }
-  }
-
-  // 从文件加载数据
-  private loadFromFile(): void {
-    try {
-      if (fs.existsSync(this.filePath)) {
-        const fileContent = fs.readFileSync(this.filePath, 'utf-8');
-        const data = JSON.parse(fileContent);
-
-        // 将普通对象转换回 Map，并确保包含 timestamp 属性
-        this.sendQueueMap = new Map(
-          Object.entries(data.sendQueueMap).map(([key, value]) => [
-            key,
-            (value as any[]).map((item) => ({
-              ...item,
-              timestamp: item.timestamp || '', // 兼容旧数据
-            })),
-          ])
-        );
-        console.log('已从文件加载队列数据');
-      }
-    } catch (error) {
-      console.error('加载队列数据失败:', error);
-    }
-  }
-
+  // 消息入队
   public enqueue(
     group: string,
     sender: string,
@@ -86,12 +48,11 @@ export class QueueManager {
       guildId: group,
     });
     this.setQueue(group, queue);
-    this.saveToFile();
   }
 
   public clearBySenderId(sender_id: string): boolean {
     let hasCleared = false;
-    for (const [group, messages] of this.sendQueueMap.entries()) {
+    for (const [group, messages] of this.cacheManager.entries()) {
       if (!group.startsWith('private:')) {
         const originalLength = messages.length;
         const filteredMessages = messages.filter(msg => msg.sender_id !== sender_id);
@@ -102,14 +63,11 @@ export class QueueManager {
       }
     }
     const privatePrefix = `private:${sender_id}`;
-    for (const group of this.sendQueueMap.keys()) {
+    for (const group of this.cacheManager.keys()) {
       if (group.startsWith(privatePrefix)) {
-        this.sendQueueMap.delete(group);
+        this.cacheManager.remove(group);
         hasCleared = true;
       }
-    }
-    if (hasCleared) {
-      this.saveToFile();
     }
     return hasCleared;
   }
@@ -117,7 +75,7 @@ export class QueueManager {
   public getQueuesByGroups(groups: Set<string>): QueueItem[][] {
     const result: QueueItem[][] = [];
     for (const group of groups) {
-      if (this.sendQueueMap.has(group)) {
+      if (this.cacheManager.has(group)) {
         result.push(this.getQueue(group));
       }
     }
@@ -125,7 +83,7 @@ export class QueueManager {
   }
 
   public getGroupKeys(): string[] {
-    return Array.from(this.sendQueueMap.keys());
+    return Array.from(this.cacheManager.keys());
   }
 
   public findGroupByMessageId(messageId: string, groups: Set<string>): string | null {
@@ -133,7 +91,7 @@ export class QueueManager {
       return null;
     }
     for (const group of groups) {
-      if (this.sendQueueMap.has(group)) {
+      if (this.cacheManager.has(group)) {
         const queue = this.getQueue(group);
         for (const message of queue) {
           if (message.id === messageId) {
@@ -150,15 +108,13 @@ export class QueueManager {
     if (queue && queue.length > 0) {
       const newQueue = queue.slice(-maxQueueSize);
       this.setQueue(group, newQueue);
-      this.saveToFile();
       console.log(`此会话队列已满，已出队至 ${newQueue.length} 条`);
     }
   }
 
   public clearQueue(group: string): boolean {
-    if (this.sendQueueMap.has(group)) {
-      this.sendQueueMap.delete(group);
-      this.saveToFile();
+    if (this.cacheManager.has(group)) {
+      this.cacheManager.remove(group);
       console.log(`已清空此会话: ${group}`);
       return true;
     } else {

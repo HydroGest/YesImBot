@@ -94,6 +94,10 @@ export class CacheManager<T> {
     return Array.from(this.cache.keys());
   }
 
+  public entries(): [string, T][] {
+    return Array.from(this.cache.entries());
+  }
+
   private markDirty(key: string, value: T): void {
     this.dirtyCache.set(key, value);
     this.isDirty = true;

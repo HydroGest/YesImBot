@@ -6,7 +6,7 @@ import { ResponseVerifier } from "./utils/verifier";
 
 import { Config } from "./config";
 
-import { isGroupAllowed } from "./utils/toolkit";
+import { addQuoteTag, APIStatus, ensureGroupMemberList, isGroupAllowed, ProcessingLock, updateAdapters } from "./utils/toolkit";
 
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
@@ -14,7 +14,7 @@ import { SendQueue } from "./services/sendQueue";
 
 import { processUserContent } from "./utils/content";
 
-import { Adapter, register } from "./adapters";
+import { Adapter } from "./adapters";
 
 import { foldText } from "./utils/string";
 
@@ -31,48 +31,14 @@ export const inject = {
   optional: ['qmanager', 'interactions']
 }
 
-let sendQueue: SendQueue;
-
-const responseVerifier = new ResponseVerifier();
-
-class APIStatus {
-  private currentStatus: number = 0;
-
-  updateStatus(APILength: number): void {
-    this.currentStatus++;
-    if (this.currentStatus >= APILength) {
-      this.currentStatus = 0;
-    }
-  }
-  getStatus(): number {
-    return this.currentStatus;
-  }
-}
-
-class ProcessingLock {
-  private processingGroups: Set<string> = new Set();
-
-  async waitForProcessing(groupId: string): Promise<void> {
-    while (this.processingGroups.has(groupId)) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-  }
-
-  startProcessing(groupId: string): void {
-    this.processingGroups.add(groupId);
-  }
-
-  endProcessing(groupId: string): void {
-    this.processingGroups.delete(groupId);
-  }
-}
 
 const status = new APIStatus();
+const responseVerifier = new ResponseVerifier();
 const processingLock = new ProcessingLock();
 
 export function apply(ctx: Context, config: Config) {
   let adapters: Adapter[] = [];
-  sendQueue = new SendQueue(config);
+  let sendQueue = new SendQueue(config);
   // 当应用启动时更新 Prompt
   ctx.on("ready", async () => {
     // Return 之前，更新一下 adapters 吧
@@ -195,7 +161,7 @@ export function apply(ctx: Context, config: Config) {
       }
 
       const commandResponseId = config.Debug.TestMode
-        ? (await session.bot.sendMessage(msgDestination, msg, null, { session }))[0]
+        ? (await session.send(msg))[0]
         : (await session.bot.sendMessage(msgDestination, msg))[0];
       sendQueue.clearQuietTimeout(msgDestination); // 发
 
@@ -306,6 +272,7 @@ export function apply(ctx: Context, config: Config) {
     if (sendQueue.getLastTriggerTime(groupId) > currentTime) {
       return next();
     }
+    
     handleMessage(
       session,
       config,
@@ -441,7 +408,7 @@ ${handledRes.originalRes}
 ---
 消耗: 输入 ${handledRes?.usage?.prompt_tokens}, 输出 ${handledRes?.usage?.completion_tokens}`;
           const botMessageId = config.Debug.TestMode
-            ? (await session.bot.sendMessage(config.Settings.LogicRedirect.Target, failTemplate, null, { session }))[0]
+            ? (await session.send(failTemplate))[0]
             : (await session.bot.sendMessage(config.Settings.LogicRedirect.Target, failTemplate))[0];
           sendQueue.clearQuietTimeout(config.Settings.LogicRedirect.Target); // 发
           if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息") {
@@ -477,7 +444,7 @@ ${handledRes.originalRes}`);
         // 有时候 LLM 会生成空内容，这个时候就算是success也不应该发送内容，但是如果有执行指令，应该执行
         const templateNoTag = template.replace(handledRes.res, handledRes.resNoTag);
         const botMessageId = config.Debug.TestMode
-          ? (await session.bot.sendMessage(config.Settings.LogicRedirect.Target, templateNoTag, null, { session }))[0]
+          ? (await session.send(templateNoTag))[0]
           : (await session.bot.sendMessage(config.Settings.LogicRedirect.Target, templateNoTag))[0];
         sendQueue.clearQuietTimeout(config.Settings.LogicRedirect.Target); // 发
         if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息") {
@@ -609,7 +576,7 @@ ${handledRes.originalRes}`);
         handledRes.execute.forEach(async (command) => {
           try {
             const botMessageId = config.Debug.TestMode
-              ? (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command), null, { session }))[0]
+              ? (await session.send(h("execute", {}, command)))[0]
               : (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)))[0]; // 执行每个指令，获取返回的消息ID字符串数组
             // sendQueue.clearQuietTimeout(finalReplyTo); // 发，但指令执行不需要清除静默期
             if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息") { // 虽然 LLM 使用的指令本身并不会发到消息界面，但为了防止 LLM 忘记自己用过指令，加入队列
@@ -654,7 +621,7 @@ ${handledRes.originalRes}`);
           await sleep(waitTime * 1000);
         }
         finalBotMsgId = config.Debug.TestMode
-          ? (await session.bot.sendMessage(finalReplyTo, sentence, null, { session }))[0]
+          ? (await session.send(sentence))[0]
           : (await session.bot.sendMessage(finalReplyTo, sentence))[0];
         sendQueue.clearQuietTimeout(finalReplyTo); // 发
         if (config.Settings.WholetoSplit && (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息")) {
@@ -686,75 +653,3 @@ ${handledRes.originalRes}`);
   });
 }
 
-async function ensureGroupMemberList(session: any, groupId?: string) {
-  const isPrivateChat = groupId.startsWith("private:");
-  if (!session.groupMemberList && !isPrivateChat) {
-    session.groupMemberList = await session.bot.getGuildMemberList(session.guildId);
-    session.groupMemberList.data.forEach(member => {
-      // 沙盒获取到的 member 数据不一样
-      if (member.userId === member.username && !member.user) {
-        member.user = {
-          id: member.userId,
-          name: member.username,
-          userId: member.userId,
-        };
-        member.nick = member.username;
-        member.roles = ['member'];
-      }
-      if (!member.nick) {
-        member.nick = member.user.name || member.user.username;
-      }
-    });
-  } else if (isPrivateChat) {
-    session.groupMemberList = {
-      data: [
-        {
-          user:
-          {
-            id: `${session.event.user.id}`,
-            name: `${session.event.user.name}`,
-            userId: `${session.event.user.id}`,
-            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.user.id}&spec=640`,
-            username: `${session.event.user.name}`
-          },
-          nick: `${session.event.user.name}`,
-          roles: ['member']
-        },
-        {
-          user:
-          {
-            id: `${session.event.selfId}`,
-            name: `${session.bot.user.name}`,
-            userId: `${session.event.selfId}`,
-            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.selfId}&spec=640`,
-            username: `${session.bot.user.name}`
-          },
-          nick: `${session.bot.user.name}`,
-          roles: ['member']
-        }
-      ]
-    };
-  }
-}
-
-function updateAdapters(APIList: Config["API"]["APIList"]): Adapter[] {
-  let adapters: Adapter[] = [];
-  for (const adapter of APIList) {
-    adapters.push(register(
-      adapter.APIType,
-      adapter.BaseURL,
-      adapter.APIKey,
-      adapter.UID,
-      adapter.AIModel
-    ))
-  }
-  return adapters;
-}
-
-function addQuoteTag(session: Session, content: string): string {
-  if (session.event.message.quote) {
-    return `<quote id="${session.event.message.quote.id}"/>${content}`;
-  } else {
-    return content;
-  }
-}

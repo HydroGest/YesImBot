@@ -1,3 +1,8 @@
+import { Session } from "koishi";
+
+import { Config } from "../config";
+import { Adapter, register } from "../adapters";
+
 // 检查群组是否在允许的群组组合列表中，并返回首个匹配到的群组组合配置或者所有匹配到的群组组合配置
 export function isGroupAllowed(groupId: string, allowedGroups: string[], debug: boolean = false): [boolean, Set<string>] {
   const isPrivate = groupId.startsWith("private:");
@@ -56,3 +61,110 @@ export function containsFilter(sessionContent: string, FilterList: any): boolean
   }
   return false;
 }
+
+export class APIStatus {
+  private currentStatus: number = 0;
+
+  updateStatus(APILength: number): void {
+    this.currentStatus++;
+    if (this.currentStatus >= APILength) {
+      this.currentStatus = 0;
+    }
+  }
+  getStatus(): number {
+    return this.currentStatus;
+  }
+}
+
+export class ProcessingLock {
+  private processingGroups: Set<string> = new Set();
+
+  async waitForProcessing(groupId: string): Promise<void> {
+    while (this.processingGroups.has(groupId)) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+
+  startProcessing(groupId: string): void {
+    this.processingGroups.add(groupId);
+  }
+
+  endProcessing(groupId: string): void {
+    this.processingGroups.delete(groupId);
+  }
+}
+
+export function updateAdapters(APIList: Config["API"]["APIList"]): Adapter[] {
+  let adapters: Adapter[] = [];
+  for (const adapter of APIList) {
+    adapters.push(register(
+      adapter.APIType,
+      adapter.BaseURL,
+      adapter.APIKey,
+      adapter.UID,
+      adapter.AIModel
+    ))
+  }
+  return adapters;
+}
+
+export function addQuoteTag(session: Session, content: string): string {
+  if (session.event.message.quote) {
+    return `<quote id="${session.event.message.quote.id}"/>${content}`;
+  } else {
+    return content;
+  }
+}
+
+export async function ensureGroupMemberList(session: any, groupId?: string) {
+  const isPrivateChat = groupId.startsWith("private:");
+  if (!session.groupMemberList && !isPrivateChat) {
+    session.groupMemberList = await session.bot.getGuildMemberList(session.guildId);
+    session.groupMemberList.data.forEach(member => {
+      // 沙盒获取到的 member 数据不一样
+      if (member.userId === member.username && !member.user) {
+        member.user = {
+          id: member.userId,
+          name: member.username,
+          userId: member.userId,
+        };
+        member.nick = member.username;
+        member.roles = ['member'];
+      }
+      if (!member.nick) {
+        member.nick = member.user.name || member.user.username;
+      }
+    });
+  } else if (isPrivateChat) {
+    session.groupMemberList = {
+      data: [
+        {
+          user:
+          {
+            id: `${session.event.user.id}`,
+            name: `${session.event.user.name}`,
+            userId: `${session.event.user.id}`,
+            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.user.id}&spec=640`,
+            username: `${session.event.user.name}`
+          },
+          nick: `${session.event.user.name}`,
+          roles: ['member']
+        },
+        {
+          user:
+          {
+            id: `${session.event.selfId}`,
+            name: `${session.bot.user.name}`,
+            userId: `${session.event.selfId}`,
+            avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.selfId}&spec=640`,
+            username: `${session.bot.user.name}`
+          },
+          nick: `${session.bot.user.name}`,
+          roles: ['member']
+        }
+      ]
+    };
+  }
+}
+
+

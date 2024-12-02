@@ -1,3 +1,4 @@
+import { Config } from "../config";
 import { sendRequest } from "../utils/http";
 import { BaseAdapter } from "./base";
 
@@ -17,7 +18,7 @@ export class OpenAIAdapter extends BaseAdapter {
     sysPrompt: string,
     userPrompt: string,
     parameters: any,
-    detail: string,
+    detail: Config["ImageViewer"]["Detail"],
     eyeType: string,
     debug: boolean
   ) {
