@@ -167,4 +167,37 @@ export async function ensureGroupMemberList(session: any, groupId?: string) {
   }
 }
 
+export async function getBotName(config: Config, session: Session): Promise<string> {
+  switch (config.Bot.SelfAwareness) {
+    case "群昵称":
+      const memberInfo = await session.onebot.getGroupMemberInfo(session.channelId, session.userId);
+      return memberInfo.card || memberInfo.nickname;
+    case "用户昵称":
+      return session.bot.user.name;
+    case "此页面设置的名字":
+    default:
+      return config.Bot.BotName;
+  }
+}
 
+export async function getMemberName(config: Config, session: Session, userId?: string, groupId?: string): Promise<string> {
+  if (session.userId === session.selfId) {
+    return await getBotName(config, session);
+  }
+  if (!groupId && !userId) {
+    groupId = session.guildId;
+    userId = session.userId;
+  }
+  try {
+    const memberInfo = await session.onebot.getGroupMemberInfo(groupId, userId);
+    switch (config.Bot.NickorName) {
+      case "用户昵称":
+        return memberInfo.card || memberInfo.nickname;
+      case "群昵称":
+      default:
+        return memberInfo.nickname;;
+    }
+  } catch (error) {
+    return (await session.bot.getUser(userId, groupId)).name;
+  }
+}

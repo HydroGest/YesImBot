@@ -3,6 +3,7 @@ import https from "https";
 import { Context } from "koishi";
 import { promisify } from "util";
 import { Config } from "../config";
+import { getBotName } from "./toolkit";
 
 export function getFileNameFromUrl(url: string): string {
   try {
@@ -83,52 +84,7 @@ export async function ensurePromptFileExists(
   }
 }
 
-export async function getBotName(config: Config, session: any): Promise<string> {
-  switch (config.Bot.SelfAwareness) {
-    case "此页面设置的名字":
-    default:
-      return config.Bot.BotName;
-    case "群昵称":
-      const groupMember = session.groupMemberList?.data.find(
-        (member: any) => member.user.id === session.event.selfId
-      );
-      return groupMember ? groupMember.nick : config.Bot.BotName;
-    case "用户昵称":
-      return session.bot.user.name;
-  }
-}
 
-export async function getMemberName(config: Config, session: any, byID?: string): Promise<string> {
-  const fetchUserName = async (id: string) => {
-    try {
-      return await session.bot.getUser(id);
-    } catch (error) {
-      try {
-        const response = await fetch(`https://api.usuuu.com/qq/${id}`);
-        const userData = await response.json();
-        if (!response.ok)
-          throw new Error(`Failed to fetch user from backup API`);
-        return userData.data.name;
-      } catch {
-        throw new Error(`Failed to fetch user from backup API`);
-      }
-    }
-  };
-
-  if (session.event.selfId === session.event.user.id) {
-    return await getBotName(config, session);
-  }
-
-  const member = session.groupMemberList?.data.find(
-    (member: any) => member.user.id === (byID || session.event.user.id)
-  );
-
-  if (config.Bot.NickorName === "用户昵称") {
-    return byID ? await fetchUserName(byID) : session.event.user.name;
-  }
-
-  return member?.nick || (byID ? await fetchUserName(byID) : session.event.user.name);
-}
 
 export async function genSysPrompt(
   config: Config,
