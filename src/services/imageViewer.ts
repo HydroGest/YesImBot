@@ -153,7 +153,7 @@ class AnotherLLMService implements ImageDescriptionService {
     );
     try {
       let userMessage: any;
-      // TODO: 将视图方法内置到适配器中
+      // TODO: 将识图方法内置到适配器中
       switch (config.ImageViewer.Adapter) {
         case "Ollama":
           userMessage = {
