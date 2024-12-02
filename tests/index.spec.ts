@@ -10,12 +10,12 @@ import * as yesimbot from "../src/index";
 
 import testConfig from "./config";
 
-import { emojiManager } from "../src/utils/content";
+import { emojiManager } from "../src/managers/emojiManager";
 import { CustomAdapter } from "../src/adapters";
 
 // 拦截 sendRequest 函数请求
-jest.mock("../src/utils/tools", () => {
-  const originalModule = jest.requireActual("../src/utils/tools");
+jest.mock("../src/utils/http", () => {
+  const originalModule = jest.requireActual("../src/utils/http");
   return {
     //@ts-ignore
     ...originalModule,
@@ -24,7 +24,16 @@ jest.mock("../src/utils/tools", () => {
           // 通过 url 细分, 返回不同的 response
           // TODO: 通过创建特定规则的 url, 测试不同格式的回复
           // 比如: /custom/wrong_json 对应错误的 json 输出
-          const content = '{"status": "success","logic": "<logic>","reply": "下雨了记得带伞哦~","select": -1,"check": "<check>","finReply": "下雨了记得带伞哦~","execute": []}';
+          const content = JSON.stringify({
+            status: "success",
+            logic: "<logic>",
+            reply: "下雨了记得带伞哦~",
+            //session_id: "",
+            check: "<check>",
+            finReply: "下雨了记得带伞哦~",
+            execute: [],
+          });
+          
           if (url.startsWith("/openai/embedding")) {
             return;
           } else if (url.startsWith("http://localhost:11434/api/embeddings")) {
@@ -121,10 +130,10 @@ class Test {
     };
 
     // 等待 app 启动完成
-    beforeAll(() => {
-      this.app.start();
-      // this.app.mock.initUser("12345678")
-      // this.app.mock.initChannel("114514");
+    beforeAll(async () => {
+      await this.app.start();
+      await this.app.mock.initUser("12345678", 3);
+      await this.app.mock.initChannel("114514");
     });
     afterAll(() => this.app.stop());
   }

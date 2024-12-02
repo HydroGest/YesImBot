@@ -1,4 +1,4 @@
-import { sendRequest } from "../utils/tools";
+import { sendRequest } from "../utils/http";
 import { BaseAdapter } from "./base";
 
 export class OpenAIAdapter extends BaseAdapter {
@@ -32,7 +32,20 @@ export class OpenAIAdapter extends BaseAdapter {
       stop: parameters.Stop,
       ...parameters.OtherParameters,
     };
-
-    return sendRequest(this.url, this.apiKey, requestBody, debug);
+    let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
+    try {
+      return {
+        model: response.model,
+        created: response.created,
+        message: {
+          role: response.choices[0].message.role,
+          content: response.choices[0].message.content
+        },
+        usage: response.usage,
+      }
+    } catch (error) {
+      console.error("Error parsing response:", error);
+      console.error("Response:", response);
+    }
   }
 }

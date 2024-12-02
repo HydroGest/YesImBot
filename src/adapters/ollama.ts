@@ -1,5 +1,5 @@
-import { sendRequest } from "../utils/tools";
-import { BaseAdapter } from "./base";
+import { sendRequest } from "../utils/http";
+import { BaseAdapter, Message } from "./base";
 
 export class OllamaAdapter extends BaseAdapter {
   private url: string;
@@ -15,7 +15,7 @@ export class OllamaAdapter extends BaseAdapter {
 
   protected async generateResponse(
     sysPrompt: string,
-    userPrompt: string,
+    userPrompt: string | Message,
     parameters: any,
     detail: string,
     eyeType: string,
@@ -24,7 +24,6 @@ export class OllamaAdapter extends BaseAdapter {
     const requestBody = {
       model: this.model,
       stream: false,
-      format: "json",
       messages: await this.createMessages(sysPrompt, userPrompt, eyeType, detail),
       options: {
         top_p: parameters.TopP,
@@ -36,7 +35,46 @@ export class OllamaAdapter extends BaseAdapter {
       },
       ...parameters.OtherParameters,
     };
+    let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
+    try {
+      return {
+        model: response.model,
+        created: response.created_at,
+        message: {
+          role: response.message.role,
+          content: response.message.content,
+        },
+        usage: {
+          prompt_tokens: response.prompt_eval_count,
+          completion_tokens: response.eval_count,
+          total_tokens: response.prompt_eval_count + response.eval_count,
+        },
+      }
+    } catch (error) {
+      console.error("Error parsing response:", error);
+      console.error("Response:", response);
+    }
+  }
 
-    return sendRequest(this.url, this.apiKey, requestBody, debug);
+  async createMessages(sysInput: string, infoInput: string | Message, eyeType: any, detail: string) {
+    let userMessage: any = {
+      role: "user"
+    }
+    if (typeof infoInput === "string") {
+      userMessage.content = infoInput;
+    } else {
+      userMessage = infoInput;
+    }
+    return [
+      {
+        role: "system",
+        content: sysInput,
+      },
+      {
+        role: "assistant",
+        content: "Resolve OK",
+      },
+      userMessage
+    ];
   }
 }

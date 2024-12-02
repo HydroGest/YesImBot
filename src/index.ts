@@ -1,18 +1,22 @@
-import { Context, Next, h, Random, Session, sleep } from "koishi";
+import { Context, Next, Random, Session } from "koishi";
+
+import { sleep, clone, h } from "koishi";
 
 import { ResponseVerifier } from "./utils/verifier";
 
 import { Config } from "./config";
 
-import { isGroupAllowed, foldText } from "./utils/tools";
+import { isGroupAllowed } from "./utils/toolkit";
 
 import { genSysPrompt, ensurePromptFileExists, getMemberName, getBotName } from "./utils/prompt";
 
-import { SendQueue } from "./utils/queue";
+import { SendQueue } from "./services/sendQueue";
 
 import { processUserContent } from "./utils/content";
 
 import { Adapter, register } from "./adapters";
+
+import { foldText } from "./utils/string";
 
 export const name = "yesimbot";
 
@@ -368,7 +372,7 @@ export function apply(ctx: Context, config: Config) {
       const response = await adapters[curAPI].runChatCompeletion(
         SysPrompt,
         chatData,
-        Object.create(config.Parameters),
+        clone(config.Parameters),
         config.ImageViewer.Detail,
         config.ImageViewer.How,
         config.Debug.DebugAsInfo

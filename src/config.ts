@@ -64,6 +64,7 @@ export interface Config {
     Memory: number;
     Server: "百度AI开放平台" | "自己搭建的服务" | "另一个LLM";
     BaseURL: string;
+    Adapter: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
     Model: string;
     RequestBody: string;
     GetDescRegex: string;
@@ -339,6 +340,9 @@ export const Config: Schema<Config> = Schema.object({
     BaseURL: Schema.string()
       .default("http://127.0.0.1")
       .description("自己搭建的图片描述服务或另一个LLM的完整 URL"),
+    Adapter: Schema.union(["OpenAI", "Custom URL", "Ollama", "Cloudflare"])
+      .default("OpenAI")
+      .description("适配器类型"),
     Model: Schema.string()
       .default("gpt-4o-mini")
       .description("使用另一个LLM时的模型名称"),

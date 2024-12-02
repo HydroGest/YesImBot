@@ -102,11 +102,16 @@ export async function getMemberName(config: Config, session: any, byID?: string)
   const fetchUserName = async (id: string) => {
     try {
       return await session.bot.getUser(id);
-    } catch {
-      const response = await fetch(`https://api.usuuu.com/qq/${id}`);
-      if (!response.ok) throw new Error(`Failed to fetch user from backup API`);
-      const user = await response.json();
-      return user.data.name;
+    } catch (error) {
+      try {
+        const response = await fetch(`https://api.usuuu.com/qq/${id}`);
+        const userData = await response.json();
+        if (!response.ok)
+          throw new Error(`Failed to fetch user from backup API`);
+        return userData.data.name;
+      } catch {
+        throw new Error(`Failed to fetch user from backup API`);
+      }
     }
   };
 
@@ -132,51 +137,53 @@ export async function genSysPrompt(
 ): Promise<string> {
   // 获取当前日期与时间
   const currentDate = new Date();
-  const curYear: number = currentDate.getFullYear();
-  const curMonth: number = currentDate.getMonth() + 1;
-  const curDate: number = currentDate.getDate();
-  const curHour: number = currentDate.getHours();
-  const curMinute: number = currentDate.getMinutes();
-  const curSecond: number = currentDate.getSeconds();
-
+  // 2024年12月2日星期一 00:25:12
+  const formattedDate = currentDate.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    weekday: "long"
+  });
   let content = fs.readFileSync(
     getFileNameFromUrl(config.Bot.PromptFileUrl[config.Bot.PromptFileSelected]),
     "utf-8"
   );
-
   content = content.replaceAll("${config.Bot.BotName}", await getBotName(config, session));
   content = content.replaceAll("${config.Bot.WhoAmI}", config.Bot.WhoAmI);
-  content = content.replaceAll(
-    "${config.Bot.BotHometown}",
-    config.Bot.BotHometown
-  );
-  content = content.replaceAll(
-    "${config.Bot.BotYearold}",
-    config.Bot.BotYearold
-  );
-  content = content.replaceAll(
-    "${config.Bot.BotPersonality}",
-    config.Bot.BotPersonality
-  );
+  content = content.replaceAll("${config.Bot.BotHometown}", config.Bot.BotHometown);
+  content = content.replaceAll("${config.Bot.BotYearold}", config.Bot.BotYearold);
+  content = content.replaceAll("${config.Bot.BotPersonality}", config.Bot.BotPersonality);
   content = content.replaceAll("${config.Bot.BotGender}", config.Bot.BotGender);
-  content = content.replaceAll(
-    "${config.Bot.BotHabbits}",
-    config.Bot.BotHabbits
-  );
-  content = content.replaceAll(
-    "${config.Bot.BotBackground}",
-    config.Bot.BotBackground
-  );
+  content = content.replaceAll("${config.Bot.BotHabbits}", config.Bot.BotHabbits);
+  content = content.replaceAll("${config.Bot.BotBackground}", config.Bot.BotBackground);
   content = content.replaceAll("${config.Bot.CuteMode}", `${config.Bot.CuteMode ? "开启" : "关闭"}`);
-
-  content = content.replaceAll("${curYear}", curYear.toString());
-  content = content.replaceAll("${curMonth}", curMonth.toString());
-  content = content.replaceAll("${curDate}", curDate.toString());
-  content = content.replaceAll("${curHour}", curHour.toString());
-  content = content.replaceAll("${curMinute}", curMinute.toString());
-  content = content.replaceAll("${curSecond}", curSecond.toString());
-
+  content = content.replaceAll("${currentDate}", formattedDate);
   content = content.replaceAll("${curGroupName}", curGroupName);
-
   return content;
+}
+
+/**
+ * 模板引擎
+ */
+class Template {
+  constructor(private templateString: string){}
+  render(model: any){
+    return this.templateString.replace(/\{(\w+(?:\.\w+)*)\}/g, (match, key) => {
+      return this.getValue(model, key.split('.'));
+    });
+  }
+  getValue(data: any, keys: string[]) {
+    let value = data;
+    for (let key of keys) {
+      if (value && typeof value === 'object') {
+        value = value[key];
+      } else {
+        return '';
+      }
+    }
+    return value || '';
+  };
 }

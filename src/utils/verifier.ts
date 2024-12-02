@@ -1,6 +1,6 @@
 import { register } from "../adapters";
 import { Config } from "../config";
-import { runEmbedding, calculateCosineSimilarity } from "./tools";
+import { calculateCosineSimilarity, runEmbedding } from "../services/embeddingService";
 
 export class ResponseVerifier {
   private previousResponse: string = "";
