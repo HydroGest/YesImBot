@@ -1,8 +1,17 @@
+import path from "path";
 import JSON5 from "json5";
 
 import { Config } from "../config";
-import { getCacheFileName, loadFromCache, saveToCache } from "../managers/cacheManager";
 import { sendRequest } from "../utils/http";
+import { CacheManager } from "../managers/cacheManager";
+
+const managers: Map<string, CacheManager<number[]>> = new Map();
+function getManager(embeddingModel: string): CacheManager<number[]> {
+  if (!managers.has(embeddingModel)) {
+    managers.set(embeddingModel, new CacheManager(path.join(__dirname, `../../data/.vector_cache/${embeddingModel}.json`)));
+  }
+  return managers.get(embeddingModel)!;
+}
 
 export async function runEmbedding(
   apiType: Config["Embedding"]["APIType"],
@@ -15,8 +24,8 @@ export async function runEmbedding(
   getVecRegex?: string
 ): Promise<number[]> {
   // 检查缓存
-  const cacheFile = getCacheFileName(embeddingModel, text);
-  const cachedVector = loadFromCache(cacheFile);
+  const cacheManager = getManager(embeddingModel);
+  const cachedVector = cacheManager.get(text);
   if (cachedVector) {
     if (debug) {
       console.log('Using cached embedding vector');
@@ -84,7 +93,7 @@ export async function runEmbedding(
 
     if (apiType === "OpenAI" || apiType === "Custom URL") {
       vector = response.data[0].embedding;
-      saveToCache(cacheFile, vector);
+      cacheManager.set(text, vector);
       return vector;
     } else {
       const regex = new RegExp(getVecRegex);
@@ -94,7 +103,7 @@ export async function runEmbedding(
       }
       try {
         vector = JSON.parse(match[0]);
-        saveToCache(cacheFile, vector);
+        cacheManager.set(text, vector);
         return vector;
       } catch (e) {
         throw new Error(`向量解析失败: ${e.message}`);
