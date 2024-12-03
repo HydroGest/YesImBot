@@ -1,6 +1,6 @@
 import { Config } from "../config";
 import { sendRequest } from "../utils/http";
-import { BaseAdapter } from "./base";
+import { BaseAdapter, Response } from "./base";
 import { Message } from "./creators/component";
 
 export class OllamaAdapter extends BaseAdapter {
@@ -20,7 +20,17 @@ export class OllamaAdapter extends BaseAdapter {
     this.model = model;
   }
 
-  async chat(messages: Message[], debug = false) {
+  async chat(messages: Message[], debug = false): Promise<Response> {
+    for (const message of messages) {
+      for (const component of message.content) {
+        if (typeof component === "string")
+          continue;
+        if (component.type === "image_url") {
+          if (!message["images"]) message["images"] = [];
+          message["images"].push(component["image_url"]["url"]);
+        }
+      }
+    }
     const requestBody = {
       model: this.model,
       stream: false,

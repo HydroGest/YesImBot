@@ -1,4 +1,5 @@
 import { register } from "../adapters";
+import { AssistantMessage, SystemMessage, UserMessage } from "../adapters/creators/component";
 import { Config } from "../config";
 import { calculateCosineSimilarity, runEmbedding } from "../services/embeddingService";
 
@@ -62,15 +63,15 @@ export class ResponseVerifier {
           this.config.Verifier.API.BaseURL,
           this.config.Verifier.API.APIKey,
           this.config.Verifier.API.UID,
-          this.config.Verifier.API.AIModel
+          this.config.Verifier.API.AIModel,
+          this.config.Parameters
         )
-        const response = await adapter.runChatCompeletion(
-          sysPrompt,
-          promptInput,
-          Object.create(this.config.Parameters),
-          this.config.ImageViewer.Detail,
-          this.config.ImageViewer.How,
-          this.config.Debug.DebugAsInfo
+        const response = await adapter.chat(
+          [
+            SystemMessage(sysPrompt),
+            AssistantMessage("Resolve OK"),
+            UserMessage(promptInput)
+          ]
         );
 
         const similarityScore = this.extractSimilarityScore(response);

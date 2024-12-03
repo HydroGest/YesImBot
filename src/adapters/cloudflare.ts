@@ -1,6 +1,6 @@
 import { Config } from "../config";
 import { sendRequest } from "../utils/http";
-import { BaseAdapter } from "./base";
+import { BaseAdapter, Response } from "./base";
 import { Message } from "./creators/component";
 
 export class CloudflareAdapter extends BaseAdapter {
@@ -25,7 +25,7 @@ export class CloudflareAdapter extends BaseAdapter {
 
   }
 
-  async chat(messages: Message[], debug = false) {
+  async chat(messages: Message[], debug = false):Promise<Response> {
     const requestBody = {
       model: this.model,
       messages,

@@ -33,3 +33,8 @@ export async function convertUrltoBase64(url: string): Promise<string> {
     return "";
   }
 }
+
+// 去除base64前缀
+export function removeBase64Prefix(base64: string): string {
+  return base64.replace(/^data:image\/(jpg|jpeg|png|webp|gif|bmp|tiff|ico|avif|webm|apng|svg);base64,/, "");
+}

@@ -1,13 +1,14 @@
 import { Context, Next, Random, Session } from "koishi";
-import { clone, h } from "koishi";
+import { h } from "koishi";
 
 import { Config } from "./config";
-import { getMemberName, isChannelAllowed } from "./utils/toolkit";
-import { ensurePromptFileExists } from "./utils/prompt";
+import { isChannelAllowed } from "./utils/toolkit";
+import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
-import { getImageDescription } from "./services/imageViewer";
 import { initDatabase } from "./database";
+import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creators/component";
+import { processContent } from "./utils/content";
 
 export const name = "yesimbot";
 
@@ -41,12 +42,74 @@ export function apply(ctx: Context, config: Config) {
     );
   });
 
-  ctx.on('message-created', async (session) => {
+  ctx.on("message-created", async (session) => {
     const channelId = session.channelId;
     if (isChannelAllowed(config.MemorySlot.SlotContains, channelId)) {
       await sendQueue.addMessage(session);
     }
-  })
+  });
+
+  ctx
+    .command("清除记忆", "清除 BOT 对会话的记忆")
+    .option("target", "-t <target:string> 指定要清除记忆的会话。使用 private:指定私聊会话，使用 all 或 private:all 分别清除所有群聊或私聊记忆", { authority: 3 })
+    .option("person", "-p <person:string> 从所有会话中清除指定用户的记忆", { authority: 3 })
+    .usage("注意：如果使用 清除记忆 <target> 来清除记忆而不带-t参数，将会清除当前会话的记忆！")
+    .example([
+        "清除记忆",
+        "清除记忆 -t private:1234567890",
+        "清除记忆 -t 987654321",
+        "清除记忆 -t all",
+        "清除记忆 -t private:all",
+        "清除记忆 -p 1234567890",
+      ].join("\n"))
+    .action(async ({ session, options }) => {
+      const msgDestination = session.guildId || session.channelId;
+      let result = '';
+      
+      if (options.person) {
+        // 按用户QQ清除记忆
+        const cleared = await sendQueue.clearBySenderId(options.person);
+        result = cleared
+          ? `已清除关于用户 ${options.person} 的记忆`
+          : `未找到关于用户 ${options.person} 的记忆`;
+      } else {
+        const clearGroupId = options.target || msgDestination;
+        // 要清除的会话集合
+        const targetGroups = clearGroupId
+          .split(',')
+          .map(g => g.trim())
+          .filter(Boolean);
+      
+        const clearedIds = [];
+        const messages = [];
+      
+        if (targetGroups.includes('private:all')) {
+          const success = await sendQueue.clearPrivateAll();
+          if (success) messages.push('已清除全部私聊消息');
+        }
+        if (targetGroups.includes('all')) {
+          const success = await sendQueue.clearAll();
+          if (success) messages.push('已清除全部群组消息');
+        }
+      
+        for (const id of targetGroups) {
+          if (id === 'all' || id === 'private:all') continue;
+          const success = await sendQueue.clearChannel(id);
+          if (success) clearedIds.push(id);
+        }
+      
+        if (clearedIds.length > 0) {
+          const idsDisplay = clearedIds.slice(0, 3).join(', ');
+          const suffix = clearedIds.length > 3 ? ' 等会话' : ' 会话';
+          messages.push(`已清除关于 ${idsDisplay}${suffix} 的记忆`);
+        }
+      
+        result = messages.join('，');
+      }
+      
+      await session.sendQueued(result);
+      return;
+    });
 
   ctx.middleware(async (session: Session, next: Next) => {
     const channelId = session.channelId;
@@ -67,63 +130,17 @@ export function apply(ctx: Context, config: Config) {
     const shouldReactToAt = Random.bool(config.MemorySlot.AtReactPossibility);
 
     if (isQueueFull || isMixedQueueFull || isAtMentioned && shouldReactToAt || config.Debug.TestMode) {
-      const parsedMessage: string[]= [];
-      // 处理用户消息
-      for (let chatMessage of await sendQueue.getMixedQueue(channelId)) {
-          // 12月3日星期二 17:34
-          const timeString = chatMessage.sendTime.toLocaleString("zh-CN", {month: "long",day: "numeric",hour: "2-digit",minute: "2-digit"})
-          let messagePrefix = `[${timeString} ${chatMessage.channelType === "guild" ? ("from_channel:" + chatMessage.channelId + " sender_id:" + chatMessage.senderId) : ("from_qq:" + chatMessage.senderId)}]`;
-          let userName: string;
-          switch (config.Bot.NickorName) {
-            case "群昵称":
-              userName = chatMessage.senderNick;
-            case "用户昵称":
-            default:
-              userName = chatMessage.senderName;
-          }
-          messagePrefix += ` "${userName}"`;
-          const userContent = [];
-          const elements = h.parse(chatMessage.content);
-          for (let elem of elements) {
-            switch (elem.type){
-              case "text":
-                // const { content } = elem.attrs;
-                userContent.push(elem.attrs.content);
-                break;
-              case "at":
-                // const { id } = elem.attrs;
-                userContent.push(`@${await getMemberName(config, session, elem.attrs.id, chatMessage.channelId)}`);
-                break;
-              case "quote":
-                // const { id } = elem.attrs;
-                userContent.unshift(`REPLYTO(${elem.attrs.id})`);
-                break;
-              case "img":
-                // const { src, summary, fileUnique } = elem.attrs;
-                userContent.push(await getImageDescription(elem.attrs.src, config, elem.attrs.summary));
-                break;
-              case "face":
-                // const { id, name } = elem.attrs;
-                userContent.push(`[表情:${elem.attrs.name}]`);
-                break;
-              case "mface":
-                // const { url, summary } = elem.attrs;
-                userContent.push(`[表情:${elem.attrs.summary}]`);
-                break;
-              default:
-            }
-          }
-          // [messageId][{date} from_channel:{channelId} sender_id:{senderId}] "{senderName}" 说: {userContent}
-          // [messageId][{date} from_qq:{senderId}] "{senderName}" 说: {userContent}
-          // [messageId][{date} from_channel:{channelId} sender_id:{senderId}] "{senderName}" 回复({quoteMessageId}): {userContent}
-          parsedMessage.push(`[${chatMessage.messageId}]${messagePrefix} ${chatMessage.quoteMessageId ? "回复(" + chatMessage.quoteMessageId + "):" : "说:"} ${userContent.join("")}\n`);
-      }
-      const chatHistory = parsedMessage.join("");
+
+      const chatHistory = await processContent(config, session,await sendQueue.getMixedQueue(channelId));
       const adapter = adapterSwitcher.getAdapter();
 
-
-      
+      if (adapter) {
+        const chatResponse = await adapter.chat([
+          SystemMessage(await genSysPrompt(config, channelId)),
+          AssistantMessage("Resolve OK"),
+          UserMessage(chatHistory)
+        ])
+      }
     }
   });
 }
-

@@ -4,7 +4,6 @@ import { QueueManager } from "../managers/queueManager";
 import { ChatMessage, createMessage } from "../models/ChatMessage";
 
 export class SendQueue {
-
   private slotContains: Set<string>[] = [];
   private slotSize: number;
   private queueManager: QueueManager;
@@ -19,13 +18,19 @@ export class SendQueue {
     this.queueManager = new QueueManager(ctx);
   }
   async checkQueueSize(channelId: string): Promise<boolean> {
-    return (await this.queueManager.getQueue(channelId, this.slotSize)).length > this.slotSize;
+    return (
+      (await this.queueManager.getQueue(channelId, this.slotSize)).length >
+      this.slotSize
+    );
   }
 
   async checkMixedQueueSize(channelId: string): Promise<boolean> {
     for (let slotContain of this.slotContains) {
       if (slotContain.has(channelId)) {
-        return (await this.queueManager.getMixedQueue(slotContain, this.slotSize)).length > this.slotSize;
+        return (
+          (await this.queueManager.getMixedQueue(slotContain, this.slotSize))
+            .length > this.slotSize
+        );
       }
     }
     return false;
@@ -35,20 +40,37 @@ export class SendQueue {
     return this.queueManager.getQueue(channelId, count);
   }
 
-  async getMixedQueue(channelId: string): Promise<ChatMessage[]>{
+  async getMixedQueue(channelId: string): Promise<ChatMessage[]> {
     for (let slotContain of this.slotContains) {
-        if (slotContain.has(channelId)) {
-          return await this.queueManager.getMixedQueue(slotContain, this.slotSize);
-        }
+      if (slotContain.has(channelId)) {
+        return await this.queueManager.getMixedQueue(
+          slotContain,
+          this.slotSize
+        );
       }
-      return [];
+    }
+    return [];
   }
 
   // 向数据库中添加一条消息
   //TODO: 删除过期消息并进行总结
   async addMessage(session: Session) {
-    this.queueManager.enqueue(
-       await createMessage(session)
-    )
+    this.queueManager.enqueue(await createMessage(session));
+  }
+
+  async clearBySenderId(senderId: string) {
+    return this.queueManager.clearBySenderId(senderId);
+  }
+
+  async clearChannel(channelId: string) {
+    return this.queueManager.clearChannel(channelId);
+  }
+
+  async clearAll() {
+    return this.queueManager.clearAll();
+  }
+
+  async clearPrivateAll() {
+    return this.queueManager.clearPrivateAll();
   }
 }

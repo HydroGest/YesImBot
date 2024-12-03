@@ -3,7 +3,6 @@ import https from "https";
 import { Context } from "koishi";
 import { promisify } from "util";
 import { Config } from "../config";
-import { getBotName } from "./toolkit";
 
 export function getFileNameFromUrl(url: string): string {
   try {
@@ -89,7 +88,6 @@ export async function ensurePromptFileExists(
 export async function genSysPrompt(
   config: Config,
   curGroupName: string,
-  session: any,
 ): Promise<string> {
   // 获取当前日期与时间
   const currentDate = new Date();
@@ -107,18 +105,12 @@ export async function genSysPrompt(
     getFileNameFromUrl(config.Bot.PromptFileUrl[config.Bot.PromptFileSelected]),
     "utf-8"
   );
-  content = content.replaceAll("${config.Bot.BotName}", await getBotName(config, session));
-  content = content.replaceAll("${config.Bot.WhoAmI}", config.Bot.WhoAmI);
-  content = content.replaceAll("${config.Bot.BotHometown}", config.Bot.BotHometown);
-  content = content.replaceAll("${config.Bot.BotYearold}", config.Bot.BotYearold);
-  content = content.replaceAll("${config.Bot.BotPersonality}", config.Bot.BotPersonality);
-  content = content.replaceAll("${config.Bot.BotGender}", config.Bot.BotGender);
-  content = content.replaceAll("${config.Bot.BotHabbits}", config.Bot.BotHabbits);
-  content = content.replaceAll("${config.Bot.BotBackground}", config.Bot.BotBackground);
-  content = content.replaceAll("${config.Bot.CuteMode}", `${config.Bot.CuteMode ? "开启" : "关闭"}`);
-  content = content.replaceAll("${currentDate}", formattedDate);
-  content = content.replaceAll("${curGroupName}", curGroupName);
-  return content;
+  let template = new Template(content);
+  return template.render({
+    config,
+    currentDate: formattedDate,
+    curGroupName
+  });
 }
 
 /**
@@ -127,11 +119,11 @@ export async function genSysPrompt(
 class Template {
   constructor(private templateString: string){}
   render(model: any){
-    return this.templateString.replace(/\{(\w+(?:\.\w+)*)\}/g, (match, key) => {
+    return this.templateString.replace(/\$\{(\w+(?:\.\w+)*)\}/g, (match, key) => {
       return this.getValue(model, key.split('.'));
     });
   }
-  getValue(data: any, keys: string[]) {
+  private getValue(data: any, keys: string[]) {
     let value = data;
     for (let key of keys) {
       if (value && typeof value === 'object') {

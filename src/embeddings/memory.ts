@@ -47,8 +47,10 @@ class Memory {
     private vectorStore: MemoryVectorStore;
     private history: { role: string; content: string }[];
     private enabled: boolean;
+    config: Config;
 
     constructor(config: Config) {
+        this.config = config;
         this.enabled = config.Embedding.Enabled;
         this.vectorStore = config.Embedding.Enabled ? new MemoryVectorStore() : null;
         this.history = [];
@@ -57,7 +59,7 @@ class Memory {
     async addMessage(message: string, role: string): Promise<void> {
         this.history.push({ role, content: message });
         if (this.enabled && this.vectorStore) {
-            const embedding = await runEmbedding(message);
+            const embedding = await this.getEmbedding(message);
             await this.vectorStore.addVectors([embedding], [message]);
         }
     }
@@ -68,11 +70,22 @@ class Memory {
 
     async getSimilarMessages(message: string, k = 5): Promise<string[]> {
         if (this.enabled && this.vectorStore) {
-            const embedding = await runEmbedding(message);
+            const embedding = await this.getEmbedding(message);
             const results = await this.vectorStore.similaritySearchVectorWithScore(embedding, k);
             return results.map(result => result[0].metadata);
         }
         return [];
+    }
+
+    private async getEmbedding(message: string): Promise<number[]> {
+        return await runEmbedding(
+            this.config.Embedding.APIType,
+            this.config.Embedding.BaseURL,
+            this.config.Embedding.APIKey,
+            this.config.Embedding.EmbeddingModel,
+            message,
+            this.config.Debug.DebugAsInfo
+        );
     }
 }
 

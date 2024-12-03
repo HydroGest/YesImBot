@@ -1,6 +1,6 @@
 import { Config } from "../config";
 import { sendRequest } from "../utils/http";
-import { BaseAdapter } from "./base";
+import { BaseAdapter, Response } from "./base";
 import { Message } from "./creators/component";
 
 export class CustomAdapter extends BaseAdapter {
@@ -20,7 +20,7 @@ export class CustomAdapter extends BaseAdapter {
     this.model = model;
   }
 
-  async chat(messages: Message[], debug = false) {
+  async chat(messages: Message[], debug = false): Promise<Response> {
     const requestBody = {
       model: this.model,
       messages,
@@ -38,7 +38,6 @@ export class CustomAdapter extends BaseAdapter {
         message: {
           role: response.choices[0].message.role,
           content: response.choices[0].message.content,
-          images: response.choices[0].message?.images,
         },
         usage: response.usage,
       };

@@ -1,9 +1,6 @@
 import { Context } from "koishi";
-import { Config } from "../config";
+
 import { ChatMessage } from "../models/ChatMessage";
-import { getCurrentTimestamp } from "../utils/timeUtils";
-import { containsFilter } from "../utils/toolkit";
-import { CacheManager } from "./cacheManager";
 import { DATABASE_NAME } from "..";
 
 export class QueueManager {
@@ -14,25 +11,27 @@ export class QueueManager {
   }
 
   async getQueue(channelId: string, limit: number): Promise<ChatMessage[]> {
-    return this.ctx.database
+    let chatMessages = await this.ctx.database
       .select(DATABASE_NAME)
       .where({ channelId })
-      .orderBy("sendTime", "asc") // 升序
+      .orderBy("sendTime", "desc") // 逆序
       .limit(limit)
       .execute();
+    return chatMessages.reverse();
   }
 
   async getMixedQueue(
     channels: Set<string>,
     limit: number
   ): Promise<ChatMessage[]> {
-    const selectQuery = (channelIdFilter: any) => {
-      return this.ctx.database
+    const selectQuery = async (channelIdFilter: any) => {
+      let chatMessages = await this.ctx.database
         .select(DATABASE_NAME)
         .where({ channelId: channelIdFilter })
-        .orderBy("sendTime", "asc") // 升序
+        .orderBy("sendTime", "desc") // 逆序
         .limit(limit)
         .execute();
+      return chatMessages.reverse();
     };
 
     if (channels.has("all")) {
@@ -55,19 +54,36 @@ export class QueueManager {
     const result = await this.ctx.database.remove(DATABASE_NAME, {
       senderId,
     });
-
     return result.removed > 0;
   }
 
-  public async findChannelByMessageId(
-    messageId: string
-  ): Promise<string> {
+  public async clearChannel(channelId: string): Promise<boolean> {
+    const result = await this.ctx.database.remove(DATABASE_NAME, {
+      channelId,
+    });
+    return result.removed > 0;
+  }
+
+  public async clearAll(): Promise<boolean> {
+    const result = await this.ctx.database.remove(DATABASE_NAME, {
+      "channelId": { $regex: /^(?!.*private:[a-zA-Z0-9_]+).*$/ },
+    });
+    return result.removed > 0;
+  }
+
+  public async clearPrivateAll(): Promise<boolean> {
+    const result = await this.ctx.database.remove(DATABASE_NAME, {
+      "channelId": { $regex: /private:[a-zA-Z0-9_]+/ },
+    });
+    return result.removed > 0;
+  }
+
+  public async findChannelByMessageId(messageId: string): Promise<string> {
     const messages = await this.ctx.database
-    .select(DATABASE_NAME)
-    .where({ messageId })
-    .execute()
-    if (messages.length==0)
-      return null;
+      .select(DATABASE_NAME)
+      .where({ messageId })
+      .execute();
+    if (messages.length == 0) return null;
     return messages[0].channelId;
   }
 }

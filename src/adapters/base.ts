@@ -7,7 +7,7 @@ interface Usage {
   total_tokens: number;
 }
 
-interface Response {
+export interface Response {
   model: string;
   created: string;
   message: {
