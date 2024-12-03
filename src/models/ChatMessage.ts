@@ -14,6 +14,8 @@ export interface ChatMessage {
 
     sendTime: Date;      // 发送时间
     content: string;     // 消息内容
+
+    quoteMessageId?: string; // 被引用消息
 }
 
 export async function createMessage(session: Session): Promise<ChatMessage> {
@@ -33,6 +35,7 @@ export async function createMessage(session: Session): Promise<ChatMessage> {
         channelId: session.channelId,
         channelType,
         sendTime: new Date(session.event.timestamp),
-        content: session.content
+        content: session.content,
+        quoteMessageId: session.quote?.id
     };
 }

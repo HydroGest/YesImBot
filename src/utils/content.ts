@@ -1,10 +1,10 @@
 import { Session } from 'koishi';
 
-import { getMemberName } from './prompt';
-import { replaceImageWith } from '../services/imageViewer';
+import { getImageDescription } from '../services/imageViewer';
 import { Config } from '../config';
 import { emojiManager } from '../managers/emojiManager';
 import { convertUrltoBase64 } from './imageUtils';
+import { getMemberName } from './toolkit';
 
 
 // 对于QQ，只有type为1的表情才是QQ表情，其他的是普通emoji，无需转义。移除对type的处理
@@ -43,7 +43,7 @@ export async function replaceTags(str: string, config: Config): Promise<string> 
       const base64 = await convertUrltoBase64(imageUrl);
       replacement = `<img base64="${base64}" src="${imageUrl}"/>`;
     } else {
-      replacement = await replaceImageWith(fullMatch, config);
+      replacement = await getImageDescription(fullMatch, config);
     }
 
     finalString = finalString.replace(fullMatch, replacement);

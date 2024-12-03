@@ -2,7 +2,7 @@ import path from "path";
 import crypto from "crypto";
 import axios from "axios";
 import JSON5 from "json5";
-import { clone } from "koishi";
+import { clone, h } from "koishi";
 
 import { register } from "../adapters";
 import { Config } from "../config";
@@ -188,21 +188,7 @@ const serviceMap: Record<string, ImageDescriptionService> = {
   另一个LLM: new AnotherLLMService(),
 };
 
-function parseImageTag(imgTag: string) {
-  const base64Match = imgTag.match(/base64\s*=\s*\"([^"]+)\"/);
-  const srcMatch = imgTag.match(/src\s*=\s*\"([^"]+)\"/);
-  const summaryMatch = imgTag.match(/summary\s*=\s*\"([^"]+)\"/);
-
-  return {
-    base64: base64Match?.[1] ?? "",
-    src: (srcMatch?.[1] ?? "").replace(/&amp;/g, "&"),
-    summary: summaryMatch?.[1]?.replace(/^\[|\]$/g, ""),
-  };
-}
-
-export async function replaceImageWith(imgTag: string, config: Config) {
-  const { base64, src, summary } = parseImageTag(imgTag);
-
+export async function getImageDescription(imgUrl: string, config: Config, summary): Promise<string> {
   switch (config.ImageViewer.How) {
     case "图片描述服务": {
       const service = serviceMap[config.ImageViewer.Server];
@@ -210,10 +196,12 @@ export async function replaceImageWith(imgTag: string, config: Config) {
         throw new Error(`Unsupported server: ${config.ImageViewer.Server}`);
       }
 
+      const base64 = await convertUrltoBase64(imgUrl);
+
       try {
         const description = await getCachedDescription(
           service,
-          src,
+          imgUrl,
           base64,
           config
         );
@@ -235,7 +223,9 @@ export async function replaceImageWith(imgTag: string, config: Config) {
       return "[图片]";
 
     case "不做处理，以<img>标签形式呈现":
-      return imgTag;
+      return h.image(imgUrl, {
+        summary
+      }).toString();
   }
 }
 

@@ -18,7 +18,8 @@ export function initDatabase(ctx: Context) {
         channelId: "string",
         channelType: "string",
         sendTime: "timestamp",    
-        content: "string",         
+        content: "string",     
+        quoteMessageId: "string",    
     }, {
         //@ts-ignore
         primary: "messageId", // 主键名

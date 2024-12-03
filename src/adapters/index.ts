@@ -1,3 +1,4 @@
+import { Config } from "../config";
 import { CloudflareAdapter } from "./cloudflare";
 import { CustomAdapter } from "./custom";
 import { OllamaAdapter } from "./ollama";
@@ -34,5 +35,33 @@ export function register(
       return new OpenAIAdapter(baseUrl, apiKey, model);
     default:
       throw new Error(`不支持的 API 类型: ${adapterName}`);
+  }
+}
+
+
+export class AdapterSwitcher {
+  private adapters: Adapter[];
+  private current = 0;
+  constructor(private adapterConfig: Config["API"]["APIList"]){
+    this.updateConfig(adapterConfig);
+  }
+
+  getAdapter(): Adapter {
+    if (this.current >= this.adapters.length) this.current = 0;
+    return this.adapters[this.current++];
+  }
+
+  updateConfig(adapterConfig: Config["API"]["APIList"]) {
+    this.adapters = [];
+    this.adapterConfig = adapterConfig;
+    for (const adapter of adapterConfig) {
+      this.adapters.push(register(
+        adapter.APIType,
+        adapter.BaseURL,
+        adapter.APIKey,
+        adapter.UID,
+        adapter.AIModel
+      ))
+    }
   }
 }

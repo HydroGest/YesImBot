@@ -53,6 +53,23 @@ export function isGroupAllowed(groupId: string, allowedGroups: string[], debug: 
 }
 
 
+export function isChannelAllowed(slotContains: string[], channelId: string): boolean {
+  for (let slot of slotContains) {
+    if (slot.includes("private:all") && channelId.startsWith("private:")) {
+      return true;
+    } else if (slot.includes("all") && !channelId.startsWith("private:")) {
+      return true;
+    }
+
+    for (let channel of slot.split(",")) {
+      channel = channel.trim();
+      if (channel === channelId) {
+        return true;
+      }
+    }
+  }
+}
+
 export function containsFilter(sessionContent: string, FilterList: any): boolean {
   for (const filterString of FilterList) {
     if (sessionContent.includes(filterString)) {

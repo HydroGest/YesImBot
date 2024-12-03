@@ -1,61 +1,59 @@
+import { Context } from "koishi";
 import { Config } from "../config";
+import { ChatMessage } from "../models/ChatMessage";
 import { getCurrentTimestamp } from "../utils/timeUtils";
 import { containsFilter } from "../utils/toolkit";
 import { CacheManager } from "./cacheManager";
-
-export interface QueueItem {
-  id: string;
-  sender: string;
-  sender_id: string;
-  content: string;
-  timestamp: string;
-  guildId: string;
-}
+import { DATABASE_NAME } from "..";
 
 export class QueueManager {
-  private cacheManager: CacheManager<QueueItem[]>;
+  private ctx: Context;
 
-  constructor(private filePath: string) {
-    this.cacheManager = new CacheManager<QueueItem[]>(this.filePath);
+  constructor(ctx: Context) {
+    this.ctx = ctx;
   }
 
-  getQueue(group: string): QueueItem[] {
-    return this.cacheManager.get(group) || [];
+  async getQueue(channelId: string): Promise<ChatMessage[]> {
+    return this.ctx.database
+      .select(DATABASE_NAME, {
+        channelId,
+      })
+      .orderBy("sendTime", "asc") // 升序
+      .execute();
   }
 
-  setQueue(group: string, queue: QueueItem[]): void {
-    this.cacheManager.set(group, queue);
+  async getMixedQueue(channels: Set<string>): Promise<ChatMessage[]> {
+    const selectQuery = (channelIdFilter: any) => {
+      return this.ctx.database
+        .select(DATABASE_NAME, { channelId: channelIdFilter })
+        .orderBy("sendTime", "asc") // 升序
+        .execute();
+    };
+
+    if (channels.has("all")) {
+      return selectQuery({ $regex: /^(?!.*private:[a-zA-Z0-9_]+).*$/ });
+    }
+
+    if (channels.has("private:all")) {
+      return selectQuery({ $regex: /private:[a-zA-Z0-9_]+/ });
+    }
+
+    return selectQuery({ $in: Array.from(channels) });
   }
 
   // 消息入队
-  public enqueue(
-    group: string,
-    sender: string,
-    sender_id: string,
-    content: string,
-    id: string,
-    FilterList: string[]
-  ): void {
-    const timestamp = getCurrentTimestamp();
-    if (containsFilter(content, FilterList)) return;
-    const queue = this.getQueue(group);
-    queue.push({
-      id,
-      sender,
-      sender_id,
-      content,
-      timestamp,
-      guildId: group,
-    });
-    this.setQueue(group, queue);
+  public async enqueue(chatMessage: ChatMessage): Promise<void> {
+    await this.ctx.database.create(DATABASE_NAME, chatMessage);
   }
 
   public clearBySenderId(sender_id: string): boolean {
     let hasCleared = false;
     for (const [group, messages] of this.cacheManager.entries()) {
-      if (!group.startsWith('private:')) {
+      if (!group.startsWith("private:")) {
         const originalLength = messages.length;
-        const filteredMessages = messages.filter(msg => msg.sender_id !== sender_id);
+        const filteredMessages = messages.filter(
+          (msg) => msg.sender_id !== sender_id
+        );
         if (filteredMessages.length < originalLength) {
           this.setQueue(group, filteredMessages);
           hasCleared = true;
@@ -72,21 +70,14 @@ export class QueueManager {
     return hasCleared;
   }
 
-  public getQueuesByGroups(groups: Set<string>): QueueItem[][] {
-    const result: QueueItem[][] = [];
-    for (const group of groups) {
-      if (this.cacheManager.has(group)) {
-        result.push(this.getQueue(group));
-      }
-    }
-    return result;
-  }
-
   public getGroupKeys(): string[] {
     return Array.from(this.cacheManager.keys());
   }
 
-  public findGroupByMessageId(messageId: string, groups: Set<string>): string | null {
+  public findGroupByMessageId(
+    messageId: string,
+    groups: Set<string>
+  ): string | null {
     if (messageId.trim() === "") {
       return null;
     }
@@ -125,60 +116,64 @@ export class QueueManager {
 }
 
 export class TriggerManager {
-    private triggerCountMap: Map<string, number>;
-    private lastTriggerTimeMap: Map<string, number>;
-    readonly maxTriggerTime: number;
+  private triggerCountMap: Map<string, number>;
+  private lastTriggerTimeMap: Map<string, number>;
+  readonly maxTriggerTime: number;
 
-    constructor(private config: Config) {
-        this.triggerCountMap = new Map();
-        this.lastTriggerTimeMap = new Map();
-        this.maxTriggerTime = config.MemorySlot.MaxTriggerTime * 1000 || 2147483647;
-    }
+  constructor(private config: Config) {
+    this.triggerCountMap = new Map();
+    this.lastTriggerTimeMap = new Map();
+    this.maxTriggerTime = config.MemorySlot.MaxTriggerTime * 1000 || 2147483647;
+  }
 
-    public getTriggerCount(group: string): number {
-        return this.triggerCountMap.get(group) || 0;
-    }
+  public getTriggerCount(group: string): number {
+    return this.triggerCountMap.get(group) || 0;
+  }
 
-    public setTriggerCount(group: string, count: number): void {
-        this.triggerCountMap.set(group, count);
-    }
+  public setTriggerCount(group: string, count: number): void {
+    this.triggerCountMap.set(group, count);
+  }
 
-    public resetTriggerCount(group: string, nextTriggerCount: number): void {
-        this.setTriggerCount(group, nextTriggerCount);
-    }
+  public resetTriggerCount(group: string, nextTriggerCount: number): void {
+    this.setTriggerCount(group, nextTriggerCount);
+  }
 
-    public checkTrigger(group: string): boolean {
-        const count = this.getTriggerCount(group);
-        return count <= 0;
-    }
+  public checkTrigger(group: string): boolean {
+    const count = this.getTriggerCount(group);
+    return count <= 0;
+  }
 
-    public getLastTriggerTime(group: string): number {
-        return this.lastTriggerTimeMap.get(group) || 0;
-    }
+  public getLastTriggerTime(group: string): number {
+    return this.lastTriggerTimeMap.get(group) || 0;
+  }
 
-    public updateLastTriggerTime(group: string): void {
-        this.lastTriggerTimeMap.set(group, Date.now());
-    }
+  public updateLastTriggerTime(group: string): void {
+    this.lastTriggerTimeMap.set(group, Date.now());
+  }
 }
 
-  export class QuietTimerManager {
-    private quietTimeoutMap: Map<string, NodeJS.Timeout>;
-  
-    constructor() {
-      this.quietTimeoutMap = new Map();
-    }
-  
-    public startTimer(groupId: string, delay: number, callback: () => void): void {
-      this.clearTimer(groupId);
-      const timeout = setTimeout(callback, delay);
-      this.quietTimeoutMap.set(groupId, timeout);
-    }
-  
-    public clearTimer(groupId: string): void {
-      const existingTimeout = this.quietTimeoutMap.get(groupId);
-      if (existingTimeout) {
-        clearTimeout(existingTimeout);
-        this.quietTimeoutMap.delete(groupId);
-      }
+export class QuietTimerManager {
+  private quietTimeoutMap: Map<string, NodeJS.Timeout>;
+
+  constructor() {
+    this.quietTimeoutMap = new Map();
+  }
+
+  public startTimer(
+    groupId: string,
+    delay: number,
+    callback: () => void
+  ): void {
+    this.clearTimer(groupId);
+    const timeout = setTimeout(callback, delay);
+    this.quietTimeoutMap.set(groupId, timeout);
+  }
+
+  public clearTimer(groupId: string): void {
+    const existingTimeout = this.quietTimeoutMap.get(groupId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      this.quietTimeoutMap.delete(groupId);
     }
   }
+}
