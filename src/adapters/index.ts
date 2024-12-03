@@ -18,7 +18,7 @@ export function register(
   apiKey: string,
   uid: string,
   model: string,
-  parameters: Config["Parameters"]
+  parameters: Config["Parameters"],
 ): Adapter {
   switch (adapterName) {
     case "Cloudflare":
@@ -44,9 +44,13 @@ export class AdapterSwitcher {
     this.updateConfig(adapterConfig, parameters);
   }
 
-  getAdapter(): Adapter {
-    if (this.current >= this.adapters.length) this.current = 0;
-    return this.adapters[this.current++];
+  getAdapter() {
+    try {
+      if (this.current >= this.adapters.length) this.current = 0;
+      return {current: this.current, adapter: this.adapters[this.current++]}
+    } catch (error) {
+      return 
+    }
   }
 
   updateConfig(
@@ -62,7 +66,7 @@ export class AdapterSwitcher {
           adapter.APIKey,
           adapter.UID,
           adapter.AIModel,
-          parameters
+          parameters,
         )
       );
     }

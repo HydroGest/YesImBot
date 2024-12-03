@@ -15,17 +15,13 @@ function getManager(embeddingModel: string): CacheManager<number[]> {
 }
 
 export async function runEmbedding(
-  apiType: Config["Embedding"]["APIType"],
-  baseURL: string,
-  apiKey: string,
-  embeddingModel: string,
+  embeddingConfig: Config["Embedding"],
   text: string,
   debug: boolean,
-  requestBody?: string,
-  getVecRegex?: string
 ): Promise<number[]> {
+  const { APIType, BaseURL, APIKey, EmbeddingModel, RequestBody, GetVecRegex } = embeddingConfig;
   // 检查缓存
-  const cacheManager = getManager(embeddingModel);
+  const cacheManager = getManager(EmbeddingModel);
   const cachedVector = cacheManager.get(text);
   if (cachedVector) {
     if (debug) {
@@ -38,21 +34,21 @@ export async function runEmbedding(
   let finalRequestBody: any;
 
   try {
-    switch (apiType) {
+    switch (APIType) {
       case "OpenAI": {
-        url = `${baseURL}/v1/embeddings`;
+        url = `${BaseURL}/v1/embeddings`;
         finalRequestBody = {
           input: text,
-          model: embeddingModel,
+          model: EmbeddingModel,
         };
         break;
       }
 
       case "Custom URL": {
-        url = baseURL;
+        url = BaseURL;
         finalRequestBody = {
           input: text,
-          model: embeddingModel,
+          model: EmbeddingModel,
         };
         break;
       }
@@ -63,16 +59,16 @@ export async function runEmbedding(
       }
 
       case "Custom": {
-        url = baseURL;
-        if (!getVecRegex) {
+        url = BaseURL;
+        if (!GetVecRegex) {
           throw new Error("Custom API 需要提供 getVecRegex 参数");
         }
 
-        if (requestBody) {
-          const processedBody = requestBody
+        if (RequestBody) {
+          const processedBody = RequestBody
             .replace(/<text>/g, text)
-            .replace(/<apikey>/g, apiKey)
-            .replace(/<model>/g, embeddingModel);
+            .replace(/<apikey>/g, APIKey)
+            .replace(/<model>/g, EmbeddingModel);
 
           try {
             finalRequestBody = JSON5.parse(processedBody);
@@ -82,22 +78,22 @@ export async function runEmbedding(
         } else {
           finalRequestBody = {
             input: text,
-            model: embeddingModel,
+            model: EmbeddingModel,
           };
         }
         break;
       }
     }
 
-    const response = await sendRequest(url, apiKey, finalRequestBody, debug);
+    const response = await sendRequest(url, APIKey, finalRequestBody, debug);
     let vector: number[];
 
-    if (apiType === "OpenAI" || apiType === "Custom URL") {
+    if (APIType === "OpenAI" || APIType === "Custom URL") {
       vector = response.data[0].embedding;
       cacheManager.set(text, vector);
       return vector;
     } else {
-      const regex = new RegExp(getVecRegex);
+      const regex = new RegExp(GetVecRegex);
       const match = JSON.stringify(response).match(regex);
       if (!match) {
         throw new Error("无法从响应中提取向量");

@@ -2,13 +2,14 @@ import { Context, Next, Random, Session } from "koishi";
 import { h } from "koishi";
 
 import { Config } from "./config";
-import { isChannelAllowed } from "./utils/toolkit";
+import { getBotName, isChannelAllowed } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
 import { initDatabase } from "./database";
 import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creators/component";
 import { processContent } from "./utils/content";
+import { foldText } from "./utils/string";
 
 export const name = "yesimbot";
 
@@ -46,6 +47,8 @@ export function apply(ctx: Context, config: Config) {
     const channelId = session.channelId;
     if (isChannelAllowed(config.MemorySlot.SlotContains, channelId)) {
       await sendQueue.addMessage(session);
+      ctx.logger.info(`New message received, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
+
     }
   });
 
@@ -132,15 +135,88 @@ export function apply(ctx: Context, config: Config) {
     if (isQueueFull || isMixedQueueFull || isAtMentioned && shouldReactToAt || config.Debug.TestMode) {
 
       const chatHistory = await processContent(config, session,await sendQueue.getMixedQueue(channelId));
-      const adapter = adapterSwitcher.getAdapter();
+      if (config.Debug.DebugAsInfo)
+        ctx.logger.info(chatHistory);
+      const {current, adapter} = adapterSwitcher.getAdapter();
 
-      if (adapter) {
-        const chatResponse = await adapter.chat([
+      if (!adapter) {
+        ctx.logger.warn("没有可用的适配器");
+        return next();
+      }
+
+      if (config.Debug.DebugAsInfo)
+        ctx.logger.info(`Request sent, awaiting for response...`);
+
+      const chatResponse = await adapter.generateResponse(
+        [
           SystemMessage(await genSysPrompt(config, channelId)),
           AssistantMessage("Resolve OK"),
-          UserMessage(chatHistory)
-        ])
+          UserMessage(chatHistory),
+        ],
+        config
+      );
+
+      if (config.Debug.DebugAsInfo)
+        ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
+
+      let replyTo = (chatResponse.replyTo && chatResponse.replyTo !== '') ? chatResponse.replyTo : session.channelId;
+      let botName = await getBotName(config.Bot, session);
+      let nextTriggerCount = chatResponse.nextTriggerCount;
+
+      if (chatResponse.status === "fail") {
+        const failTemplate = `
+LLM 的响应无法正确解析。
+原始响应:
+${chatResponse.content}
+---
+消耗: 输入 ${chatResponse?.usage?.prompt_tokens}, 输出 ${chatResponse?.usage?.completion_tokens}`;
+        await reportLogicMessage(config, session, failTemplate);
+        throw new Error(`LLM provides unexpected response:\n${chatResponse.content}`);
+      }
+
+      const template = `
+${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyTo} 的消息已生成，来自 API ${current}:`}
+---
+内容: ${chatResponse.finalReply && chatResponse.finalReply.trim() ? chatResponse.finalReply : "无"}
+---
+逻辑: ${chatResponse.logic}
+---
+指令：${chatResponse.execute?.length ? chatResponse.execute : "无"}
+---
+距离下次：${nextTriggerCount}
+---
+消耗: 输入 ${chatResponse?.usage?.prompt_tokens}, 输出 ${chatResponse?.usage?.completion_tokens}`;
+      await reportLogicMessage(config, session, template);
+
+      // 如果 AI 使用了指令
+      if (chatResponse.execute && chatResponse.execute.length > 0) {
+        chatResponse.execute.forEach(async (command) => {
+          try {
+            await session.bot.sendMessage(replyTo, h("execute", {}, command));
+            ctx.logger.info(`已执行指令：${command}`);
+          } catch (error) {
+            ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`);
+          }
+        });
+      }
+
+      if (chatResponse.finalReply && chatResponse.finalReply !== "") {
+        if (chatResponse.quote && chatResponse.quote !== "") {
+          chatResponse.finalReply = h.quote(chatResponse.quote).toString() + chatResponse.finalReply;
+        }
+        await session.bot.sendMessage(replyTo, chatResponse.finalReply);
       }
     }
+    
   });
+}
+
+
+async function reportLogicMessage(
+  config: Config, 
+  session: Session,
+  message: string,
+) {
+  if (config.Settings.LogicRedirect.Enabled)
+    await session.bot.sendMessage(config.Settings.LogicRedirect.Target, message);
 }

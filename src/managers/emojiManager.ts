@@ -8,6 +8,7 @@ import {
   calculateCosineSimilarity,
 } from "../services/embeddingService";
 
+
 interface Emoji {
   id: string;
   name: string;
@@ -29,17 +30,12 @@ export class EmojiManager {
     });
   }
 
-  private async getEmbedding(text: string, config: Config): Promise<number[]> {
+  private async getEmbedding(embeddingConfig: Config["Embedding"], text: string, debug = false): Promise<number[]> {
     try {
       const vec = await runEmbedding(
-        config.Embedding.APIType,
-        config.Embedding.BaseURL,
-        config.Embedding.APIKey,
-        config.Embedding.EmbeddingModel,
+        embeddingConfig,
         text,
-        config.Debug.DebugAsInfo,
-        config.Embedding.RequestBody,
-        config.Embedding.GetVecRegex
+        debug
       );
       return vec;
     } catch (error) {
@@ -48,8 +44,8 @@ export class EmojiManager {
     }
   }
 
-  private async initializeEmbeddings(config: Config): Promise<void> {
-    const currentModel = config.Embedding?.EmbeddingModel;
+  private async initializeEmbeddings(embeddingConfig: Config["Embedding"], debug = false): Promise<void> {
+    const currentModel = embeddingConfig.EmbeddingModel;
     const needsRecompute =
       Object.keys(this.nameEmbeddings).length === 0 ||
       this.lastEmbeddingModel !== currentModel;
@@ -60,7 +56,7 @@ export class EmojiManager {
 
       const names = Object.values(this.idToName);
       for (const name of names) {
-        this.nameEmbeddings[name] = await this.getEmbedding(name, config);
+        this.nameEmbeddings[name] = await this.getEmbedding(embeddingConfig, name, debug);
       }
 
       // 更新已使用的模型记录
@@ -84,14 +80,15 @@ export class EmojiManager {
 
   async getNameByTextSimilarity(
     name: string,
-    config: Config
+    embeddingConfig: Config["Embedding"],
+    debug = false
   ): Promise<string | undefined> {
     try {
       // 确保已初始化所有表情名称的嵌入向量
-      await this.initializeEmbeddings(config);
+      await this.initializeEmbeddings(embeddingConfig, debug);
 
       // 获取输入文本的嵌入向量
-      const inputEmbedding = await this.getEmbedding(name, config);
+      const inputEmbedding = await this.getEmbedding(embeddingConfig, name, debug);
 
       let maxSimilarity = 0;
       let mostSimilarName: string | undefined;
@@ -106,7 +103,6 @@ export class EmojiManager {
           mostSimilarName = emojiName;
         }
       }
-
       return mostSimilarName;
     } catch (error) {
       console.error("查找相似表情失败:", error);

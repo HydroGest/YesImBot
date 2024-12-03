@@ -47,22 +47,22 @@ export class ProcessingLock {
   }
 }
 
-export async function getBotName(config: Config, session: Session): Promise<string> {
-  switch (config.Bot.SelfAwareness) {
+export async function getBotName(botConfig: Config["Bot"], session: Session): Promise<string> {
+  switch (botConfig.SelfAwareness) {
     case "群昵称":
-      const memberInfo = await session.onebot.getGroupMemberInfo(session.channelId, session.userId);
+      const memberInfo = await session.onebot?.getGroupMemberInfo(session.channelId, session.userId);
       return memberInfo.card || memberInfo.nickname;
     case "用户昵称":
       return session.bot.user.name;
     case "此页面设置的名字":
     default:
-      return config.Bot.BotName;
+      return botConfig.BotName;
   }
 }
 
 export async function getMemberName(config: Config, session: Session, userId?: string, groupId?: string): Promise<string> {
   if (session.userId === session.selfId) {
-    return await getBotName(config, session);
+    return await getBotName(config.Bot, session);
   }
   if (!groupId && !userId) {
     groupId = session.guildId;
