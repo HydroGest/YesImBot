@@ -79,10 +79,7 @@ class Memory {
 
     private async getEmbedding(message: string): Promise<number[]> {
         return await runEmbedding(
-            this.config.Embedding.APIType,
-            this.config.Embedding.BaseURL,
-            this.config.Embedding.APIKey,
-            this.config.Embedding.EmbeddingModel,
+            this.config.Embedding,
             message,
             this.config.Debug.DebugAsInfo
         );

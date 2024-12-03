@@ -24,19 +24,13 @@ export class ResponseVerifier {
       if (this.config.Verifier.API.AIModel.includes("embedding")) {
         // 使用 embedding 模型验证相似度
         const previousEmbedding = await runEmbedding(
-          this.config.Verifier.API.APIType,
-          this.config.Verifier.API.BaseURL,
-          this.config.Verifier.API.APIKey,
-          this.config.Verifier.API.AIModel,
+          this.config.Verifier.API,
           this.previousResponse,
           this.config.Debug.DebugAsInfo
         );
 
         const currentEmbedding = await runEmbedding(
-          this.config.Verifier.API.APIType,
-          this.config.Verifier.API.BaseURL,
-          this.config.Verifier.API.APIKey,
-          this.config.Verifier.API.AIModel,
+          this.config.Verifier.API,
           currentResponse,
           this.config.Debug.DebugAsInfo
         );
