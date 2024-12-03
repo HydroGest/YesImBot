@@ -31,7 +31,7 @@ export function apply(ctx: Context, config: Config) {
   const sendQueue = new SendQueue(ctx, config);
 
   ctx.on("ready", async () => {
-    adapterSwitcher = new AdapterSwitcher(config.API.APIList);
+    adapterSwitcher = new AdapterSwitcher(config.API.APIList, config.Parameters);
     if (!config.Settings.UpdatePromptOnLoad) return;
     ctx.logger.info("正在尝试更新 Prompt 文件...");
     await ensurePromptFileExists(
@@ -121,21 +121,8 @@ export function apply(ctx: Context, config: Config) {
       const chatHistory = parsedMessage.join("");
       const adapter = adapterSwitcher.getAdapter();
 
-      const res = await adapter.runChatCompeletion(
-        ``,
-        chatHistory,
-        clone(config.Parameters),
-        null,
-        null,
-        config.Debug.DebugAsInfo
-      )
 
-      await adapter.handleResponse(
-        res,
-        config.Settings.AllowErrorFormat,
-        config,
-        null
-      )
+      
     }
   });
 }

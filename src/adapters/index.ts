@@ -4,12 +4,7 @@ import { CustomAdapter } from "./custom";
 import { OllamaAdapter } from "./ollama";
 import { OpenAIAdapter } from "./openai";
 
-export {
-    CloudflareAdapter,
-    CustomAdapter,
-    OllamaAdapter,
-    OpenAIAdapter
-}
+export { CloudflareAdapter, CustomAdapter, OllamaAdapter, OpenAIAdapter };
 
 export type Adapter =
   | CloudflareAdapter
@@ -22,28 +17,31 @@ export function register(
   baseUrl: string,
   apiKey: string,
   uid: string,
-  model: string
+  model: string,
+  parameters: Config["Parameters"]
 ): Adapter {
   switch (adapterName) {
     case "Cloudflare":
-      return new CloudflareAdapter(baseUrl, apiKey, uid, model);
+      return new CloudflareAdapter(baseUrl, apiKey, uid, model, parameters);
     case "Custom URL":
-      return new CustomAdapter(baseUrl, apiKey, model);
+      return new CustomAdapter(baseUrl, apiKey, model, parameters);
     case "Ollama":
-      return new OllamaAdapter(baseUrl, apiKey, model);
+      return new OllamaAdapter(baseUrl, apiKey, model, parameters);
     case "OpenAI":
-      return new OpenAIAdapter(baseUrl, apiKey, model);
+      return new OpenAIAdapter(baseUrl, apiKey, model, parameters);
     default:
       throw new Error(`不支持的 API 类型: ${adapterName}`);
   }
 }
 
-
 export class AdapterSwitcher {
   private adapters: Adapter[];
   private current = 0;
-  constructor(private adapterConfig: Config["API"]["APIList"]){
-    this.updateConfig(adapterConfig);
+  constructor(
+    adapterConfig: Config["API"]["APIList"],
+    parameters: Config["Parameters"]
+  ) {
+    this.updateConfig(adapterConfig, parameters);
   }
 
   getAdapter(): Adapter {
@@ -51,17 +49,22 @@ export class AdapterSwitcher {
     return this.adapters[this.current++];
   }
 
-  updateConfig(adapterConfig: Config["API"]["APIList"]) {
+  updateConfig(
+    adapterConfig: Config["API"]["APIList"],
+    parameters: Config["Parameters"]
+  ) {
     this.adapters = [];
-    this.adapterConfig = adapterConfig;
     for (const adapter of adapterConfig) {
-      this.adapters.push(register(
-        adapter.APIType,
-        adapter.BaseURL,
-        adapter.APIKey,
-        adapter.UID,
-        adapter.AIModel
-      ))
+      this.adapters.push(
+        register(
+          adapter.APIType,
+          adapter.BaseURL,
+          adapter.APIKey,
+          adapter.UID,
+          adapter.AIModel,
+          parameters
+        )
+      );
     }
   }
 }

@@ -1,55 +1,55 @@
+import { Config } from "../config";
 import { sendRequest } from "../utils/http";
 import { BaseAdapter } from "./base";
+import { Message } from "./creators/component";
 
 export class CloudflareAdapter extends BaseAdapter {
+
   private url: string;
   private apiKey: string;
   private uid: string;
   private model: string;
 
-  constructor(baseUrl: string, apiKey: string, uid: string, model: string) {
-    super("Cloudflare");
+  constructor(
+    baseUrl: string, 
+    apiKey: string, 
+    uid: string, 
+    model: string,
+    parameters: Config["Parameters"]
+  ) {
+    super("Cloudflare", parameters);
     this.url = `${baseUrl}/accounts/${uid}/ai/run/${model}`;
     this.apiKey = apiKey;
     this.uid = uid;
     this.model = model;
+
   }
 
-  protected async generateResponse(
-    sysPrompt: string,
-    userPrompt: string,
-    parameters: any,
-    detail: string,
-    eyeType: string,
-    debug: boolean
-  ) {
+  async chat(messages: Message[], debug = false) {
     const requestBody = {
       model: this.model,
-      messages: await this.createMessages(sysPrompt, userPrompt, eyeType, detail),
-      temperature: parameters.Temperature,
-      max_tokens: parameters.MaxTokens,
-      top_p: parameters.TopP,
-      frequency_penalty: parameters.FrequencyPenalty,
-      presence_penalty: parameters.PresencePenalty,
-      stop: parameters.Stop,
-      ...parameters.OtherParameters,
+      messages,
+      temperature: this.parameters.Temperature,
+      max_tokens: this.parameters.MaxTokens,
+      frequency_penalty: this.parameters.FrequencyPenalty,
+      presence_penalty: this.parameters.PresencePenalty,
+      ...this.otherParams
     };
     let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
     try {
       return {
-        model: "",
+        model: this.model,
         created: "",
         message: {
           role: response.result.role,
           content: response.result.response,
-          images: [],
         },
         usage: {
           prompt_tokens: 0,
           completion_tokens: 0,
-          total_tokens: 0
+          total_tokens: 0,
         },
-      }
+      };
     } catch (error) {
       console.error("Error parsing response:", error);
       console.error("Response:", response);
