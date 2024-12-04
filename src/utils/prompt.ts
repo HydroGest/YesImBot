@@ -83,8 +83,6 @@ export async function ensurePromptFileExists(
   }
 }
 
-
-
 export async function genSysPrompt(
   config: Config,
   curGroupName: string,
@@ -115,6 +113,8 @@ export async function genSysPrompt(
 
 /**
  * 模板引擎
+ * 
+ * 和 JS 模板字符串差不多
  */
 class Template {
   constructor(private templateString: string){}

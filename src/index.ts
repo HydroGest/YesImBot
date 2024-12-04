@@ -10,6 +10,7 @@ import { initDatabase } from "./database";
 import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creators/component";
 import { processContent } from "./utils/content";
 import { foldText } from "./utils/string";
+import { createMessage } from "./models/ChatMessage";
 
 export const name = "yesimbot";
 
@@ -26,6 +27,13 @@ export const DATABASE_NAME = name;
 export const inject = {
   optional: ['qmanager', 'interactions', 'database']
 }
+
+enum SendType {
+  Command = "指令消息",
+  LogicRedirect = "逻辑重定向",
+  LLM = "和LLM交互的消息"
+}
+const selfSend = new Map<string, SendType>()
 
 export function apply(ctx: Context, config: Config) {
   initDatabase(ctx);
@@ -46,9 +54,24 @@ export function apply(ctx: Context, config: Config) {
   ctx.on("message-created", async (session) => {
     const channelId = session.channelId;
     if (isChannelAllowed(config.MemorySlot.SlotContains, channelId)) {
-      await sendQueue.addMessage(session);
+      let report = true;
+      const selfSendType = selfSend.get(session.messageId);
+      switch (selfSendType) {
+        case SendType.Command:
+          if (!config.Settings.SelfReport.includes("指令消息")) report = false;
+          break;
+        case SendType.LLM:
+          if (!config.Settings.SelfReport.includes("和LLM交互的消息")) report = false;
+          break;
+        case SendType.LogicRedirect:
+          if (!config.Settings.SelfReport.includes("逻辑重定向")) report = false;
+          break;
+        default:
+          break;
+      }
+      if (!report) return;
+      await sendQueue.addMessage(await createMessage(session));
       ctx.logger.info(`New message received, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
-
     }
   });
 
@@ -56,7 +79,7 @@ export function apply(ctx: Context, config: Config) {
     .command("清除记忆", "清除 BOT 对会话的记忆")
     .option("target", "-t <target:string> 指定要清除记忆的会话。使用 private:指定私聊会话，使用 all 或 private:all 分别清除所有群聊或私聊记忆", { authority: 3 })
     .option("person", "-p <person:string> 从所有会话中清除指定用户的记忆", { authority: 3 })
-    .usage("注意：如果使用 清除记忆 <target> 来清除记忆而不带-t参数，将会清除当前会话的记忆！")
+    .usage("注意：如果使用 清除记忆 <target> 来清除记忆而不带 -t 参数，将会清除当前会话的记忆！")
     .example([
         "清除记忆",
         "清除记忆 -t private:1234567890",
@@ -110,7 +133,11 @@ export function apply(ctx: Context, config: Config) {
         result = messages.join('，');
       }
       
-      await session.sendQueued(result);
+      const messageIds = await session.sendQueued(result);
+
+      for (const messageId of messageIds) {
+        selfSend.set(messageId, SendType.Command);
+      }
       return;
     });
 
@@ -132,11 +159,13 @@ export function apply(ctx: Context, config: Config) {
     const isAtMentioned = atRegex.test(session.content);
     const shouldReactToAt = Random.bool(config.MemorySlot.AtReactPossibility);
 
-    if (isQueueFull || isMixedQueueFull || isAtMentioned && shouldReactToAt || config.Debug.TestMode) {
+    if (isQueueFull || isMixedQueueFull || (isAtMentioned && shouldReactToAt) || config.Debug.TestMode) {
 
-      const chatHistory = await processContent(config, session,await sendQueue.getMixedQueue(channelId));
+      const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId));
+
       if (config.Debug.DebugAsInfo)
         ctx.logger.info(chatHistory);
+
       const {current, adapter} = adapterSwitcher.getAdapter();
 
       if (!adapter) {
@@ -159,7 +188,7 @@ export function apply(ctx: Context, config: Config) {
       if (config.Debug.DebugAsInfo)
         ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
 
-      let replyTo = (chatResponse.replyTo && chatResponse.replyTo !== '') ? chatResponse.replyTo : session.channelId;
+      let replyTo = (chatResponse?.replyTo !== "") ? chatResponse.replyTo : session.channelId;
       let botName = await getBotName(config.Bot, session);
       let nextTriggerCount = chatResponse.nextTriggerCount;
 
@@ -170,7 +199,7 @@ LLM 的响应无法正确解析。
 ${chatResponse.content}
 ---
 消耗: 输入 ${chatResponse?.usage?.prompt_tokens}, 输出 ${chatResponse?.usage?.completion_tokens}`;
-        await reportLogicMessage(config, session, failTemplate);
+        await redirectLogicMessage(config, session, failTemplate);
         throw new Error(`LLM provides unexpected response:\n${chatResponse.content}`);
       }
 
@@ -186,13 +215,16 @@ ${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回�
 距离下次：${nextTriggerCount}
 ---
 消耗: 输入 ${chatResponse?.usage?.prompt_tokens}, 输出 ${chatResponse?.usage?.completion_tokens}`;
-      await reportLogicMessage(config, session, template);
+      await redirectLogicMessage(config, session, template);
 
       // 如果 AI 使用了指令
-      if (chatResponse.execute && chatResponse.execute.length > 0) {
+      if (Array.isArray(chatResponse.execute) && chatResponse.execute.length > 0) {
         chatResponse.execute.forEach(async (command) => {
           try {
-            await session.bot.sendMessage(replyTo, h("execute", {}, command));
+            const messageIds = await session.bot.sendMessage(replyTo, h("execute", {}, command));
+            for (const messageId of messageIds) {
+              selfSend.set(messageId, SendType.Command);
+            }
             ctx.logger.info(`已执行指令：${command}`);
           } catch (error) {
             ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`);
@@ -200,23 +232,32 @@ ${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回�
         });
       }
 
-      if (chatResponse.finalReply && chatResponse.finalReply !== "") {
-        if (chatResponse.quote && chatResponse.quote !== "") {
+      if (chatResponse?.finalReply !== "") {
+        if (chatResponse?.quote !== "") {
           chatResponse.finalReply = h.quote(chatResponse.quote).toString() + chatResponse.finalReply;
         }
-        await session.bot.sendMessage(replyTo, chatResponse.finalReply);
+        const messageIds = await session.bot.sendMessage(replyTo, chatResponse.finalReply);
+        for (const messageId of messageIds) {
+          selfSend.set(messageId, SendType.LLM);
+        }
       }
     }
-    
   });
 }
 
 
-async function reportLogicMessage(
+async function redirectLogicMessage(
   config: Config, 
   session: Session,
   message: string,
 ) {
-  if (config.Settings.LogicRedirect.Enabled)
-    await session.bot.sendMessage(config.Settings.LogicRedirect.Target, message);
+  if (!config.Settings.LogicRedirect.Enabled) return;
+
+  const messageIds = await session.bot.sendMessage(config.Settings.LogicRedirect.Target, message);
+
+  for (const messageId of messageIds) {
+    selfSend.set(messageId, SendType.LogicRedirect);
+  }
 }
+
+

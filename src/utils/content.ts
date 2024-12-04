@@ -11,7 +11,7 @@ export async function processContent(config: Config, session: Session, messages:
   for (let chatMessage of messages) {
       // 12月3日星期二 17:34
       const timeString = chatMessage.sendTime.toLocaleString("zh-CN", {month: "long",day: "numeric",hour: "2-digit",minute: "2-digit"})
-      let messagePrefix = `[${timeString} ${chatMessage.channelType === "guild" ? ("from_channel:" + chatMessage.channelId + " sender_id:" + chatMessage.senderId) : ("from_qq:" + chatMessage.senderId)}]`;
+      let messagePrefix = `[${timeString} ${chatMessage.channelType === "guild" ? `from_channel:${chatMessage.channelId} sender_id:${chatMessage.senderId}` : `from_qq:${chatMessage.senderId}`}]`;
       let userName: string;
       switch (config.Bot.NickorName) {
         case "群昵称":
@@ -63,7 +63,7 @@ export async function processContent(config: Config, session: Session, messages:
       // [messageId][{date} from_channel:{channelId} sender_id:{senderId}] "{senderName}" 说: {userContent}
       // [messageId][{date} from_qq:{senderId}] "{senderName}" 说: {userContent}
       // [messageId][{date} from_channel:{channelId} sender_id:{senderId}] "{senderName}" 回复({quoteMessageId}): {userContent}
-      processedMessage.push(`[${chatMessage.messageId}]${messagePrefix} ${chatMessage.quoteMessageId ? "回复(" + chatMessage.quoteMessageId + "):" : "说:"} ${userContent.join("")}`);
+      processedMessage.push(`[${chatMessage.messageId}]${messagePrefix} ${chatMessage.quoteMessageId ? `回复(${chatMessage.quoteMessageId}):` : "说:"} ${userContent.join("")}`);
   }
 
   return processedMessage.join("\n");

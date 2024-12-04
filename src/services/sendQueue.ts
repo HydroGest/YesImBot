@@ -1,8 +1,18 @@
-import { Context, Session } from "koishi";
+import { Context } from "koishi";
+import { defineAccessor } from "@satorijs/core";
+
 import { Config } from "../config";
 import { QueueManager } from "../managers/queueManager";
-import { ChatMessage, createMessage } from "../models/ChatMessage";
+import { ChatMessage } from "../models/ChatMessage";
 
+export interface SendQueue {
+  getQueue(channelId: string): Promise<ChatMessage[]>;
+  clearBySenderId(senderId: string): Promise<boolean>;
+  clearChannel(channelId: string): Promise<boolean>;
+  clearAll(): Promise<boolean>;
+  clearPrivateAll(): Promise<boolean>;
+  addMessage(message: ChatMessage): Promise<void>;
+}
 export class SendQueue {
   private slotContains: Set<string>[] = [];
   private slotSize: number;
@@ -36,10 +46,6 @@ export class SendQueue {
     return false;
   }
 
-  async getQueue(channelId: string, count: number): Promise<ChatMessage[]> {
-    return this.queueManager.getQueue(channelId, count);
-  }
-
   async getMixedQueue(channelId: string): Promise<ChatMessage[]> {
     for (let slotContain of this.slotContains) {
       if (slotContain.has(channelId)) {
@@ -54,23 +60,14 @@ export class SendQueue {
 
   // 向数据库中添加一条消息
   //TODO: 删除过期消息并进行总结
-  async addMessage(session: Session) {
-    this.queueManager.enqueue(await createMessage(session));
-  }
-
-  async clearBySenderId(senderId: string) {
-    return this.queueManager.clearBySenderId(senderId);
-  }
-
-  async clearChannel(channelId: string) {
-    return this.queueManager.clearChannel(channelId);
-  }
-
-  async clearAll() {
-    return this.queueManager.clearAll();
-  }
-
-  async clearPrivateAll() {
-    return this.queueManager.clearPrivateAll();
+  async addMessage(message: ChatMessage) {
+    this.queueManager.enqueue(message);
   }
 }
+
+defineAccessor(SendQueue.prototype, "getQueue", ["queueManager", "getQueue"])
+defineAccessor(SendQueue.prototype, "clearBySenderId", ["queueManager", "clearBySenderId"])
+defineAccessor(SendQueue.prototype, "clearChannel", ["queueManager", "clearChannel"])
+defineAccessor(SendQueue.prototype, "clearAll", ["queueManager", "clearAll"])
+defineAccessor(SendQueue.prototype, "clearPrivateAll", ["queueManager", "clearPrivateAll"])
+//defineAccessor(SendQueue.prototype, "addMessage", ["queueManager", "enqueue"])

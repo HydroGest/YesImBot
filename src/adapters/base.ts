@@ -39,7 +39,6 @@ export abstract class BaseAdapter {
   constructor(
     protected adapterName: string,
     protected parameters: Config["Parameters"]
-
   ) {
     console.log(`Adapter: ${this.adapterName} registered`);
 
@@ -75,14 +74,17 @@ export abstract class BaseAdapter {
   abstract chat(messages: Message[]): Promise<Response>;
 
   //abstract chatWithHistory(messages: Message[]): Promise<Response>;
+  //abstract clearHistory(): Promise<void>;
 
-  async generateResponse(messages: Message[], config: Config): Promise<ExpectedResponse> {
+  async generateResponse(messages: Message[], config: Config, debug = false): Promise<ExpectedResponse> {
     const response = await this.chat(messages);
     let content = response.message.content;
   
     if (typeof content !== "string") {
       content = JSON5.stringify(content, null, 2);
     }
+
+    // TODO: 在这里指定 LLM 的回复格式，动态构建提示词
 
     // 预期回复：
     // {
@@ -113,9 +115,15 @@ export abstract class BaseAdapter {
         LLMResponse = JSON5.parse(escapeUnicodeCharacters(jsonMatch[0]));
       } catch (e) {
         status = "fail"; // JSON 解析失败
+        if (debug) {
+          console.log(`JSON 解析失败: ${e}`);
+        }
       }
     } else {
       status = "fail"; // 没有找到 JSON
+      if (debug) {
+        console.log(`没有找到 JSON: ${content}`);
+      }
     }
   
     // 检查 status 字段
@@ -123,6 +131,9 @@ export abstract class BaseAdapter {
       status = LLMResponse.status;
     } else {
       status = "fail"; // status 不是 "success" 或 "skip"
+      if (debug) {
+        console.log(`status 不是 "success" 或 "skip": ${content}`);
+      }
     }
   
     // 构建 finalResponse
@@ -131,6 +142,9 @@ export abstract class BaseAdapter {
         finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
       } else {
         status = "fail"; // 回复格式错误
+        if (debug) {
+          console.log(`回复格式错误: ${content}`);
+        }
       }
     } else {
       finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
@@ -170,10 +184,7 @@ export abstract class BaseAdapter {
         if (!id) {
           id = await emojiManager.getIdByName(
             await emojiManager.getNameByTextSimilarity(name, config.Embedding)
-          );
-        }
-        if (!id) {
-          id = '500';
+          ) || '500';
         }
         return {
           match: match[0],
