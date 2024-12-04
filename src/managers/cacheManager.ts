@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 
 export class CacheManager<T> {
   private cache: Map<string, T>; // 内存缓存
@@ -80,6 +81,9 @@ export class CacheManager<T> {
         entries.forEach(([key, value]) => {
           this.cache.set(key, this.deserialize(value));
         });
+      } else {
+        fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+        fs.writeFileSync(this.filePath, "[]", "utf-8");
       }
     } catch (error) {
       console.error("加载缓存失败:", error);

@@ -70,6 +70,8 @@ export function apply(ctx: Context, config: Config) {
           break;
       }
       if (!report) return;
+      // 调用 Bot 指令的消息不知道怎么清除
+      if (session.content.includes("清除记忆")) return;
       //TODO: 防提示词注入
       await sendQueue.addMessage(await createMessage(session));
       ctx.logger.info(`New message received, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
@@ -90,6 +92,9 @@ export function apply(ctx: Context, config: Config) {
         "清除记忆 -p 1234567890",
       ].join("\n"))
     .action(async ({ session, options }) => {
+
+      selfSend.set(session.messageId, SendType.Command);
+
       const msgDestination = session.guildId || session.channelId;
       let result = '';
       
@@ -165,7 +170,9 @@ export function apply(ctx: Context, config: Config) {
     if (!((isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode)) {
       return next();
     }
-
+    
+    // TODO: 增加队列锁，处理过程中若收到消息不进行处理
+    // 图片处理可能比较慢，处理期间收到的消息将被忽略
     const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId));
 
     if (!chatHistory) {

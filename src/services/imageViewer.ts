@@ -6,7 +6,7 @@ import { clone, h } from "koishi";
 
 import { register } from "../adapters";
 import { Config } from "../config";
-import { convertUrltoBase64 } from "../utils/imageUtils";
+import { convertUrltoBase64, removeBase64Prefix } from "../utils/imageUtils";
 import { CacheManager } from "../managers/cacheManager";
 import { AssistantMessage, ImageComponent, SystemMessage, TextComponent, UserMessage } from "../adapters/creators/component";
 
@@ -39,7 +39,7 @@ class BaiduService implements ImageDescriptionService {
     };
 
     if (base64) {
-      submitData.image = base64.replace(/^data:image\/(jpg|jpeg|png);base64,/, "");
+      submitData.image = removeBase64Prefix(base64);
     }
 
     try {
