@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 
+//TODO: 允许自己指定缓存路径
 export class CacheManager<T> {
   private cache: Map<string, T>; // 内存缓存
   private dirtyCache: Map<string, T>; // 临时缓存
