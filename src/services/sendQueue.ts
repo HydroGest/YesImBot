@@ -17,7 +17,7 @@ export class SendQueue {
   private slotContains: Set<string>[] = [];
   private slotSize: number;
   private queueManager: QueueManager;
-
+  private triggerCount: Map<string, number> = new Map();
   constructor(private ctx: Context, private config: Config) {
     for (let slotContain of config.MemorySlot.SlotContains) {
       this.slotContains.push(
@@ -62,6 +62,20 @@ export class SendQueue {
   //TODO: 删除过期消息并进行总结
   async addMessage(message: ChatMessage) {
     this.queueManager.enqueue(message);
+  }
+
+  setTriggerCount(channelId: string, nextTriggerCount: number) {
+    this.triggerCount.set(channelId, nextTriggerCount);
+  }
+  // 如果没有触发，将触发次数-1
+  // triggerCount 到 0 时返回 true
+  checkTriggerCount(channelId: string): boolean {
+    let triggerCount = this.triggerCount.get(channelId) ?? this.config.MemorySlot.FirstTriggerCount;
+    if (triggerCount > 0) {
+      this.triggerCount.set(channelId, triggerCount - 1);
+      return false;
+    }
+    return true;
   }
 }
 

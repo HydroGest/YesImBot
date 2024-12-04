@@ -85,7 +85,7 @@ export async function ensurePromptFileExists(
 
 export async function genSysPrompt(
   config: Config,
-  curGroupName: string,
+  extra: any
 ): Promise<string> {
   // 获取当前日期与时间
   const currentDate = new Date();
@@ -107,7 +107,7 @@ export async function genSysPrompt(
   return template.render({
     config,
     currentDate: formattedDate,
-    curGroupName
+    ...extra
   });
 }
 

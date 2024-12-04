@@ -1,4 +1,4 @@
-import { Context } from "koishi";
+import { Context, Query } from "koishi";
 
 import { ChatMessage } from "../models/ChatMessage";
 import { DATABASE_NAME } from "..";
@@ -24,10 +24,10 @@ export class QueueManager {
     channels: Set<string>,
     limit: number
   ): Promise<ChatMessage[]> {
-    const selectQuery = async (channelIdFilter: any) => {
+    const selectQuery = async (query: Query) => {
       let chatMessages = await this.ctx.database
         .select(DATABASE_NAME)
-        .where({ channelId: channelIdFilter })
+        .where(query)
         .orderBy("sendTime", "desc") // 逆序
         .limit(limit)
         .execute();
@@ -35,14 +35,26 @@ export class QueueManager {
     };
 
     if (channels.has("all")) {
-      return selectQuery({ $regex: /^(?!.*private:[a-zA-Z0-9_]+).*$/ });
+      return selectQuery({
+        $or: [
+          { channelType: "guild" },
+          { channelId: { $in: Array.from(channels) } },
+        ],
+      });
     }
 
     if (channels.has("private:all")) {
-      return selectQuery({ $regex: /private:[a-zA-Z0-9_]+/ });
+      return selectQuery({
+        $or: [
+          { channelType: "private" },
+          { channelId: { $in: Array.from(channels) } },
+        ],
+      });
     }
 
-    return selectQuery({ $in: Array.from(channels) });
+    return selectQuery({
+      channelId: { $in: Array.from(channels) },
+    });
   }
 
   // 消息入队
@@ -66,14 +78,14 @@ export class QueueManager {
 
   public async clearAll(): Promise<boolean> {
     const result = await this.ctx.database.remove(DATABASE_NAME, {
-      "channelId": { $regex: /^(?!.*private:[a-zA-Z0-9_]+).*$/ },
+      channelId: { $regex: /^(?!.*private:[a-zA-Z0-9_]+).*$/ },
     });
     return result.removed > 0;
   }
 
   public async clearPrivateAll(): Promise<boolean> {
     const result = await this.ctx.database.remove(DATABASE_NAME, {
-      "channelId": { $regex: /private:[a-zA-Z0-9_]+/ },
+      channelId: { $regex: /private:[a-zA-Z0-9_]+/ },
     });
     return result.removed > 0;
   }

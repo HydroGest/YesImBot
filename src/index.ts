@@ -70,6 +70,7 @@ export function apply(ctx: Context, config: Config) {
           break;
       }
       if (!report) return;
+      //TODO: 防提示词注入
       await sendQueue.addMessage(await createMessage(session));
       ctx.logger.info(`New message received, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
     }
@@ -126,14 +127,14 @@ export function apply(ctx: Context, config: Config) {
       
         if (clearedIds.length > 0) {
           const idsDisplay = clearedIds.slice(0, 3).join(', ');
-          const suffix = clearedIds.length > 3 ? ' 等会话' : ' 会话';
+          const suffix = clearedIds.length > 3 ? ' 等会话' : '';
           messages.push(`已清除关于 ${idsDisplay}${suffix} 的记忆`);
         }
       
         result = messages.join('，');
       }
-      
-      const messageIds = await session.sendQueued(result);
+      if (!result) return;
+      const messageIds = await session.send(result);
 
       for (const messageId of messageIds) {
         selfSend.set(messageId, SendType.Command);
@@ -159,51 +160,71 @@ export function apply(ctx: Context, config: Config) {
     const isAtMentioned = atRegex.test(session.content);
     const shouldReactToAt = Random.bool(config.MemorySlot.AtReactPossibility);
 
-    if (isQueueFull || isMixedQueueFull || (isAtMentioned && shouldReactToAt) || config.Debug.TestMode) {
+    const isTriggerCountReached = sendQueue.checkTriggerCount(channelId);
 
-      const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId));
+    if (!((isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode)) {
+      return next();
+    }
 
+    const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId));
+
+    if (!chatHistory) {
       if (config.Debug.DebugAsInfo)
-        ctx.logger.info(chatHistory);
+        ctx.logger.info(`未获取到${channelId}的聊天记录`);
+      return next();
+    }
 
-      const {current, adapter} = adapterSwitcher.getAdapter();
+    if (config.Debug.DebugAsInfo)
+      ctx.logger.info(chatHistory);
 
-      if (!adapter) {
-        ctx.logger.warn("没有可用的适配器");
-        return next();
-      }
+    const {current, adapter} = adapterSwitcher.getAdapter();
 
-      if (config.Debug.DebugAsInfo)
-        ctx.logger.info(`Request sent, awaiting for response...`);
+    if (!adapter) {
+      ctx.logger.warn("没有可用的适配器");
+      return next();
+    }
 
-      const chatResponse = await adapter.generateResponse(
-        [
-          SystemMessage(await genSysPrompt(config, channelId)),
-          AssistantMessage("Resolve OK"),
-          UserMessage(chatHistory),
-        ],
-        config
-      );
+    if (config.Debug.DebugAsInfo)
+      ctx.logger.info(`Request sent, awaiting for response...`);
 
-      if (config.Debug.DebugAsInfo)
-        ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
+    let botName = await getBotName(config.Bot, session);
 
-      let replyTo = (chatResponse?.replyTo !== "") ? chatResponse.replyTo : session.channelId;
-      let botName = await getBotName(config.Bot, session);
-      let nextTriggerCount = chatResponse.nextTriggerCount;
+    const chatResponse = await adapter.generateResponse(
+      [
+        SystemMessage(await genSysPrompt(config, {
+          curGroupName: channelId,
+          BotName: botName,
+          BotSelfId: session.bot.selfId
+        })),
+        AssistantMessage("Resolve OK"),
+        UserMessage(chatHistory),
+      ],
+      config,
+      config.Debug.DebugAsInfo
+    );
 
-      if (chatResponse.status === "fail") {
-        const failTemplate = `
+    if (config.Debug.DebugAsInfo)
+      ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
+
+    let replyTo = (chatResponse?.replyTo !== "") ? chatResponse.replyTo : session.channelId;
+    let nextTriggerCount = chatResponse.nextTriggerCount;
+
+    if (nextTriggerCount) {
+      sendQueue.setTriggerCount(channelId, nextTriggerCount);
+    }
+
+    if (chatResponse.status === "fail") {
+      const failTemplate = `
 LLM 的响应无法正确解析。
 原始响应:
 ${chatResponse.content}
 ---
 消耗: 输入 ${chatResponse?.usage?.prompt_tokens}, 输出 ${chatResponse?.usage?.completion_tokens}`;
-        await redirectLogicMessage(config, session, failTemplate);
-        throw new Error(`LLM provides unexpected response:\n${chatResponse.content}`);
-      }
+      await redirectLogicMessage(config, session, failTemplate);
+      throw new Error(`LLM provides unexpected response:\n${chatResponse.content}`);
+    }
 
-      const template = `
+    const template = `
 ${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyTo} 的消息已生成，来自 API ${current}:`}
 ---
 内容: ${chatResponse.finalReply && chatResponse.finalReply.trim() ? chatResponse.finalReply : "无"}
@@ -215,31 +236,34 @@ ${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回�
 距离下次：${nextTriggerCount}
 ---
 消耗: 输入 ${chatResponse?.usage?.prompt_tokens}, 输出 ${chatResponse?.usage?.completion_tokens}`;
-      await redirectLogicMessage(config, session, template);
+    await redirectLogicMessage(config, session, template);
 
-      // 如果 AI 使用了指令
-      if (Array.isArray(chatResponse.execute) && chatResponse.execute.length > 0) {
-        chatResponse.execute.forEach(async (command) => {
-          try {
-            const messageIds = await session.bot.sendMessage(replyTo, h("execute", {}, command));
-            for (const messageId of messageIds) {
-              selfSend.set(messageId, SendType.Command);
-            }
-            ctx.logger.info(`已执行指令：${command}`);
-          } catch (error) {
-            ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`);
+    // 如果 AI 使用了指令
+    if (Array.isArray(chatResponse.execute) && chatResponse.execute.length > 0) {
+      chatResponse.execute.forEach(async (command) => {
+        try {
+          const messageIds = config.Debug.TestMode
+            ? await session.send(h("execute", {}, command))
+            : await session.bot.sendMessage(replyTo, h("execute", {}, command));
+          for (const messageId of messageIds) {
+            selfSend.set(messageId, SendType.Command);
           }
-        });
-      }
+          ctx.logger.info(`已执行指令：${command}`);
+        } catch (error) {
+          ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`);
+        }
+      });
+    }
 
-      if (chatResponse?.finalReply !== "") {
-        if (chatResponse?.quote !== "") {
-          chatResponse.finalReply = h.quote(chatResponse.quote).toString() + chatResponse.finalReply;
-        }
-        const messageIds = await session.bot.sendMessage(replyTo, chatResponse.finalReply);
-        for (const messageId of messageIds) {
-          selfSend.set(messageId, SendType.LLM);
-        }
+    if (chatResponse?.finalReply !== "") {
+      if (chatResponse?.quote !== "") {
+        chatResponse.finalReply = h.quote(chatResponse.quote).toString() + chatResponse.finalReply;
+      }
+      const messageIds = config.Debug.TestMode
+        ? await session.send(chatResponse.finalReply)
+        : await session.bot.sendMessage(replyTo, chatResponse.finalReply);
+      for (const messageId of messageIds) {
+        selfSend.set(messageId, SendType.LLM);
       }
     }
   });

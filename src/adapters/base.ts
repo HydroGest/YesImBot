@@ -165,7 +165,7 @@ export abstract class BaseAdapter {
   
     // 提取其他字段
     replyTo = LLMResponse.replyTo || "";
-    nextTriggerCount = LLMResponse.nextTriggerCount || 2;
+    nextTriggerCount = Number(LLMResponse.nextReplyIn) || 2;
     finalLogic = LLMResponse.logic || "";
     if (LLMResponse.execute && Array.isArray(LLMResponse.execute)) {
       execute = LLMResponse.execute
