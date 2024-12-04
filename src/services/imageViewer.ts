@@ -10,6 +10,10 @@ import { convertUrltoBase64, removeBase64Prefix } from "../utils/imageUtils";
 import { CacheManager } from "../managers/cacheManager";
 import { AssistantMessage, ImageComponent, SystemMessage, TextComponent, UserMessage } from "../adapters/creators/component";
 
+const cacheManager = new CacheManager<string>(
+  path.join(__dirname, "../../data/cache/ImageDescription.json")
+);
+
 interface ImageDescriptionService {
   getDescription(src: string, base64: string, config: Config): Promise<string>;
 }
@@ -177,7 +181,7 @@ const serviceMap: Record<string, ImageDescriptionService> = {
   另一个LLM: new AnotherLLMService(),
 };
 
-export async function getImageDescription(imgUrl: string, config: Config, summary): Promise<string> {
+export async function getImageDescription(imgUrl: string, config: Config, summary?: string, fileUnique?: string, debug = false): Promise<string> {
   switch (config.ImageViewer.How) {
     case "图片描述服务": {
       const service = serviceMap[config.ImageViewer.Server];
@@ -185,15 +189,22 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
         throw new Error(`Unsupported server: ${config.ImageViewer.Server}`);
       }
 
+      const cacheKey = computeMD5(`${fileUnique ?? imgUrl}` + config.ImageViewer.Question);
+      
+      if (cacheManager.has(cacheKey)) {
+        if (debug) console.log(`Cache hit: ${cacheKey}`);
+        return cacheManager.get(cacheKey);
+      }
+
       const base64 = await convertUrltoBase64(imgUrl);
 
       try {
-        const description = await getCachedDescription(
-          service,
+        const description = await service.getDescription(
           imgUrl,
           base64,
           config
         );
+        cacheManager.set(cacheKey, description);
         return `[图片: ${description}]`;
       } catch (error) {
         console.error(`Error getting image description: ${error.message}`);
@@ -218,30 +229,9 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
   }
 }
 
-const cacheManager = new CacheManager<string>(
-  path.join(__dirname, "../../data/cache/ImageDescription.json")
-);
-
 // 计算 MD5 值作为缓存键
 function computeMD5(input: string): string {
   return crypto.createHash("md5").update(input).digest("hex");
-}
-
-async function getCachedDescription(
-  service: ImageDescriptionService,
-  src: string,
-  base64: string,
-  config: Config
-): Promise<string> {
-  const { Question: question } = config.ImageViewer;
-  const cacheKey = computeMD5(src + base64 + question);
-  if (cacheManager.has(cacheKey)) {
-    return cacheManager.get(cacheKey)!;
-  }
-  const description = await service.getDescription(src, base64, config);
-  // TODO：设置过期时间
-  cacheManager.set(cacheKey, description);
-  return description;
 }
 
 // 清理图片描述缓存

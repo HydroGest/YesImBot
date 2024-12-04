@@ -1,5 +1,4 @@
 import https from "https";
-
 import axios from "axios";
 import sharp from "sharp";
 
@@ -24,6 +23,9 @@ export async function convertUrltoBase64(url: string): Promise<string> {
       httpsAgent: new https.Agent({ rejectUnauthorized: false }), // 忽略SSL证书验证
       timeout: 5000, // 5秒超时
     });
+    if (response.status !== 200) {
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+    }
     let buffer = Buffer.from(response.data);
     const contentType = response.headers["content-type"] || "image/jpeg";
     buffer = await compressImage(buffer);

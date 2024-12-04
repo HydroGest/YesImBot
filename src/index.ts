@@ -31,7 +31,8 @@ export const inject = {
 enum SendType {
   Command = "指令消息",
   LogicRedirect = "逻辑重定向",
-  LLM = "和LLM交互的消息"
+  LLM = "和LLM交互的消息",
+  Added = "已被添加"
 }
 const selfSend = new Map<string, SendType>()
 
@@ -66,15 +67,19 @@ export function apply(ctx: Context, config: Config) {
         case SendType.LogicRedirect:
           if (!config.Settings.SelfReport.includes("逻辑重定向")) report = false;
           break;
+        case SendType.Added:
+          report = false;
         default:
           break;
       }
       if (!report) return;
       // 调用 Bot 指令的消息不知道怎么清除
       if (session.content.includes("清除记忆")) return;
-      //TODO: 防提示词注入
-      await sendQueue.addMessage(await createMessage(session));
       ctx.logger.info(`New message received, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
+      //TODO: 防提示词注入
+      const chatMessage = await createMessage(session);
+      await sendQueue.addMessage(chatMessage);
+      selfSend.set(session.messageId, SendType.Added);
     }
   });
 
@@ -151,14 +156,21 @@ export function apply(ctx: Context, config: Config) {
     const channelId = session.channelId;
     if (!isChannelAllowed(config.MemorySlot.SlotContains, channelId))
       return next();
+
+    // 不知道为什么有时候会早于 “message-created” 导致无法获取到最新消息
+    if (!selfSend.has(session.messageId)) await sendQueue.addMessage(await createMessage(session));
+    selfSend.set(session.messageId, SendType.Added);
+
+    //const channelQuene = await sendQueue.getQueue(channelId);
+    const mixedQuene = await sendQueue.getMixedQueue(channelId);
     // 检测是否达到发送次数或被 at
     // 返回 false 的条件：
     // 达到触发条数 或者 用户消息提及机器人且随机条件命中。也就是说：
     // 如果触发条数没有达到 (!isTriggerCountReached)
     // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
     // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
-    const isQueueFull: boolean = await sendQueue.checkQueueSize(channelId);
-    const isMixedQueueFull: boolean = await sendQueue.checkMixedQueueSize(channelId);
+    //const isQueueFull: boolean = channelQuene.length > config.MemorySlot.SlotSize;
+    const isMixedQueueFull: boolean = mixedQuene.length > config.MemorySlot.SlotSize;
     const loginStatus = await session.bot.getLogin();
     const isBotOnline = loginStatus.status === 1;
     const atRegex = new RegExp(`<at (id="${session.bot.selfId}".*?|type="all".*?${isBotOnline ? '|type="here"' : ''}).*?/>`);
@@ -173,7 +185,7 @@ export function apply(ctx: Context, config: Config) {
     
     // TODO: 增加队列锁，处理过程中若收到消息不进行处理
     // 图片处理可能比较慢，处理期间收到的消息将被忽略
-    const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId));
+    const chatHistory = await processContent(config, session, mixedQuene);
 
     if (!chatHistory) {
       if (config.Debug.DebugAsInfo)

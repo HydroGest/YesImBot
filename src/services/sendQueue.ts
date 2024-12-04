@@ -73,6 +73,7 @@ export class SendQueue {
     let triggerCount = this.triggerCount.get(channelId) ?? this.config.MemorySlot.FirstTriggerCount;
     if (triggerCount > 0) {
       this.triggerCount.set(channelId, triggerCount - 1);
+      console.log(`距离下次回复还剩 ${triggerCount - 1} 次`)
       return false;
     }
     return true;

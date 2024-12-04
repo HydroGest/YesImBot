@@ -47,7 +47,7 @@ export async function processContent(config: Config, session: Session, messages:
             break;
           case "img":
             // const { src, summary, fileUnique } = elem.attrs;
-            userContent.push(await getImageDescription(elem.attrs.src, config, elem.attrs.summary));
+            userContent.push(await getImageDescription(elem.attrs.src, config, elem.attrs.summary, elem.attrs.fileUnique));
             break;
           case "face":
             // const { id, name } = elem.attrs;
