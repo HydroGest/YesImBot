@@ -1,16 +1,16 @@
 import { Context, Next, Random, Session } from "koishi";
 import { LoggerService } from "@cordisjs/logger";
-import { h, isEmpty } from "koishi";
+import { h } from "koishi";
 
 import { Config } from "./config";
-import { getBotName, isChannelAllowed, ProcessingLock } from "./utils/toolkit";
+import { getBotName, isChannelAllowed } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { MarkType, SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
 import { initDatabase } from "./database";
 import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creators/component";
 import { processContent } from "./utils/content";
-import { foldText } from "./utils/string";
+import { foldText, isEmpty } from "./utils/string";
 import { createMessage } from "./models/ChatMessage";
 
 export const name = "yesimbot";
@@ -122,11 +122,11 @@ export function apply(ctx: Context, config: Config) {
 
   ctx.middleware(async (session: Session, next: Next) => {
     const channelId = session.channelId;
-    if (!isChannelAllowed(config.MemorySlot.SlotContains, channelId)) {
+    if (!isChannelAllowed(config.MemorySlot.SlotContains, channelId) || session.author.id == session.selfId) {
       return next();
     }
 
-    sendQueue.processingLock.start(channelId);
+    await sendQueue.addMessage(await createMessage(session));
     //const channelQuene = await sendQueue.getQueue(channelId);
     const mixedQuene = await sendQueue.getMixedQueue(channelId);
     // 检测是否达到发送次数或被 at
@@ -258,11 +258,11 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
           senderName: session.bot.user.name,
           senderNick: await getBotName(config.Bot, session),
           messageId,
-          channelId,
-          channelType: session.channelId.startsWith("private:") ? "private" : (session.channelId === "#" ? "sandbox" : "guild"),
+          channelId: replyTo,
+          channelType: replyTo.startsWith("private:") ? "private" : (replyTo === "#" ? "sandbox" : "guild"),
           sendTime: new Date(),
           content: finalReply,
-          quoteMessageId: session.quote?.id
+          quoteMessageId: quote
         });
       }
     }

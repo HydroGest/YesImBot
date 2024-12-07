@@ -55,8 +55,12 @@ export class ProcessingLock {
 export async function getBotName(botConfig: Config["Bot"], session: Session): Promise<string> {
   switch (botConfig.SelfAwareness) {
     case "群昵称":
-      const memberInfo = await session.onebot?.getGroupMemberInfo(session.guildId, session.bot.userId);
-      return memberInfo?.card || memberInfo?.nickname || session.bot.user.name;
+      if (session.guildId){
+        const memberInfo = await session.onebot?.getGroupMemberInfo(session.guildId, session.bot.userId);
+        return memberInfo?.card || memberInfo?.nickname || session.bot.user.name;
+      } else {
+        return session.bot.user.name;
+      }
     case "用户昵称":
       return session.bot.user.name;
     case "此页面设置的名字":

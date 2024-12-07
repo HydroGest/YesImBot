@@ -1,9 +1,9 @@
-import { Context, createMatch, Session } from "koishi";
+import { Context } from "koishi";
 import { defineAccessor } from "@satorijs/core";
 
 import { Config } from "../config";
 import { QueueManager } from "../managers/queueManager";
-import { ChatMessage, createMessage } from "../models/ChatMessage";
+import { ChatMessage } from "../models/ChatMessage";
 import { foldText } from "../utils/string";
 import { isChannelAllowed, ProcessingLock } from "../utils/toolkit";
 
@@ -59,9 +59,8 @@ export class SendQueue {
   }
 
   async getMixedQueue(channelId: string): Promise<ChatMessage[]> {
-    await this.processingLock.waitForProcess(channelId);
     for (let slotContain of this.slotContains) {
-      if (slotContain.has(channelId)) {
+      if (slotContain.has(channelId) || channelId.startsWith("private:") && slotContain.has("private:all") || !channelId.startsWith("private:") && slotContain.has("all")) {
         return await this.queueManager.getMixedQueue(
           slotContain,
           this.slotSize
@@ -98,7 +97,7 @@ export class SendQueue {
 
   setTriggerCount(channelId: string, nextTriggerCount: number) {
     this.triggerCount.set(channelId, nextTriggerCount);
-    console.log(`距离下次回复还剩 ${nextTriggerCount} 次`)
+    logger.info(`距离下次回复还剩 ${nextTriggerCount} 次`)
   }
 
   // 如果没有触发，将触发次数-1

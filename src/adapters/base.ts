@@ -82,7 +82,7 @@ export abstract class BaseAdapter {
     const response = await this.chat(messages, debug);
     let content = response.message.content;
 
-    if (typeof content !== "string" || config.Debug.DebugAsInfo) {
+    if (typeof content !== "string") {
       content = JSON5.stringify(content, null, 2);
     }
 
