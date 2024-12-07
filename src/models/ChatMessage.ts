@@ -18,7 +18,7 @@ export interface ChatMessage {
     quoteMessageId?: string; // 被引用消息
 }
 
-export async function createMessage(session: Session): Promise<ChatMessage> {
+export async function createMessage(session: Session, content?: string): Promise<ChatMessage> {
     const channelType = session.channelId.startsWith("private:") ? "private" : (session.channelId === "#" ? "sandbox" : "guild");
     let senderNick = session.author.name;
     if (channelType === "guild") {
@@ -35,7 +35,7 @@ export async function createMessage(session: Session): Promise<ChatMessage> {
         channelId: session.channelId,
         channelType,
         sendTime: new Date(session.event.timestamp),
-        content: session.content,
+        content: session.content || content,
         quoteMessageId: session.quote?.id
     };
 }

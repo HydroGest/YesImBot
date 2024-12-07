@@ -39,7 +39,7 @@ export class EmojiManager {
       );
       return vec;
     } catch (error) {
-      console.error("获取嵌入向量失败:", error);
+      logger.warn("获取嵌入向量失败:", error);
       throw error;
     }
   }

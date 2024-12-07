@@ -1,11 +1,10 @@
 import JSON5 from "json5";
+import { Random } from "koishi";
 
 import { Config } from "../config";
 import { Message } from "./creators/component";
 import { escapeUnicodeCharacters } from "../utils/string";
 import { emojiManager } from "../managers/emojiManager";
-import { Random } from "koishi";
-import { ensureGroupMemberList } from "../utils/toolkit";
 
 interface Usage {
   prompt_tokens: number;
@@ -33,6 +32,7 @@ export interface ExpectedResponse {
   logic: string;              // LLM思考过程
   execute: Array<string>;     // 要运行的指令列表
   usage?: Usage;
+  reason?: string;            // 解析失败的原因
 }
 
 export abstract class BaseAdapter {
@@ -42,7 +42,7 @@ export abstract class BaseAdapter {
     protected adapterName: string,
     protected parameters: Config["Parameters"]
   ) {
-    console.log(`Adapter: ${this.adapterName} registered`);
+    logger.info(`Adapter: ${this.adapterName} registered`);
 
     // 解析其他参数
     this.otherParams = {};
@@ -107,7 +107,8 @@ export abstract class BaseAdapter {
     let replyTo: string = "";
     let nextTriggerCount: number = Random.int(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount + 1); // 双闭区间
     let execute: any[] = [];
-
+    let reason: string;
+  
     // 提取JSON部分
     const jsonMatch = content.match(/{.*}/s);
     let LLMResponse: any = {};
@@ -117,14 +118,16 @@ export abstract class BaseAdapter {
         LLMResponse = JSON5.parse(escapeUnicodeCharacters(jsonMatch[0]));
       } catch (e) {
         status = "fail"; // JSON 解析失败
+        reason = `JSON 解析失败: ${e}`;
         if (debug) {
-          console.log(`JSON 解析失败: ${e}`);
+          logger.warn(reason);
         }
       }
     } else {
       status = "fail"; // 没有找到 JSON
+      reason = `没有找到 JSON: ${content}`;
       if (debug) {
-        console.log(`没有找到 JSON: ${content}`);
+        logger.warn(reason);
       }
     }
 
@@ -133,8 +136,9 @@ export abstract class BaseAdapter {
       status = LLMResponse.status;
     } else {
       status = "fail"; // status 不是 "success" 或 "skip"
+      reason = `status 不是 "success" 或 "skip": ${content}`;
       if (debug) {
-        console.log(`status 不是 "success" 或 "skip": ${content}`);
+        logger.warn(reason);
       }
     }
 
@@ -144,8 +148,9 @@ export abstract class BaseAdapter {
         finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
       } else {
         status = "fail"; // 回复格式错误
+        reason = `回复格式错误: ${content}`;
         if (debug) {
-          console.log(`回复格式错误: ${content}`);
+          logger.warn(reason);
         }
       }
     } else {
@@ -167,37 +172,13 @@ export abstract class BaseAdapter {
 
     // 提取其他字段
     replyTo = LLMResponse.replyTo || "";
-
-    // 规范化 nextTriggerCount
-    const nextTriggerCountbyLLM = Math.max(
-      config.MemorySlot.MinTriggerCount,
-      Math.min(
-        LLMResponse.nextReplyIn ?? config.MemorySlot.MinTriggerCount,
-        config.MemorySlot.MaxTriggerCount
-      )
-    );
-    nextTriggerCount = Number(nextTriggerCountbyLLM) || nextTriggerCount;
+    nextTriggerCount = Number(LLMResponse.nextReplyIn) || Random.int(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount + 1);
     finalLogic = LLMResponse.logic || "";
     if (LLMResponse.execute && Array.isArray(LLMResponse.execute)) {
       execute = LLMResponse.execute
     } else {
       execute = [];
     }
-
-    // 使用 groupMemberList 反转义 <at> 消息
-    const groupMemberList = (await ensureGroupMemberList(session, replyTo)).data;
-
-    const getKey = (member: { nick: string; user: { name: string } }) => config.Bot.NickorName === "群昵称" ? member.nick : member.user.name;
-
-    groupMemberList.sort((a, b) => getKey(b).length - getKey(a).length);
-
-    groupMemberList.forEach((member) => {
-      const name = getKey(member);
-      const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const atRegex = new RegExp(`(?<!<at id="[^"]*" name=")@${escapedName}(?![^"]*"\s*\/>)`, 'g');
-      finalResponse = finalResponse.replace(atRegex, `<at id="${member.user.id}" name="${name}" />`);
-    });
-    finalResponse = finalResponse.replace(/(?<!<at type=")@全体成员|@所有人|@all(?![^"]*"\s*\/>)/g, '<at type="all"/>');
 
     // 反转义 <face> 消息
     const faceRegex = /\[表情[:：]\s*([^\]]+)\]/g;
@@ -231,7 +212,8 @@ export abstract class BaseAdapter {
       nextTriggerCount,
       logic: finalLogic,
       execute,
-      usage: response.usage
+      usage: response.usage,
+      reason
     };
   }
 }

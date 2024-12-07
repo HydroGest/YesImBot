@@ -25,7 +25,7 @@ export async function runEmbedding(
   const cachedVector = cacheManager.get(text);
   if (cachedVector) {
     if (debug) {
-      console.log('Using cached embedding vector');
+      logger.info('Using cached embedding vector');
     }
     return cachedVector;
   }
@@ -54,7 +54,7 @@ export async function runEmbedding(
       }
 
       case "Cloudflare": {
-        console.log("Cloudflare 暂不支持");
+        logger.warn("Cloudflare 暂不支持");
         break;
       }
 

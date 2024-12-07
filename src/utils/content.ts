@@ -11,7 +11,7 @@ export async function processContent(config: Config, session: Session, messages:
   for (let chatMessage of messages) {
       // 12月3日星期二 17:34:00
       const timeString = chatMessage.sendTime.toLocaleString("zh-CN", {month: "long",day: "numeric",hour: "2-digit",minute: "2-digit",second: "2-digit"});
-      let messagePrefix = `[${timeString} ${chatMessage.channelType === "guild" ? `from:${chatMessage.channelId}` : `from:dm`}]`;
+      let messagePrefix = `[${timeString} ${chatMessage.channelType === "guild" ? `from_channel:${chatMessage.channelId} sender_id:${chatMessage.senderId}` : `from_qq:${chatMessage.senderId}`}]`;
       let userName: string;
       switch (config.Bot.NickorName) {
         case "群昵称":
@@ -20,7 +20,7 @@ export async function processContent(config: Config, session: Session, messages:
         default:
           userName = chatMessage.senderName;
       }
-      messagePrefix += `\n${userName}(${chatMessage.senderId}): `;
+      messagePrefix += ` "${userName}"`;
       const userContent = [];
       const elements = h.parse(chatMessage.content);
       for (let elem of elements) {
@@ -39,11 +39,13 @@ export async function processContent(config: Config, session: Session, messages:
               userContent.push("@在线成员");
               break;
             }
-            userContent.push(`@${await getMemberName(config, session, elem.attrs.id, chatMessage.channelId)}`);
+            userContent.push(h.at(elem.attrs.id, {
+              name: await getMemberName(config, session, elem.attrs.id, chatMessage.channelId)
+            }));
             break;
           case "quote":
             // const { id } = elem.attrs;
-            userContent.unshift(`${h.quote(elem.attrs.id)}`); // 保证历史消息中同一个消息元素的呈现方式是一致的
+            chatMessage.quoteMessageId = elem.attrs.id;
             break;
           case "img":
             // const { src, summary, fileUnique } = elem.attrs;
@@ -60,10 +62,10 @@ export async function processContent(config: Config, session: Session, messages:
           default:
         }
       }
-      // [msgId:{messageId}][{date} from:{channelId}]\n{senderName}: {userContent}
-      // [msgId:{messageId}][{date} from:dm]\n{senderName}: {userContent}
-      // [msgId:{messageId}][{date} from:{channelId}]\n{senderName}: <quote id="{quoteMessageId}"/>{userContent}
-      processedMessage.push(`[msgId:${chatMessage.messageId}]${messagePrefix}${chatMessage.quoteMessageId ? `${h.quote(chatMessage.quoteMessageId)}` : ""}${userContent.join("")}`);
+      // [messageId][{date} from_channel:{channelId} sender_id:{senderId}] "{senderName}" 说: {userContent}
+      // [messageId][{date} from_qq:{senderId}] "{senderName}" 说: {userContent}
+      // [messageId][{date} from_channel:{channelId} sender_id:{senderId}] "{senderName}" 回复({quoteMessageId}): {userContent}
+      processedMessage.push(`[${chatMessage.messageId}]${messagePrefix} ${chatMessage.quoteMessageId ? `回复(${chatMessage.quoteMessageId}):` : "说:"} ${userContent.join("")}`);
   }
 
   return processedMessage.join("\n");

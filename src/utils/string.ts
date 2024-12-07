@@ -41,3 +41,7 @@ export function convertNumberToString(value?: number | string): string {
   }
   return value.toString();
 }
+
+export function isEmpty(str: string){
+  return !str || String(str) == ""
+}

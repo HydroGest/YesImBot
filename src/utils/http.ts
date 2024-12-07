@@ -5,8 +5,8 @@ import { foldText } from "./string";
 
 export async function sendRequest(url: string, APIKey: string, requestBody: any, debug: boolean): Promise<any> {
     if (debug) {
-      console.log(`Request URL: ${url}`);
-      console.log(`Request body: \n${foldText(JSON5.stringify(requestBody, null, 2), 2100)}`);
+      logger.info(`Request URL: ${url}`);
+      logger.info(`Request body: \n${foldText(JSON5.stringify(requestBody, null, 2), 2100)}`);
     }
 
     try {

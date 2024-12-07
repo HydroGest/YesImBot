@@ -87,7 +87,7 @@ export class CacheManager<T> {
         fs.writeFileSync(this.filePath, "[]", "utf-8");
       }
     } catch (error) {
-      console.error("加载缓存失败:", error);
+      logger.warn("加载缓存失败:", error);
     }
   }
 

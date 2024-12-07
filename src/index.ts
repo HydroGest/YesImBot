@@ -1,10 +1,11 @@
 import { Context, Next, Random, Session } from "koishi";
-import { h } from "koishi";
+import { LoggerService } from "@cordisjs/logger";
+import { h, isEmpty } from "koishi";
 
 import { Config } from "./config";
 import { getBotName, isChannelAllowed, ProcessingLock } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
-import { SendQueue } from "./services/sendQueue";
+import { MarkType, SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
 import { initDatabase } from "./database";
 import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creators/component";
@@ -15,7 +16,7 @@ import { createMessage } from "./models/ChatMessage";
 export const name = "yesimbot";
 
 export const usage = `
-"Yes! I'm Bot!" 是一个能让你的机器人激活灵魂的插件。\n
+"Yes! I"m Bot!" 是一个能让你的机器人激活灵魂的插件。\n
 使用请阅读 [Github README](https://github.com/HydroGest/YesImBot/blob/main/readme.md)，推荐使用 [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r) 提供的 GPT-4o-mini 模型以获得最高性价比。\n
 官方交流 & 测试群：[857518324](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=k3O5_1kNFJMERGxBOj1ci43jHvLvfru9&authKey=TkOxmhIa6kEQxULtJ0oMVU9FxoY2XNiA%2B7bQ4K%2FNx5%2F8C8ToakYZeDnQjL%2B31Rx%2B&noverify=0&group_code=857518324)
 `;
@@ -25,25 +26,24 @@ export { Config } from "./config";
 export const DATABASE_NAME = name;
 
 export const inject = {
-  optional: ['qmanager', 'interactions', 'database']
+  optional: ["qmanager", "interactions", "database"]
 }
 
-enum SendType {
-  Command = "指令消息",
-  LogicRedirect = "逻辑重定向",
-  LLM = "和LLM交互的消息",
-  Added = "已被添加"
+declare global {
+  var logger: LoggerService;
 }
-const selfSend = new Map<string, SendType>()
-const processingLock = new ProcessingLock();
 
 export function apply(ctx: Context, config: Config) {
+  globalThis.logger = ctx.logger;
+
   initDatabase(ctx);
+
   let adapterSwitcher: AdapterSwitcher;
   const sendQueue = new SendQueue(ctx, config);
 
   ctx.on("ready", async () => {
     adapterSwitcher = new AdapterSwitcher(config.API.APIList, config.Parameters);
+
     if (!config.Settings.UpdatePromptOnLoad) return;
     ctx.logger.info("正在尝试更新 Prompt 文件...");
     await ensurePromptFileExists(
@@ -54,45 +54,7 @@ export function apply(ctx: Context, config: Config) {
   });
 
   ctx.on("message-created", async (session) => {
-    const channelId = session.channelId;
-    if (isChannelAllowed(config.MemorySlot.SlotContains, channelId)) {
-      processingLock.startProcessing(session.messageId); // 虽然最初是为了锁channel的，但是拿来锁messageId也是可以的
-      await processingLock.waitForProcessing(session.messageId);
-      try {
-        let report = true;
-        const selfSendType = selfSend.get(session.messageId);
-        switch (selfSendType) {
-          case SendType.Command:
-            if (!config.Settings.SelfReport.includes("指令消息")) report = false;
-            break;
-          case SendType.LLM:
-            if (!config.Settings.SelfReport.includes("和LLM交互的消息")) report = false;
-            break;
-          case SendType.LogicRedirect:
-            if (!config.Settings.SelfReport.includes("逻辑重定向")) report = false;
-            break;
-          case SendType.Added:
-            report = false;
-          default:
-            break;
-        }
-        if (!report) return;
-        // 调用 Bot 指令的消息不知道怎么清除
-        // if (session.content.includes("清除记忆")) return;
-        // 这是ctx.on总是最先执行，致使selfSend.get总是返回undefined导致的问题。现在让它加锁等待，问题就解决了
-        if (session.author?.id === session.bot.selfId) {
-          ctx.logger.info(`Bot message sent, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
-        } else {
-          ctx.logger.info(`New message received, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
-        }
-        //TODO: 防提示词注入
-        const chatMessage = await createMessage(session);
-        await sendQueue.addMessage(chatMessage);
-        selfSend.set(session.messageId, SendType.Added);
-      } finally {
-        processingLock.endProcessing(session.messageId);
-      }
-    }
+    await sendQueue.addMessage(await createMessage(session));
   });
 
   ctx
@@ -109,73 +71,51 @@ export function apply(ctx: Context, config: Config) {
       "清除记忆 -p 1234567890",
     ].join("\n"))
     .action(async ({ session, options }) => {
-      processingLock.startProcessing(session.messageId);
-      try {
-        selfSend.set(session.messageId, SendType.Command);
-      } finally {
-        processingLock.endProcessing(session.messageId);
-      }
+
+      sendQueue.setMark(session.messageId, MarkType.Command);
 
       const msgDestination = session.guildId || session.channelId;
-      let result = '';
-
+      let result = "";
+      
       if (options.person) {
         // 按用户ID清除记忆
         const cleared = await sendQueue.clearBySenderId(options.person);
-        result = cleared
-          ? `✅ 用户 ${options.person}`
-          : `❌ 用户 ${options.person}`;
+        result = `${cleared ? "✅" : "❌"} 用户 ${options.person}`;
       } else {
         const clearGroupId = options.target || msgDestination;
         // 要清除的会话集合
         const targetGroups = clearGroupId
-          .split(',')
+          .split(",")
           .map(g => g.trim())
           .filter(Boolean);
 
         const messages = [];
-
-        if (targetGroups.includes('private:all')) {
+      
+        if (targetGroups.includes("private:all")) {
           const success = await sendQueue.clearPrivateAll();
-          if (success) {
-            messages.push('✅ 全部私聊记忆');
-          } else {
-            messages.push('❌ 全部私聊记忆');
-          }
+          messages.push(`${success ? "✅" : "❌"} 全部私聊记忆`);
         }
-        if (targetGroups.includes('all')) {
+
+        if (targetGroups.includes("all")) {
           const success = await sendQueue.clearAll();
-          if (success) {
-            messages.push('✅ 全部群组记忆');
-          } else {
-            messages.push('❌ 全部群组记忆');
-          }
+          messages.push(`${success ? "✅" : "❌"} 全部群组记忆`);
         }
 
         for (const id of targetGroups) {
           if (id === 'all' || id === 'private:all') continue;
           const success = await sendQueue.clearChannel(id);
-          if (success) {
-            messages.push(`✅ ${id}`);
-          } else {
-            messages.push(`❌ ${id}`);
-          }
+          messages.push(`${success ? "✅" : "❌"} ${id}`);
         }
 
         result = messages.join('\n');
       }
-      if (!result) {
+      if (isEmpty(result)) {
         return;
       };
       const messageIds = await session.send(result);
 
       for (const messageId of messageIds) {
-        processingLock.startProcessing(messageId);
-        try {
-          selfSend.set(messageId, SendType.Command);
-        } finally {
-          processingLock.endProcessing(messageId);
-        }
+        sendQueue.setMark(messageId, MarkType.Command);
       }
       return;
     });
@@ -186,15 +126,7 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
-    // 加锁，middleware不执行完不处理ctx.on(message-created)
-    processingLock.startProcessing(session.messageId);
-    try {
-      await sendQueue.addMessage(await createMessage(session));
-      selfSend.set(session.messageId, SendType.Added);
-    } finally {
-      processingLock.endProcessing(session.messageId);
-    }
-
+    sendQueue.processingLock.start(channelId);
     //const channelQuene = await sendQueue.getQueue(channelId);
     const mixedQuene = await sendQueue.getMixedQueue(channelId);
     // 检测是否达到发送次数或被 at
@@ -213,7 +145,9 @@ export function apply(ctx: Context, config: Config) {
 
     const isTriggerCountReached = sendQueue.checkTriggerCount(channelId);
 
-    if (!((isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode)) {
+    const shouldReply = (isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode
+
+    if (!shouldReply) {
       return next();
     }
 
@@ -228,7 +162,7 @@ export function apply(ctx: Context, config: Config) {
     }
 
     if (config.Debug.DebugAsInfo)
-      ctx.logger.info(chatHistory);
+      ctx.logger.info("chatHistory:\n" + chatHistory);
 
     const { current, adapter } = adapterSwitcher.getAdapter();
 
@@ -260,52 +194,48 @@ export function apply(ctx: Context, config: Config) {
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
 
-    let replyTo = (chatResponse?.replyTo !== "") ? chatResponse.replyTo : session.channelId;
-    let nextTriggerCount = chatResponse.nextTriggerCount;
+    let { status, content, nextTriggerCount, reason, replyTo, finalReply, logic, execute, quote, usage  } = chatResponse;
 
-    if (nextTriggerCount) {
-      sendQueue.setTriggerCount(channelId, nextTriggerCount);
-    }
+    if (isEmpty(replyTo)) replyTo = session.channelId;
 
-    if (chatResponse.status === "fail") {
+    sendQueue.setTriggerCount(channelId, nextTriggerCount);
+    
+    if (status === "fail") {
       const failTemplate = `
-LLM 的响应无法正确解析，来自 API ${current}:
+LLM 的响应无法正确解析:
+${reason}
 原始响应:
-${chatResponse.content}
+${content}
 ---
-消耗: 输入 ${chatResponse?.usage?.prompt_tokens}, 输出 ${chatResponse?.usage?.completion_tokens}`;
-      await redirectLogicMessage(config, session, failTemplate);
-      throw new Error(`LLM provides unexpected response:\n${chatResponse.content}`);
+消耗: 输入 ${usage?.prompt_tokens}, 输出 ${usage?.completion_tokens}`;
+      await redirectLogicMessage(config, session, sendQueue, failTemplate);
+      ctx.logger.error(`LLM provides unexpected response:\n${content}`);
+      return;
     }
 
     const template = `
-${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyTo} 的消息已生成，来自 API ${current}:`}
+${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyTo} 的消息已生成，来自 API ${current}:`}
 ---
-内容: ${chatResponse.finalReply && chatResponse.finalReply.trim() ? chatResponse.finalReply : "无"}
+内容: ${finalReply && finalReply.trim() ? finalReply : "无"}
 ---
-逻辑: ${chatResponse.logic}
+逻辑: ${logic}
 ---
-指令：${chatResponse.execute?.length ? chatResponse.execute : "无"}
+指令：${execute?.length ? execute : "无"}
 ---
 距离下次：${nextTriggerCount}
 ---
-消耗: 输入 ${chatResponse?.usage?.prompt_tokens}, 输出 ${chatResponse?.usage?.completion_tokens}`;
-    await redirectLogicMessage(config, session, template);
+消耗: 输入 ${usage?.prompt_tokens}, 输出 ${usage?.completion_tokens}`;
+    await redirectLogicMessage(config, session, sendQueue, template);
 
     // 如果 AI 使用了指令
-    if (Array.isArray(chatResponse.execute) && chatResponse.execute.length > 0) {
-      chatResponse.execute.forEach(async (command) => {
+    if (Array.isArray(execute) && execute.length > 0) {
+      execute.forEach(async (command) => {
         try {
-          const messageIds = config.Debug.TestMode
+          const messageIds = (replyTo === session.channelId)
             ? await session.send(h("execute", {}, command))
             : await session.bot.sendMessage(replyTo, h("execute", {}, command));
           for (const messageId of messageIds) {
-            processingLock.startProcessing(messageId);
-            try {
-              selfSend.set(messageId, SendType.Command);
-            } finally {
-              processingLock.endProcessing(messageId);
-            }
+            sendQueue.setMark(messageId, MarkType.Command);
           }
           ctx.logger.info(`已执行指令：${command}`);
         } catch (error) {
@@ -314,20 +244,26 @@ ${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回�
       });
     }
 
-    if (chatResponse?.finalReply !== "") {
-      if (chatResponse?.quote !== "") {
-        chatResponse.finalReply = h.quote(chatResponse.quote).toString() + chatResponse.finalReply;
+    if (!isEmpty(finalReply)) {
+      if (!isEmpty(quote)) {
+        finalReply = h.quote(quote).toString() + finalReply;
       }
-      const messageIds = config.Debug.TestMode
-        ? await session.send(chatResponse.finalReply)
-        : await session.bot.sendMessage(replyTo, chatResponse.finalReply);
+      const messageIds = (replyTo === session.channelId)
+        ? await session.send(finalReply)
+        : await session.bot.sendMessage(replyTo, finalReply);
       for (const messageId of messageIds) {
-        processingLock.startProcessing(messageId);
-        try {
-          selfSend.set(messageId, SendType.LLM);
-        } finally {
-          processingLock.endProcessing(messageId);
-        }
+        //await sendQueue.waitForProcess();
+        await sendQueue.addMessage({
+          senderId: session.selfId,
+          senderName: session.bot.user.name,
+          senderNick: await getBotName(config.Bot, session),
+          messageId,
+          channelId,
+          channelType: session.channelId.startsWith("private:") ? "private" : (session.channelId === "#" ? "sandbox" : "guild"),
+          sendTime: new Date(),
+          content: finalReply,
+          quoteMessageId: session.quote?.id
+        });
       }
     }
   });
@@ -337,6 +273,7 @@ ${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回�
 async function redirectLogicMessage(
   config: Config,
   session: Session,
+  sendQueue: SendQueue,
   message: string,
 ) {
   if (!config.Settings.LogicRedirect.Enabled) return;
@@ -344,12 +281,7 @@ async function redirectLogicMessage(
   const messageIds = await session.bot.sendMessage(config.Settings.LogicRedirect.Target, message);
 
   for (const messageId of messageIds) {
-    processingLock.startProcessing(messageId);
-    try {
-      selfSend.set(messageId, SendType.LogicRedirect);
-    } finally {
-      processingLock.endProcessing(messageId);
-    }
+    sendQueue.setMark(messageId, MarkType.LogicRedirect);
   }
 }
 

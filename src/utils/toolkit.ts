@@ -5,19 +5,19 @@ import { Config } from "../config";
 
 export function isChannelAllowed(slotContains: string[], channelId: string): boolean {
   for (let slot of slotContains) {
-    if (slot.includes("private:all") && channelId.startsWith("private:")) {
-      return true;
-    } else if (slot.includes("all") && !channelId.startsWith("private:")) {
-      return true;
-    }
-
     for (let channel of slot.split(",")) {
       channel = channel.trim();
-      if (channel === channelId) {
+      if (channelId === channel) {
+        return true;
+      } else if (channel === "all" && !channelId.startsWith("private:")) {
+        return true;
+      } else if (channel === "private:all" && channelId.startsWith("private:")) {
         return true;
       }
     }
   }
+
+  return false;
 }
 
 export function containsFilter(sessionContent: string, FilterList: any): boolean {
@@ -32,17 +32,22 @@ export function containsFilter(sessionContent: string, FilterList: any): boolean
 export class ProcessingLock {
   private processingGroups: Set<string> = new Set();
 
-  async waitForProcessing(groupId: string): Promise<void> {
-    while (this.processingGroups.has(groupId)) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+  async waitForProcess(groupId: string): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setInterval(() => {
+        if (!this.processingGroups.has(groupId)) {
+          clearInterval(timer);
+          resolve();
+        }
+      });
+    })
   }
 
-  startProcessing(groupId: string): void {
+  start(groupId: string): void {
     this.processingGroups.add(groupId);
   }
 
-  endProcessing(groupId: string): void {
+  end(groupId: string): void {
     this.processingGroups.delete(groupId);
   }
 }
