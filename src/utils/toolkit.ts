@@ -144,3 +144,35 @@ export async function ensureGroupMemberList(session: any, channelId?: string) {
   }
   return groupMemberList;
 }
+
+
+/**
+ * 简单的 Mutex 实现
+ * @author deepseek
+ **/ 
+export class Mutex {
+  private isLocked: Map<string, boolean> = new Map();
+
+  async acquire(id: string): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.isLocked.get(id)) {
+        this.isLocked.set(id, true);
+        resolve();
+      } else {
+        const check = () => {
+          if (!this.isLocked) {
+            this.isLocked.set(id, true);
+            resolve();
+          } else {
+            setTimeout(check, 10);
+          }
+        };
+        check();
+      }
+    });
+  }
+
+  release(id: string): void {
+    this.isLocked.set(id, false);
+  }
+}

@@ -3,7 +3,7 @@ import { LoggerService } from "@cordisjs/logger";
 import { h } from "koishi";
 
 import { Config } from "./config";
-import { getBotName, isChannelAllowed } from "./utils/toolkit";
+import { getBotName, isChannelAllowed, Mutex } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { MarkType, SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
@@ -40,6 +40,7 @@ export function apply(ctx: Context, config: Config) {
 
   let adapterSwitcher: AdapterSwitcher;
   const sendQueue = new SendQueue(ctx, config);
+  const mutex = new Mutex();
 
   ctx.on("ready", async () => {
     adapterSwitcher = new AdapterSwitcher(config.API.APIList, config.Parameters);
@@ -126,6 +127,8 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
+    await mutex.acquire(channelId);
+
     await sendQueue.addMessage(await createMessage(session));
     //const channelQuene = await sendQueue.getQueue(channelId);
     const mixedQuene = await sendQueue.getMixedQueue(channelId);
@@ -148,6 +151,7 @@ export function apply(ctx: Context, config: Config) {
     const shouldReply = (isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode
 
     if (!shouldReply) {
+      mutex.release(channelId);
       return next();
     }
 
@@ -158,6 +162,7 @@ export function apply(ctx: Context, config: Config) {
     if (!chatHistory) {
       if (config.Debug.DebugAsInfo)
         ctx.logger.info(`未获取到${channelId}的聊天记录`);
+      mutex.release(channelId);
       return next();
     }
 
@@ -168,6 +173,7 @@ export function apply(ctx: Context, config: Config) {
 
     if (!adapter) {
       ctx.logger.warn("没有可用的适配器");
+      mutex.release(channelId);
       return next();
     }
 
@@ -266,6 +272,7 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
         });
       }
     }
+    mutex.release(channelId);
   });
 }
 
