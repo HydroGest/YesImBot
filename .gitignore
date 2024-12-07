@@ -23,6 +23,7 @@ yarn.lock
 *.mdt
 coverage
 data/logs
+data/cache
 data/.vector_cache
 data/queue.json
 data/emojis.json

@@ -147,7 +147,7 @@ class AnotherLLMService implements ImageDescriptionService {
     if (!base64) {
       base64 = await convertUrltoBase64(src);
     }
-    
+
     const adapter = register(
       config.ImageViewer.Adapter,
       config.ImageViewer.BaseURL,
@@ -165,7 +165,7 @@ class AnotherLLMService implements ImageDescriptionService {
             ImageComponent(base64, config.ImageViewer.Detail),
             TextComponent(question)
           )
-        ]
+        ], config.Debug.DebugAsInfo
       );
       return response.message.content;
     } catch (error) {
@@ -190,7 +190,7 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
       }
 
       const cacheKey = computeMD5(`${fileUnique ?? imgUrl}` + config.ImageViewer.Question);
-      
+
       if (cacheManager.has(cacheKey)) {
         if (debug) console.log(`Cache hit: ${cacheKey}`);
         return cacheManager.get(cacheKey);

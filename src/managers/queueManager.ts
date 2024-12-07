@@ -59,7 +59,17 @@ export class QueueManager {
 
   // 消息入队
   public async enqueue(chatMessage: ChatMessage): Promise<void> {
-    await this.ctx.database.create(DATABASE_NAME, chatMessage);
+    try {
+      await this.ctx.database.create(DATABASE_NAME, chatMessage);
+    } catch (error) {
+      if (error.message.includes('UNIQUE constraint failed')) {
+        // 更新已存在的记录
+        const { messageId, ...updateData } = chatMessage;
+        await this.ctx.database.set(DATABASE_NAME, { messageId }, updateData);
+      } else {
+        throw error; // 重新抛出其他类型的错误
+      }
+    }
   }
 
   public async clearBySenderId(senderId: string): Promise<boolean> {

@@ -2,7 +2,7 @@ import { Context, Next, Random, Session } from "koishi";
 import { h } from "koishi";
 
 import { Config } from "./config";
-import { getBotName, isChannelAllowed } from "./utils/toolkit";
+import { getBotName, isChannelAllowed, ProcessingLock } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
@@ -35,6 +35,7 @@ enum SendType {
   Added = "已被添加"
 }
 const selfSend = new Map<string, SendType>()
+const processingLock = new ProcessingLock();
 
 export function apply(ctx: Context, config: Config) {
   initDatabase(ctx);
@@ -55,31 +56,42 @@ export function apply(ctx: Context, config: Config) {
   ctx.on("message-created", async (session) => {
     const channelId = session.channelId;
     if (isChannelAllowed(config.MemorySlot.SlotContains, channelId)) {
-      let report = true;
-      const selfSendType = selfSend.get(session.messageId);
-      switch (selfSendType) {
-        case SendType.Command:
-          if (!config.Settings.SelfReport.includes("指令消息")) report = false;
-          break;
-        case SendType.LLM:
-          if (!config.Settings.SelfReport.includes("和LLM交互的消息")) report = false;
-          break;
-        case SendType.LogicRedirect:
-          if (!config.Settings.SelfReport.includes("逻辑重定向")) report = false;
-          break;
-        case SendType.Added:
-          report = false;
-        default:
-          break;
+      processingLock.startProcessing(session.messageId); // 虽然最初是为了锁channel的，但是拿来锁messageId也是可以的
+      await processingLock.waitForProcessing(session.messageId);
+      try {
+        let report = true;
+        const selfSendType = selfSend.get(session.messageId);
+        switch (selfSendType) {
+          case SendType.Command:
+            if (!config.Settings.SelfReport.includes("指令消息")) report = false;
+            break;
+          case SendType.LLM:
+            if (!config.Settings.SelfReport.includes("和LLM交互的消息")) report = false;
+            break;
+          case SendType.LogicRedirect:
+            if (!config.Settings.SelfReport.includes("逻辑重定向")) report = false;
+            break;
+          case SendType.Added:
+            report = false;
+          default:
+            break;
+        }
+        if (!report) return;
+        // 调用 Bot 指令的消息不知道怎么清除
+        // if (session.content.includes("清除记忆")) return;
+        // 这是ctx.on总是最先执行，致使selfSend.get总是返回undefined导致的问题。现在让它加锁等待，问题就解决了
+        if (session.author?.id === session.bot.selfId) {
+          ctx.logger.info(`Bot message sent, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
+        } else {
+          ctx.logger.info(`New message received, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
+        }
+        //TODO: 防提示词注入
+        const chatMessage = await createMessage(session);
+        await sendQueue.addMessage(chatMessage);
+        selfSend.set(session.messageId, SendType.Added);
+      } finally {
+        processingLock.endProcessing(session.messageId);
       }
-      if (!report) return;
-      // 调用 Bot 指令的消息不知道怎么清除
-      if (session.content.includes("清除记忆")) return;
-      ctx.logger.info(`New message received, guildId = ${channelId}, content = ${foldText(session.content, 1000)}`);
-      //TODO: 防提示词注入
-      const chatMessage = await createMessage(session);
-      await sendQueue.addMessage(chatMessage);
-      selfSend.set(session.messageId, SendType.Added);
     }
   });
 
@@ -89,26 +101,30 @@ export function apply(ctx: Context, config: Config) {
     .option("person", "-p <person:string> 从所有会话中清除指定用户的记忆", { authority: 3 })
     .usage("注意：如果使用 清除记忆 <target> 来清除记忆而不带 -t 参数，将会清除当前会话的记忆！")
     .example([
-        "清除记忆",
-        "清除记忆 -t private:1234567890",
-        "清除记忆 -t 987654321",
-        "清除记忆 -t all",
-        "清除记忆 -t private:all",
-        "清除记忆 -p 1234567890",
-      ].join("\n"))
+      "清除记忆",
+      "清除记忆 -t private:1234567890",
+      "清除记忆 -t 987654321",
+      "清除记忆 -t all",
+      "清除记忆 -t private:all",
+      "清除记忆 -p 1234567890",
+    ].join("\n"))
     .action(async ({ session, options }) => {
-
-      selfSend.set(session.messageId, SendType.Command);
+      processingLock.startProcessing(session.messageId);
+      try {
+        selfSend.set(session.messageId, SendType.Command);
+      } finally {
+        processingLock.endProcessing(session.messageId);
+      }
 
       const msgDestination = session.guildId || session.channelId;
       let result = '';
-      
+
       if (options.person) {
-        // 按用户QQ清除记忆
+        // 按用户ID清除记忆
         const cleared = await sendQueue.clearBySenderId(options.person);
         result = cleared
-          ? `已清除关于用户 ${options.person} 的记忆`
-          : `未找到关于用户 ${options.person} 的记忆`;
+          ? `✅ 用户 ${options.person}`
+          : `❌ 用户 ${options.person}`;
       } else {
         const clearGroupId = options.target || msgDestination;
         // 要清除的会话集合
@@ -116,50 +132,68 @@ export function apply(ctx: Context, config: Config) {
           .split(',')
           .map(g => g.trim())
           .filter(Boolean);
-      
-        const clearedIds = [];
+
         const messages = [];
-      
+
         if (targetGroups.includes('private:all')) {
           const success = await sendQueue.clearPrivateAll();
-          if (success) messages.push('已清除全部私聊消息');
+          if (success) {
+            messages.push('✅ 全部私聊记忆');
+          } else {
+            messages.push('❌ 全部私聊记忆');
+          }
         }
         if (targetGroups.includes('all')) {
           const success = await sendQueue.clearAll();
-          if (success) messages.push('已清除全部群组消息');
+          if (success) {
+            messages.push('✅ 全部群组记忆');
+          } else {
+            messages.push('❌ 全部群组记忆');
+          }
         }
-      
+
         for (const id of targetGroups) {
           if (id === 'all' || id === 'private:all') continue;
           const success = await sendQueue.clearChannel(id);
-          if (success) clearedIds.push(id);
+          if (success) {
+            messages.push(`✅ ${id}`);
+          } else {
+            messages.push(`❌ ${id}`);
+          }
         }
-      
-        if (clearedIds.length > 0) {
-          const idsDisplay = clearedIds.slice(0, 3).join(', ');
-          const suffix = clearedIds.length > 3 ? ' 等会话' : '';
-          messages.push(`已清除关于 ${idsDisplay}${suffix} 的记忆`);
-        }
-      
-        result = messages.join('，');
+
+        result = messages.join('\n');
       }
-      if (!result) return;
+      if (!result) {
+        return;
+      };
       const messageIds = await session.send(result);
 
       for (const messageId of messageIds) {
-        selfSend.set(messageId, SendType.Command);
+        processingLock.startProcessing(messageId);
+        try {
+          selfSend.set(messageId, SendType.Command);
+        } finally {
+          processingLock.endProcessing(messageId);
+        }
       }
       return;
     });
 
   ctx.middleware(async (session: Session, next: Next) => {
     const channelId = session.channelId;
-    if (!isChannelAllowed(config.MemorySlot.SlotContains, channelId))
+    if (!isChannelAllowed(config.MemorySlot.SlotContains, channelId)) {
       return next();
+    }
 
-    // 不知道为什么有时候会早于 “message-created” 导致无法获取到最新消息
-    if (!selfSend.has(session.messageId)) await sendQueue.addMessage(await createMessage(session));
-    selfSend.set(session.messageId, SendType.Added);
+    // 加锁，middleware不执行完不处理ctx.on(message-created)
+    processingLock.startProcessing(session.messageId);
+    try {
+      await sendQueue.addMessage(await createMessage(session));
+      selfSend.set(session.messageId, SendType.Added);
+    } finally {
+      processingLock.endProcessing(session.messageId);
+    }
 
     //const channelQuene = await sendQueue.getQueue(channelId);
     const mixedQuene = await sendQueue.getMixedQueue(channelId);
@@ -182,7 +216,7 @@ export function apply(ctx: Context, config: Config) {
     if (!((isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode)) {
       return next();
     }
-    
+
     // TODO: 增加队列锁，处理过程中若收到消息不进行处理
     // 图片处理可能比较慢，处理期间收到的消息将被忽略
     const chatHistory = await processContent(config, session, mixedQuene);
@@ -196,7 +230,7 @@ export function apply(ctx: Context, config: Config) {
     if (config.Debug.DebugAsInfo)
       ctx.logger.info(chatHistory);
 
-    const {current, adapter} = adapterSwitcher.getAdapter();
+    const { current, adapter } = adapterSwitcher.getAdapter();
 
     if (!adapter) {
       ctx.logger.warn("没有可用的适配器");
@@ -218,6 +252,7 @@ export function apply(ctx: Context, config: Config) {
         AssistantMessage("Resolve OK"),
         UserMessage(chatHistory),
       ],
+      session,
       config,
       config.Debug.DebugAsInfo
     );
@@ -234,7 +269,7 @@ export function apply(ctx: Context, config: Config) {
 
     if (chatResponse.status === "fail") {
       const failTemplate = `
-LLM 的响应无法正确解析。
+LLM 的响应无法正确解析，来自 API ${current}:
 原始响应:
 ${chatResponse.content}
 ---
@@ -265,7 +300,12 @@ ${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回�
             ? await session.send(h("execute", {}, command))
             : await session.bot.sendMessage(replyTo, h("execute", {}, command));
           for (const messageId of messageIds) {
-            selfSend.set(messageId, SendType.Command);
+            processingLock.startProcessing(messageId);
+            try {
+              selfSend.set(messageId, SendType.Command);
+            } finally {
+              processingLock.endProcessing(messageId);
+            }
           }
           ctx.logger.info(`已执行指令：${command}`);
         } catch (error) {
@@ -282,7 +322,12 @@ ${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回�
         ? await session.send(chatResponse.finalReply)
         : await session.bot.sendMessage(replyTo, chatResponse.finalReply);
       for (const messageId of messageIds) {
-        selfSend.set(messageId, SendType.LLM);
+        processingLock.startProcessing(messageId);
+        try {
+          selfSend.set(messageId, SendType.LLM);
+        } finally {
+          processingLock.endProcessing(messageId);
+        }
       }
     }
   });
@@ -290,7 +335,7 @@ ${chatResponse.status === "skip" ? `${botName}想要跳过此次回复` : `回�
 
 
 async function redirectLogicMessage(
-  config: Config, 
+  config: Config,
   session: Session,
   message: string,
 ) {
@@ -299,7 +344,12 @@ async function redirectLogicMessage(
   const messageIds = await session.bot.sendMessage(config.Settings.LogicRedirect.Target, message);
 
   for (const messageId of messageIds) {
-    selfSend.set(messageId, SendType.LogicRedirect);
+    processingLock.startProcessing(messageId);
+    try {
+      selfSend.set(messageId, SendType.LogicRedirect);
+    } finally {
+      processingLock.endProcessing(messageId);
+    }
   }
 }
 

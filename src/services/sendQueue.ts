@@ -66,17 +66,20 @@ export class SendQueue {
 
   setTriggerCount(channelId: string, nextTriggerCount: number) {
     this.triggerCount.set(channelId, nextTriggerCount);
+    console.log(`距离下次回复还剩 ${nextTriggerCount} 次`)
   }
   // 如果没有触发，将触发次数-1
-  // triggerCount 到 0 时返回 true
+  // newTriggerCount 到 0 时返回 true
   checkTriggerCount(channelId: string): boolean {
     let triggerCount = this.triggerCount.get(channelId) ?? this.config.MemorySlot.FirstTriggerCount;
+    const newTriggerCount = triggerCount - 1;
     if (triggerCount > 0) {
-      this.triggerCount.set(channelId, triggerCount - 1);
-      console.log(`距离下次回复还剩 ${triggerCount - 1} 次`)
-      return false;
+      this.setTriggerCount(channelId, newTriggerCount);
     }
-    return true;
+    if (newTriggerCount <= 0) {
+      return true;
+    }
+    return false;
   }
 }
 

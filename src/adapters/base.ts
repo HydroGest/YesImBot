@@ -4,6 +4,8 @@ import { Config } from "../config";
 import { Message } from "./creators/component";
 import { escapeUnicodeCharacters } from "../utils/string";
 import { emojiManager } from "../managers/emojiManager";
+import { Random } from "koishi";
+import { ensureGroupMemberList } from "../utils/toolkit";
 
 interface Usage {
   prompt_tokens: number;
@@ -26,7 +28,7 @@ export interface ExpectedResponse {
   content: string;            // 原始输出
   finalReply: string;         // finReply || reply
   replyTo: string;            // session_id
-  quote: string;              //
+  quote: string;              // 引用回复的消息id
   nextTriggerCount: number;   // 下次触发次数
   logic: string;              // LLM思考过程
   execute: Array<string>;     // 要运行的指令列表
@@ -71,16 +73,16 @@ export abstract class BaseAdapter {
     }
   }
 
-  abstract chat(messages: Message[]): Promise<Response>;
+  abstract chat(messages: Message[], debug?: Boolean): Promise<Response>;
 
   //abstract chatWithHistory(messages: Message[]): Promise<Response>;
   //abstract clearHistory(): Promise<void>;
 
-  async generateResponse(messages: Message[], config: Config, debug = false): Promise<ExpectedResponse> {
-    const response = await this.chat(messages);
+  async generateResponse(messages: Message[], session, config: Config, debug = false): Promise<ExpectedResponse> {
+    const response = await this.chat(messages, debug);
     let content = response.message.content;
-  
-    if (typeof content !== "string") {
+
+    if (typeof content !== "string" || config.Debug.DebugAsInfo) {
       content = JSON5.stringify(content, null, 2);
     }
 
@@ -89,8 +91,8 @@ export abstract class BaseAdapter {
     // 预期回复：
     // {
     //   "status": "success",       // "success" 或 "skip" (跳过回复)
-    //   "session_id": "123456789", // 要把finReply发送到的会话id
-    //   "quote": "",               //
+    //   "replyTo": "123456789",    // 要把finReply发送到的会话id
+    //   "quote": "",               // 引用回复的消息id
     //   "nextReplyIn": "2",        // 由LLM决定的下一次回复的冷却条数
     //   "logic": "",               // LLM思考过程
     //   "reply": "",               // 初版回复
@@ -98,18 +100,18 @@ export abstract class BaseAdapter {
     //   "finReply": ""             // 最终版回复
     //   "execute":[]               // 要运行的指令列表
     // }
-  
+
     let status: string = "success";
     let finalResponse: string = "";
     let finalLogic: string = "";
     let replyTo: string = "";
-    let nextTriggerCount: number = 2;
+    let nextTriggerCount: number = Random.int(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount + 1); // 双闭区间
     let execute: any[] = [];
-  
+
     // 提取JSON部分
     const jsonMatch = content.match(/{.*}/s);
     let LLMResponse: any = {};
-  
+
     if (jsonMatch) {
       try {
         LLMResponse = JSON5.parse(escapeUnicodeCharacters(jsonMatch[0]));
@@ -125,7 +127,7 @@ export abstract class BaseAdapter {
         console.log(`没有找到 JSON: ${content}`);
       }
     }
-  
+
     // 检查 status 字段
     if (LLMResponse.status === "success" || LLMResponse.status === "skip") {
       status = LLMResponse.status;
@@ -135,7 +137,7 @@ export abstract class BaseAdapter {
         console.log(`status 不是 "success" 或 "skip": ${content}`);
       }
     }
-  
+
     // 构建 finalResponse
     if (!config.Settings.AllowErrorFormat) {
       if (LLMResponse.finReply || LLMResponse.reply) {
@@ -162,21 +164,45 @@ export abstract class BaseAdapter {
         }
       }
     }
-  
+
     // 提取其他字段
     replyTo = LLMResponse.replyTo || "";
-    nextTriggerCount = Number(LLMResponse.nextReplyIn) || 2;
+
+    // 规范化 nextTriggerCount
+    const nextTriggerCountbyLLM = Math.max(
+      config.MemorySlot.MinTriggerCount,
+      Math.min(
+        LLMResponse.nextReplyIn ?? config.MemorySlot.MinTriggerCount,
+        config.MemorySlot.MaxTriggerCount
+      )
+    );
+    nextTriggerCount = Number(nextTriggerCountbyLLM) || nextTriggerCount;
     finalLogic = LLMResponse.logic || "";
     if (LLMResponse.execute && Array.isArray(LLMResponse.execute)) {
       execute = LLMResponse.execute
     } else {
       execute = [];
     }
-  
+
+    // 使用 groupMemberList 反转义 <at> 消息
+    const groupMemberList = (await ensureGroupMemberList(session, replyTo)).data;
+
+    const getKey = (member: { nick: string; user: { name: string } }) => config.Bot.NickorName === "群昵称" ? member.nick : member.user.name;
+
+    groupMemberList.sort((a, b) => getKey(b).length - getKey(a).length);
+
+    groupMemberList.forEach((member) => {
+      const name = getKey(member);
+      const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const atRegex = new RegExp(`(?<!<at id="[^"]*" name=")@${escapedName}(?![^"]*"\s*\/>)`, 'g');
+      finalResponse = finalResponse.replace(atRegex, `<at id="${member.user.id}" name="${name}" />`);
+    });
+    finalResponse = finalResponse.replace(/(?<!<at type=")@全体成员|@所有人|@all(?![^"]*"\s*\/>)/g, '<at type="all"/>');
+
     // 反转义 <face> 消息
     const faceRegex = /\[表情[:：]\s*([^\]]+)\]/g;
     const matches = Array.from(finalResponse.matchAll(faceRegex));
-  
+
     const replacements = await Promise.all(
       matches.map(async (match) => {
         const name = match[1];
@@ -192,7 +218,7 @@ export abstract class BaseAdapter {
         };
       })
     );
-  
+
     replacements.forEach(({ match, replacement }) => {
       finalResponse = finalResponse.replace(match, replacement);
     });

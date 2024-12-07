@@ -65,7 +65,7 @@ export class ResponseVerifier {
             SystemMessage(sysPrompt),
             AssistantMessage("Resolve OK"),
             UserMessage(promptInput)
-          ]
+          ], this.config.Debug.DebugAsInfo
         );
 
         const similarityScore = this.extractSimilarityScore(response);

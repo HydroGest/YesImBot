@@ -85,3 +85,53 @@ export async function getMemberName(config: Config, session: Session, userId?: s
     }
   }
 }
+
+export async function ensureGroupMemberList(session: any, channelId?: string) {
+  let groupMemberList = {
+    data: [
+      {
+        user:
+        {
+          id: `${session.event.user.id}`,
+          name: `${session.event.user.name}`,
+          userId: `${session.event.user.id}`,
+          avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.user.id}&spec=640`,
+          username: `${session.event.user.name}`
+        },
+        nick: `${session.event.user.name}`,
+        roles: ['member']
+      },
+      {
+        user:
+        {
+          id: `${session.event.selfId}`,
+          name: `${session.bot.user.name}`,
+          userId: `${session.event.selfId}`,
+          avatar: `http://q.qlogo.cn/headimg_dl?dst_uin=${session.event.selfId}&spec=640`,
+          username: `${session.bot.user.name}`
+        },
+        nick: `${session.bot.user.name}`,
+        roles: ['member']
+      }
+    ]
+  };
+  const isPrivateChat = channelId ? channelId.startsWith("private:") : session.channelId.startsWith("private:");
+  if (!isPrivateChat) {
+    groupMemberList = (await session.bot.getGuildMemberList(channelId || session.channelId)).data.forEach(member => {
+      // 沙盒获取到的 member 数据不一样
+      if (member.userId === member.username && !member.user) {
+        member.user = {
+          id: member.userId,
+          name: member.username,
+          userId: member.userId,
+        };
+        member.nick = member.username;
+        member.roles = ['member'];
+      }
+      if (!member.nick) {
+        member.nick = member.user.name || member.user.username;
+      }
+    });
+  }
+  return groupMemberList;
+}
