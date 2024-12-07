@@ -105,10 +105,6 @@ export class SendQueue {
   // 关于 triggerCount 的含义:
   // prompt 中有写到 `那么你可能会想要把这个值设为1，表示再收到一条消息你就会立马发言一次。`
   // 所以为 1 时就应该返回 true，而这个值不应该是 0
-  // 如果没有触发，将触发次数-1
-  // 关于 triggerCount 的含义:
-  // prompt 中有写到 `那么你可能会想要把这个值设为1，表示再收到一条消息你就会立马发言一次。`
-  // 所以为 1 时就应该返回 true，而这个值不应该是 0
   checkTriggerCount(channelId: string): boolean {
     let triggerCount =
       this.triggerCount.get(channelId) ??
