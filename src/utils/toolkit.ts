@@ -32,35 +32,49 @@ export function containsFilter(sessionContent: string, FilterList: any): boolean
 export class ProcessingLock {
   private mutex: Mutex;
   private processingGroups: Set<string> = new Set();
-  readonly processCheckInterval = 30;
+  private readonly processCheckInterval = 30;
 
   constructor() {
     this.mutex = new Mutex();
   }
 
-  async waitForProcess(groupId: string): Promise<void> {
+  private async withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    try {
+      await this.mutex.acquire(id);
+      return await fn();
+    } finally {
+      this.mutex.release(id);
+    }
+  }
+
+  async waitForProcess(groupId: string, timeout = 5000): Promise<void> {
+    const startTime = Date.now();
+
     while (true) {
-      await this.mutex.acquire('processCheck');
-      if (!this.processingGroups.has(groupId)) {
-        this.mutex.release('processCheck');
-        return;
+      const isProcessing = await this.withLock('processCheck', async () => {
+        return this.processingGroups.has(groupId);
+      });
+
+      if (!isProcessing) return;
+
+      if (Date.now() - startTime > timeout) {
+        throw new Error(`Wait timeout for group ${groupId}`);
       }
-      this.mutex.release('processCheck');
-      // 避免过度占用CPU
+
       await new Promise(resolve => setTimeout(resolve, this.processCheckInterval));
     }
   }
 
   async start(groupId: string): Promise<void> {
-    await this.mutex.acquire('processUpdate');
-    this.processingGroups.add(groupId);
-    this.mutex.release('processUpdate');
+    await this.withLock('processUpdate', async () => {
+      this.processingGroups.add(groupId);
+    });
   }
 
   async end(groupId: string): Promise<void> {
-    await this.mutex.acquire('processUpdate');
-    this.processingGroups.delete(groupId);
-    this.mutex.release('processUpdate');
+    await this.withLock('processUpdate', async () => {
+      this.processingGroups.delete(groupId);
+    });
   }
 }
 
