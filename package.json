@@ -34,7 +34,8 @@
     "dependencies": {
         "axios": "^1.7.7",
         "json5": "^2.2.3",
-        "sharp": "^0.33.5"
+        "sharp": "^0.33.5",
+        "async-mutex": "^0.5.0"
     },
     "koishi": {
         "description": {
@@ -44,7 +45,8 @@
         "browser": true,
         "service": {
             "required": [
-                "axios"
+                "axios",
+                "database"
             ],
             "implements": [
                 "yesimbot"
