@@ -75,16 +75,17 @@ export class SendQueue {
   // TODO: 防提示词注入
   async addMessage(message: ChatMessage) {
     if (!isChannelAllowed(this.config.MemorySlot.SlotContains, message.channelId)) return;
+    this.processingLock.start(message.messageId); // 这句可能没什么用？
     const markType = this.getMark(message.messageId) || MarkType.Unknown;
     //@ts-ignore
     if (markType === MarkType.Unknown || this.config.Settings.SelfReport.includes(markType)) {
       // 调用 Bot 指令的消息不知道怎么清除
-      if (message.content.includes("清除记忆")) return;
+      // 这是ctx.command先于addMessage执行完毕的原因，导致ctx.command未能清除新添加的消息
       this.setMark(message.messageId, MarkType.Added);
       await this.queueManager.enqueue(message);
       logger.info(`New message received, guildId = ${message.channelId}, content = ${foldText(message.content, 1000)}`);
     }
-    this.processingLock.end(message.channelId);
+    this.processingLock.end(message.messageId);
   }
 
   getMark(messageId: string): MarkType {

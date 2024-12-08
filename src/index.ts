@@ -72,12 +72,13 @@ export function apply(ctx: Context, config: Config) {
       "清除记忆 -p 1234567890",
     ].join("\n"))
     .action(async ({ session, options }) => {
+      sendQueue.processingLock.start(session.messageId);
 
       sendQueue.setMark(session.messageId, MarkType.Command);
 
       const msgDestination = session.guildId || session.channelId;
       let result = "";
-      
+      await sendQueue.processingLock.waitForProcess(session.messageId);
       if (options.person) {
         // 按用户ID清除记忆
         const cleared = await sendQueue.clearBySenderId(options.person);
@@ -91,7 +92,7 @@ export function apply(ctx: Context, config: Config) {
           .filter(Boolean);
 
         const messages = [];
-      
+
         if (targetGroups.includes("private:all")) {
           const success = await sendQueue.clearPrivateAll();
           messages.push(`${success ? "✅" : "❌"} 全部私聊记忆`);
@@ -128,7 +129,6 @@ export function apply(ctx: Context, config: Config) {
     }
 
     await mutex.acquire(channelId);
-
     await sendQueue.addMessage(await createMessage(session));
     //const channelQuene = await sendQueue.getQueue(channelId);
     const mixedQuene = await sendQueue.getMixedQueue(channelId);
@@ -142,8 +142,13 @@ export function apply(ctx: Context, config: Config) {
     const isMixedQueueFull: boolean = mixedQuene.length > config.MemorySlot.SlotSize;
     const loginStatus = await session.bot.getLogin();
     const isBotOnline = loginStatus.status === 1;
-    const atRegex = new RegExp(`<at (id="${session.bot.selfId}".*?|type="all".*?${isBotOnline ? '|type="here"' : ''}).*?/>`);
-    const isAtMentioned = atRegex.test(session.content);
+    const parsedElements = h.parse(session.content);
+    const isAtMentioned = parsedElements.some(element =>
+      element.type === 'at' &&
+      (element.attrs.id === session.bot.selfId ||
+       element.attrs.type === 'all' ||
+       (isBotOnline && element.attrs.type === 'here'))
+    );
     const shouldReactToAt = Random.bool(config.MemorySlot.AtReactPossibility);
 
     const isTriggerCountReached = sendQueue.checkTriggerCount(channelId);
@@ -205,7 +210,7 @@ export function apply(ctx: Context, config: Config) {
     if (isEmpty(replyTo)) replyTo = session.channelId;
 
     sendQueue.setTriggerCount(channelId, nextTriggerCount);
-    
+
     if (status === "fail") {
       const failTemplate = `
 LLM 的响应无法正确解析:
@@ -291,5 +296,3 @@ async function redirectLogicMessage(
     sendQueue.setMark(messageId, MarkType.LogicRedirect);
   }
 }
-
-

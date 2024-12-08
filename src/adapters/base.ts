@@ -108,7 +108,7 @@ export abstract class BaseAdapter {
     let nextTriggerCount: number = Random.int(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount + 1); // 双闭区间
     let execute: any[] = [];
     let reason: string;
-  
+
     // 提取JSON部分
     const jsonMatch = content.match(/{.*}/s);
     let LLMResponse: any = {};
@@ -172,7 +172,16 @@ export abstract class BaseAdapter {
 
     // 提取其他字段
     replyTo = LLMResponse.replyTo || "";
-    nextTriggerCount = Number(LLMResponse.nextReplyIn) || Random.int(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount + 1);
+
+    // 规范化 nextTriggerCount，确保在设置的范围内
+    const nextTriggerCountbyLLM = Math.max(
+      config.MemorySlot.MinTriggerCount,
+      Math.min(
+        LLMResponse.nextReplyIn ?? config.MemorySlot.MinTriggerCount,
+        config.MemorySlot.MaxTriggerCount
+      )
+    );
+    nextTriggerCount = Number(nextTriggerCountbyLLM) || nextTriggerCount; // 如果LLM里面没有返回nextReplyIn，就使用先前设置的随机值，而不是再随机一次
     finalLogic = LLMResponse.logic || "";
     if (LLMResponse.execute && Array.isArray(LLMResponse.execute)) {
       execute = LLMResponse.execute

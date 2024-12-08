@@ -93,6 +93,7 @@ export interface Config {
     }[];
   };
   Settings: {
+    SingleMessageStrctureTemplate: string;
     LogicRedirect: {
       Enabled?: boolean;
       Target?: string;
@@ -408,6 +409,9 @@ export const Config: Schema<Config> = Schema.object({
   }).description("机器人设定"),
 
   Settings: Schema.object({
+    SingleMessageStrctureTemplate: Schema.string()
+      .default("[{{messageId}}][{{date}} {{channelInfo}}] {{senderName}}<{{senderId}}> {{hasQuote,回复({{quoteMessageId}}): ,说: }}{{userContent}}")
+      .description("单条消息的结构模板"),
     LogicRedirect: Schema.intersect([
       Schema.object({
         Enabled: Schema.boolean()

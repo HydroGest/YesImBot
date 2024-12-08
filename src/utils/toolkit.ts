@@ -31,6 +31,7 @@ export function containsFilter(sessionContent: string, FilterList: any): boolean
 
 export class ProcessingLock {
   private processingGroups: Set<string> = new Set();
+  private readonly CHECK_INTERVAL = 30;
 
   async waitForProcess(groupId: string): Promise<void> {
     return new Promise((resolve) => {
@@ -39,7 +40,7 @@ export class ProcessingLock {
           clearInterval(timer);
           resolve();
         }
-      });
+      }, this.CHECK_INTERVAL);
     })
   }
 
@@ -126,30 +127,39 @@ export async function ensureGroupMemberList(session: any, channelId?: string) {
   };
   const isPrivateChat = channelId ? channelId.startsWith("private:") : session.channelId.startsWith("private:");
   if (!isPrivateChat) {
-    groupMemberList = (await session.bot.getGuildMemberList(channelId || session.channelId)).data.forEach(member => {
-      // 沙盒获取到的 member 数据不一样
-      if (member.userId === member.username && !member.user) {
-        member.user = {
-          id: member.userId,
-          name: member.username,
-          userId: member.userId,
-        };
-        member.nick = member.username;
-        member.roles = ['member'];
+    try {
+      const response = await session.bot.getGuildMemberList(channelId || session.channelId);
+      if (response?.data) {
+        const processedMembers = response.data.map(member => {
+          if (member.userId === member.username && !member.user) {
+            member.user = {
+              id: member.userId,
+              name: member.username,
+              userId: member.userId,
+            };
+            member.nick = member.username;
+            member.roles = ['member'];
+          }
+          if (!member.nick) {
+            member.nick = member.user.name || member.user.username;
+          }
+          return member;
+        });
+
+        groupMemberList.data = processedMembers;
       }
-      if (!member.nick) {
-        member.nick = member.user.name || member.user.username;
-      }
-    });
+    } catch (error) {
+      logger.warn('Failed to fetch guild member list:', error);
+    }
   }
+
   return groupMemberList;
 }
-
 
 /**
  * 简单的 Mutex 实现
  * @author deepseek
- **/ 
+ **/
 export class Mutex {
   private isLocked: Map<string, boolean> = new Map();
 
@@ -160,7 +170,7 @@ export class Mutex {
         resolve();
       } else {
         const check = () => {
-          if (!this.isLocked) {
+          if (!this.isLocked.get(id)) {
             this.isLocked.set(id, true);
             resolve();
           } else {
