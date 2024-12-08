@@ -45,3 +45,31 @@ export function convertNumberToString(value?: number | string): string {
 export function isEmpty(str: string){
   return !str || String(str) == ""
 }
+
+/**
+ * 模板引擎
+ * 
+ * 和 JS 模板字符串差不多
+ */
+export class Template {
+  constructor(
+    private templateString: string, 
+    private regex: RegExp = /\$\{(\w+(?:\.\w+)*)\}/g
+  ){}
+  render(model: any){
+    return this.templateString.replace(this.regex, (match, key) => {
+      return this.getValue(model, key.split('.'));
+    });
+  }
+  private getValue(data: any, keys: string[]) {
+    let value = data;
+    for (let key of keys) {
+      if (value && typeof value === 'object') {
+        value = value[key];
+      } else {
+        return '';
+      }
+    }
+    return value || '';
+  };
+}

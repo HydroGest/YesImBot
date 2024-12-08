@@ -72,13 +72,13 @@ export function apply(ctx: Context, config: Config) {
       "清除记忆 -p 1234567890",
     ].join("\n"))
     .action(async ({ session, options }) => {
-      sendQueue.processingLock.start(session.messageId);
+      await sendQueue.processingLock.acquire(session.messageId);
 
       sendQueue.setMark(session.messageId, MarkType.Command);
 
       const msgDestination = session.guildId || session.channelId;
       let result = "";
-      await sendQueue.processingLock.waitForProcess(session.messageId);
+
       if (options.person) {
         // 按用户ID清除记忆
         const cleared = await sendQueue.clearBySenderId(options.person);
@@ -128,7 +128,8 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
-    await mutex.acquire(channelId);
+    await sendQueue.processingLock.acquire(session.messageId); // 队列锁，确保消息入库
+    await mutex.acquire(channelId); // 线程锁，一个会话只能有一条待处理的消息  在等待期间，多余的消息应该如何处理？
     await sendQueue.addMessage(await createMessage(session));
     //const channelQuene = await sendQueue.getQueue(channelId);
     const mixedQuene = await sendQueue.getMixedQueue(channelId);
@@ -144,10 +145,8 @@ export function apply(ctx: Context, config: Config) {
     const isBotOnline = loginStatus.status === 1;
     const parsedElements = h.parse(session.content);
     const isAtMentioned = parsedElements.some(element =>
-      element.type === 'at' &&
-      (element.attrs.id === session.bot.selfId ||
-       element.attrs.type === 'all' ||
-       (isBotOnline && element.attrs.type === 'here'))
+      element.type === 'at' && 
+      (element.attrs.id === session.bot.selfId || element.attrs.type === 'all' || (isBotOnline && element.attrs.type === 'here'))
     );
     const shouldReactToAt = Random.bool(config.MemorySlot.AtReactPossibility);
 

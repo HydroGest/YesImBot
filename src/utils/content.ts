@@ -3,6 +3,7 @@ import { h, Session } from 'koishi';
 import { getImageDescription } from '../services/imageViewer';
 import { Config } from '../config';
 import { ChatMessage } from '../models/ChatMessage';
+import { Template } from './string';
 
 
 export async function processContent(config: Config, session: Session, messages: ChatMessage[]): Promise<string> {
@@ -54,20 +55,17 @@ export async function processContent(config: Config, session: Session, messages:
       // [messageId][{date} from_guild:{channelId}] {senderName}<{senderId}> 回复({quoteMessageId}): {userContent}
       // [messageId][{date} from_private] {senderName}<{senderId}> 说: {userContent}
       // [messageId][{date} from_private] {senderName}<{senderId}> 回复({quoteMessageId}): {userContent}
-      let messageText = template
-        .replace('{{messageId}}', chatMessage.messageId)
-        .replace('{{date}}', timeString)
-        .replace('{{channelType}}', chatMessage.channelType)
-        .replace('{{channelInfo}}',
-          chatMessage.channelType === "guild" ? `from_guild:${chatMessage.channelId}` :
-          chatMessage.channelType === "sandbox" ? "from_sandbox" : "from_private"
-        )
-        .replace('{{channelId}}', chatMessage.channelId)
-        .replace('{{senderName}}', userName)
-        .replace('{{senderId}}', chatMessage.senderId)
-        .replace('{{quoteMessageId}}', chatMessage.quoteMessageId || "")
-        .replace('{{userContent}}', userContent.join(""))
-        .replace(/{{hasQuote,(.*?),(.*?)}}/, (_, arg1, arg2) =>
+      let messageText = new Template(template, /\{\{(\w+(?:\.\w+)*)\}\}/g).render({
+        messageId: chatMessage.messageId,
+        date: timeString,
+        channelType: chatMessage.channelType,
+        channelInfo: (chatMessage.channelType === "guild") ? `from_guild:${chatMessage.channelId}` : (chatMessage.channelType === "sandbox") ? "from_sandbox" : "from_private",
+        channelId: chatMessage.channelId,
+        senderName: userName,
+        senderId: chatMessage.senderId,
+        quoteMessageId: chatMessage.quoteMessageId || "",
+        userContent: userContent.join(""),
+      }).replace(/{{hasQuote,(.*?),(.*?)}}/, (_, arg1, arg2) =>
           chatMessage.quoteMessageId ? arg1 : arg2
         );
       processedMessage.push(messageText);

@@ -161,7 +161,12 @@ export async function ensureGroupMemberList(session: any, channelId?: string) {
  * @author deepseek
  **/
 export class Mutex {
+  private checkInterval: number;
   private isLocked: Map<string, boolean> = new Map();
+
+  constructor(checkInterval: number = 30) {
+    this.checkInterval = checkInterval;
+  }
 
   async acquire(id: string): Promise<void> {
     return new Promise((resolve) => {
@@ -174,7 +179,7 @@ export class Mutex {
             this.isLocked.set(id, true);
             resolve();
           } else {
-            setTimeout(check, 10);
+            setTimeout(check, this.checkInterval);
           }
         };
         check();

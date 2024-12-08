@@ -4,6 +4,7 @@ import { Context } from "koishi";
 import { promisify } from "util";
 
 import { Config } from "../config";
+import { Template } from "./string";
 
 export function getFileNameFromUrl(url: string): string {
   try {
@@ -112,27 +113,3 @@ export async function genSysPrompt(
   });
 }
 
-/**
- * 模板引擎
- * 
- * 和 JS 模板字符串差不多
- */
-class Template {
-  constructor(private templateString: string){}
-  render(model: any){
-    return this.templateString.replace(/\$\{(\w+(?:\.\w+)*)\}/g, (match, key) => {
-      return this.getValue(model, key.split('.'));
-    });
-  }
-  private getValue(data: any, keys: string[]) {
-    let value = data;
-    for (let key of keys) {
-      if (value && typeof value === 'object') {
-        value = value[key];
-      } else {
-        return '';
-      }
-    }
-    return value || '';
-  };
-}

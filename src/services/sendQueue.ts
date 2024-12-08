@@ -5,7 +5,7 @@ import { Config } from "../config";
 import { QueueManager } from "../managers/queueManager";
 import { ChatMessage } from "../models/ChatMessage";
 import { foldText } from "../utils/string";
-import { isChannelAllowed, ProcessingLock } from "../utils/toolkit";
+import { isChannelAllowed, Mutex } from "../utils/toolkit";
 
 export enum MarkType {
   Command = "指令消息",
@@ -28,7 +28,7 @@ export class SendQueue {
   private queueManager: QueueManager;
   private triggerCount: Map<string, number> = new Map();
   private mark = new Map<string, MarkType>();
-  readonly processingLock = new ProcessingLock();
+  readonly processingLock: Mutex;
 
   constructor(private ctx: Context, private config: Config) {
     for (let slotContain of config.MemorySlot.SlotContains) {
@@ -38,6 +38,8 @@ export class SendQueue {
     }
     this.slotSize = config.MemorySlot.SlotSize;
     this.queueManager = new QueueManager(ctx);
+
+    this.processingLock = new Mutex();
   }
   async checkQueueSize(channelId: string): Promise<boolean> {
     return (
@@ -75,7 +77,6 @@ export class SendQueue {
   // TODO: 防提示词注入
   async addMessage(message: ChatMessage) {
     if (!isChannelAllowed(this.config.MemorySlot.SlotContains, message.channelId)) return;
-    this.processingLock.start(message.messageId); // 这句可能没什么用？
     const markType = this.getMark(message.messageId) || MarkType.Unknown;
     //@ts-ignore
     if (markType === MarkType.Unknown || this.config.Settings.SelfReport.includes(markType)) {
@@ -85,7 +86,7 @@ export class SendQueue {
       await this.queueManager.enqueue(message);
       logger.info(`New message received, guildId = ${message.channelId}, content = ${foldText(message.content, 1000)}`);
     }
-    this.processingLock.end(message.messageId);
+    this.processingLock.release(message.messageId);
   }
 
   getMark(messageId: string): MarkType {
@@ -98,7 +99,7 @@ export class SendQueue {
 
   setTriggerCount(channelId: string, nextTriggerCount: number) {
     this.triggerCount.set(channelId, nextTriggerCount);
-    logger.info(`距离下次回复还剩 ${nextTriggerCount} 次`)
+    logger.info(`触发次数已被设置为 ${nextTriggerCount}`)
   }
 
   // 如果没有触发，将触发次数-1
