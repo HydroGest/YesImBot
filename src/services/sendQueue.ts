@@ -117,14 +117,14 @@ export class SendQueue {
   // prompt 中有写到 `那么你可能会想要把这个值设为1，表示再收到一条消息你就会立马发言一次。`
   // 所以为 1 时就应该返回 true，而这个值不应该是 0
   checkTriggerCount(channelId: string): boolean {
-    let triggerCount =
-      this.triggerCount.get(channelId) ??
-      this.config.MemorySlot.FirstTriggerCount;
+    let triggerCount = this.triggerCount.get(channelId) ?? this.config.MemorySlot.FirstTriggerCount;
     if (triggerCount > 1) {
       this.triggerCount.set(channelId, --triggerCount);
       logger.info(`距离下次回复还剩 ${triggerCount} 次`);
       return false;
     }
+    // 触发后删除对应条目，这样即使没有更新计数，也会使用默认值
+    this.triggerCount.delete(channelId);
     return true;
   }
 }
