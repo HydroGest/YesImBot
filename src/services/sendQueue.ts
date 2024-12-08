@@ -1,6 +1,6 @@
 import { Context } from "koishi";
 import { defineAccessor } from "@satorijs/core";
-
+import { Mutex } from "async-mutex";
 import { Config } from "../config";
 import { QueueManager } from "../managers/queueManager";
 import { ChatMessage } from "../models/ChatMessage";
@@ -29,6 +29,7 @@ export class SendQueue {
   private triggerCount: Map<string, number> = new Map();
   private mark = new Map<string, MarkType>();
   readonly processingLock = new ProcessingLock();
+  private channelMutexes: Map<string, Mutex> = new Map();
 
   constructor(private ctx: Context, private config: Config) {
     for (let slotContain of config.MemorySlot.SlotContains) {
@@ -39,6 +40,7 @@ export class SendQueue {
     this.slotSize = config.MemorySlot.SlotSize;
     this.queueManager = new QueueManager(ctx);
   }
+
   async checkQueueSize(channelId: string): Promise<boolean> {
     return (
       (await this.queueManager.getQueue(channelId, this.slotSize)).length >
@@ -86,6 +88,15 @@ export class SendQueue {
       logger.info(`New message received, guildId = ${message.channelId}, content = ${foldText(message.content, 1000)}`);
     }
     this.processingLock.end(message.messageId);
+  }
+
+  getChannelMutex(channelId: string): Mutex {
+    let mutex = this.channelMutexes.get(channelId);
+    if (!mutex) {
+      mutex = new Mutex();
+      this.channelMutexes.set(channelId, mutex);
+    }
+    return mutex;
   }
 
   getMark(messageId: string): MarkType {

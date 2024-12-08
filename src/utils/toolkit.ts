@@ -1,4 +1,5 @@
 import { Session } from "koishi";
+import { Mutex } from 'async-mutex';
 
 import { Config } from "../config";
 
@@ -30,58 +31,70 @@ export function containsFilter(sessionContent: string, FilterList: any): boolean
 }
 
 export class ProcessingLock {
-  private mutex: Mutex;
-  private processingGroups: Set<string> = new Set();
-  private readonly processCheckInterval = 30;
+  private readonly locks: Map<string, {
+    mutex: Mutex;
+    waiters: Array<(value: void) => void>;
+  }> = new Map();
 
   constructor() {
-    this.mutex = new Mutex();
+    this.locks = new Map();
+  }
+
+  private getLockData(id: string) {
+    if (!this.locks.has(id)) {
+      this.locks.set(id, {
+        mutex: new Mutex(),
+        waiters: []
+      });
+    }
+    return this.locks.get(id);
   }
 
   private async withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    try {
-      await this.mutex.acquire(id);
-      return await fn();
-    } finally {
-      this.mutex.release(id);
-    }
+    const lockData = this.getLockData(id);
+    return await lockData.mutex.runExclusive(fn);
   }
 
   async waitForProcess(groupId: string, timeout = 5000): Promise<void> {
-    const startTime = Date.now();
+    const lockData = this.locks.get(groupId);
+    if (!lockData) return;
 
-    while (true) {
-      const isProcessing = await this.withLock('processCheck', async () => {
-        return this.processingGroups.has(groupId);
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const index = lockData.waiters.indexOf(resolve);
+        if (index > -1) lockData.waiters.splice(index, 1);
+        reject(new Error('Timeout waiting for process'));
+      }, timeout);
+
+      lockData.waiters.push(() => {
+        clearTimeout(timer);
+        resolve();
       });
-
-      if (!isProcessing) return;
-
-      if (Date.now() - startTime > timeout) {
-        throw new Error(`Wait timeout for group ${groupId}`);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, this.processCheckInterval));
-    }
+    });
   }
 
   async start(groupId: string): Promise<void> {
-    await this.withLock('processUpdate', async () => {
-      this.processingGroups.add(groupId);
+    await this.withLock(groupId, async () => {
+      this.getLockData(groupId);
     });
   }
 
   async end(groupId: string): Promise<void> {
-    await this.withLock('processUpdate', async () => {
-      this.processingGroups.delete(groupId);
+    await this.withLock(groupId, async () => {
+      const lockData = this.locks.get(groupId);
+      if (lockData) {
+        lockData.waiters.forEach(resolve => resolve());
+        this.locks.delete(groupId);
+      }
     });
   }
 }
 
+
 export async function getBotName(botConfig: Config["Bot"], session: Session): Promise<string> {
   switch (botConfig.SelfAwareness) {
     case "群昵称":
-      if (session.guildId){
+      if (session.guildId) {
         const memberInfo = await session.onebot?.getGroupMemberInfo(session.guildId, session.bot.userId);
         return memberInfo?.card || memberInfo?.nickname || session.bot.user.name;
       } else {
@@ -181,38 +194,3 @@ export async function ensureGroupMemberList(session: any, channelId?: string) {
   return groupMemberList;
 }
 
-/**
- * 简单的 Mutex 实现
- * @author deepseek
- **/
-export class Mutex {
-  private checkInterval: number;
-  private isLocked: Map<string, boolean> = new Map();
-
-  constructor(checkInterval: number = 30) {
-    this.checkInterval = checkInterval;
-  }
-
-  async acquire(id: string): Promise<void> {
-    return new Promise((resolve) => {
-      if (!this.isLocked.get(id)) {
-        this.isLocked.set(id, true);
-        resolve();
-      } else {
-        const check = () => {
-          if (!this.isLocked.get(id)) {
-            this.isLocked.set(id, true);
-            resolve();
-          } else {
-            setTimeout(check, this.checkInterval);
-          }
-        };
-        check();
-      }
-    });
-  }
-
-  release(id: string): void {
-    this.isLocked.set(id, false);
-  }
-}
