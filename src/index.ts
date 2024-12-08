@@ -35,6 +35,7 @@ declare global {
 
 export function apply(ctx: Context, config: Config) {
   globalThis.logger = ctx.logger;
+  let shouldReTrigger = false;
 
   initDatabase(ctx);
 
@@ -121,9 +122,6 @@ export function apply(ctx: Context, config: Config) {
       return;
     });
 
-  const messageBuffers= new Map<string, Session[]>();
-  let isProcessing = new Map<string, boolean>();
-
   ctx.middleware(async (session: Session, next: Next) => {
     const channelId = session.channelId;
     if (!isChannelAllowed(config.MemorySlot.SlotContains, channelId) || session.author.id == session.selfId) {
@@ -131,87 +129,71 @@ export function apply(ctx: Context, config: Config) {
     }
 
     // 处理当前消息
-    try {
-      const channelId = session.channelId;
 
-      // 确保消息入库
-      await sendQueue.addMessage(await createMessage(session));
-  
-      // 检查是否应该回复
-      // 检测是否达到发送次数或被 at
-      // 返回 false 的条件：
-      // 达到触发条数 或者 用户消息提及机器人且随机条件命中。也就是说：
-      // 如果触发条数没有达到 (!isTriggerCountReached)
-      // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
-      // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
-      const loginStatus = await session.bot.getLogin();
-      const isBotOnline = loginStatus.status === 1;
-      const parsedElements = h.parse(session.content);
-      const isAtMentioned = parsedElements.some(element =>
-        element.type === 'at' &&
-        (element.attrs.id === session.bot.selfId || element.attrs.type === 'all' || (isBotOnline && element.attrs.type === 'here'))
-      );
-      const shouldReactToAt = Random.bool(config.MemorySlot.AtReactPossibility);
-      const isTriggerCountReached = sendQueue.checkTriggerCount(channelId);
-      const shouldReply = (isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode
-  
-      if (!shouldReply) return next();
+    // 确保消息入库
+    await sendQueue.addMessage(await createMessage(session));
 
-      // 如果正在处理消息，将新消息加入缓冲区
-      if (isProcessing.get(channelId)) {
-        let messageBuffer = messageBuffers.get(channelId) || [];
-        messageBuffer.push(session);
-        messageBuffers.set(channelId, messageBuffer);
-        return next();
-      }
-  
-      isProcessing.set(channelId, true);
+    // 检查是否应该回复
+    // 检测是否达到发送次数或被 at
+    // 返回 false 的条件：
+    // 达到触发条数 或者 用户消息提及机器人且随机条件命中。也就是说：
+    // 如果触发条数没有达到 (!isTriggerCountReached)
+    // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
+    // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
+    const loginStatus = await session.bot.getLogin();
+    const isBotOnline = loginStatus.status === 1;
+    const parsedElements = h.parse(session.content);
+    const isAtMentioned = parsedElements.some(element =>
+      element.type === 'at' &&
+      (element.attrs.id === session.bot.selfId || element.attrs.type === 'all' || (isBotOnline && element.attrs.type === 'here'))
+    );
+    const shouldReactToAt = Random.bool(config.MemorySlot.AtReactPossibility);
+    const isTriggerCountReached = sendQueue.checkTriggerCount(channelId);
+    const shouldReply = (isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode
 
+    if (!shouldReply) return next();
+    if (!await handleMessage(session)) return next();
+    if (shouldReTrigger) {
       if (!await handleMessage(session)) return next();
-    } 
-    
-    catch (error) {
-      ctx.logger.error(`处理消息时出错: ${error}`);
-    }
-    
-    finally {
-      isProcessing.set(channelId, false);
-      // 处理缓冲区中的消息
-      // 如果期间缓冲区被更新了，只响应最后一条消息，不过不保证获取到的历史消息是被触发那一刻的
-      // 思考：在 LLM 响应之前，如何确定下一条消息的 TriggerCount
-      if (messageBuffers[channelId] && messageBuffers[channelId].length > 0) {
-        const bufferedSessions: Session[] = messageBuffers[channelId];
-        messageBuffers[channelId] = [];
-        await handleMessage(bufferedSessions.pop());
-      }
-
-      // 是否允许运行时触发其他指令
-      // return next();
     }
   });
 
   async function handleMessage(session: Session): Promise<boolean> {
     const channelId = session.channelId;
 
-    // 处理内容
-    const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId));
-
-    // 生成响应
-    if (!chatHistory) {
-      if (config.Debug.DebugAsInfo) ctx.logger.info(`未获取到${channelId}的聊天记录`);
+    // 获取锁，没有就会创建一个
+    const channelMutex = sendQueue.getChannelMutex(channelId);
+    // 检查是否已经被锁，是就跳过，并且后续再次触发
+    if (channelMutex.isLocked()) {
+      if (config.Debug.DebugAsInfo)
+        ctx.logger.info(`频道 ${channelId} 正在处理另一个回复，跳过当前回复生成`);
+      shouldReTrigger = true;
       return false;
     }
+    shouldReTrigger = false;
+    // 尝试获取锁
+    const release = await channelMutex.acquire();
 
-    if (config.Debug.DebugAsInfo) ctx.logger.info("ChatHistory:\n" + chatHistory);
+    try {
+      // 处理内容
+      const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId));
+
+      // 生成响应
+      if (!chatHistory) {
+        if (config.Debug.DebugAsInfo) ctx.logger.info(`未获取到${channelId}的聊天记录`);
+        return false;
+      }
+
+      if (config.Debug.DebugAsInfo) ctx.logger.info("ChatHistory:\n" + chatHistory);
 
       const { current, adapter } = adapterSwitcher.getAdapter();
 
-    if (!adapter) {
-      ctx.logger.warn("没有可用的适配器");
-      return false;
-    }
+      if (!adapter) {
+        ctx.logger.warn("没有可用的适配器");
+        return false;
+      }
 
-    if (config.Debug.DebugAsInfo) ctx.logger.info(`Request sent, awaiting for response...`);
+      if (config.Debug.DebugAsInfo) ctx.logger.info(`Request sent, awaiting for response...`);
 
       let botName = await getBotName(config.Bot, session);
 
@@ -230,14 +212,14 @@ export function apply(ctx: Context, config: Config) {
         config.Debug.DebugAsInfo
       );
 
-    if (config.Debug.DebugAsInfo) ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
+      if (config.Debug.DebugAsInfo) ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
 
-    // 处理响应
-    let { status, content, nextTriggerCount, reason, replyTo, finalReply, logic, execute, quote, usage  } = chatResponse;
+      // 处理响应
+      let { status, content, nextTriggerCount, reason, replyTo, finalReply, logic, execute, quote, usage } = chatResponse;
 
-    if (isEmpty(replyTo)) replyTo = session.channelId;
+      if (isEmpty(replyTo)) replyTo = session.channelId;
 
-    sendQueue.setTriggerCount(channelId, nextTriggerCount);
+      sendQueue.setTriggerCount(channelId, nextTriggerCount);
 
       if (status === "fail") {
         const failTemplate = `
@@ -283,28 +265,34 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
         });
       }
 
-    if (!isEmpty(finalReply)) {
-      if (!isEmpty(quote)) {
-        finalReply = h.quote(quote).toString() + finalReply;
+      if (!isEmpty(finalReply)) {
+        if (!isEmpty(quote)) {
+          finalReply = h.quote(quote).toString() + finalReply;
+        }
+        const messageIds = (replyTo === session.channelId)
+          ? await session.send(finalReply)
+          : await session.bot.sendMessage(replyTo, finalReply);
+        for (const messageId of messageIds) {
+          await sendQueue.addMessage({
+            senderId: session.selfId,
+            senderName: session.bot.user.name,
+            senderNick: await getBotName(config.Bot, session),
+            messageId,
+            channelId: replyTo,
+            channelType: replyTo.startsWith("private:") ? "private" : (replyTo === "#" ? "sandbox" : "guild"),
+            sendTime: new Date(),
+            content: finalReply,
+            quoteMessageId: quote
+          });
+        }
       }
-      const messageIds = (replyTo === session.channelId)
-        ? await session.send(finalReply)
-        : await session.bot.sendMessage(replyTo, finalReply);
-      for (const messageId of messageIds) {
-        await sendQueue.addMessage({
-          senderId: session.selfId,
-          senderName: session.bot.user.name,
-          senderNick: await getBotName(config.Bot, session),
-          messageId,
-          channelId: replyTo,
-          channelType: replyTo.startsWith("private:") ? "private" : (replyTo === "#" ? "sandbox" : "guild"),
-          sendTime: new Date(),
-          content: finalReply,
-          quoteMessageId: quote
-        });
-      }
+      return true;
+    } catch (error) {
+      ctx.logger.error(`处理消息时出错: ${error}`);
+      return false;
+    } finally {
+      release();
     }
-    return true;
   }
 }
 
