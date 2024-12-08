@@ -30,26 +30,37 @@ export function containsFilter(sessionContent: string, FilterList: any): boolean
 }
 
 export class ProcessingLock {
+  private mutex: Mutex;
   private processingGroups: Set<string> = new Set();
-  private readonly CHECK_INTERVAL = 30;
+  readonly processCheckInterval = 30;
+
+  constructor() {
+    this.mutex = new Mutex();
+  }
 
   async waitForProcess(groupId: string): Promise<void> {
-    return new Promise((resolve) => {
-      const timer = setInterval(() => {
-        if (!this.processingGroups.has(groupId)) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, this.CHECK_INTERVAL);
-    })
+    while (true) {
+      await this.mutex.acquire('processCheck');
+      if (!this.processingGroups.has(groupId)) {
+        this.mutex.release('processCheck');
+        return;
+      }
+      this.mutex.release('processCheck');
+      // 避免过度占用CPU
+      await new Promise(resolve => setTimeout(resolve, this.processCheckInterval));
+    }
   }
 
-  start(groupId: string): void {
+  async start(groupId: string): Promise<void> {
+    await this.mutex.acquire('processUpdate');
     this.processingGroups.add(groupId);
+    this.mutex.release('processUpdate');
   }
 
-  end(groupId: string): void {
+  async end(groupId: string): Promise<void> {
+    await this.mutex.acquire('processUpdate');
     this.processingGroups.delete(groupId);
+    this.mutex.release('processUpdate');
   }
 }
 

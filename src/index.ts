@@ -72,12 +72,13 @@ export function apply(ctx: Context, config: Config) {
       "清除记忆 -p 1234567890",
     ].join("\n"))
     .action(async ({ session, options }) => {
-      await sendQueue.processingLock.acquire(session.messageId);
+      sendQueue.processingLock.start(session.messageId);
 
       sendQueue.setMark(session.messageId, MarkType.Command);
 
       const msgDestination = session.guildId || session.channelId;
       let result = "";
+      await sendQueue.processingLock.waitForProcess(session.messageId);
 
       if (options.person) {
         // 按用户ID清除记忆
@@ -128,7 +129,6 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
-    await sendQueue.processingLock.acquire(session.messageId); // 队列锁，确保消息入库
     await mutex.acquire(channelId); // 线程锁，一个会话只能有一条待处理的消息  在等待期间，多余的消息应该如何处理？
     await sendQueue.addMessage(await createMessage(session));
     //const channelQuene = await sendQueue.getQueue(channelId);
@@ -140,12 +140,11 @@ export function apply(ctx: Context, config: Config) {
     // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
     // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
     //const isQueueFull: boolean = channelQuene.length > config.MemorySlot.SlotSize;
-    const isMixedQueueFull: boolean = mixedQuene.length > config.MemorySlot.SlotSize;
     const loginStatus = await session.bot.getLogin();
     const isBotOnline = loginStatus.status === 1;
     const parsedElements = h.parse(session.content);
     const isAtMentioned = parsedElements.some(element =>
-      element.type === 'at' && 
+      element.type === 'at' &&
       (element.attrs.id === session.bot.selfId || element.attrs.type === 'all' || (isBotOnline && element.attrs.type === 'here'))
     );
     const shouldReactToAt = Random.bool(config.MemorySlot.AtReactPossibility);
