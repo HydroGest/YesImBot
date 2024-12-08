@@ -172,6 +172,13 @@ export abstract class BaseAdapter {
 
     // 提取其他字段
     replyTo = LLMResponse.replyTo || "";
+    // 如果 replyTo 不是私聊会话，只保留数字部分
+    if (replyTo && !replyTo.startsWith('private:')) {
+      const numericMatch = replyTo.match(/\d+/);
+      if (numericMatch) {
+        replyTo = numericMatch[0].replace(/\s/g, "");
+      }
+    }
 
     // 规范化 nextTriggerCount，确保在设置的范围内
     const nextTriggerCountbyLLM = Math.max(

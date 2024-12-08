@@ -130,16 +130,17 @@ export function apply(ctx: Context, config: Config) {
     }
 
     await mutex.acquire(channelId); // 线程锁，一个会话只能有一条待处理的消息  在等待期间，多余的消息应该如何处理？
-    await sendQueue.addMessage(await createMessage(session));
-    //const channelQuene = await sendQueue.getQueue(channelId);
-    const mixedQuene = await sendQueue.getMixedQueue(channelId);
-    // 检测是否达到发送次数或被 at
-    // 返回 false 的条件：
-    // 达到触发条数 或者 用户消息提及机器人且随机条件命中。也就是说：
-    // 如果触发条数没有达到 (!isTriggerCountReached)
-    // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
-    // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
-    //const isQueueFull: boolean = channelQuene.length > config.MemorySlot.SlotSize;
+    try {
+      await sendQueue.addMessage(await createMessage(session));
+      //const channelQuene = await sendQueue.getQueue(channelId);
+      const mixedQuene = await sendQueue.getMixedQueue(channelId);
+      // 检测是否达到发送次数或被 at
+      // 返回 false 的条件：
+      // 达到触发条数 或者 用户消息提及机器人且随机条件命中。也就是说：
+      // 如果触发条数没有达到 (!isTriggerCountReached)
+      // 并且消息没有提及机器人或者提及了机器人但随机条件未命中 (!(isAtMentioned && shouldReactToAt))
+      // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
+      //const isQueueFull: boolean = channelQuene.length > config.MemorySlot.SlotSize;
     const loginStatus = await session.bot.getLogin();
     const isBotOnline = loginStatus.status === 1;
     const parsedElements = h.parse(session.content);
@@ -211,7 +212,7 @@ export function apply(ctx: Context, config: Config) {
 
     if (status === "fail") {
       const failTemplate = `
-LLM 的响应无法正确解析:
+LLM 的响应无法正确解析，来自 API ${current}:
 ${reason}
 原始响应:
 ${content}
@@ -223,7 +224,7 @@ ${content}
     }
 
     const template = `
-${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyTo} 的消息已生成，来自 API ${current}:`}
+${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyTo} 的消息已生成`}，来自 API ${current}:
 ---
 内容: ${finalReply && finalReply.trim() ? finalReply : "无"}
 ---
@@ -276,7 +277,13 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
       }
     }
     mutex.release(channelId);
-  });
+  } catch (error) {
+    ctx.logger.error(`Error in middleware: ${error}`);
+  } finally {
+    mutex.release(channelId);
+    return next();
+  }
+});
 }
 
 
