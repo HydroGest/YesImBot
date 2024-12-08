@@ -9,6 +9,7 @@ import { Config } from "../config";
 import { convertUrltoBase64, removeBase64Prefix } from "../utils/imageUtils";
 import { CacheManager } from "../managers/cacheManager";
 import { AssistantMessage, ImageComponent, SystemMessage, TextComponent, UserMessage } from "../adapters/creators/component";
+import { isEmpty } from "../utils/string";
 
 const cacheManager = new CacheManager<string>(
   path.join(__dirname, "../../data/cache/ImageDescription.json")
@@ -196,9 +197,11 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
         return cacheManager.get(cacheKey);
       }
 
-      const base64 = await convertUrltoBase64(imgUrl);
-
       try {
+        const base64 = await convertUrltoBase64(imgUrl);
+
+        if (isEmpty(base64)) throw new Error("Failed to convert image to base64");
+
         const description = await service.getDescription(
           imgUrl,
           base64,
@@ -223,9 +226,7 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
       return "[图片]";
 
     case "不做处理，以<img>标签形式呈现":
-      return h.image(imgUrl, {
-        summary
-      }).toString();
+      return h.image(imgUrl, { summary }).toString();
   }
 }
 

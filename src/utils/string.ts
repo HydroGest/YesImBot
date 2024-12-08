@@ -1,5 +1,6 @@
 // 折叠文本中间部分
 export function foldText(text: string, maxLength: number): string {
+  if (!text) return "";
   if (text.length > maxLength) {
     const halfLength = Math.floor(maxLength / 2);
     const foldedChars = text.length - maxLength;

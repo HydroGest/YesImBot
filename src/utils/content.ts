@@ -5,7 +5,13 @@ import { Config } from '../config';
 import { ChatMessage } from '../models/ChatMessage';
 import { Template } from './string';
 
-
+/**
+ * 处理用户消息
+ * @param config 
+ * @param session 
+ * @param messages 
+ * @returns 
+ */
 export async function processContent(config: Config, session: Session, messages: ChatMessage[]): Promise<string> {
   const processedMessage: string[] = [];
   for (let chatMessage of messages) {
@@ -87,4 +93,35 @@ export async function processContent(config: Config, session: Session, messages:
   }
 
   return processedMessage.join("\n");
+}
+
+export function processText(rules: Config["Bot"]["BotSentencePostProcess"], text: string): string[] {
+  const replacements = rules.map(item => ({
+    regex: new RegExp(item.replacethis, 'g'),
+    replacement: item.tothis
+  }));
+  let quoteMessageId;
+  let splitRegex = /(?<=[。?!？！])\s*/;
+  const sentences: string[] = [];
+  // 发送前先处理 Bot 消息
+  h.parse(text).forEach((node) => {
+    // 只针对纯文本进行处理
+    if (node.type === "text") {
+      let text = node.attrs.content;
+      // 关键词替换
+      for (let { regex, replacement } of replacements) {
+        text = text.replace(regex, replacement);
+      }
+      // 分句
+      sentences.push(...text.split(splitRegex));
+    } else if (node.type === "quote") {
+      quoteMessageId = node.attrs.id;
+    } else {
+      let temp = sentences.pop() || "";
+      temp += node.toString();
+      sentences.push(temp);
+    }
+  });
+  if (quoteMessageId) sentences[0] = h.quote(quoteMessageId).toString() + sentences[0];
+  return sentences;
 }

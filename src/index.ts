@@ -9,7 +9,7 @@ import { MarkType, SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
 import { initDatabase } from "./database";
 import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creators/component";
-import { processContent } from "./utils/content";
+import { processContent, processText } from "./utils/content";
 import { foldText, isEmpty } from "./utils/string";
 import { createMessage } from "./models/ChatMessage";
 
@@ -266,31 +266,37 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
       }
 
       if (!isEmpty(finalReply)) {
-        if (!isEmpty(quote)) {
-          finalReply = h.quote(quote).toString() + finalReply;
+        let messageIds = [];
+        let sentences = processText(config["Bot"]["BotSentencePostProcess"], finalReply);
+        if (!isEmpty(quote)) sentences[0] = h.quote(quote).toString() + sentences[0];
+        for (const sentence of sentences) {
+          let arr = (replyTo === session.channelId)
+            ? await session.send(sentence)
+            : await session.bot.sendMessage(replyTo, sentence);
+          messageIds = messageIds.concat(arr);
         }
-        const messageIds = (replyTo === session.channelId)
-          ? await session.send(finalReply)
-          : await session.bot.sendMessage(replyTo, finalReply);
-        for (const messageId of messageIds) {
-          await sendQueue.addMessage({
-            senderId: session.selfId,
-            senderName: session.bot.user.name,
-            senderNick: await getBotName(config.Bot, session),
-            messageId,
-            channelId: replyTo,
-            channelType: replyTo.startsWith("private:") ? "private" : (replyTo === "#" ? "sandbox" : "guild"),
-            sendTime: new Date(),
-            content: finalReply,
-            quoteMessageId: quote
-          });
-        }
+
+        await sendQueue.addMessage({
+          senderId: session.selfId,
+          senderName: session.bot.user.name,
+          senderNick: await getBotName(config.Bot, session),
+          messageId: messageIds[0],
+          channelId: replyTo,
+          channelType: replyTo.startsWith("private:") ? "private" : (replyTo === "#" ? "sandbox" : "guild"),
+          sendTime: new Date(),
+          content: finalReply,
+          quoteMessageId: quote
+        });
       }
       return true;
-    } catch (error) {
+    } 
+    
+    catch (error) {
       ctx.logger.error(`处理消息时出错: ${error}`);
       return false;
-    } finally {
+    } 
+    
+    finally {
       release();
     }
   }
@@ -309,3 +315,5 @@ async function redirectLogicMessage(
     sendQueue.setMark(messageId, MarkType.LogicRedirect);
   }
 }
+
+
