@@ -194,8 +194,8 @@ export function apply(ctx: Context, config: Config) {
         msg = messages.join('，');
       }
 
-      const commandResponseId = config.Debug.TestMode
-        ? (await session.bot.sendMessage(msgDestination, msg, null, { session }))[0]
+      const commandResponseId = (msgDestination === session.channelId)
+        ? (await session.sendQueued(msg))[0]
         : (await session.bot.sendMessage(msgDestination, msg))[0];
       sendQueue.clearQuietTimeout(msgDestination); // 发
 
@@ -608,8 +608,8 @@ ${handledRes.originalRes}`);
       if (handledRes.execute) {
         handledRes.execute.forEach(async (command) => {
           try {
-            const botMessageId = config.Debug.TestMode
-              ? (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command), null, { session }))[0]
+            const botMessageId = (finalReplyTo === session.channelId)
+              ? (await session.sendQueued(h("execute", {}, command)))[0]
               : (await session.bot.sendMessage(finalReplyTo, h("execute", {}, command)))[0]; // 执行每个指令，获取返回的消息ID字符串数组
             // sendQueue.clearQuietTimeout(finalReplyTo); // 发，但指令执行不需要清除静默期
             if (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息") { // 虽然 LLM 使用的指令本身并不会发到消息界面，但为了防止 LLM 忘记自己用过指令，加入队列
@@ -653,8 +653,8 @@ ${handledRes.originalRes}`);
           const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
           await sleep(waitTime * 1000);
         }
-        finalBotMsgId = config.Debug.TestMode
-          ? (await session.bot.sendMessage(finalReplyTo, sentence, null, { session }))[0]
+        finalBotMsgId = (finalReplyTo === session.channelId)
+          ? (await session.sendQueued(sentence))[0]
           : (await session.bot.sendMessage(finalReplyTo, sentence))[0];
         sendQueue.clearQuietTimeout(finalReplyTo); // 发
         if (config.Settings.WholetoSplit && (config.Settings.AddWhattoQueue === "所有此插件发送和接收的消息" || config.Settings.AddWhattoQueue === "所有和LLM交互的消息")) {
