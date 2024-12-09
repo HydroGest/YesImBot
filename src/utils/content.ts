@@ -4,13 +4,14 @@ import { getImageDescription } from '../services/imageViewer';
 import { Config } from '../config';
 import { ChatMessage } from '../models/ChatMessage';
 import { Template } from './string';
+import { getMemberName } from './toolkit';
 
 /**
  * 处理用户消息
- * @param config 
- * @param session 
- * @param messages 
- * @returns 
+ * @param config
+ * @param session
+ * @param messages
+ * @returns
  */
 export async function processContent(config: Config, session: Session, messages: ChatMessage[]): Promise<string> {
   const processedMessage: string[] = [];
@@ -21,9 +22,11 @@ export async function processContent(config: Config, session: Session, messages:
     switch (config.Bot.NickorName) {
       case "群昵称":
         userName = chatMessage.senderNick;
+        break;
       case "用户昵称":
       default:
         userName = chatMessage.senderName;
+        break;
     }
     const userContent = [];
     const template = config.Settings.SingleMessageStrctureTemplate;
@@ -35,7 +38,12 @@ export async function processContent(config: Config, session: Session, messages:
           userContent.push(elem.attrs.content);
           break;
         case "at":
-          const safeAttrs = Object.entries(elem.attrs)
+          const attrs = { ...elem.attrs };
+          // 似乎getMemberName的实现有问题，无法正确获取到群昵称，总是获取到用户昵称。修复后，取消注释下面的代码
+          //if (attrs.name && attrs.id) {
+          //  attrs.name = await getMemberName(config, session, attrs.id, chatMessage.channelId) || attrs.name;
+          //}
+          const safeAttrs = Object.entries(attrs)
             .map(([key, value]) => {
               // 确保value是字符串
               const strValue = String(value);
@@ -101,7 +109,7 @@ export function processText(rules: Config["Bot"]["BotSentencePostProcess"], text
     replacement: item.tothis
   }));
   let quoteMessageId;
-  let splitRegex = /(?<=[。?!？！])\s*/;
+  let splitRegex = /(?<=[。?!？！])\s*/; // 希望可以自定义这个
   const sentences: string[] = [];
   // 发送前先处理 Bot 消息
   h.parse(text).forEach((node) => {
