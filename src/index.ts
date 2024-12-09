@@ -7,6 +7,7 @@ import { getBotName, isChannelAllowed } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { MarkType, SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
+import { schemaPrompt } from "./adapters/creators/schema";
 import { initDatabase } from "./database";
 import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creators/component";
 import { processContent, processText } from "./utils/content";
@@ -207,7 +208,8 @@ export function apply(ctx: Context, config: Config) {
           SystemMessage(await genSysPrompt(config, {
             curGroupName: channelId,
             BotName: botName,
-            BotSelfId: session.bot.selfId
+            BotSelfId: session.bot.selfId,
+            schemaPrompt
           })),
           AssistantMessage("Resolve OK"),
           UserMessage(chatHistory),

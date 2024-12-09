@@ -144,8 +144,8 @@ export abstract class BaseAdapter {
 
     // 构建 finalResponse
     if (!config.Settings.AllowErrorFormat) {
-      if (LLMResponse.finReply || LLMResponse.reply) {
-        finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
+      if (LLMResponse.finalReply || LLMResponse.reply) {
+        finalResponse += LLMResponse.finalReply || LLMResponse.reply || "";
       } else {
         status = "fail"; // 回复格式错误
         reason = `回复格式错误: ${content}`;
@@ -154,7 +154,7 @@ export abstract class BaseAdapter {
         }
       }
     } else {
-      finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
+      finalResponse += LLMResponse.finalReply || LLMResponse.reply || "";
       // 兼容弱智模型的错误回复
       const possibleResponse = [
         LLMResponse.msg,
