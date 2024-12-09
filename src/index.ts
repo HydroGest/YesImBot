@@ -55,6 +55,8 @@ export function apply(ctx: Context, config: Config) {
   });
 
   ctx.on("message-created", async (session) => {
+    // 等待1毫秒
+    await new Promise((resolve) => setTimeout(resolve, 1));
     await sendQueue.addMessage(await createMessage(session));
   });
 
@@ -78,7 +80,10 @@ export function apply(ctx: Context, config: Config) {
 
       const msgDestination = session.guildId || session.channelId;
       let result = "";
-      await sendQueue.processingLock.waitForProcess(session.messageId);
+      // 私聊时，ctx.on先于ctx.command执行，所以这里不需要等待。这是什么奇怪的特性，不知道会不会和版本和适配器类型有关？或许应该强制让ctx.on先于ctx.command执行，然后这里的等待删掉？但是这样咱们的setMark就不能及时标记了；让ctx.command先于ctx.on执行的话，调用指令的那条消息就清除不到了。现在选择让ctx.command等待1毫秒。
+      //if (!msgDestination.startsWith("private:")) {
+        await sendQueue.processingLock.waitForProcess(session.messageId);
+      //}
 
       if (options.person) {
         // 按用户ID清除记忆
@@ -289,13 +294,13 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
         });
       }
       return true;
-    } 
-    
+    }
+
     catch (error) {
       ctx.logger.error(`处理消息时出错: ${error}`);
       return false;
-    } 
-    
+    }
+
     finally {
       release();
     }
