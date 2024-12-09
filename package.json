@@ -16,7 +16,8 @@
     ],
     "license": "MIT",
     "scripts": {
-        "test": "jest"
+        "test": "jest",
+        "generate": "ts-node scripts/generateSchema.ts"
     },
     "keywords": [
         "chatbot",
