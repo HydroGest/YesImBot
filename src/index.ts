@@ -277,6 +277,7 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
         let sentences = processText(config["Bot"]["BotSentencePostProcess"], finalReply);
         if (!isEmpty(quote)) sentences[0] = h.quote(quote).toString() + sentences[0];
         for (const sentence of sentences) {
+          if (isEmpty(sentence)) continue;
           let arr = (replyTo === session.channelId)
             ? await session.send(sentence)
             : await session.bot.sendMessage(replyTo, sentence);

@@ -115,13 +115,16 @@ export function processText(rules: Config["Bot"]["BotSentencePostProcess"], text
   h.parse(text).forEach((node) => {
     // 只针对纯文本进行处理
     if (node.type === "text") {
-      let text = node.attrs.content;
+      let text: string = node.attrs.content;
       // 关键词替换
       for (let { regex, replacement } of replacements) {
         text = text.replace(regex, replacement);
       }
       // 分句
-      sentences.push(...text.split(splitRegex));
+      let temp = text.split(splitRegex);
+      let last = sentences.pop() || "";
+      let first = temp.shift() || "";
+      sentences.push(last + first, ...temp);
     } else if (node.type === "quote") {
       quoteMessageId = node.attrs.id;
     } else {
