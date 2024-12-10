@@ -3,7 +3,7 @@ import JSON5 from "json5";
 
 import { foldText } from "./string";
 
-export async function sendRequest(url: string, APIKey: string, requestBody: any, debug: boolean): Promise<any> {
+export async function sendRequest(url: string, APIKey: string, requestBody: any, debug: boolean = false): Promise<any> {
     if (debug) {
       logger.info(`Request URL: ${url}`);
       logger.info(`Request body: \n${foldText(JSON5.stringify(requestBody, null, 2), 2100)}`);

@@ -4,7 +4,7 @@ import { Random } from "koishi";
 import { Config } from "../config";
 import { Message } from "./creators/component";
 import { escapeUnicodeCharacters } from "../utils/string";
-import { emojiManager } from "../managers/emojiManager";
+import { EmojiManager } from "../managers/emojiManager";
 
 interface Usage {
   prompt_tokens: number;
@@ -40,9 +40,19 @@ export abstract class BaseAdapter {
 
   constructor(
     protected adapterName: string,
-    protected parameters: Config["Parameters"]
+    protected parameters?: Config["Parameters"]
   ) {
-    logger.info(`Adapter: ${this.adapterName} registered`);
+    if (!parameters) {
+      this.parameters = {
+        Temperature: 1.36,
+        MaxTokens: 4096,
+        TopP: 1,
+        FrequencyPenalty: 0,
+        PresencePenalty: 0,
+        Stop: [],
+        OtherParameters: [],
+      }
+    }
 
     // 解析其他参数
     this.otherParams = {};
@@ -71,6 +81,8 @@ export abstract class BaseAdapter {
         }
       );
     }
+
+    logger.info(`Adapter: ${this.adapterName} registered`);
   }
 
   abstract chat(messages: Message[], debug?: Boolean): Promise<Response>;
@@ -199,6 +211,8 @@ export abstract class BaseAdapter {
     // 反转义 <face> 消息
     const faceRegex = /\[表情[:：]\s*([^\]]+)\]/g;
     const matches = Array.from(finalResponse.matchAll(faceRegex));
+
+    const emojiManager = new EmojiManager(config.Embedding);
 
     const replacements = await Promise.all(
       matches.map(async (match) => {

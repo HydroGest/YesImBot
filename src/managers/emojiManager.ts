@@ -3,10 +3,9 @@ import JSON5 from "json5";
 import { readFileSync } from "fs";
 
 import { Config } from "../config";
-import {
-  runEmbedding,
-  calculateCosineSimilarity,
-} from "../services/embeddingService";
+import { calculateCosineSimilarity, EmbeddingsBase } from "../embeddings/base";
+import { getEmbedding } from "../utils/factory";
+import { CacheManager } from "./cacheManager";
 
 
 interface Emoji {
@@ -19,8 +18,9 @@ export class EmojiManager {
   private nameToId: { [key: string]: string } = {};
   private nameEmbeddings: { [key: string]: number[] } = {};
   private lastEmbeddingModel: string | null = null;
+  private client: EmbeddingsBase;
 
-  constructor() {
+  constructor(embeddingConfig: Config["Embedding"]) {
     const emojisFile = path.join(__dirname, "../../data/emojis.json");
     const emojis: Emoji[] = JSON5.parse(readFileSync(emojisFile, "utf-8"));
 
@@ -28,20 +28,9 @@ export class EmojiManager {
       this.idToName[emoji.id] = emoji.name;
       this.nameToId[emoji.name] = emoji.id;
     });
-  }
 
-  private async getEmbedding(embeddingConfig: Config["Embedding"], text: string, debug = false): Promise<number[]> {
-    try {
-      const vec = await runEmbedding(
-        embeddingConfig,
-        text,
-        debug
-      );
-      return vec;
-    } catch (error) {
-      logger.warn("获取嵌入向量失败:", error);
-      throw error;
-    }
+    const cacheManager = new CacheManager<number[]>(path.join(__dirname, `../../data/.vector_cache/emoji.bin`), true);
+    this.client = getEmbedding(embeddingConfig, cacheManager);
   }
 
   private async initializeEmbeddings(embeddingConfig: Config["Embedding"], debug = false): Promise<void> {
@@ -56,7 +45,7 @@ export class EmojiManager {
 
       const names = Object.values(this.idToName);
       for (const name of names) {
-        this.nameEmbeddings[name] = await this.getEmbedding(embeddingConfig, name, debug);
+        this.nameEmbeddings[name] = await this.client.embed(name);
       }
 
       // 更新已使用的模型记录
@@ -88,7 +77,7 @@ export class EmojiManager {
       await this.initializeEmbeddings(embeddingConfig, debug);
 
       // 获取输入文本的嵌入向量
-      const inputEmbedding = await this.getEmbedding(embeddingConfig, name, debug);
+      const inputEmbedding = await this.client.embed(name);
 
       let maxSimilarity = 0;
       let mostSimilarName: string | undefined;
@@ -110,5 +99,3 @@ export class EmojiManager {
     }
   }
 }
-
-export const emojiManager = new EmojiManager();

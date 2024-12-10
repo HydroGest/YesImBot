@@ -1,4 +1,6 @@
 import { Schema } from "koishi";
+import { Config as EmbeddingsConfig } from "./embeddings/config";
+import { Config as AdapterConfig } from "./adapters/config";
 
 export interface Config {
   MemorySlot: {
@@ -12,15 +14,7 @@ export interface Config {
     AtReactPossibility?: number;
     Filter: string[];
   };
-  API: {
-    APIList: {
-      APIType: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
-      BaseURL: string;
-      UID: string;
-      APIKey: string;
-      AIModel: string;
-    }[];
-  };
+  API: AdapterConfig;
   Parameters: {
     Temperature: number;
     MaxTokens: number;
@@ -44,15 +38,7 @@ export interface Config {
     };
     SimilarityThreshold?: number;
   };
-  Embedding: {
-    Enabled?: boolean;
-    APIType?: string;
-    BaseURL?: string;
-    APIKey?: string;
-    EmbeddingModel?: string;
-    RequestBody?: string;
-    GetVecRegex?: string;
-  };
+  Embedding: EmbeddingsConfig;
   ImageViewer: {
     How:
       | "LLM API 自带的多模态能力"
@@ -153,25 +139,7 @@ export const Config: Schema<Config> = Schema.object({
       .description("过滤的词汇（防止被调皮群友/机器人自己搞傻）"),
   }).description("记忆槽位设置"),
 
-  API: Schema.object({
-    APIList: Schema.array(
-      Schema.object({
-        APIType: Schema.union(["OpenAI", "Cloudflare", "Ollama", "Custom URL"])
-          .default("OpenAI")
-          .description("API 类型"),
-        BaseURL: Schema.string()
-          .default("https://api.openai.com/")
-          .description("API 基础 URL, 设置为“Custom URL”需要填写完整的 URL"),
-        UID: Schema.string()
-          .default("若非 Cloudflare 可不填")
-          .description("Cloudflare UID"),
-        APIKey: Schema.string().required().description("你的 API 令牌"),
-        AIModel: Schema.string()
-          .default("@cf/meta/llama-3-8b-instruct")
-          .description("模型 ID"),
-      })
-    ).description("单个 LLM API 配置，可配置多个 API 进行负载均衡。"),
-  }).description("LLM API 相关配置"),
+  API: AdapterConfig,
 
   Parameters: Schema.object({
     Temperature: Schema.number()
@@ -294,29 +262,7 @@ export const Config: Schema<Config> = Schema.object({
   //     ])
   // ]),
 
-  Embedding: Schema.intersect([
-    Schema.object({
-      Enabled: Schema.boolean().default(false),
-    }).description("是否启用 Embedding"),
-    Schema.union([
-      Schema.object({
-        Enabled: Schema.const(true).required(),
-        APIType: Schema.union(["OpenAI", "Custom"])
-          .default("OpenAI")
-          .description("Embedding API 类型"),
-        BaseURL: Schema.string()
-          .default("https://api.openai.com")
-          .description("Embedding API 基础 URL"),
-        APIKey: Schema.string().required().description("API 令牌"),
-        EmbeddingModel: Schema.string()
-          .default("text-embedding-3-large")
-          .description("Embedding 模型 ID"),
-        RequestBody: Schema.string().description("自定义请求体。其中：`<text>`（包含尖括号）会被替换成用于计算嵌入向量的文本；`<apikey>`（包含尖括号）会被替换成此页面设置的 API 密钥；<model>（包含尖括号）会被替换成此页面设置的模型名称"),
-        GetVecRegex: Schema.string().description("从自定义Embedding服务提取嵌入向量的正则表达式。注意转义"),
-      }),
-      Schema.object({}),
-    ]),
-  ]),
+  Embedding: EmbeddingsConfig,
 
   ImageViewer: Schema.object({
     How: Schema.union([

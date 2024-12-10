@@ -11,18 +11,17 @@ export class CloudflareAdapter extends BaseAdapter {
   private model: string;
 
   constructor(
-    baseUrl: string, 
-    apiKey: string, 
-    uid: string, 
+    baseUrl: string,
+    apiKey: string,
+    uid: string,
     model: string,
-    parameters: Config["Parameters"]
+    parameters?: Config["Parameters"]
   ) {
     super("Cloudflare", parameters);
     this.url = `${baseUrl}/accounts/${uid}/ai/run/${model}`;
     this.apiKey = apiKey;
     this.uid = uid;
     this.model = model;
-
   }
 
   async chat(messages: Message[], debug = false):Promise<Response> {

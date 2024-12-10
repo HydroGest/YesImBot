@@ -12,7 +12,7 @@ export class OpenAIAdapter extends BaseAdapter {
     baseUrl: string,
     apiKey: string,
     model: string,
-    parameters: Config["Parameters"]
+    parameters?: Config["Parameters"]
   ) {
     super("OpenAI", parameters);
     this.url = `${baseUrl}/v1/chat/completions`;

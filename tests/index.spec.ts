@@ -1,11 +1,11 @@
 import path from "path";
 import assert from "assert";
+import { beforeAll, afterAll, jest, it, describe } from "@jest/globals";
 
 import { App } from "koishi";
 import { h } from "koishi";
 import mock, { MessageClient } from "@koishijs/plugin-mock";
 import { MockBot } from "@koishijs/plugin-mock";
-import { beforeAll, afterAll, jest, it, describe } from "@jest/globals";
 
 import database from "@koishijs/plugin-database-memory";
 import * as help from "@koishijs/plugin-help";

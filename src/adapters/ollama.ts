@@ -12,7 +12,7 @@ export class OllamaAdapter extends BaseAdapter {
     baseUrl: string,
     apiKey: string,
     model: string,
-    parameters: Config["Parameters"]
+    parameters?: Config["Parameters"]
   ) {
     super("Ollama", parameters);
     this.url = `${baseUrl}/api/chat`;

@@ -12,7 +12,7 @@ export class CustomAdapter extends BaseAdapter {
     baseUrl: string,
     apiKey: string,
     model: string,
-    parameters: Config["Parameters"]
+    parameters?: Config["Parameters"]
   ) {
     super("Custom URL", parameters);
     this.url = baseUrl;
