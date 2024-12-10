@@ -1,6 +1,6 @@
 import { Context, Next, Random, Session } from "koishi";
 import { LoggerService } from "@cordisjs/logger";
-import { h } from "koishi";
+import { h, sleep } from "koishi";
 
 import { Config } from "./config";
 import { getBotName, isChannelAllowed } from "./utils/toolkit";
@@ -13,6 +13,7 @@ import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creator
 import { processContent, processText } from "./utils/content";
 import { foldText, isEmpty } from "./utils/string";
 import { createMessage } from "./models/ChatMessage";
+import { convertUrltoBase64 } from "./utils/imageUtils";
 
 export const name = "yesimbot";
 
@@ -139,6 +140,21 @@ export function apply(ctx: Context, config: Config) {
     // 确保消息入库
     await sendQueue.addMessage(await createMessage(session));
 
+    const parsedElements = h.parse(session.content);
+
+    // h.select 怎么用？
+    parsedElements.forEach((element) => {
+      if (element.type === "img") {
+        convertUrltoBase64(element.attrs.src, element.attrs.fileUnique)
+          .then(() => {
+            ctx.logger.info(`Image[${element.attrs.fileUnique}] downloaded. file-size: ${element.attrs.fileSize}`);
+          })
+          .catch((reason) => {
+            ctx.logger.warn(`Image[${element.attrs.fileUnique}] download failed. ${reason}`)
+          });
+      }
+    });
+
     // 检查是否应该回复
     // 检测是否达到发送次数或被 at
     // 返回 false 的条件：
@@ -148,7 +164,7 @@ export function apply(ctx: Context, config: Config) {
     // 那么就会执行内部的代码，即跳过这个中间件，不向api发送请求
     const loginStatus = await session.bot.getLogin();
     const isBotOnline = loginStatus.status === 1;
-    const parsedElements = h.parse(session.content);
+
     const isAtMentioned = parsedElements.some(element =>
       element.type === 'at' &&
       (element.attrs.id === session.bot.selfId || element.attrs.type === 'all' || (isBotOnline && element.attrs.type === 'here'))
@@ -278,11 +294,23 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
         if (!isEmpty(quote)) sentences[0] = h.quote(quote).toString() + sentences[0];
         for (const sentence of sentences) {
           if (isEmpty(sentence)) continue;
+
+          if (config.Bot.WordsPerSecond > 0) {
+            // 按照字数等待
+            const waitTime = Math.ceil(sentence.length / config.Bot.WordsPerSecond);
+            await sleep(waitTime * 1000);
+          }
+
           let arr = (replyTo === session.channelId)
-            ? await session.send(sentence)
+            ? await session.sendQueued(sentence)
             : await session.bot.sendMessage(replyTo, sentence);
           messageIds = messageIds.concat(arr);
         }
+
+        // if (config.Settings.WholetoSplit) {
+
+        // }
+
 
         await sendQueue.addMessage({
           senderId: session.selfId,
@@ -295,6 +323,9 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
           content: finalReply,
           quoteMessageId: quote
         });
+        for (const messageId of messageIds) {
+          sendQueue.setMark(messageId, MarkType.Added);
+        }
       }
       return true;
     }

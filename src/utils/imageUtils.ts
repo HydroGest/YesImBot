@@ -1,6 +1,11 @@
+import path from "path";
 import https from "https";
+
 import axios from "axios";
 import sharp from "sharp";
+
+import { CacheManager } from "../managers/cacheManager";
+
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -14,9 +19,24 @@ async function compressImage(buffer: Buffer): Promise<Buffer> {
   return buffer;
 }
 
-// 从URL获取图片的base64编码
-export async function convertUrltoBase64(url: string): Promise<string> {
+const imageCache = new CacheManager<string>(path.join(__dirname, "../../data/cache/imageCache.bin"), true);
+
+/**
+ * 从URL获取图片的base64编码
+ * @param url 图片的URL
+ * @param cacheKey 指定缓存键，没有就用URL
+ * @param [ignoreCache=false] 是否忽略缓存
+ *
+ * @returns 图片的base64编码，包括base64前缀
+ **/
+export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreCache = false): Promise<string> {
   url = url.replace(/&amp;/g, "&");
+
+  cacheKey = cacheKey ?? url;
+
+  if (!ignoreCache && imageCache.has(cacheKey)) {
+    return imageCache.get(cacheKey);
+  }
   try {
     const response = await axios.get(url, {
       responseType: "arraybuffer",
@@ -29,7 +49,9 @@ export async function convertUrltoBase64(url: string): Promise<string> {
     let buffer = Buffer.from(response.data);
     const contentType = response.headers["content-type"] || "image/jpeg";
     buffer = await compressImage(buffer);
-    return `data:${contentType};base64,${buffer.toString("base64")}`;
+    const base64 = `data:${contentType};base64,${buffer.toString("base64")}`;
+    imageCache.set(cacheKey, base64);
+    return base64;
   } catch (error) {
     console.error("Error converting image to base64:", error.message);
     return "";

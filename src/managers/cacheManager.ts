@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-const BSON = require("../lib/bson.cjs");
-// import { BSON } from "../lib/bson";
+import BSON from "bson";
 
 // TODO: 允许自己指定缓存路径
 // TODO: 使用 zlib 进行压缩
@@ -32,10 +31,6 @@ export class CacheManager<T> {
   }
 
   private serialize(value: T): string {
-    if (this.enableBson) {
-      return BSON.serialize(value);
-    }
-
     if (value instanceof Map) {
       // 序列化 Map
       return JSON.stringify({
@@ -61,10 +56,6 @@ export class CacheManager<T> {
   }
 
   private deserialize(serialized: string): T {
-    if (this.enableBson) {
-      return BSON.deserialize(serialized);
-    }
-
     const parsed = JSON.parse(serialized);
     if (parsed && parsed.type === "Map") {
       return new Map(parsed.value) as unknown as T; // 恢复 Map

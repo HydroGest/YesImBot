@@ -198,7 +198,7 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
       }
 
       try {
-        const base64 = await convertUrltoBase64(imgUrl);
+        const base64 = await convertUrltoBase64(imgUrl, fileUnique);
 
         if (isEmpty(base64)) throw new Error("Failed to convert image to base64");
 
