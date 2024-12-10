@@ -1,4 +1,6 @@
 import { Schema } from "koishi";
+import { Config as EmbeddingsConfig } from "./embeddings/config";
+import { Config as AdapterConfig } from "./adapters/config";
 
 export interface Config {
   MemorySlot: {
@@ -12,15 +14,7 @@ export interface Config {
     AtReactPossibility?: number;
     Filter: string[];
   };
-  API: {
-    APIList: {
-      APIType: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
-      BaseURL: string;
-      UID: string;
-      APIKey: string;
-      AIModel: string;
-    }[];
-  };
+  API: AdapterConfig;
   Parameters: {
     Temperature: number;
     MaxTokens: number;
@@ -44,15 +38,7 @@ export interface Config {
     };
     SimilarityThreshold?: number;
   };
-  Embedding: {
-    Enabled?: boolean;
-    APIType?: string;
-    BaseURL?: string;
-    APIKey?: string;
-    EmbeddingModel?: string;
-    RequestBody?: string;
-    GetVecRegex?: string;
-  };
+  Embedding: EmbeddingsConfig;
   ImageViewer: {
     How:
       | "LLM API 自带的多模态能力"
@@ -93,12 +79,13 @@ export interface Config {
     }[];
   };
   Settings: {
+    SingleMessageStrctureTemplate: string;
     LogicRedirect: {
       Enabled?: boolean;
       Target?: string;
     };
     FirsttoAll: boolean;
-    AddWhattoQueue: "所有消息" | "所有此插件发送和接收的消息" | "所有和LLM交互的消息";
+    SelfReport: Array<"指令消息"|"逻辑重定向"|"和LLM交互的消息">
     WholetoSplit: boolean;
     UpdatePromptOnLoad: boolean;
     AllowErrorFormat: boolean;
@@ -152,25 +139,7 @@ export const Config: Schema<Config> = Schema.object({
       .description("过滤的词汇（防止被调皮群友/机器人自己搞傻）"),
   }).description("记忆槽位设置"),
 
-  API: Schema.object({
-    APIList: Schema.array(
-      Schema.object({
-        APIType: Schema.union(["OpenAI", "Cloudflare", "Ollama", "Custom URL"])
-          .default("OpenAI")
-          .description("API 类型"),
-        BaseURL: Schema.string()
-          .default("https://api.openai.com/")
-          .description("API 基础 URL, 设置为“Custom URL”需要填写完整的 URL"),
-        UID: Schema.string()
-          .default("若非 Cloudflare 可不填")
-          .description("Cloudflare UID"),
-        APIKey: Schema.string().required().description("你的 API 令牌"),
-        AIModel: Schema.string()
-          .default("@cf/meta/llama-3-8b-instruct")
-          .description("模型 ID"),
-      })
-    ).description("单个 LLM API 配置，可配置多个 API 进行负载均衡。"),
-  }).description("LLM API 相关配置"),
+  API: AdapterConfig,
 
   Parameters: Schema.object({
     Temperature: Schema.number()
@@ -293,29 +262,7 @@ export const Config: Schema<Config> = Schema.object({
   //     ])
   // ]),
 
-  Embedding: Schema.intersect([
-    Schema.object({
-      Enabled: Schema.boolean().default(false),
-    }).description("是否启用 Embedding"),
-    Schema.union([
-      Schema.object({
-        Enabled: Schema.const(true).required(),
-        APIType: Schema.union(["OpenAI", "Custom"])
-          .default("OpenAI")
-          .description("Embedding API 类型"),
-        BaseURL: Schema.string()
-          .default("https://api.openai.com")
-          .description("Embedding API 基础 URL"),
-        APIKey: Schema.string().required().description("API 令牌"),
-        EmbeddingModel: Schema.string()
-          .default("text-embedding-3-large")
-          .description("Embedding 模型 ID"),
-        RequestBody: Schema.string().description("自定义请求体。其中：`<text>`（包含尖括号）会被替换成用于计算嵌入向量的文本；`<apikey>`（包含尖括号）会被替换成此页面设置的 API 密钥；<model>（包含尖括号）会被替换成此页面设置的模型名称"),
-        GetVecRegex: Schema.string().description("从自定义Embedding服务提取嵌入向量的正则表达式。注意转义"),
-      }),
-      Schema.object({}),
-    ]),
-  ]),
+  Embedding: EmbeddingsConfig,
 
   ImageViewer: Schema.object({
     How: Schema.union([
@@ -408,6 +355,9 @@ export const Config: Schema<Config> = Schema.object({
   }).description("机器人设定"),
 
   Settings: Schema.object({
+    SingleMessageStrctureTemplate: Schema.string()
+      .default("[{{messageId}}][{{date}} {{channelInfo}}] {{senderName}}<{{senderId}}> {{hasQuote,回复({{quoteMessageId}}): ,说: }}{{userContent}}")
+      .description("单条消息的结构模板"),
     LogicRedirect: Schema.intersect([
       Schema.object({
         Enabled: Schema.boolean()
@@ -427,13 +377,11 @@ export const Config: Schema<Config> = Schema.object({
     FirsttoAll: Schema.boolean()
       .default(false)
       .description("记忆槽位的行为改为：如果多个槽位都包含同一群号，所有包含该群号的槽位都将被应用"),
-    AddWhattoQueue: Schema.union([
-      "所有消息",
-      "所有此插件发送和接收的消息",
-      "所有和LLM交互的消息",
-    ])
-      .default("所有和LLM交互的消息")
-      .description("将哪些消息添加到消息队列。选择“所有消息”时，将使用事件监听器来更新消息队列，请打开自身消息上报，这将导致WholetoSplit失效(始终以实际的分条存入消息队列)"),
+    SelfReport: Schema
+      .array(Schema.union(["指令消息", "逻辑重定向", "和LLM交互的消息"]))
+      .default(["和LLM交互的消息"])
+      .role('checkbox')
+      .description("选择将 Bot 的哪些消息添加到数据库"),
     WholetoSplit: Schema.boolean()
       .default(false)
       .description("BOT的消息是否按照实际的分条存入消息队列，关闭表示一次调用API的消息在消息队列中会呈现为一条，开启表示按照实际发送的分条存入消息队列"),

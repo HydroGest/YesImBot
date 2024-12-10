@@ -2,7 +2,9 @@ import fs from "fs";
 import https from "https";
 import { Context } from "koishi";
 import { promisify } from "util";
+
 import { Config } from "../config";
+import { Template } from "./string";
 
 export function getFileNameFromUrl(url: string): string {
   try {
@@ -83,57 +85,9 @@ export async function ensurePromptFileExists(
   }
 }
 
-export async function getBotName(config: Config, session: any): Promise<string> {
-  switch (config.Bot.SelfAwareness) {
-    case "此页面设置的名字":
-    default:
-      return config.Bot.BotName;
-    case "群昵称":
-      const groupMember = session.groupMemberList?.data.find(
-        (member: any) => member.user.id === session.event.selfId
-      );
-      return groupMember ? groupMember.nick : config.Bot.BotName;
-    case "用户昵称":
-      return session.bot.user.name;
-  }
-}
-
-export async function getMemberName(config: Config, session: any, byID?: string): Promise<string> {
-  const fetchUserName = async (id: string) => {
-    try {
-      return await session.bot.getUser(id);
-    } catch (error) {
-      try {
-        const response = await fetch(`https://api.usuuu.com/qq/${id}`);
-        const userData = await response.json();
-        if (!response.ok)
-          throw new Error(`Failed to fetch user from backup API`);
-        return userData.data.name;
-      } catch {
-        throw new Error(`Failed to fetch user from backup API`);
-      }
-    }
-  };
-
-  if (session.event.selfId === session.event.user.id) {
-    return await getBotName(config, session);
-  }
-
-  const member = session.groupMemberList?.data.find(
-    (member: any) => member.user.id === (byID || session.event.user.id)
-  );
-
-  if (config.Bot.NickorName === "用户昵称") {
-    return byID ? await fetchUserName(byID) : session.event.user.name;
-  }
-
-  return member?.nick || (byID ? await fetchUserName(byID) : session.event.user.name);
-}
-
 export async function genSysPrompt(
   config: Config,
-  curGroupName: string,
-  session: any,
+  extra: any
 ): Promise<string> {
   // 获取当前日期与时间
   const currentDate = new Date();
@@ -151,39 +105,11 @@ export async function genSysPrompt(
     getFileNameFromUrl(config.Bot.PromptFileUrl[config.Bot.PromptFileSelected]),
     "utf-8"
   );
-  content = content.replaceAll("${config.Bot.BotName}", await getBotName(config, session));
-  content = content.replaceAll("${config.Bot.WhoAmI}", config.Bot.WhoAmI);
-  content = content.replaceAll("${config.Bot.BotHometown}", config.Bot.BotHometown);
-  content = content.replaceAll("${config.Bot.BotYearold}", config.Bot.BotYearold);
-  content = content.replaceAll("${config.Bot.BotPersonality}", config.Bot.BotPersonality);
-  content = content.replaceAll("${config.Bot.BotGender}", config.Bot.BotGender);
-  content = content.replaceAll("${config.Bot.BotHabbits}", config.Bot.BotHabbits);
-  content = content.replaceAll("${config.Bot.BotBackground}", config.Bot.BotBackground);
-  content = content.replaceAll("${config.Bot.CuteMode}", `${config.Bot.CuteMode ? "开启" : "关闭"}`);
-  content = content.replaceAll("${currentDate}", formattedDate);
-  content = content.replaceAll("${curGroupName}", curGroupName);
-  return content;
+  let template = new Template(content);
+  return template.render({
+    config,
+    currentDate: formattedDate,
+    ...extra
+  });
 }
 
-/**
- * 模板引擎
- */
-class Template {
-  constructor(private templateString: string){}
-  render(model: any){
-    return this.templateString.replace(/\{(\w+(?:\.\w+)*)\}/g, (match, key) => {
-      return this.getValue(model, key.split('.'));
-    });
-  }
-  getValue(data: any, keys: string[]) {
-    let value = data;
-    for (let key of keys) {
-      if (value && typeof value === 'object') {
-        value = value[key];
-      } else {
-        return '';
-      }
-    }
-    return value || '';
-  };
-}

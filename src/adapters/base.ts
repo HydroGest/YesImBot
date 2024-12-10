@@ -1,15 +1,10 @@
-import { h } from "koishi";
 import JSON5 from "json5";
+import { Random } from "koishi";
 
-import { emojiManager } from "../managers/emojiManager";
 import { Config } from "../config";
-import { convertNumberToString, convertStringToNumber, escapeUnicodeCharacters } from "../utils/string";
-
-export interface Message {
-  role: "system" | "assistant" | "user";
-  content: string;
-  images?: string[];
-}
+import { Message } from "./creators/component";
+import { escapeUnicodeCharacters } from "../utils/string";
+import { EmojiManager } from "../managers/emojiManager";
 
 interface Usage {
   prompt_tokens: number;
@@ -17,214 +12,167 @@ interface Usage {
   total_tokens: number;
 }
 
-interface Response {
+export interface Response {
   model: string;
   created: string;
-  message: Message;
+  message: {
+    role: "system" | "assistant" | "user";
+    content: string;
+  };
   usage: Usage;
 }
 
+export interface ExpectedResponse {
+  status: string;             // status
+  content: string;            // 原始输出
+  finalReply: string;         // finReply || reply
+  replyTo: string;            // session_id
+  quote: string;              // 引用回复的消息id
+  nextTriggerCount: number;   // 下次触发次数
+  logic: string;              // LLM思考过程
+  execute: Array<string>;     // 要运行的指令列表
+  usage?: Usage;
+  reason?: string;            // 解析失败的原因
+}
+
 export abstract class BaseAdapter {
-  constructor(protected adapterName: string) {
-    console.log(`Adapter: ${this.adapterName} registered`);
-  }
-  protected abstract generateResponse(
-    sysPrompt: string,
-    userPrompt: string | Message,
-    parameters: any,
-    detail: string,
-    eyeType: string,
-    debug: boolean
-  ): Promise<Response>;
+  protected otherParams: Record<string, any>;
 
-  async runChatCompeletion(
-    sysInput: string,
-    infoInput: string | Message,
-    parameters: any,
-    detail: string,
-    eyeType: string,
-    debug: boolean
-  ): Promise<Response> {
+  constructor(
+    protected adapterName: string,
+    protected parameters?: Config["Parameters"]
+  ) {
+    if (!parameters) {
+      this.parameters = {
+        Temperature: 1.36,
+        MaxTokens: 4096,
+        TopP: 1,
+        FrequencyPenalty: 0,
+        PresencePenalty: 0,
+        Stop: [],
+        OtherParameters: [],
+      }
+    }
+
     // 解析其他参数
-    const otherParams: Record<string, any> = {};
+    this.otherParams = {};
     if (parameters.OtherParameters) {
-      parameters.OtherParameters.forEach((param: { key: string; value: string }) => {
-        const key = param.key.trim();
-        let value = param.value.trim();
-
-        // 尝试解析 JSON 字符串
-        try {
-          value = JSON5.parse(value);
-        } catch (e) {
-          // 如果解析失败，保持原值
+      parameters.OtherParameters.forEach(
+        (param: { key: string; value: string }) => {
+          const key = param.key.trim();
+          let value = param.value.trim();
+          // 尝试解析 JSON 字符串
+          try {
+            value = JSON.parse(value);
+          } catch (e) {
+            // 如果解析失败，保持原值
+          }
+          // 转换 value 为适当的类型
+          if (value === "true") {
+            this.otherParams[key] = true;
+          } else if (value === "false") {
+            this.otherParams[key] = false;
+            //@ts-ignore
+          } else if (!isNaN(value)) {
+            this.otherParams[key] = Number(value);
+          } else {
+            this.otherParams[key] = value;
+          }
         }
-
-        // 转换 value 为适当的类型
-        if (value === 'true') {
-          otherParams[key] = true;
-        } else if (value === 'false') {
-          otherParams[key] = false;
-          //@ts-ignore
-        } else if (!isNaN(value)) {
-          otherParams[key] = Number(value);
-        } else {
-          otherParams[key] = value;
-        }
-      }
       );
-      parameters.OtherParameters = otherParams;
     }
 
-    return this.generateResponse(
-      sysInput,
-      infoInput,
-      parameters,
-      detail,
-      eyeType,
-      debug
-    );
+    logger.info(`Adapter: ${this.adapterName} registered`);
   }
 
-  async extractContent(input: string, detail: string) {
-    const regex =
-      /<img\s+(base64|src)\s*=\s*\\?"([^\\"]+)\\?"(?:\s+(base64|src)\s*=\s*\\?"([^\\"]+)\\?")?\s*\/>/g;
-    let match;
-    const parts = [];
-    let lastIndex = 0;
-    while ((match = regex.exec(input)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push({
-          type: "text",
-          text: input.substring(lastIndex, match.index),
-        });
-      }
-      const imageUrl = match[1] === "base64" ? match[2] : match[4];
-      parts.push({
-        type: "image_url",
-        image_url: { url: imageUrl, detail: detail },
-      });
-      lastIndex = regex.lastIndex;
-    }
-    if (lastIndex < input.length) {
-      parts.push({ type: "text", text: input.substring(lastIndex) });
-    }
-    return parts;
-  }
+  abstract chat(messages: Message[], debug?: Boolean): Promise<Response>;
 
-  async createMessages(sysInput: string, infoInput: string, eyeType: any, detail: string) {
-    if (eyeType === "LLM API 自带的多模态能力") {
-      return [
-        {
-          role: "system",
-          content: await this.extractContent(sysInput, detail),
-        },
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: "Resolve OK",
-            },
-          ],
-        },
-        {
-          role: "user",
-          content: await this.extractContent(infoInput, detail),
-        },
-      ];
-    } else {
-      return [
-        {
-          role: "system",
-          content: sysInput,
-        },
-        {
-          role: "assistant",
-          content: "Resolve OK",
-        },
-        {
-          role: "user",
-          content: infoInput,
-        },
-      ];
-    }
-  }
+  //abstract chatWithHistory(messages: Message[]): Promise<Response>;
+  //abstract clearHistory(): Promise<void>;
 
-  /*
-      @description: 处理 AI 的消息
-  */
-  async handleResponse(
-    input: Response,
-    AllowErrorFormat: boolean,
-    config: Config,
-    groupMemberList: any,
-  ): Promise<{
-    status: string; // status, if fail, "fail"
-    originalRes: string; // res
-    res: string; // finReply || reply
-    resNoTag: string; // (finReply || reply).removeTag
-    resNoTagExceptQuote: string; // (finReply || reply).removeTagExceptQuote
-    replyTo: string; // session_id
-    quote: string; // extract from (finReply || reply)
-    nextTriggerCount: number; // nextReplyIn
-    logic: string; // logic
-    execute: Array<string>; // execute
-    usage?: Usage;
-  }> {
-    let usage = input.usage;
-    let res = input.message.content;
+  async generateResponse(messages: Message[], session, config: Config, debug = false): Promise<ExpectedResponse> {
+    const response = await this.chat(messages, debug);
+    let content = response.message.content;
 
-    if (typeof res != "string") {
-      res = JSON5.stringify(res, null, 2);
+    if (typeof content !== "string") {
+      content = JSON5.stringify(content, null, 2);
     }
 
-    // 正版回复：
+    // TODO: 在这里指定 LLM 的回复格式，动态构建提示词
+
+    // 预期回复：
     // {
-    //   "status": "success", // "success" 或 "skip" (跳过回复)
-    //   "session_id": "123456789", // 要把finReply发送到的会话id
-    //   "nextReplyIn": "2", // 由LLM决定的下一次回复的冷却条数
-    //   "logic": "", // LLM思考过程
-    //   "reply": "", // 初版回复
-    //   "check": "", // 检查初版回复是否符合 "消息生成条例" 过程中的检查逻辑。
-    //   "finReply": "" // 最终版回复，引用回复<quote id=\\"\\"/>由 LLM 生成，转义和双引号一定要带
-    //   "execute":[] // 要运行的指令列表
+    //   "status": "success",       // "success" 或 "skip" (跳过回复)
+    //   "replyTo": "123456789",    // 要把finReply发送到的会话id
+    //   "quote": "",               // 引用回复的消息id
+    //   "nextReplyIn": "2",        // 由LLM决定的下一次回复的冷却条数
+    //   "logic": "",               // LLM思考过程
+    //   "reply": "",               // 初版回复
+    //   "check": "",               // 检查初版回复是否符合 "消息生成条例" 过程中的检查逻辑。
+    //   "finReply": ""             // 最终版回复
+    //   "execute":[]               // 要运行的指令列表
     // }
 
     let status: string = "success";
     let finalResponse: string = "";
+    let finalLogic: string = "";
+    let replyTo: string = "";
+    let nextTriggerCount: number = Random.int(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount + 1); // 双闭区间
+    let execute: any[] = [];
+    let reason: string;
 
-    const jsonMatch = res.match(/{.*}/s);
-    let LLMResponse;
+    // 提取JSON部分
+    const jsonMatch = content.match(/{.*}/s);
+    let LLMResponse: any = {};
+
     if (jsonMatch) {
       try {
-        const resJSON = jsonMatch[0];
-        LLMResponse = JSON5.parse(escapeUnicodeCharacters(resJSON));
+        LLMResponse = JSON5.parse(escapeUnicodeCharacters(jsonMatch[0]));
       } catch (e) {
         status = "fail"; // JSON 解析失败
-        // 此时 LLMResponse 还是 undefined
-        //@ts-ignore
-        LLMResponse = {};
+        reason = `JSON 解析失败: ${e}`;
+        if (debug) {
+          logger.warn(reason);
+        }
       }
     } else {
       status = "fail"; // 没有找到 JSON
+      reason = `没有找到 JSON: ${content}`;
+      if (debug) {
+        logger.warn(reason);
+      }
     }
+
+    // 检查 status 字段
     if (LLMResponse.status === "success" || LLMResponse.status === "skip") {
       status = LLMResponse.status;
     } else {
       status = "fail"; // status 不是 "success" 或 "skip"
+      reason = `status 不是 "success" 或 "skip": ${content}`;
+      if (debug) {
+        logger.warn(reason);
+      }
     }
-    if (!AllowErrorFormat) {
-      if (LLMResponse.finReply || LLMResponse.reply || status === "skip") {
-        finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
+
+    // 构建 finalResponse
+    if (!config.Settings.AllowErrorFormat) {
+      if (LLMResponse.finalReply || LLMResponse.reply) {
+        finalResponse += LLMResponse.finalReply || LLMResponse.reply || "";
       } else {
         status = "fail"; // 回复格式错误
+        reason = `回复格式错误: ${content}`;
+        if (debug) {
+          logger.warn(reason);
+        }
       }
     } else {
-      finalResponse += LLMResponse.finReply || LLMResponse.reply || "";
-      // 盗版回复
+      finalResponse += LLMResponse.finalReply || LLMResponse.reply || "";
+      // 兼容弱智模型的错误回复
       const possibleResponse = [
-        //@ts-ignore
-        LLMResponse.msg, LLMResponse.text, LLMResponse.message, LLMResponse.answer
+        LLMResponse.msg,
+        LLMResponse.text,
+        LLMResponse.message,
+        LLMResponse.answer
       ];
       for (const resp of possibleResponse) {
         if (resp) {
@@ -234,74 +182,68 @@ export abstract class BaseAdapter {
       }
     }
 
-    let finalLogic: string = LLMResponse.logic || "";
-
-    const logicQuoteMatch = finalLogic.match(/<quote\s+id=\\*["']?(\d+)\\*["']?\s*\/?>/);
-    if (logicQuoteMatch) {
-      finalLogic = finalLogic.replace(/<quote\s+id=\\*["']?\d+\\*["']?\s*\/?>/g, '');
-      finalLogic = `[引用回复: ${logicQuoteMatch[1]}]\n` + finalLogic;
+    // 提取其他字段
+    replyTo = LLMResponse.replyTo || "";
+    // 如果 replyTo 不是私聊会话，只保留数字部分
+    if (replyTo && !replyTo.startsWith('private:')) {
+      const numericMatch = replyTo.match(/\d+/);
+      if (numericMatch) {
+        replyTo = numericMatch[0].replace(/\s/g, "");
+      }
     }
 
-    // 从回复中提取 <quote> 标签，将其放在回复的最前面
-    const quoteMatch = finalResponse.match(/<quote\s+id=\\*["']?(\d+)\\*["']?\s*\/?>/);
-    let finalResponseNoTag = finalResponse;
-    if (quoteMatch) {
-      // 移除所有的 <quote> 标签
-      finalResponse = finalResponse.replace(/<quote\s+id=\\*["']?\d+\\*["']?\s*\/?>/g, '');
-      finalResponseNoTag = finalResponse;
-      // 把第一个 <quote> 标签放在回复的最前面
-      finalResponse = h("quote", { id: quoteMatch[1] }) + finalResponse;
-      finalResponseNoTag = `[引用回复: ${quoteMatch[1]}]\n` + finalResponseNoTag;
+    // 规范化 nextTriggerCount，确保在设置的范围内
+    const nextTriggerCountbyLLM = Math.max(
+      config.MemorySlot.MinTriggerCount,
+      Math.min(
+        LLMResponse.nextReplyIn ?? config.MemorySlot.MinTriggerCount,
+        config.MemorySlot.MaxTriggerCount
+      )
+    );
+    nextTriggerCount = Number(nextTriggerCountbyLLM) || nextTriggerCount; // 如果LLM里面没有返回nextReplyIn，就使用先前设置的随机值，而不是再随机一次
+    finalLogic = LLMResponse.logic || "";
+    if (LLMResponse.execute && Array.isArray(LLMResponse.execute)) {
+      execute = LLMResponse.execute
+    } else {
+      execute = [];
     }
-
-    // 复制一份finalResonse为finalResponseNoTagExceptQuote，作为添加到队列中的bot消息内容
-    let finalResponseNoTagExceptQuote = finalResponse;
-
-    // 使用 groupMemberList 反转义 <at> 消息
-    // const groupMemberList: { nick: string; user: { name: string; id: string } }[] =  groupMemberList.data;
-
-    const getKey = (member: { nick: string; user: { name: string } }) => config.Bot.NickorName === "群昵称" ? member.nick : member.user.name;
-
-    groupMemberList.sort((a, b) => getKey(b).length - getKey(a).length);
-
-    groupMemberList.forEach((member) => {
-      const name = getKey(member);
-      const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const atRegex = new RegExp(`(?<!<at id="[^"]*" name=")@${escapedName}(?![^"]*"\s*\/>)`, 'g');
-      finalResponse = finalResponse.replace(atRegex, `<at id="${member.user.id}" name="${name}" />`);
-    });
-    finalResponse = finalResponse.replace(/(?<!<at type=")@全体成员|@所有人|@all(?![^"]*"\s*\/>)/g, '<at type="all"/>');
 
     // 反转义 <face> 消息
     const faceRegex = /\[表情[:：]\s*([^\]]+)\]/g;
+    const matches = Array.from(finalResponse.matchAll(faceRegex));
 
-    const matches = Array.from(finalResponse.matchAll(faceRegex))
+    const emojiManager = new EmojiManager(config.Embedding);
 
-    const replacements = await Promise.all(matches.map(async (match) => {
-      const name = match[1];
-      let id = await emojiManager.getIdByName(name) || await emojiManager.getIdByName(await emojiManager.getNameByTextSimilarity(name, config)) || '500';
-      return {
-        match: match[0],
-        replacement: `<face id="${id}"></face>`,
-      };
-    }));
+    const replacements = await Promise.all(
+      matches.map(async (match) => {
+        const name = match[1];
+        let id = await emojiManager.getIdByName(name);
+        if (!id) {
+          id = await emojiManager.getIdByName(
+            await emojiManager.getNameByTextSimilarity(name, config.Embedding)
+          ) || '500';
+        }
+        return {
+          match: match[0],
+          replacement: `<face id="${id}"></face>`,
+        };
+      })
+    );
 
     replacements.forEach(({ match, replacement }) => {
       finalResponse = finalResponse.replace(match, replacement);
     });
-
     return {
-      status: status,
-      originalRes: res,
-      res: finalResponse,
-      resNoTagExceptQuote: finalResponseNoTagExceptQuote,
-      resNoTag: finalResponseNoTag,
-      replyTo: convertNumberToString(LLMResponse.session_id),
-      quote: quoteMatch ? quoteMatch[1] : '',
-      nextTriggerCount: convertStringToNumber(LLMResponse.nextReplyIn),
-      logic: finalLogic || '',
-      execute: (LLMResponse.execute instanceof Array) ? LLMResponse.execute : [],
-      usage: usage,
+      status,
+      content,
+      finalReply: finalResponse,
+      replyTo,
+      quote: LLMResponse.quote || "",
+      nextTriggerCount,
+      logic: finalLogic,
+      execute,
+      usage: response.usage,
+      reason
     };
   }
 }
