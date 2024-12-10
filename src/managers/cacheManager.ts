@@ -1,21 +1,27 @@
 import fs from "fs";
 import path from "path";
 
-//TODO: 允许自己指定缓存路径
+const BSON = require("../lib/bson.cjs");
+// import { BSON } from "../lib/bson";
+
+// TODO: 允许自己指定缓存路径
+// TODO: 使用 zlib 进行压缩
 export class CacheManager<T> {
   private cache: Map<string, T>; // 内存缓存
   private dirtyCache: Map<string, T>; // 临时缓存
-  private filePath: string;
   private isDirty: boolean; // 标记是否有需要保存的数据
   private saveImmediately: boolean;
   private timer: NodeJS.Timeout;
 
-  constructor(filePath: string) {
+  constructor(
+    private filePath: string,
+    private enableBson = false
+  ) {
     this.cache = new Map<string, T>();
     this.dirtyCache = new Map<string, T>();
     this.isDirty = false;
-    this.filePath = filePath;
     this.saveImmediately = true;
+
     this.loadCache();
 
     // 监听退出事件，确保退出前保存数据
@@ -26,6 +32,10 @@ export class CacheManager<T> {
   }
 
   private serialize(value: T): string {
+    if (this.enableBson) {
+      return BSON.serialize(value);
+    }
+
     if (value instanceof Map) {
       // 序列化 Map
       return JSON.stringify({
@@ -51,6 +61,10 @@ export class CacheManager<T> {
   }
 
   private deserialize(serialized: string): T {
+    if (this.enableBson) {
+      return BSON.deserialize(serialized);
+    }
+
     const parsed = JSON.parse(serialized);
     if (parsed && parsed.type === "Map") {
       return new Map(parsed.value) as unknown as T; // 恢复 Map
@@ -65,6 +79,12 @@ export class CacheManager<T> {
 
   // 序列化并存储数据到文件
   private saveCache(): void {
+    if (this.enableBson) {
+      const serializedData = BSON.serialize(this.cache);
+      fs.writeFileSync(this.filePath, serializedData);
+      return;
+    }
+
     const serializedData = JSON.stringify(
       Array.from(this.cache.entries()).map(([key, value]) => [key, this.serialize(value)]),
       null,
@@ -76,18 +96,33 @@ export class CacheManager<T> {
   // 反序列化并加载缓存数据
   private loadCache(): void {
     try {
-      if (fs.existsSync(this.filePath)) {
-        const serializedData = fs.readFileSync(this.filePath, "utf-8");
-        const entries: [string, string][] = JSON.parse(serializedData);
-        entries.forEach(([key, value]) => {
-          this.cache.set(key, this.deserialize(value));
-        });
-      } else {
+      if (!fs.existsSync(this.filePath)) {
         fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-        fs.writeFileSync(this.filePath, "[]", "utf-8");
+        if (this.enableBson) {
+          fs.writeFileSync(this.filePath, BSON.serialize(this.cache));
+        } else {
+          fs.writeFileSync(this.filePath, "[]", "utf-8");
+        }
+        return;
       }
+
+      if (this.enableBson) {
+        const serializedData = fs.readFileSync(this.filePath);
+        const entries: { [key: string]: T } = BSON.deserialize(serializedData);
+        Object.entries(entries).forEach(([key, value]) => {
+          this.cache.set(key, value);
+        })
+        return;
+      }
+
+      const serializedData = fs.readFileSync(this.filePath, "utf-8");
+      const entries: [string, string][] = JSON.parse(serializedData);
+      entries.forEach(([key, value]) => {
+        this.cache.set(key, this.deserialize(value));
+      });
     } catch (error) {
-      logger.warn("加载缓存失败:", error);
+      const llogger = logger || console;
+      llogger.warn("加载缓存失败:", error);
     }
   }
 
@@ -159,7 +194,11 @@ export class CacheManager<T> {
   }
 
   // 在定时器中定期保存缓存
-  public autoSave(interval: number = 5000): void {
+  public setAutoSave(interval: number = 5000): void {
+    if (interval <= 0) {
+      this.saveImmediately = true;
+      this.timer && clearInterval(this.timer);
+    }
     this.saveImmediately = false;
     this.timer = setInterval(() => {
       if (this.isDirty) {

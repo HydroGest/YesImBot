@@ -1,9 +1,11 @@
+import path from "path";
+import assert from "assert";
+
 import { App } from "koishi";
 import { h } from "koishi";
 import mock, { MessageClient } from "@koishijs/plugin-mock";
 import { MockBot } from "@koishijs/plugin-mock";
 import { beforeAll, afterAll, jest, it, describe } from "@jest/globals";
-import assert from "assert";
 
 import database from "@koishijs/plugin-database-memory";
 import * as help from "@koishijs/plugin-help";
@@ -15,6 +17,8 @@ import testConfig from "./config";
 import { emojiManager } from "../src/managers/emojiManager";
 import { CustomAdapter } from "../src/adapters";
 import { processText } from "../src/utils/content";
+import { CacheManager } from "../src/managers/cacheManager";
+
 
 // 拦截 sendRequest 函数请求
 jest.mock("../src/utils/http", () => {
@@ -37,7 +41,6 @@ jest.mock("../src/utils/http", () => {
             finalReply: "下雨了记得带伞哦~",
             execute: [],
           });
-          
           if (url.startsWith("/openai")) {
             return {
               choices: [
@@ -153,7 +156,6 @@ class Test {
             tothis: "01点57分",
           },
           {
-            
             replacethis: "\\{\\w+\\}",
             tothis: "PLACEHOLDER",
           }
@@ -187,6 +189,20 @@ class Test {
           `有什么可以帮助的吗？<face id="2"/>`
         ]);
       })
+    });
+
+    describe("cacheManager", () => {
+      it("cacheManager<string>", async () => {
+        const cacheManager = new CacheManager<string>(path.resolve(__dirname, "test.cache"), true);
+        cacheManager.set("test", "test");
+        assert.equal(cacheManager.get("test"), "test");
+      });
+
+      it("cacheManager<Array<number>>", async () => {
+        const cacheManager = new CacheManager<number[]>(path.resolve(__dirname, "test.cache"), true);
+        cacheManager.set("test", [1, 2, 3]);
+        assert.deepEqual(cacheManager.get("test"), [1, 2, 3]);
+      });
     });
 
     // 依次测试每个适配器, 保证能正确处理 ai 消息

@@ -8,7 +8,7 @@ import { CacheManager } from "../managers/cacheManager";
 const managers: Map<string, CacheManager<number[]>> = new Map();
 function getManager(embeddingModel: string): CacheManager<number[]> {
   if (!managers.has(embeddingModel)) {
-    const manager = new CacheManager<number[]>(path.join(__dirname, `../../data/.vector_cache/${embeddingModel}.json`));
+    const manager = new CacheManager<number[]>(path.join(__dirname, `../../data/.vector_cache/${embeddingModel}.bin`), true);
     managers.set(embeddingModel, manager);
   }
   return managers.get(embeddingModel)!;
