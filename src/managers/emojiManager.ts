@@ -29,7 +29,9 @@ export class EmojiManager {
       this.nameToId[emoji.name] = emoji.id;
     });
 
-    const cacheManager = new CacheManager<number[]>(path.join(__dirname, `../../data/.vector_cache/emoji.bin`), true);
+    const modelName = embeddingConfig.EmbeddingModel;
+    const cacheFile = path.join(__dirname, `../../data/.vector_cache/emoji_${modelName}.bin`);
+    const cacheManager = new CacheManager<number[]>(cacheFile, true);
     this.client = getEmbedding(embeddingConfig, cacheManager);
   }
 
@@ -77,7 +79,7 @@ export class EmojiManager {
       await this.initializeEmbeddings(embeddingConfig, debug);
 
       // 获取输入文本的嵌入向量
-      const inputEmbedding = await this.client.embed(name);
+      const inputEmbedding = await this.client._embed(name);
 
       let maxSimilarity = 0;
       let mostSimilarName: string | undefined;

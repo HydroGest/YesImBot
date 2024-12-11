@@ -225,7 +225,7 @@ export abstract class BaseAdapter {
         }
         return {
           match: match[0],
-          replacement: `<face id="${id}"></face>`,
+          replacement: `<face id="${id}" name="${emojiManager.getNameById(id) || undefined}"></face>`,
         };
       })
     );

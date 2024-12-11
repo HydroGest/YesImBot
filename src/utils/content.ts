@@ -73,7 +73,7 @@ export async function processContent(config: Config, session: Session, messages:
           break;
         case "mface":
           // const { url, summary } = elem.attrs;
-          userContent.push(`[表情:${elem.attrs.summary}]`);
+          userContent.push(`[表情:${elem.attrs.summary?.replace(/^\[|\]$/g, '')}]`);
           break;
         default:
       }
