@@ -207,7 +207,7 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
           base64,
           config
         );
-        cacheManager.set(cacheKey, description);
+        await cacheManager.set(cacheKey, description);
         return `[图片: ${description}]`;
       } catch (error) {
         console.error(`Error getting image description: ${error.message}`);

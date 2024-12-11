@@ -14,7 +14,7 @@ import * as yesimbot from "../src/index";
 
 import testConfig from "./config";
 
-import { emojiManager } from "../src/managers/emojiManager";
+import { EmojiManager } from "../src/managers/emojiManager";
 import { CustomAdapter } from "../src/adapters";
 import { processText } from "../src/utils/content";
 import { CacheManager } from "../src/managers/cacheManager";
@@ -243,6 +243,7 @@ class Test {
     });
 
     it("表情解析", async () => {
+      const emojiManager = new EmojiManager(testConfig.Embedding);
       // <face id="277" name="汪汪" platform="onebot"><img src="https://koishi.js.org/QFace/static/s277.png"/></face>
       // h("face", { id: "277", name: "汪汪", platform: "onebot" });
       const at = `<at id="${this.client.bot.selfId}" name="" />`;

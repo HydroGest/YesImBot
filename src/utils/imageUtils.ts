@@ -50,7 +50,7 @@ export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreC
     const contentType = response.headers["content-type"] || "image/jpeg";
     buffer = await compressImage(buffer);
     const base64 = `data:${contentType};base64,${buffer.toString("base64")}`;
-    imageCache.set(cacheKey, base64);
+    await imageCache.set(cacheKey, base64);
     return base64;
   } catch (error) {
     console.error("Error converting image to base64:", error.message);

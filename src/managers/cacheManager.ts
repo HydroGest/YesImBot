@@ -68,45 +68,58 @@ export class CacheManager<T> {
     }
   }
 
-  // 序列化并存储数据到文件
-  private saveCache(): void {
-    if (this.enableBson) {
-      const serializedData = BSON.serialize(this.cache);
-      fs.writeFileSync(this.filePath, serializedData);
-      return;
-    }
+  /**
+   * 序列化并存储数据到文件
+   * @returns
+   */
+  private async saveCache(): Promise<void> {
+    try {
+      if (this.enableBson) {
+        const serializedData = BSON.serialize(this.cache);
+        await fs.promises.writeFile(this.filePath, serializedData);
+        return;
+      }
 
-    const serializedData = JSON.stringify(
-      Array.from(this.cache.entries()).map(([key, value]) => [key, this.serialize(value)]),
-      null,
-      2
-    );
-    fs.writeFileSync(this.filePath, serializedData, "utf-8");
+      const serializedData = JSON.stringify(
+        Array.from(this.cache.entries()).map(([key, value]) => [key, this.serialize(value)]),
+        null,
+        2
+      );
+      await fs.promises.writeFile(this.filePath, serializedData, "utf-8");
+    } catch (error) {
+      // 这里报错后会导致定时器终止
+      // 如果保存出错，后续应该如何处理？
+      console.error("Failed to save cache:", error);
+      throw error;
+    }
   }
 
-  // 反序列化并加载缓存数据
-  private loadCache(): void {
+  /**
+   * 反序列化并加载缓存数据
+   * @returns
+   */
+  private async loadCache(): Promise<void> {
     try {
       if (!fs.existsSync(this.filePath)) {
-        fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+        await fs.promises.mkdir(path.dirname(this.filePath), { recursive: true });
         if (this.enableBson) {
-          fs.writeFileSync(this.filePath, BSON.serialize(this.cache));
+          await fs.promises.writeFile(this.filePath, BSON.serialize(this.cache));
         } else {
-          fs.writeFileSync(this.filePath, "[]", "utf-8");
+          await fs.promises.writeFile(this.filePath, "[]", "utf-8");
         }
         return;
       }
 
       if (this.enableBson) {
-        const serializedData = fs.readFileSync(this.filePath);
+        const serializedData = await fs.promises.readFile(this.filePath);
         const entries: { [key: string]: T } = BSON.deserialize(serializedData);
         Object.entries(entries).forEach(([key, value]) => {
           this.cache.set(key, value);
-        })
+        });
         return;
       }
 
-      const serializedData = fs.readFileSync(this.filePath, "utf-8");
+      const serializedData = await fs.promises.readFile(this.filePath, "utf-8");
       const entries: [string, string][] = JSON.parse(serializedData);
       entries.forEach(([key, value]) => {
         this.cache.set(key, this.deserialize(value));
@@ -135,10 +148,10 @@ export class CacheManager<T> {
   }
 
   // 添加数据到缓存
-  public set(key: string, value: T): void {
+  public async set(key: string, value: T): Promise<void> {
     this.cache.set(key, value);
     if (this.saveImmediately) {
-      this.saveCache();
+      await this.saveCache();
       return;
     }
     this.markDirty(key, value);
@@ -172,35 +185,47 @@ export class CacheManager<T> {
   }
 
   // 统一提交缓存到文件
-  public commit(): void {
+  public async commit(): Promise<void> {
     if (this.isDirty) {
       // 将内存缓存合并到文件缓存
       this.dirtyCache.forEach((value, key) => {
         this.cache.set(key, value);
       });
-      this.saveCache();
+      await this.saveCache();
       this.dirtyCache.clear();
       this.isDirty = false;
     }
   }
 
-  // 在定时器中定期保存缓存
+  /**
+   * 在定时器中定期保存缓存
+   * @param interval
+   * @returns
+   */
   public setAutoSave(interval: number = 5000): void {
     if (interval <= 0) {
       this.saveImmediately = true;
-      this.timer && clearInterval(this.timer);
+      this.timer && clearTimeout(this.timer); // 清除现有的定时器
+      return;
     }
+
     this.saveImmediately = false;
-    this.timer = setInterval(() => {
+
+    const autoSave = async () => {
       if (this.isDirty) {
-        this.commit();
+        await this.commit(); // 异步保存缓存
       }
-    }, interval);
+      this.timer = setTimeout(autoSave, interval); // 递归调用自身
+    };
+
+    this.timer && clearTimeout(this.timer); // 清除现有的定时器
+    this.timer = setTimeout(autoSave, interval); // 启动新的定时器
   }
 
   private handleExit(): void {
-    this.commit(); // 在退出前统一保存数据
-    clearInterval(this.timer);
-    process.exit(); // 确保进程退出
+    this.commit().then(() => {
+      clearTimeout(this.timer!);
+      process.exit(); // 确保进程退出
+    });
   }
 }

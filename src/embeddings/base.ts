@@ -1,5 +1,3 @@
-import path from "path";
-
 import { CacheManager } from "../managers/cacheManager";
 import { Config } from "./config";
 
@@ -7,17 +5,17 @@ export abstract class EmbeddingsBase {
   protected readonly cache: CacheManager<number[]>;
 
   constructor(protected config: Config, manager?: CacheManager<number[]>) {
-    this.cache = manager || new CacheManager<number[]>(path.join(__dirname, `../../data/.vector_cache/${this.config.EmbeddingModel}.bin`), true);
+    this.cache = manager;
   }
 
   abstract _embed(text: string): Promise<number[]>;
 
   async embed(text: string): Promise<number[]> {
-    if (this.cache.has(text)) {
+    if (this.cache && this.cache.has(text)) {
       return this.cache.get(text);
     } else {
       const result = await this._embed(text);
-      this.cache.set(text, result);
+      await this.cache?.set(text, result);
       return result;
     }
   }
@@ -36,3 +34,10 @@ export function calculateCosineSimilarity(vec1: number[], vec2: number[]): numbe
   return magnitude1 && magnitude2 ? (dotProduct / (magnitude1 * magnitude2) + 1) / 2 : 0; // Transform from [-1, 1] to [0, 1]
 }
 
+// function batchCosineSimilarity(queryMatrix: number[][], vectorsMatrix: number[][]): number[][] {
+//   const dotProducts = math.multiply(queryMatrix, math.transpose(vectorsMatrix));
+//   const queryMagnitudes = math.sqrt(math.sum(math.square(queryMatrix), 1));
+//   const vectorsMagnitudes = math.sqrt(math.sum(math.square(vectorsMatrix), 1));
+//   const magnitudesProduct = math.multiply(queryMagnitudes, math.transpose(vectorsMagnitudes));
+//   return math.divide(dotProducts, magnitudesProduct);
+// }
