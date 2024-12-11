@@ -290,7 +290,7 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
 
       if (!isEmpty(finalReply)) {
         let messageIds = [];
-        let sentences = processText(config["Bot"]["BotSentencePostProcess"], finalReply);
+        let sentences = processText(config["Bot"]["BotReplySpiltRegex"], config["Bot"]["BotSentencePostProcess"], finalReply);
         if (!isEmpty(quote)) sentences[0] = h.quote(quote).toString() + sentences[0];
         for (const sentence of sentences) {
           if (isEmpty(sentence)) continue;
@@ -306,10 +306,6 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
             : await session.bot.sendMessage(replyTo, sentence);
           messageIds = messageIds.concat(arr);
         }
-
-        // if (config.Settings.WholetoSplit) {
-
-        // }
 
 
         await sendQueue.addMessage({

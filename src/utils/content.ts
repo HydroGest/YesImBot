@@ -86,7 +86,7 @@ export async function processContent(config: Config, session: Session, messages:
       messageId: chatMessage.messageId,
       date: timeString,
       channelType: chatMessage.channelType,
-      channelInfo: (chatMessage.channelType === "guild") ? `from_guild:${chatMessage.channelId}` : (chatMessage.channelType === "sandbox") ? "from_sandbox" : "from_private",
+      channelInfo: (chatMessage.channelType === "guild") ? `from_guild:${chatMessage.channelId}` : `from_${chatMessage.channelType}`,
       channelId: chatMessage.channelId,
       senderName: userName,
       senderId: chatMessage.senderId,
@@ -103,13 +103,13 @@ export async function processContent(config: Config, session: Session, messages:
   return processedMessage.join("\n");
 }
 
-export function processText(rules: Config["Bot"]["BotSentencePostProcess"], text: string): string[] {
-  const replacements = rules.map(item => ({
+export function processText(splitRule: Config["Bot"]["BotReplySpiltRegex"] ,replaceRules: Config["Bot"]["BotSentencePostProcess"], text: string): string[] {
+  const replacements = replaceRules.map(item => ({
     regex: new RegExp(item.replacethis, 'g'),
     replacement: item.tothis
   }));
   let quoteMessageId;
-  let splitRegex = /(?<=[。?!？！])\s*/; // 希望可以自定义这个
+  let splitRegex = new RegExp(splitRule);
   const sentences: string[] = [];
   // 发送前先处理 Bot 消息
   h.parse(text).forEach((node) => {

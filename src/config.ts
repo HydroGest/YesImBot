@@ -73,6 +73,7 @@ export interface Config {
     BotBackground: string;
     WordsPerSecond: number;
     CuteMode: boolean;
+    BotReplySpiltRegex: string;
     BotSentencePostProcess: {
       replacethis: string;
       tothis: string;
@@ -86,7 +87,6 @@ export interface Config {
     };
     FirsttoAll: boolean;
     SelfReport: Array<"指令消息"|"逻辑重定向"|"和LLM交互的消息">
-    WholetoSplit: boolean;
     UpdatePromptOnLoad: boolean;
     AllowErrorFormat: boolean;
   };
@@ -342,6 +342,9 @@ export const Config: Schema<Config> = Schema.object({
       .step(0.1)
       .role("slider")
       .description("Bot 的打字速度（每秒字数）。设为 0 取消打字间隔。"),
+    BotReplySpiltRegex: Schema.string()
+      .default("(?<=[。?!？！])\s*")
+      .description("分割Bot 生成的句子时所用的正则表达式。如果要关闭分割，请设为`(?!)`而不是空字符串"),
     BotSentencePostProcess: Schema.array(
       Schema.object({
         replacethis: Schema.string().description("需要替换的文本"),
@@ -382,9 +385,6 @@ export const Config: Schema<Config> = Schema.object({
       .default(["和LLM交互的消息"])
       .role('checkbox')
       .description("选择将 Bot 的哪些消息添加到数据库"),
-    WholetoSplit: Schema.boolean()
-      .default(false)
-      .description("BOT的消息是否按照实际的分条存入消息队列，关闭表示一次调用API的消息在消息队列中会呈现为一条，开启表示按照实际发送的分条存入消息队列"),
     UpdatePromptOnLoad: Schema.boolean()
       .default(true)
       .description("每次启动时尝试更新 Prompt 文件"),
