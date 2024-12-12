@@ -16,12 +16,12 @@ export interface Config {
   };
   API: AdapterConfig;
   Parameters: {
-    Temperature: number;
-    MaxTokens: number;
-    TopP: number;
-    FrequencyPenalty: number;
-    PresencePenalty: number;
-    Stop: string[];
+    Temperature?: number;
+    MaxTokens?: number;
+    TopP?: number;
+    FrequencyPenalty?: number;
+    PresencePenalty?: number;
+    Stop?: string[];
     OtherParameters: {
       key: string;
       value: string;

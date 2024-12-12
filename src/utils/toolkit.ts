@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { Session } from "koishi";
 import { Mutex } from 'async-mutex';
 
@@ -194,3 +195,7 @@ export async function ensureGroupMemberList(session: any, channelId?: string) {
   return groupMemberList;
 }
 
+// 计算 MD5 值作为缓存键
+export function computeMD5(input: string): string {
+  return crypto.createHash("md5").update(input).digest("hex");
+}

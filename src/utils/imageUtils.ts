@@ -1,10 +1,11 @@
 import path from "path";
 import https from "https";
+import fs from "fs";
+import { createHash } from "crypto";
 
 import axios from "axios";
 import sharp from "sharp";
 
-import { CacheManager } from "../managers/cacheManager";
 
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -19,7 +20,119 @@ async function compressImage(buffer: Buffer): Promise<Buffer> {
   return buffer;
 }
 
-const imageCache = new CacheManager<string>(path.join(__dirname, "../../data/cache/imageCache.bin"), true);
+interface Metadata {
+  url: string;
+  size: number;
+  hash: string;
+  contentType: string;
+  createdAt: number;
+}
+
+class ImageCache {
+  private metadata: { [key: string]: Metadata };
+  private metadataFile: string;
+
+  constructor(private savePath: string) {
+    this.metadataFile = path.join(this.savePath, "metadata.json");
+    if (!fs.existsSync(this.savePath)) {
+      fs.mkdirSync(this.savePath, { recursive: true });
+      fs.writeFileSync(this.metadataFile, "{}", "utf-8");
+    }
+    try {
+      const metadataContent = fs.readFileSync(this.metadataFile, "utf-8");
+      this.metadata = JSON.parse(metadataContent);
+    } catch (error) {
+      console.error("Error reading metadata file:", error);
+      this.metadata = {};
+    }
+  }
+
+  get(key: string): Buffer {
+    const metadata = this.metadata[key];
+    if (metadata) {
+      try {
+        return fs.readFileSync(path.join(this.savePath, metadata.hash));
+      } catch (error) {
+        console.error(`Error reading file for key ${key}:`, error);
+        throw new Error(`Image not found: ${key}`);
+      }
+    }
+    throw new Error(`Image not found: ${key}`);
+  }
+
+  getBase64(key: string): string {
+    const metadata = this.metadata[key];
+    if (metadata) {
+      try {
+        const buffer = fs.readFileSync(path.join(this.savePath, metadata.hash));
+        return `data:${metadata.contentType};base64,${buffer.toString("base64")}`;
+      } catch (error) {
+        console.error(`Error reading file for key ${key}:`, error);
+        throw new Error(`Image not found: ${key}`);
+      }
+    }
+    throw new Error(`Image not found: ${key}`);
+  }
+
+  set(key: string, buffer: Buffer, contentType: string): void {
+    const hash = createHash('md5').update(buffer).digest('hex');
+    this.metadata[key] = {
+      url: key,
+      size: buffer.length,
+      hash,
+      contentType,
+      createdAt: Date.now(),
+    };
+    const filePath = path.join(this.savePath, hash);
+    try {
+      fs.writeFileSync(filePath, buffer);
+      fs.writeFileSync(this.metadataFile, JSON.stringify(this.metadata, null, 2), "utf-8");
+    } catch (error) {
+      console.error("Error writing files:", error);
+      delete this.metadata[key];
+      fs.writeFileSync(this.metadataFile, JSON.stringify(this.metadata, null, 2), "utf-8");
+      throw error;
+    }
+  }
+
+  has(key: string): boolean {
+    return key in this.metadata;
+  }
+
+  delete(key: string): void {
+    if (key in this.metadata) {
+      const hash = this.metadata[key].hash;
+      const filePath = path.join(this.savePath, hash);
+      try {
+        fs.unlinkSync(filePath);
+        delete this.metadata[key];
+        fs.writeFileSync(this.metadataFile, JSON.stringify(this.metadata, null, 2), "utf-8");
+      } catch (error) {
+        console.error(`Error deleting file for key ${key}:`, error);
+        throw error;
+      }
+    }
+  }
+
+  clear(): void {
+    try {
+      fs.readdirSync(this.savePath).forEach(file => {
+        fs.unlinkSync(path.join(this.savePath, file));
+      });
+      this.metadata = {};
+      fs.writeFileSync(this.metadataFile, "{}", "utf-8");
+    } catch (error) {
+      console.error("Error clearing cache:", error);
+      throw error;
+    }
+  }
+
+  keys(): string[] {
+    return Object.keys(this.metadata);
+  }
+}
+
+const imageCache = new ImageCache(path.join(__dirname, "../../data/cache/downloadImage"));
 
 /**
  * 从URL获取图片的base64编码
@@ -35,10 +148,13 @@ export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreC
   cacheKey = cacheKey ?? url;
 
   if (!ignoreCache && imageCache.has(cacheKey)) {
-    return imageCache.get(cacheKey);
+    return imageCache.getBase64(cacheKey);
   }
   try {
     const response = await axios.get(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+      },
       responseType: "arraybuffer",
       httpsAgent: new https.Agent({ rejectUnauthorized: false }), // 忽略SSL证书验证
       timeout: 5000, // 5秒超时
@@ -49,8 +165,8 @@ export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreC
     let buffer = Buffer.from(response.data);
     const contentType = response.headers["content-type"] || "image/jpeg";
     buffer = await compressImage(buffer);
+    imageCache.set(cacheKey, buffer, contentType);
     const base64 = `data:${contentType};base64,${buffer.toString("base64")}`;
-    await imageCache.set(cacheKey, base64);
     return base64;
   } catch (error) {
     console.error("Error converting image to base64:", error.message);

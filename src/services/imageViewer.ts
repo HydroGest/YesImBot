@@ -1,5 +1,4 @@
 import path from "path";
-import crypto from "crypto";
 import axios from "axios";
 import JSON5 from "json5";
 import { clone, h } from "koishi";
@@ -10,6 +9,7 @@ import { CacheManager } from "../managers/cacheManager";
 import { AssistantMessage, ImageComponent, SystemMessage, TextComponent, UserMessage } from "../adapters/creators/component";
 import { isEmpty } from "../utils/string";
 import { getAdapter } from "../utils/factory";
+import { computeMD5 } from "../utils/toolkit";
 
 const cacheManager = new CacheManager<string>(
   path.join(__dirname, "../../data/cache/ImageDescription.json")
@@ -233,11 +233,6 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
     case "不做处理，以<img>标签形式呈现":
       return h.image(imgUrl, { summary }).toString();
   }
-}
-
-// 计算 MD5 值作为缓存键
-function computeMD5(input: string): string {
-  return crypto.createHash("md5").update(input).digest("hex");
 }
 
 // 清理图片描述缓存
