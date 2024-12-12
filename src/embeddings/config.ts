@@ -13,8 +13,8 @@ export interface Config {
 
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
-    Enabled: Schema.boolean().default(false),
-  }).description("是否启用 Embedding"),
+    Enabled: Schema.boolean().default(false).description("是否启用 Embedding"),
+  }).description("Embedding 配置"),
   Schema.union([
     Schema.object({
       Enabled: Schema.const(true).required(),
@@ -36,4 +36,4 @@ export const Config: Schema<Config> = Schema.intersect([
     }),
     Schema.object({}),
   ]),
-])
+]);

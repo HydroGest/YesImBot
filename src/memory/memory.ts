@@ -10,6 +10,7 @@ interface Vector {
   id: string;
   vector: number[];
   metadata: any;
+  magnitude: number;
 }
 
 export class MemoryVectorStore {
@@ -19,13 +20,14 @@ export class MemoryVectorStore {
     this.vectors = [];
   }
 
-  async addVectors(vectors: number[][], metadatas: any[]): Promise<void> {
+  async addVectors(vectors: number[][], metadatas: any[], magnitudes: number[]): Promise<void> {
     vectors.forEach((vector, index) => {
       const id = this.generateId();
       this.vectors.push({
         id,
         vector,
         metadata: metadatas[index],
+        magnitude: magnitudes[index],
       });
     });
   }
@@ -45,9 +47,10 @@ export class MemoryVectorStore {
    */
   async similaritySearchVectorWithScore(query: number[], k: number): Promise<[Vector, number][]> {
     const results: [Vector, number][] = [];
+    let magnitude = Math.sqrt(query.reduce((sum, val) => sum + val * val, 0));
 
     const tasks = this.vectors.map(async (vector) => {
-      const similarity = calculateCosineSimilarity(query, vector.vector);
+      const similarity = calculateCosineSimilarity(query, vector.vector, magnitude, vector.magnitude);
       results.push([vector, similarity]);
     });
 
@@ -81,8 +84,9 @@ export class Memory {
   async addMessage(message: string, role: string): Promise<void> {
     if (isEmpty(message)) return;
     this.history.push({ role, content: message });
-    const embedding = await this.client.embed(message);
-    await this.vectorStore.addVectors([embedding], [message]);
+    let embedding = await this.client.embed(message, 6);
+    let magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
+    await this.vectorStore.addVectors([embedding], [message], [magnitude]);
   }
 
   async getHistory(): Promise<{ role: string; content: string }[]> {
@@ -90,7 +94,7 @@ export class Memory {
   }
 
   async getSimilarMessages(message: string, k = 5): Promise<string[]> {
-    const embedding = await this.client.embed(message);
+    let embedding = await this.client.embed(message, 6);
     const results = await this.vectorStore.similaritySearchVectorWithScore(embedding, k);
     return results.map((result) => result[0].metadata);
   }

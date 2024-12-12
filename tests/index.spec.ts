@@ -160,13 +160,13 @@ class Test {
             tothis: "PLACEHOLDER",
           }
         ];
-        let sentences = processText(rules, `${h.quote("114514")}走别人的路，让别人无路可走。那走自己的路是不是让自己无路可走？`);
+        let sentences = processText(testConfig.Bot.BotReplySpiltRegex, rules, `${h.quote("114514")}走别人的路，让别人无路可走。那走自己的路是不是让自己无路可走？`);
         assert.deepEqual(sentences, [
           `<quote id="114514"/>走别人的路，让别人无路可走。`,
           `那走自己的路是不是让自己无路可走？`
         ]);
 
-        sentences = processText(rules, `走别人的路，让别人无路可走。那走自己的路是不是让自己无路可走？${h.quote("114514")}`);
+        sentences = processText(testConfig.Bot.BotReplySpiltRegex, rules, `走别人的路，让别人无路可走。那走自己的路是不是让自己无路可走？${h.quote("114514")}`);
         assert.deepEqual(sentences, [
           `<quote id="114514"/>走别人的路，让别人无路可走。`,
           `那走自己的路是不是让自己无路可走？`
@@ -178,12 +178,12 @@ class Test {
         //   `那走自己的路是不是让自己无路可走？`
         // ]);
 
-        sentences = processText(rules, `[messageId][{date} from_guild:{channelId}] {senderName}[{senderId}] 说: {userContent}`);
+        sentences = processText(testConfig.Bot.BotReplySpiltRegex, rules, `[messageId][{date} from_guild:{channelId}] {senderName}[{senderId}] 说: {userContent}`);
         assert.deepEqual(sentences, [
           "[messageId][01点57分 from_guild:PLACEHOLDER] PLACEHOLDER[PLACEHOLDER] 说: PLACEHOLDER"
         ]);
 
-        sentences = processText(rules, `${h.at("12345678")}你好！有什么可以帮助的吗？${h("face", {id:2})}`);
+        sentences = processText(testConfig.Bot.BotReplySpiltRegex, rules, `${h.at("12345678")}你好！有什么可以帮助的吗？${h("face", {id:2})}`);
         assert.deepEqual(sentences, [
           `<at id="12345678"/>你好！`,
           `有什么可以帮助的吗？<face id="2"/>`

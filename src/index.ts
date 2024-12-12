@@ -14,6 +14,7 @@ import { processContent, processText } from "./utils/content";
 import { foldText, isEmpty } from "./utils/string";
 import { createMessage } from "./models/ChatMessage";
 import { convertUrltoBase64 } from "./utils/imageUtils";
+import { ResponseVerifier } from "./utils/verifier";
 
 export const name = "yesimbot";
 
@@ -42,10 +43,12 @@ export function apply(ctx: Context, config: Config) {
   initDatabase(ctx);
 
   let adapterSwitcher: AdapterSwitcher;
+  let verifier: ResponseVerifier;
   const sendQueue = new SendQueue(ctx, config);
 
   ctx.on("ready", async () => {
     adapterSwitcher = new AdapterSwitcher(config.API.APIList, config.Parameters);
+    verifier = new ResponseVerifier(config);
 
     if (!config.Settings.UpdatePromptOnLoad) return;
     ctx.logger.info("正在尝试更新 Prompt 文件...");
@@ -289,6 +292,16 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
       }
 
       if (!isEmpty(finalReply)) {
+
+        if (!verifier.verifyResponse(replyTo, finalReply)) {
+          if (config.Verifier.Action === "丢弃") {
+            return false
+          } else {
+            shouldReTrigger = true;
+            return true
+          };
+        }
+
         let messageIds = [];
         let sentences = processText(config["Bot"]["BotReplySpiltRegex"], config["Bot"]["BotSentencePostProcess"], finalReply);
         if (!isEmpty(quote)) sentences[0] = h.quote(quote).toString() + sentences[0];
@@ -306,7 +319,6 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
             : await session.bot.sendMessage(replyTo, sentence);
           messageIds = messageIds.concat(arr);
         }
-
 
         await sendQueue.addMessage({
           senderId: session.selfId,

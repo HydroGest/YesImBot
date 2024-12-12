@@ -103,7 +103,7 @@ export async function processContent(config: Config, session: Session, messages:
   return processedMessage.join("\n");
 }
 
-export function processText(splitRule: Config["Bot"]["BotReplySpiltRegex"] ,replaceRules: Config["Bot"]["BotSentencePostProcess"], text: string): string[] {
+export function processText(splitRule: Config["Bot"]["BotReplySpiltRegex"], replaceRules: Config["Bot"]["BotSentencePostProcess"], text: string): string[] {
   const replacements = replaceRules.map(item => ({
     regex: new RegExp(item.replacethis, 'g'),
     replacement: item.tothis
