@@ -68,6 +68,7 @@ export function apply(ctx: Context, config: Config) {
     // 等待1毫秒
     await sleep(1)
     const channelId = session.channelId;
+    await sendQueue.addMessage(await createMessage(session));
     if (!isChannelAllowed(config.MemorySlot.SlotContains, channelId) || session.author.id == session.selfId || channelId === config.Settings.LogicRedirect.Target) {
       return;
     }
@@ -82,7 +83,6 @@ export function apply(ctx: Context, config: Config) {
       }
       maxTriggerTimeHandlers[channelId](session);
     }
-    await sendQueue.addMessage(await createMessage(session));
   });
 
   ctx
