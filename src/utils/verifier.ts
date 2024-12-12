@@ -1,8 +1,8 @@
-import { Adapter, register } from "../adapters";
+import { Adapter } from "../adapters";
 import { AssistantMessage, SystemMessage, UserMessage } from "../adapters/creators/component";
 import { Config } from "../config";
 import { calculateCosineSimilarity, EmbeddingsBase } from "../embeddings/base";
-import { getEmbedding } from "./factory";
+import { getAdapter, getEmbedding } from "./factory";
 
 export class ResponseVerifier {
   private previousResponse = new Map<string, string>();
@@ -18,14 +18,10 @@ export class ResponseVerifier {
         throw new Error("Embedding 模型未启用，请检查配置");
       }
     } else {
-      this.client = register(
-        this.config.Verifier.Method.APIType,
-        this.config.Verifier.Method.BaseURL,
-        this.config.Verifier.Method.APIKey,
-        this.config.Verifier.Method.UID,
-        this.config.Verifier.Method.AIModel,
+      this.client = getAdapter(
+        this.config.Verifier.Method,
         this.config.Parameters
-      )
+      );
     }
   }
 

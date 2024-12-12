@@ -4,12 +4,12 @@ import axios from "axios";
 import JSON5 from "json5";
 import { clone, h } from "koishi";
 
-import { register } from "../adapters";
 import { Config } from "../config";
 import { convertUrltoBase64, removeBase64Prefix } from "../utils/imageUtils";
 import { CacheManager } from "../managers/cacheManager";
 import { AssistantMessage, ImageComponent, SystemMessage, TextComponent, UserMessage } from "../adapters/creators/component";
 import { isEmpty } from "../utils/string";
+import { getAdapter } from "../utils/factory";
 
 const cacheManager = new CacheManager<string>(
   path.join(__dirname, "../../data/cache/ImageDescription.json")
@@ -152,12 +152,14 @@ class AnotherLLMService implements ImageDescriptionService {
       base64 = await convertUrltoBase64(src);
     }
 
-    const adapter = register(
-      config.ImageViewer.Server.Adapter,
-      config.ImageViewer.BaseURL,
-      config.ImageViewer.APIKey,
-      null,
-      config.ImageViewer.Server.Model,
+    const adapterConfig = {
+      APIType: config.ImageViewer.Server.Adapter,
+      AIModel: config.ImageViewer.Server.Model,
+      BaseURL: config.ImageViewer.BaseURL,
+      APIKey: config.ImageViewer.APIKey,
+    }
+    const adapter = getAdapter(
+      adapterConfig,
       config.Parameters
     );
     try {

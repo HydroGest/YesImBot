@@ -5,6 +5,7 @@ import { Config } from "../config";
 import { Message } from "./creators/component";
 import { escapeUnicodeCharacters } from "../utils/string";
 import { EmojiManager } from "../managers/emojiManager";
+import { LLM } from "./config";
 
 interface Usage {
   prompt_tokens: number;
@@ -36,27 +37,24 @@ export interface ExpectedResponse {
 }
 
 export abstract class BaseAdapter {
-  protected otherParams: Record<string, any>;
+  protected url: string;
+  protected readonly apiKey: string;
+  protected readonly model: string;
+  protected readonly otherParams: Record<string, any>;
+  readonly ability: ("工具调用" | "识图功能" | "结构化输出")[];
 
   constructor(
-    protected adapterName: string,
+    protected config: LLM,
     protected parameters?: Config["Parameters"]
   ) {
-    if (!parameters) {
-      this.parameters = {
-        Temperature: 1.36,
-        MaxTokens: 4096,
-        TopP: 1,
-        FrequencyPenalty: 0,
-        PresencePenalty: 0,
-        Stop: [],
-        OtherParameters: [],
-      }
-    }
+    const { APIKey, APIType, AIModel, Ability } = config;
+    this.apiKey = APIKey;
+    this.model = AIModel;
+    this.ability = Ability || [];
 
     // 解析其他参数
     this.otherParams = {};
-    if (this.parameters.OtherParameters) {
+    if (this.parameters?.OtherParameters) {
       this.parameters.OtherParameters.forEach(
         (param: { key: string; value: string }) => {
           const key = param.key.trim();
@@ -82,7 +80,7 @@ export abstract class BaseAdapter {
       );
     }
 
-    logger.info(`Adapter: ${this.adapterName} registered`);
+    logger.info(`Adapter: ${APIType} registered`);
   }
 
   abstract chat(messages: Message[], debug?: Boolean): Promise<Response>;

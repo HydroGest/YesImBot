@@ -33,7 +33,7 @@ export interface Config {
     SimilarityThreshold?: number;
     Method?: {
       Type: "Embedding" | "LLM";
-      APIType: string;
+      APIType: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
       BaseURL: string;
       UID: string;
       APIKey: string;

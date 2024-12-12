@@ -1,23 +1,26 @@
 import { Config } from "../config";
-import { CloudflareAdapter, CustomAdapter, OllamaAdapter, OpenAIAdapter } from "../adapters";
+import { Adapter, CloudflareAdapter, CustomAdapter, OllamaAdapter, OpenAIAdapter } from "../adapters";
 import { CustomEmbedding, OllamaEmbedding, OpenAIEmbedding } from "../embeddings";
 import { CacheManager } from "../managers/cacheManager";
-import { API } from "../adapters/config";
+import { LLM } from "../adapters/config";
 
-export function getAdapter(config: API, parameters?: Config["Parameters"]): any {
-  const { APIType, BaseURL, UID, APIKey, AIModel } = config;
-  switch (APIType) {
+export function getAdapter(
+  config: LLM,
+  parameters?: Config["Parameters"]
+): Adapter {
+  switch (config.APIType) {
     case "Cloudflare":
-      return new CloudflareAdapter(BaseURL, APIKey, UID, AIModel, parameters);
+      return new CloudflareAdapter(config, parameters);
     case "Custom URL":
-      return new CustomAdapter(BaseURL, APIKey, AIModel, parameters);
+      return new CustomAdapter(config, parameters);
     case "Ollama":
-      return new OllamaAdapter(BaseURL, APIKey, AIModel, parameters);
+      return new OllamaAdapter(config, parameters);
     case "OpenAI":
-      return new OpenAIAdapter(BaseURL, APIKey, AIModel, parameters);
+      return new OpenAIAdapter(config, parameters);
     default:
-      throw new RangeError("Unknown adapter type");
-  }}
+      throw new Error(`不支持的 API 类型: ${config.APIType}`);
+  }
+}
 
 export function getEmbedding(config: Config["Embedding"], manager?: CacheManager<number[]>) {
   switch (config.APIType) {

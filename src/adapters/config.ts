@@ -1,18 +1,19 @@
 import { Schema } from "koishi";
 
-export interface API {
+export interface LLM {
   APIType: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
   BaseURL: string;
-  UID: string;
+  UID?: string;
   APIKey: string;
   AIModel: string;
+  Ability?: Array<"工具调用" | "识图功能" | "结构化输出">;
 }
 
 export interface Config {
-  APIList: API[];
+  APIList: LLM[];
 }
 
-export const API: Schema<API> = Schema.object({
+export const API: Schema<LLM> = Schema.object({
   APIType: Schema.union(["OpenAI", "Cloudflare", "Ollama", "Custom URL"])
     .default("OpenAI")
     .description("API 类型"),
@@ -26,8 +27,12 @@ export const API: Schema<API> = Schema.object({
   AIModel: Schema.string()
     .default("@cf/meta/llama-3-8b-instruct")
     .description("模型 ID"),
+  Ability: Schema.array(Schema.union(["工具调用", "识图功能", "结构化输出"]))
+    .role("checkbox")
+    .experimental()
+    .default([])
+    .description("模型支持的功能。如果你不知道这是什么，请不要勾选"),
 });
-
 
 export const Config: Schema<Config> = Schema.object({
   APIList: Schema.array(API).description(
