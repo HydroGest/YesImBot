@@ -47,7 +47,7 @@ export interface Config {
       | "图片描述服务"
       | "替换成[图片:summary]"
       | "替换成[图片]"
-      | "不做处理，以&lt;img&gt;标签形式呈现";
+      | "不做处理，以<img>标签形式呈现";
     Memory?: number;
     Question?: string;
     BaseURL?: string;
@@ -303,11 +303,14 @@ export const Config: Schema<Config> = Schema.object({
     }).description("图片查看器"),
     Schema.union([
       Schema.object({
-        How: Schema.const("图片描述服务").required(),
+        How: Schema.const("LLM API 自带的多模态能力").required(),
         Memory: Schema.number()
           .default(1)
           .min(-1)
           .description("使用 LLM API 自带的多模态能力时，LLM 真正能看到的最近的图片数量。设为-1取消此限制"),
+      }),
+      Schema.object({
+        How: Schema.const("图片描述服务").required(),
         Question: Schema.string()
           .default("这张图里有什么？")
           .description("图片描述服务针对输入图片的问题"),

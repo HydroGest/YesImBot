@@ -29,7 +29,8 @@ export { Config } from "./config";
 export const DATABASE_NAME = name;
 
 export const inject = {
-  optional: ["qmanager", "interactions", "database"]
+  required: ["database"],
+  optional: ["qmanager", "interactions"]
 }
 
 declare global {
@@ -48,7 +49,9 @@ export function apply(ctx: Context, config: Config) {
 
   ctx.on("ready", async () => {
     adapterSwitcher = new AdapterSwitcher(config.API.APIList, config.Parameters);
-    verifier = new ResponseVerifier(config);
+
+    if (config.Verifier.Enabled)
+      verifier = new ResponseVerifier(config);
 
     if (!config.Settings.UpdatePromptOnLoad) return;
     ctx.logger.info("正在尝试更新 Prompt 文件...");
@@ -138,13 +141,12 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
-    // 处理当前消息
-
     // 确保消息入库
     await sendQueue.addMessage(await createMessage(session));
 
     const parsedElements = h.parse(session.content);
 
+    // 提前下载图片，防止链接过期
     // h.select 怎么用？
     parsedElements.forEach((element) => {
       if (element.type === "img") {
@@ -293,13 +295,15 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
 
       if (!isEmpty(finalReply)) {
 
-        if (!verifier.verifyResponse(replyTo, finalReply)) {
-          if (config.Verifier.Action === "丢弃") {
-            return false
-          } else {
-            shouldReTrigger = true;
-            return true
-          };
+        if (config.Verifier.Enabled) {
+          if (!verifier.verifyResponse(replyTo, finalReply)) {
+            if (config.Verifier.Action === "丢弃") {
+              return false;
+            } else {
+              shouldReTrigger = true;
+              return true;
+            }
+          }
         }
 
         let messageIds = [];

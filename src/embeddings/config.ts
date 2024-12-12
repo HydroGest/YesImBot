@@ -1,12 +1,12 @@
 import { Schema } from "koishi";
 
 export interface Config {
-  EmbeddingDims?: number;
   Enabled?: boolean;
   APIType?: string;
   BaseURL?: string;
   APIKey?: string;
   EmbeddingModel?: string;
+  EmbeddingDims?: number;
   RequestBody?: string;
   GetVecRegex?: string;
 }
@@ -18,8 +18,9 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.union([
     Schema.object({
       Enabled: Schema.const(true).required(),
-      APIType: Schema.union(["OpenAI", "Custom"])
+      APIType: Schema.union(["OpenAI", "Custom", "Ollama"])
         .default("OpenAI")
+        .required()
         .description("Embedding API 类型"),
       BaseURL: Schema.string()
         .default("https://api.openai.com")

@@ -56,8 +56,8 @@ export abstract class BaseAdapter {
 
     // 解析其他参数
     this.otherParams = {};
-    if (parameters.OtherParameters) {
-      parameters.OtherParameters.forEach(
+    if (this.parameters.OtherParameters) {
+      this.parameters.OtherParameters.forEach(
         (param: { key: string; value: string }) => {
           const key = param.key.trim();
           let value = param.value.trim();

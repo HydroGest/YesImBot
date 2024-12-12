@@ -97,11 +97,14 @@ class MyOwnService implements ImageDescriptionService {
 
     const {
       BaseURL: baseURL,
-      RequestBody: requestBody,
-      GetDescRegex: getResponseRegex,
       Question: question,
       APIKey: token,
     } = config.ImageViewer;
+
+    const {
+      RequestBody: requestBody,
+      GetDescRegex: getResponseRegex,
+    } = config.ImageViewer.Server;
 
     if (!base64 && requestBody.includes("<base64>")) {
       base64Value = await convertUrltoBase64(src);
@@ -150,11 +153,11 @@ class AnotherLLMService implements ImageDescriptionService {
     }
 
     const adapter = register(
-      config.ImageViewer.Adapter,
+      config.ImageViewer.Server.Adapter,
       config.ImageViewer.BaseURL,
       config.ImageViewer.APIKey,
       null,
-      config.ImageViewer.Model,
+      config.ImageViewer.Server.Model,
       config.Parameters
     );
     try {
@@ -163,7 +166,7 @@ class AnotherLLMService implements ImageDescriptionService {
           SystemMessage(sysPrompt),
           AssistantMessage("Resolve OK"),
           UserMessage(
-            ImageComponent(base64, config.ImageViewer.Detail),
+            ImageComponent(base64, config.ImageViewer.Server.Detail),
             TextComponent(question)
           )
         ], config.Debug.DebugAsInfo
@@ -185,7 +188,7 @@ const serviceMap: Record<string, ImageDescriptionService> = {
 export async function getImageDescription(imgUrl: string, config: Config, summary?: string, fileUnique?: string, debug = false): Promise<string> {
   switch (config.ImageViewer.How) {
     case "图片描述服务": {
-      const service = serviceMap[config.ImageViewer.Server];
+      const service = serviceMap[config.ImageViewer.Server.Type];
       if (!service) {
         throw new Error(`Unsupported server: ${config.ImageViewer.Server}`);
       }

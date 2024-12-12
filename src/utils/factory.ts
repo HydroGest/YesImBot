@@ -28,6 +28,6 @@ export function getEmbedding(config: Config["Embedding"], manager?: CacheManager
     case "Custom":
       return new CustomEmbedding(config, manager);
     default:
-      throw new RangeError("Unknown embedding type");
+      throw new RangeError(`不支持的 Embedding 类型: ${config.APIType}`);
   }
 }
