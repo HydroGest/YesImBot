@@ -81,11 +81,6 @@ export function apply(ctx: Context, config: Config) {
         }, config.MemorySlot.MaxTriggerTime * 1000);
       }
       maxTriggerTimeHandlers[channelId](session);
-    } else {
-      if (maxTriggerTimeHandlers[channelId]) {
-        maxTriggerTimeHandlers[channelId].dispose();
-        delete maxTriggerTimeHandlers[channelId];
-      }
     }
     await sendQueue.addMessage(await createMessage(session));
   });
