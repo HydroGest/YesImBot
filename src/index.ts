@@ -46,6 +46,8 @@ export function apply(ctx: Context, config: Config) {
   let adapterSwitcher: AdapterSwitcher;
   let verifier: ResponseVerifier;
   const sendQueue = new SendQueue(ctx, config);
+  const minTriggerTimeHandlers: { [key: string]: ReturnType<typeof ctx.debounce> } = {};
+  const maxTriggerTimeHandlers: { [key: string]: ReturnType<typeof ctx.debounce> } = {};
 
   ctx.on("ready", async () => {
     adapterSwitcher = new AdapterSwitcher(config.API.APIList, config.Parameters);
@@ -64,7 +66,24 @@ export function apply(ctx: Context, config: Config) {
 
   ctx.on("message-created", async (session) => {
     // 等待1毫秒
-    await new Promise((resolve) => setTimeout(resolve, 1));
+    await sleep(1)
+    const channelId = session.channelId;
+    if (config.MemorySlot.MaxTriggerTime > 0) {
+      if (!maxTriggerTimeHandlers[channelId]) {
+        maxTriggerTimeHandlers[channelId] = ctx.debounce(async (session) => {
+          if (!await handleMessage(session)) return;
+          if (shouldReTrigger) {
+            if (!await handleMessage(session)) return;
+          }
+        }, config.MemorySlot.MaxTriggerTime * 1000);
+      }
+      maxTriggerTimeHandlers[channelId](session);
+    } else {
+      if (maxTriggerTimeHandlers[channelId]) {
+        maxTriggerTimeHandlers[channelId].dispose();
+        delete maxTriggerTimeHandlers[channelId];
+      }
+    }
     await sendQueue.addMessage(await createMessage(session));
   });
 
@@ -179,10 +198,15 @@ export function apply(ctx: Context, config: Config) {
     const shouldReply = (isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode
 
     if (!shouldReply) return next();
-    if (!await handleMessage(session)) return next();
-    if (shouldReTrigger) {
-      if (!await handleMessage(session)) return next();
+    if (!minTriggerTimeHandlers[channelId]) {
+      minTriggerTimeHandlers[channelId] = ctx.debounce(async (session) => {
+        if (!await handleMessage(session)) return next();
+        if (shouldReTrigger) {
+          if (!await handleMessage(session)) return next();
+        }
+      }, config.MemorySlot.MinTriggerTime);
     }
+    minTriggerTimeHandlers[channelId](session);
   });
 
   async function handleMessage(session: Session): Promise<boolean> {
