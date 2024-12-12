@@ -68,6 +68,9 @@ export function apply(ctx: Context, config: Config) {
     // 等待1毫秒
     await sleep(1)
     const channelId = session.channelId;
+    if (!isChannelAllowed(config.MemorySlot.SlotContains, channelId) || session.author.id == session.selfId || channelId === config.Settings.LogicRedirect.Target) {
+      return;
+    }
     if (config.MemorySlot.MaxTriggerTime > 0) {
       if (!maxTriggerTimeHandlers[channelId]) {
         maxTriggerTimeHandlers[channelId] = ctx.debounce(async (session) => {
