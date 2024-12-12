@@ -221,7 +221,6 @@ export const Config: Schema<Config> = Schema.object({
         Method: Schema.intersect([
           Schema.object({
             Type: Schema.union(["Embedding", "LLM"])
-              .required()
               .default("Embedding")
               .description("验证器类型。如果选择 Embedding，请填写下方Embedding配置"),
           }),
@@ -240,7 +239,7 @@ export const Config: Schema<Config> = Schema.object({
               UID: Schema.string()
                 .default("若非 Cloudflare 可不填")
                 .description("Cloudflare UID"),
-              APIKey: Schema.string().required().description("你的 API 令牌"),
+              APIKey: Schema.string().description("你的 API 令牌"),
               AIModel: Schema.string()
                 .default("@cf/meta/llama-3-8b-instruct")
                 .description("模型 ID"),
@@ -297,7 +296,6 @@ export const Config: Schema<Config> = Schema.object({
         "替换成[图片]",
         "不做处理，以<img>标签形式呈现",
       ])
-        .required()
         .default("替换成[图片]")
         .description("处理图片的方式。失败时会自动尝试后一种方式"),
     }).description("图片查看器"),
@@ -327,7 +325,7 @@ export const Config: Schema<Config> = Schema.object({
           }),
           Schema.union([
             Schema.object({
-              Type: Schema.const("百度AI开放平台").required(),
+              Type: Schema.const("百度AI开放平台"),
             }),
             Schema.object({
               Type: Schema.const("自己搭建的服务").required(),

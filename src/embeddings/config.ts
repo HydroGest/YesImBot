@@ -20,12 +20,11 @@ export const Config: Schema<Config> = Schema.intersect([
       Enabled: Schema.const(true).required(),
       APIType: Schema.union(["OpenAI", "Custom", "Ollama"])
         .default("OpenAI")
-        .required()
         .description("Embedding API 类型"),
       BaseURL: Schema.string()
         .default("https://api.openai.com")
         .description("Embedding API 基础 URL"),
-      APIKey: Schema.string().required().description("API 令牌"),
+      APIKey: Schema.string().description("API 令牌"),
       EmbeddingModel: Schema.string()
         .default("text-embedding-3-large")
         .description("Embedding 模型 ID"),

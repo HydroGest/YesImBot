@@ -1,4 +1,4 @@
-import { register } from "../adapters";
+import { Adapter, register } from "../adapters";
 import { AssistantMessage, SystemMessage, UserMessage } from "../adapters/creators/component";
 import { Config } from "../config";
 import { calculateCosineSimilarity, EmbeddingsBase } from "../embeddings/base";
@@ -7,11 +7,26 @@ import { getEmbedding } from "./factory";
 export class ResponseVerifier {
   private previousResponse = new Map<string, string>();
   private config: Config;
-  private client: EmbeddingsBase;
+  private client: EmbeddingsBase | Adapter;
 
   constructor(config: Config) {
     this.config = config;
-    this.client = getEmbedding(config.Embedding);
+    if (this.config.Verifier.Method.Type === "Embedding") {
+      if (this.config.Embedding.Enabled) {
+        this.client = getEmbedding(config.Embedding);
+      } else {
+        throw new Error("Embedding 模型未启用，请检查配置");
+      }
+    } else {
+      this.client = register(
+        this.config.Verifier.Method.APIType,
+        this.config.Verifier.Method.BaseURL,
+        this.config.Verifier.Method.APIKey,
+        this.config.Verifier.Method.UID,
+        this.config.Verifier.Method.AIModel,
+        this.config.Parameters
+      )
+    }
   }
 
   setPreviousResponse(channelId, response) {
@@ -25,7 +40,7 @@ export class ResponseVerifier {
     }
 
     try {
-      if (this.config.Verifier.Method.Type === "Embedding") {
+      if (this.client instanceof EmbeddingsBase) {
         // 使用 embedding 模型验证相似度
         const previousEmbedding = await this.client._embed(this.previousResponse.get(channelId));
 
@@ -48,15 +63,7 @@ export class ResponseVerifier {
 
 如果你理解了我的需求，请回复“Resolve OK”，我将在这之后给你提供要分析相似度的两个句子, 分别用 'A:' 和 'B:' 标识。`;
         const promptInput = `A: ${this.previousResponse.get(channelId)}\nB: ${currentResponse}`;
-        const adapter = register(
-          this.config.Verifier.Method.APIType,
-          this.config.Verifier.Method.BaseURL,
-          this.config.Verifier.Method.APIKey,
-          this.config.Verifier.Method.UID,
-          this.config.Verifier.Method.AIModel,
-          this.config.Parameters
-        )
-        const response = await adapter.chat(
+        const response = await this.client.chat(
           [
             SystemMessage(sysPrompt),
             AssistantMessage("Resolve OK"),

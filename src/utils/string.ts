@@ -49,12 +49,12 @@ export function isEmpty(str: string){
 
 /**
  * 模板引擎
- * 
+ *
  * 和 JS 模板字符串差不多
  */
 export class Template {
   constructor(
-    private templateString: string, 
+    private templateString: string,
     private regex: RegExp = /\$\{(\w+(?:\.\w+)*)\}/g
   ){}
   render(model: any){
@@ -73,4 +73,15 @@ export class Template {
     }
     return value || '';
   };
+}
+
+export function parseJSON(text: string) {
+  const match = text.match(/{.*}/s);
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch (e) {
+      return null;
+    }
+  }
 }
