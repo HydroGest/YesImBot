@@ -29,84 +29,92 @@ interface Metadata {
 }
 
 class ImageCache {
-  private metadata: { [key: string]: Metadata };
-  private metadataFile: string;
+  private readonly SEPARATOR = Buffer.from('@@METADATA@@');
 
   constructor(private savePath: string) {
-    this.metadataFile = path.join(this.savePath, "metadata.json");
     if (!fs.existsSync(this.savePath)) {
       fs.mkdirSync(this.savePath, { recursive: true });
-      fs.writeFileSync(this.metadataFile, "{}", "utf-8");
     }
+  }
+
+  private getMetadataFromFile(filePath: string): Metadata | null {
     try {
-      const metadataContent = fs.readFileSync(this.metadataFile, "utf-8");
-      this.metadata = JSON.parse(metadataContent);
-    } catch (error) {
-      console.error("Error reading metadata file:", error);
-      this.metadata = {};
+      const buffer = fs.readFileSync(filePath);
+      const separatorIndex = buffer.lastIndexOf(this.SEPARATOR);
+      if (separatorIndex === -1) return null;
+      return JSON.parse(buffer.subarray(separatorIndex + this.SEPARATOR.length).toString('utf8'));
+    } catch {
+      return null;
     }
+  }
+
+  private getFilePathForKey(key: string): string | null {
+    try {
+      const files = fs.readdirSync(this.savePath);
+      for (const file of files) {
+        const filePath = path.join(this.savePath, file);
+        const metadata = this.getMetadataFromFile(filePath);
+        if (metadata?.url === key) return filePath;
+      }
+    } catch {
+      return null;
+    }
+    return null;
   }
 
   get(key: string): Buffer {
-    const metadata = this.metadata[key];
-    if (metadata) {
-      try {
-        return fs.readFileSync(path.join(this.savePath, metadata.hash));
-      } catch (error) {
-        console.error(`Error reading file for key ${key}:`, error);
-        throw new Error(`Image not found: ${key}`);
-      }
-    }
-    throw new Error(`Image not found: ${key}`);
+    const filePath = this.getFilePathForKey(key);
+    if (!filePath) throw new Error(`Image not found: ${key}`);
+    const buffer = fs.readFileSync(filePath);
+    const separatorIndex = buffer.lastIndexOf(this.SEPARATOR);
+    return buffer.subarray(0, separatorIndex);
   }
 
   getBase64(key: string): string {
-    const metadata = this.metadata[key];
-    if (metadata) {
-      try {
-        const buffer = fs.readFileSync(path.join(this.savePath, metadata.hash));
-        return `data:${metadata.contentType};base64,${buffer.toString("base64")}`;
-      } catch (error) {
-        console.error(`Error reading file for key ${key}:`, error);
-        throw new Error(`Image not found: ${key}`);
-      }
-    }
-    throw new Error(`Image not found: ${key}`);
+    const filePath = this.getFilePathForKey(key);
+    if (!filePath) throw new Error(`Image not found: ${key}`);
+    const buffer = fs.readFileSync(filePath);
+    const metadata = this.getMetadataFromFile(filePath);
+    if (!metadata) throw new Error(`Metadata not found: ${key}`);
+    const separatorIndex = buffer.lastIndexOf(this.SEPARATOR);
+    const imageBuffer = buffer.subarray(0, separatorIndex);
+    return `data:${metadata.contentType};base64,${imageBuffer.toString("base64")}`;
   }
 
   set(key: string, buffer: Buffer, contentType: string): void {
     const hash = createHash('md5').update(buffer).digest('hex');
-    this.metadata[key] = {
+    const metadata: Metadata = {
       url: key,
       size: buffer.length,
       hash,
       contentType,
       createdAt: Date.now(),
     };
-    const filePath = path.join(this.savePath, hash);
+
+    const extension = contentType.split('/')[1] || 'jpg';
+    const fileName = `${hash}.${extension}`;
+    const filePath = path.join(this.savePath, fileName);
+
+    const metadataBuffer = Buffer.from(JSON.stringify(metadata));
+    const finalBuffer = Buffer.concat([buffer, this.SEPARATOR, metadataBuffer]);
+
     try {
-      fs.writeFileSync(filePath, buffer);
-      fs.writeFileSync(this.metadataFile, JSON.stringify(this.metadata, null, 2), "utf-8");
+      fs.writeFileSync(filePath, finalBuffer);
     } catch (error) {
-      console.error("Error writing files:", error);
-      delete this.metadata[key];
-      fs.writeFileSync(this.metadataFile, JSON.stringify(this.metadata, null, 2), "utf-8");
+      console.error("Error writing file:", error);
       throw error;
     }
   }
 
   has(key: string): boolean {
-    return key in this.metadata;
+    return this.getFilePathForKey(key) !== null;
   }
 
   delete(key: string): void {
-    if (key in this.metadata) {
-      const hash = this.metadata[key].hash;
-      const filePath = path.join(this.savePath, hash);
+    const filePath = this.getFilePathForKey(key);
+    if (filePath) {
       try {
         fs.unlinkSync(filePath);
-        delete this.metadata[key];
-        fs.writeFileSync(this.metadataFile, JSON.stringify(this.metadata, null, 2), "utf-8");
       } catch (error) {
         console.error(`Error deleting file for key ${key}:`, error);
         throw error;
@@ -119,8 +127,6 @@ class ImageCache {
       fs.readdirSync(this.savePath).forEach(file => {
         fs.unlinkSync(path.join(this.savePath, file));
       });
-      this.metadata = {};
-      fs.writeFileSync(this.metadataFile, "{}", "utf-8");
     } catch (error) {
       console.error("Error clearing cache:", error);
       throw error;
@@ -128,7 +134,13 @@ class ImageCache {
   }
 
   keys(): string[] {
-    return Object.keys(this.metadata);
+    const keys: string[] = [];
+    fs.readdirSync(this.savePath).forEach(file => {
+      const filePath = path.join(this.savePath, file);
+      const metadata = this.getMetadataFromFile(filePath);
+      if (metadata?.url) keys.push(metadata.url);
+    });
+    return keys;
   }
 }
 
