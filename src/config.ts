@@ -49,6 +49,7 @@ export interface Config {
       | "替换成[图片]"
       | "不做处理，以<img>标签形式呈现";
     Memory?: number;
+    DescribeImmidately?: boolean;
     Question?: string;
     BaseURL?: string;
     APIKey?: string;
@@ -309,6 +310,9 @@ export const Config: Schema<Config> = Schema.object({
       }),
       Schema.object({
         How: Schema.const("图片描述服务").required(),
+        DescribeImmidately: Schema.boolean()
+          .default(false)
+          .description("是否在收到图片时立即描述图片"),
         Question: Schema.string()
           .default("这张图里有什么？")
           .description("图片描述服务针对输入图片的问题"),

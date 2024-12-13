@@ -199,7 +199,9 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
 
       if (cacheManager.has(cacheKey)) {
         if (debug) console.log(`Cache hit: ${cacheKey}`);
-        return cacheManager.get(cacheKey);
+        const description = cacheManager.get(cacheKey);
+        console.log(`Image[${fileUnique ?? 'unknown'}] described. Description: ${description}`);
+        return `[图片: ${description}]`;
       }
 
       try {
@@ -213,6 +215,7 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
           config
         );
         await cacheManager.set(cacheKey, description);
+        console.log(`Image[${fileUnique ?? 'unknown'}] described. Description: ${description}`);
         return `[图片: ${description}]`;
       } catch (error) {
         console.error(`Error getting image description: ${error.message}`);

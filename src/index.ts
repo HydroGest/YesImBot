@@ -15,6 +15,7 @@ import { foldText, isEmpty } from "./utils/string";
 import { createMessage } from "./models/ChatMessage";
 import { convertUrltoBase64 } from "./utils/imageUtils";
 import { ResponseVerifier } from "./utils/verifier";
+import { getImageDescription } from "./services/imageViewer";
 
 export const name = "yesimbot";
 
@@ -168,8 +169,11 @@ export function apply(ctx: Context, config: Config) {
     parsedElements.forEach((element) => {
       if (element.type === "img") {
         convertUrltoBase64(element.attrs.src, element.attrs.fileUnique)
-          .then(() => {
+          .then(async () => {
             ctx.logger.info(`Image[${element.attrs.fileUnique}] downloaded. file-size: ${element.attrs.fileSize}`);
+            if (config.ImageViewer.DescribeImmidately) {
+              await getImageDescription(element.attrs.src, config, element.attrs.summary, element.attrs.fileUnique);
+            }
           })
           .catch((reason) => {
             ctx.logger.warn(`Image[${element.attrs.fileUnique}] download failed. ${reason}`)
