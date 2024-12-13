@@ -172,7 +172,7 @@ export function apply(ctx: Context, config: Config) {
           .then(async () => {
             ctx.logger.info(`Image[${element.attrs.fileUnique}] downloaded. file-size: ${element.attrs.fileSize}`);
             if (config.ImageViewer.DescribeImmidately) {
-              await getImageDescription(element.attrs.src, config, element.attrs.summary, element.attrs.fileUnique);
+              await getImageDescription(element.attrs.src, config, element.attrs.summary, element.attrs.fileUnique, config.Debug.DebugAsInfo);
             }
           })
           .catch((reason) => {
