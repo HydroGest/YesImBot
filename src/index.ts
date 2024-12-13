@@ -51,6 +51,7 @@ export function apply(ctx: Context, config: Config) {
   const maxTriggerTimeHandlers: { [key: string]: ReturnType<typeof ctx.debounce> } = {};
 
   ctx.on("ready", async () => {
+    process.setMaxListeners(20);
     adapterSwitcher = new AdapterSwitcher(config.API.APIList, config.Parameters);
 
     if (config.Verifier.Enabled)
@@ -63,6 +64,17 @@ export function apply(ctx: Context, config: Config) {
       config.Debug.DebugAsInfo ? ctx : null,
       true
     );
+  });
+
+  ctx.on("dispose", async () => {
+    Object.keys(minTriggerTimeHandlers).forEach(key => {
+      minTriggerTimeHandlers[key].dispose?.();
+      delete minTriggerTimeHandlers[key];
+    });
+    Object.keys(maxTriggerTimeHandlers).forEach(key => {
+      maxTriggerTimeHandlers[key].dispose?.();
+      delete maxTriggerTimeHandlers[key];
+    });
   });
 
   ctx.on("message-created", async (session) => {
@@ -172,7 +184,7 @@ export function apply(ctx: Context, config: Config) {
           .then(async () => {
             ctx.logger.info(`Image[${element.attrs.fileUnique}] downloaded. file-size: ${element.attrs.fileSize}`);
             if (config.ImageViewer.DescribeImmidately) {
-              await getImageDescription(element.attrs.src, config, element.attrs.summary, element.attrs.fileUnique);
+              await getImageDescription(element.attrs.src, config, element.attrs.summary, element.attrs.fileUnique, config.Debug.DebugAsInfo);
             }
           })
           .catch((reason) => {

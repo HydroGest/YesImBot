@@ -196,6 +196,7 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
       }
 
       const cacheKey = computeMD5(`${fileUnique ?? imgUrl}` + config.ImageViewer.Question);
+      if (debug) console.log(`Cache key: ${cacheKey}`);
 
       if (cacheManager.has(cacheKey)) {
         if (debug) console.log(`Cache hit: ${cacheKey}`);

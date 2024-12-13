@@ -218,7 +218,7 @@ export abstract class BaseAdapter {
         let id = await emojiManager.getIdByName(name);
         if (!id) {
           id = await emojiManager.getIdByName(
-            await emojiManager.getNameByTextSimilarity(name, config.Embedding)
+            await emojiManager.getNameByTextSimilarity(name, config.Embedding, config.Debug.DebugAsInfo)
           ) || '500';
         }
         return {
