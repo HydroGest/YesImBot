@@ -101,7 +101,7 @@ export function apply(ctx: Context, config: Config) {
           }, config.MemorySlot.MaxTriggerTime * 1000)
         );
       }
-      if (await maxTriggerTimeHandlers[channelId](session)) return;
+      if (await maxTriggerTimeHandlers.get(channelId)(session)) return;
     }
   });
 
