@@ -3,7 +3,24 @@ import { sendRequest } from "../utils/http";
 import { BaseAdapter, Response } from "./base";
 import { LLM } from "./config";
 import { Message } from "./creators/component";
-
+interface ToolCall {
+  function: {
+    name: string;
+    arguments: {
+      [key: string]: any;
+    }
+  }
+}
+interface ToolMessage {
+  role: "tool";
+  content: string;
+}
+function ToolMessage(content: string): ToolMessage {
+  return {
+    role: "tool",
+    content
+  }
+}
 export class OllamaAdapter extends BaseAdapter {
   constructor(config: LLM, parameters?: Config["Parameters"]) {
     super(config, parameters);
@@ -34,7 +51,23 @@ export class OllamaAdapter extends BaseAdapter {
       ...this.otherParams,
     };
     let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
+
     try {
+      if (this.ability.includes("工具调用") && response.message["tool_calls"]) {
+        const toolCalls: ToolCall[] = response.message["tool_calls"];
+
+        messages.push(response.message);
+
+        for (const toolCall of toolCalls) {
+          const funcName = toolCall.function.name;
+          const funcArgs = toolCall.function.arguments;
+          // TODO: support function call
+          messages.push(ToolMessage(""))
+        }
+
+        response = await sendRequest(this.url, this.apiKey, requestBody, debug);
+      }
+
       return {
         model: response.model,
         created: response.created_at,
@@ -52,5 +85,10 @@ export class OllamaAdapter extends BaseAdapter {
       console.error("Error parsing response:", error);
       console.error("Response:", response);
     }
+  }
+
+  async chatWithHistory(messages: Message[]): Promise<Response> {
+    this.history.push(...messages);
+    return this.chat(this.history);
   }
 }

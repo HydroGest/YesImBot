@@ -6,6 +6,7 @@ import { Message } from "./creators/component";
 import { escapeUnicodeCharacters } from "../utils/string";
 import { EmojiManager } from "../managers/emojiManager";
 import { LLM } from "./config";
+import { EmbeddingsConfig } from "../embeddings";
 
 interface Usage {
   prompt_tokens: number;
@@ -32,8 +33,35 @@ export interface ExpectedResponse {
   nextTriggerCount: number;   // 下次触发次数
   logic: string;              // LLM思考过程
   execute: Array<string>;     // 要运行的指令列表
-  usage?: Usage;
+  usage: Usage;
   reason?: string;            // 解析失败的原因
+}
+
+export interface SkipResponse {
+  status: "skip";
+  content: string;
+  nextTriggerCount: number;
+  logic: string;
+  usage: Usage;
+  execute: Array<string>;
+}
+
+export interface SuccessResponse {
+  status: "success";
+  finalReply: string;
+  replyTo: string;
+  quote: string;
+  nextTriggerCount: number;
+  logic: string;
+  execute: Array<string>;
+  usage: Usage;
+}
+
+export interface FailedResponse {
+  status: "fail";
+  content: string;
+  usage: Usage;
+  reason: string;
 }
 
 export abstract class BaseAdapter {
@@ -42,6 +70,8 @@ export abstract class BaseAdapter {
   protected readonly model: string;
   protected readonly otherParams: Record<string, any>;
   readonly ability: ("工具调用" | "识图功能" | "结构化输出")[];
+
+  protected history: Message[] = [];
 
   constructor(
     protected config: LLM,
@@ -70,7 +100,7 @@ export abstract class BaseAdapter {
             this.otherParams[key] = true;
           } else if (value === "false") {
             this.otherParams[key] = false;
-            //@ts-ignore
+            // @ts-ignore
           } else if (!isNaN(value)) {
             this.otherParams[key] = Number(value);
           } else {
@@ -86,9 +116,17 @@ export abstract class BaseAdapter {
   abstract chat(messages: Message[], debug?: Boolean): Promise<Response>;
 
   //abstract chatWithHistory(messages: Message[]): Promise<Response>;
-  //abstract clearHistory(): Promise<void>;
+  clearHistory(): void {
+    this.history = [];
+  }
 
-  async generateResponse(messages: Message[], session, config: Config, debug = false): Promise<ExpectedResponse> {
+  async generateResponse(
+    messages: Message[],
+    MinTriggerCount: number,
+    MaxTriggerCount: number,
+    AllowErrorFormat: boolean,
+    embeddingConfig: EmbeddingsConfig,
+    debug = false): Promise<ExpectedResponse | FailedResponse | SkipResponse | SuccessResponse> {
     const response = await this.chat(messages, debug);
     let content = response.message.content;
 
@@ -115,7 +153,7 @@ export abstract class BaseAdapter {
     let finalResponse: string = "";
     let finalLogic: string = "";
     let replyTo: string = "";
-    let nextTriggerCount: number = Random.int(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount + 1); // 双闭区间
+    let nextTriggerCount: number = Random.int(MinTriggerCount, MaxTriggerCount + 1); // 双闭区间
     let execute: any[] = [];
     let reason: string;
 
@@ -127,40 +165,68 @@ export abstract class BaseAdapter {
       try {
         LLMResponse = JSON5.parse(escapeUnicodeCharacters(jsonMatch[0]));
       } catch (e) {
-        status = "fail"; // JSON 解析失败
-        reason = `JSON 解析失败: ${e}`;
-        if (debug) {
-          logger.warn(reason);
+        status = "fail";
+        reason = `JSON 解析失败: ${e.message}`;
+        if (debug) logger.warn(reason);
+        return {
+          status: "fail",
+          content,
+          usage: response.usage,
+          reason
         }
       }
     } else {
       status = "fail"; // 没有找到 JSON
       reason = `没有找到 JSON: ${content}`;
-      if (debug) {
-        logger.warn(reason);
+      if (debug) logger.warn(reason);
+      return {
+        status: "fail",
+        content,
+        usage: response.usage,
+        reason
       }
     }
 
     // 检查 status 字段
-    if (LLMResponse.status === "success" || LLMResponse.status === "skip") {
+    if (LLMResponse.status === "success") {
       status = LLMResponse.status;
-    } else {
-      status = "fail"; // status 不是 "success" 或 "skip"
+    } else if (LLMResponse.status === "skip") {
+      status = "skip";
+      return {
+        status: "skip",
+        content,
+        nextTriggerCount,
+        logic: finalLogic,
+        usage: response.usage,
+        execute
+      }
+    }
+
+    else {
+      status = "fail";
       reason = `status 不是 "success" 或 "skip": ${content}`;
-      if (debug) {
-        logger.warn(reason);
+      if (debug) logger.warn(reason);
+      return {
+        status: "fail",
+        content,
+        usage: response.usage,
+        reason
       }
     }
 
     // 构建 finalResponse
-    if (!config.Settings.AllowErrorFormat) {
+    if (!AllowErrorFormat) {
       if (LLMResponse.finalReply || LLMResponse.reply) {
         finalResponse += LLMResponse.finalReply || LLMResponse.reply || "";
       } else {
-        status = "fail"; // 回复格式错误
+        status = "fail";
         reason = `回复格式错误: ${content}`;
-        if (debug) {
-          logger.warn(reason);
+        if (debug) logger.warn(reason);
+        return {
+          status: "fail",
+          content,
+          usage: response.usage,
+          reason
         }
       }
     } else {
@@ -192,10 +258,10 @@ export abstract class BaseAdapter {
 
     // 规范化 nextTriggerCount，确保在设置的范围内
     const nextTriggerCountbyLLM = Math.max(
-      config.MemorySlot.MinTriggerCount,
+      MinTriggerCount,
       Math.min(
-        LLMResponse.nextReplyIn ?? config.MemorySlot.MinTriggerCount,
-        config.MemorySlot.MaxTriggerCount
+        LLMResponse.nextReplyIn ?? MinTriggerCount,
+        MaxTriggerCount
       )
     );
     nextTriggerCount = Number(nextTriggerCountbyLLM) || nextTriggerCount; // 如果LLM里面没有返回nextReplyIn，就使用先前设置的随机值，而不是再随机一次
@@ -210,16 +276,14 @@ export abstract class BaseAdapter {
     const faceRegex = /\[表情[:：]\s*([^\]]+)\]/g;
     const matches = Array.from(finalResponse.matchAll(faceRegex));
 
-    const emojiManager = new EmojiManager(config.Embedding);
+    const emojiManager = new EmojiManager(embeddingConfig);
 
     const replacements = await Promise.all(
       matches.map(async (match) => {
         const name = match[1];
         let id = await emojiManager.getIdByName(name);
         if (!id) {
-          id = await emojiManager.getIdByName(
-            await emojiManager.getNameByTextSimilarity(name, config.Embedding, config.Debug.DebugAsInfo)
-          ) || '500';
+          id = await emojiManager.getIdByName(await emojiManager.getNameByTextSimilarity(name)) || '500';
         }
         return {
           match: match[0],
@@ -232,8 +296,7 @@ export abstract class BaseAdapter {
       finalResponse = finalResponse.replace(match, replacement);
     });
     return {
-      status,
-      content,
+      status: "success",
       finalReply: finalResponse,
       replyTo,
       quote: LLMResponse.quote || "",

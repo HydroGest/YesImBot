@@ -12,7 +12,8 @@ export enum MarkType {
   LogicRedirect = "逻辑重定向",
   LLM = "和LLM交互的消息",
   Added = "已被添加",
-  Unknown = "未标记"
+  Unknown = "未标记",
+  Ignore = "忽略"
 }
 
 export interface SendQueue {
@@ -79,7 +80,7 @@ export class SendQueue {
     if (!isChannelAllowed(this.config.MemorySlot.SlotContains, message.channelId)) return;
     this.processingLock.start(message.messageId);
     const markType = this.getMark(message.messageId) || MarkType.Unknown;
-    //@ts-ignore
+    // @ts-ignore
     if (markType === MarkType.Unknown || this.config.Settings.SelfReport.includes(markType)) {
       // 调用 Bot 指令的消息不知道怎么清除
       // 这是ctx.command先于addMessage执行完毕的原因，导致ctx.command未能清除新添加的消息

@@ -1,11 +1,11 @@
 import path from "path";
-import JSON5 from "json5";
 import { readFileSync } from "fs";
+import JSON5 from "json5";
 
-import { Config } from "../config";
 import { calculateCosineSimilarity, EmbeddingsBase } from "../embeddings/base";
 import { getEmbedding } from "../utils/factory";
 import { CacheManager } from "./cacheManager";
+import { Config as EmbeddingsConfig } from "../embeddings/config";
 
 
 interface Emoji {
@@ -20,7 +20,7 @@ export class EmojiManager {
   private lastEmbeddingModel: string | null = null;
   private client: EmbeddingsBase;
 
-  constructor(embeddingConfig: Config["Embedding"]) {
+  constructor(private embeddingConfig: EmbeddingsConfig) {
     const emojisFile = path.join(__dirname, "../../data/emojis.json");
     const emojis: Emoji[] = JSON5.parse(readFileSync(emojisFile, "utf-8"));
 
@@ -35,8 +35,8 @@ export class EmojiManager {
     this.client = getEmbedding(embeddingConfig, cacheManager);
   }
 
-  private async initializeEmbeddings(embeddingConfig: Config["Embedding"], debug = false): Promise<void> {
-    const currentModel = embeddingConfig.EmbeddingModel;
+  private async initializeEmbeddings(): Promise<void> {
+    const currentModel = this.embeddingConfig.EmbeddingModel;
     const needsRecompute =
       Object.keys(this.nameEmbeddings).length === 0 ||
       this.lastEmbeddingModel !== currentModel;
@@ -69,14 +69,10 @@ export class EmojiManager {
     return this.nameToId[name];
   }
 
-  async getNameByTextSimilarity(
-    name: string,
-    embeddingConfig: Config["Embedding"],
-    debug = false
-  ): Promise<string | undefined> {
+  async getNameByTextSimilarity(name: string): Promise<string | undefined> {
     try {
       // 确保已初始化所有表情名称的嵌入向量
-      await this.initializeEmbeddings(embeddingConfig, debug);
+      await this.initializeEmbeddings();
 
       // 获取输入文本的嵌入向量
       const inputEmbedding = await this.client._embed(name);
@@ -96,7 +92,7 @@ export class EmojiManager {
       }
       return mostSimilarName;
     } catch (error) {
-      console.error("查找相似表情失败:", error);
+      logger.warn("查找相似表情失败:", error);
       return undefined;
     }
   }

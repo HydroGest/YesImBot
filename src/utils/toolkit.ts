@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import fs from "fs";
+import https from "https";
 import { Session } from "koishi";
 import { Mutex } from 'async-mutex';
 
@@ -22,11 +24,22 @@ export function isChannelAllowed(slotContains: string[], channelId: string): boo
   return false;
 }
 
-export function containsFilter(sessionContent: string, FilterList: any): boolean {
-  for (const filterString of FilterList) {
-    if (sessionContent.includes(filterString)) {
+/**
+ * 消息内容是否包含过滤词
+ * @param content
+ * @param FilterList
+ * @returns
+ */
+export function containsFilter(content: string, FilterList: string[]): boolean {
+
+  // 这样好像不能保证正则的正确性
+  //let re = new RegExp(FilterList.join("|"), "gi");
+  //return re.test(content);
+
+  for (const filter of FilterList) {
+    let regex = new RegExp(filter, "gi");
+    if (regex.test(content))
       return true;
-    }
   }
   return false;
 }
@@ -199,3 +212,38 @@ export async function ensureGroupMemberList(session: any, channelId?: string) {
 export function computeMD5(input: string): string {
   return crypto.createHash("md5").update(input).digest("hex");
 }
+
+
+export function getFileNameFromUrl(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    const filePath = parsedUrl.pathname;
+    return filePath.substring(filePath.lastIndexOf("/") + 1);
+  } catch (error) {
+    // 根据文档，此时认为用户输入的是文件名
+    if (error instanceof TypeError && error.message.includes("Invalid URL")) {
+      return url;
+    } else {
+      // 重新抛出非 "Invalid URL" 的错误
+      throw error;
+    }
+  }
+}
+
+// 下载文件小助手
+export function downloadFile(url, filePath, debug) {
+  const file = fs.createWriteStream(filePath);
+  const request = https.get(url, (response) => {
+    response.pipe(file);
+    file.on("finish", () => {
+      file.close();
+      if (debug) logger.info("Successfully downloaded prompt file.");
+    });
+  });
+
+  request.on("error", (err) => {
+    fs.unlink(filePath, () => { });
+    if (debug)
+      logger.error("An error occurred while downloading prompt file: ", err.message.toString());
+  });
+};

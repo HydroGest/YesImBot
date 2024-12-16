@@ -221,7 +221,7 @@ export async function getImageDescription(imgUrl: string, config: Config, summar
       } catch (error) {
         console.error(`Error getting image description: ${error.message}`);
         // 返回降级结果
-        //@ts-ignore
+        // @ts-ignore
         return config.ImageViewer.How === "替换成[图片:summary]" && summary
           ? `[图片:${summary}]`
           : "[图片]";

@@ -3,7 +3,7 @@ import { LoggerService } from "@cordisjs/logger";
 import { h, sleep } from "koishi";
 
 import { Config } from "./config";
-import { getBotName, isChannelAllowed } from "./utils/toolkit";
+import { containsFilter, getBotName, isChannelAllowed } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { MarkType, SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
@@ -16,6 +16,7 @@ import { createMessage } from "./models/ChatMessage";
 import { convertUrltoBase64 } from "./utils/imageUtils";
 import { ResponseVerifier } from "./utils/verifier";
 import { getImageDescription } from "./services/imageViewer";
+import { ExpectedResponse, FailedResponse } from "./adapters/base";
 
 export const name = "yesimbot";
 
@@ -31,7 +32,7 @@ export const DATABASE_NAME = name;
 
 export const inject = {
   required: ["database"],
-  optional: ["qmanager", "interactions"]
+  optional: ["censor", "qmanager", "interactions"]
 }
 
 declare global {
@@ -54,15 +55,14 @@ export function apply(ctx: Context, config: Config) {
     process.setMaxListeners(20);
     adapterSwitcher = new AdapterSwitcher(config.API.APIList, config.Parameters);
 
-    if (config.Verifier.Enabled)
-      verifier = new ResponseVerifier(config);
+    if (config.Verifier.Enabled) verifier = new ResponseVerifier(config);
 
     if (!config.Settings.UpdatePromptOnLoad) return;
     ctx.logger.info("正在尝试更新 Prompt 文件...");
     await ensurePromptFileExists(
       config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
-      config.Debug.DebugAsInfo ? ctx : null,
-      true
+      true,
+      config.Debug.DebugAsInfo
     );
   });
 
@@ -171,6 +171,12 @@ export function apply(ctx: Context, config: Config) {
       return next();
     }
 
+    if (containsFilter(session.content, config.MemorySlot.Filter)) {
+      ctx.logger.info(`Message filtered, guildId = ${session.channelId}, content = ${foldText(session.content, 1000)}`);
+      sendQueue.setMark(session.messageId, MarkType.Ignore);
+      return next();
+    }
+
     // 确保消息入库
     await sendQueue.addMessage(await createMessage(session));
 
@@ -264,30 +270,35 @@ export function apply(ctx: Context, config: Config) {
 
       const chatResponse = await adapter.generateResponse(
         [
-          SystemMessage(await genSysPrompt(config, {
-            curGroupName: channelId,
-            BotName: botName,
-            BotSelfId: session.bot.selfId,
-            schemaPrompt
-          })),
+          SystemMessage(
+            await genSysPrompt(
+              config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
+              {
+                config: config,
+                curGroupName: channelId,
+                BotName: botName,
+                BotSelfId: session.bot.selfId,
+                schemaPrompt,
+              }
+            )
+          ),
           AssistantMessage("Resolve OK"),
           UserMessage(chatHistory),
         ],
-        session,
-        config,
+        config.MemorySlot.MinTriggerCount,
+        config.MemorySlot.MaxTriggerCount,
+        config.Settings.AllowErrorFormat,
+        config.Embedding,
         config.Debug.DebugAsInfo
       );
 
       if (config.Debug.DebugAsInfo) ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
 
       // 处理响应
-      let { status, content, nextTriggerCount, reason, replyTo, finalReply, logic, execute, quote, usage } = chatResponse;
-
-      if (isEmpty(replyTo)) replyTo = session.channelId;
-
-      sendQueue.setTriggerCount(channelId, nextTriggerCount);
+      let { status, usage } = chatResponse;
 
       if (status === "fail") {
+        const { content, reason } = chatResponse as FailedResponse;
         const failTemplate = `
 LLM 的响应无法正确解析，来自 API ${current}:
 ${reason}
@@ -299,6 +310,12 @@ ${content}
         ctx.logger.error(`LLM provides unexpected response:\n${content}`);
         return;
       }
+
+      let { replyTo, finalReply, nextTriggerCount, logic, execute, quote } = chatResponse as ExpectedResponse;
+
+      if (isEmpty(replyTo)) replyTo = session.channelId;
+
+      sendQueue.setTriggerCount(channelId, nextTriggerCount);
 
       const template = `
 ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyTo} 的消息已生成`}，来自 API ${current}:
@@ -331,24 +348,30 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
         });
       }
 
+      if (status === "skip") {
+        ctx.logger.info(`${botName}想要跳过此次回复`);
+        return true
+      };
+
       if (!isEmpty(finalReply)) {
 
-        if (config.Verifier.Enabled) {
-          if (!verifier.verifyResponse(replyTo, finalReply)) {
-            if (config.Verifier.Action === "丢弃") {
-              return false;
-            } else {
-              shouldReTrigger = true;
-              return true;
-            }
+        if (config.Verifier.Enabled && !verifier.verifyResponse(replyTo, finalReply)) {
+          if (config.Verifier.Action === "丢弃") {
+            return true;
+          } else {
+            shouldReTrigger = true;
+            return false;
           }
         }
 
         let messageIds = [];
         let sentences = processText(config["Bot"]["BotReplySpiltRegex"], config["Bot"]["BotSentencePostProcess"], finalReply);
         if (!isEmpty(quote)) sentences[0] = h.quote(quote).toString() + sentences[0];
-        for (const sentence of sentences) {
+        for (let sentence of sentences) {
           if (isEmpty(sentence)) continue;
+
+          // @ts-ignore
+          if (ctx?.censor) sentence = await ctx?.censor?.transform(sentence, session) || sentence;
 
           if (config.Bot.WordsPerSecond > 0) {
             // 按照字数等待

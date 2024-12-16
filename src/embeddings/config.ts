@@ -7,6 +7,7 @@ export interface Config {
   APIKey?: string;
   EmbeddingModel?: string;
   EmbeddingDims?: number;
+  ChunkSize?: number;
   RequestBody?: string;
   GetVecRegex?: string;
 }
@@ -30,11 +31,18 @@ export const Config: Schema<Config> = Schema.intersect([
         .description("Embedding 模型 ID"),
       EmbeddingDims: Schema.number()
         .default(1536)
+        .experimental()
         .description("Embedding 向量维度"),
-      RequestBody: Schema.string().description("自定义请求体。<br/>其中：<br/>\
+      ChunkSize: Schema.number()
+        .default(300)
+        .experimental()
+        .description("文本分词长度"),
+      RequestBody: Schema.string().description(
+        "自定义请求体。<br/>其中：<br/>\
         `<text>`（包含尖括号）会被替换成用于计算嵌入向量的文本；<br/>\
         `<apikey>`（包含尖括号）会被替换成此页面设置的 API 密钥；<br/>\
-        `<model>`（包含尖括号）会被替换成此页面设置的模型名称".trim()),
+        `<model>`（包含尖括号）会被替换成此页面设置的模型名称".trim()
+      ),
       GetVecRegex: Schema.string().description("从自定义Embedding服务提取嵌入向量的正则表达式。注意转义"),
     }),
     Schema.object({}),

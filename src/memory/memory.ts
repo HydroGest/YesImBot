@@ -1,103 +1,140 @@
-import path from "path";
+import { Context } from "koishi";
 
+import { Adapter } from "../adapters";
+import { Message, SystemMessage, UserMessage } from "../adapters/creators/component";
 import { Config } from "../config";
-import { calculateCosineSimilarity, EmbeddingsBase } from "../embeddings/base";
-import { CacheManager } from "../managers/cacheManager";
-import { getEmbedding } from "../utils/factory";
+import { EmbeddingsBase } from "../embeddings/base";
+import { getAdapter, getEmbedding } from "../utils/factory";
+import { MemoryBase, MemoryConfig } from "./base";
+import { FACT_RETRIEVAL_PROMPT } from "./prompts";
+import { MemoryVectorStore, getMagnitude } from "./vectorStore";
 import { isEmpty } from "../utils/string";
 
-interface Vector {
-  id: string;
-  vector: number[];
-  metadata: any;
-  magnitude: number;
-}
-
-export class MemoryVectorStore {
-  private vectors: Vector[];
-
-  constructor() {
-    this.vectors = [];
-  }
-
-  async addVectors(vectors: number[][], metadatas: any[], magnitudes: number[]): Promise<void> {
-    vectors.forEach((vector, index) => {
-      const id = this.generateId();
-      this.vectors.push({
-        id,
-        vector,
-        metadata: metadatas[index],
-        magnitude: magnitudes[index],
-      });
-    });
-  }
-
-  /**
-   * Find k most similar vectors to the given query vector.
-   *
-   * This function returns the k most similar vectors to the given query vector,
-   * along with their similarity scores. The similarity is calculated using the
-   * cosine similarity metric.
-   *
-   * @param query The query vector to search for.
-   * @param k The number of most similar vectors to return.
-   * @returns An array of [Vector, number] pairs, where the first element is the
-   *          vector and the second element is the similarity score. The array is
-   *          sorted in descending order of similarity score.
-   */
-  async similaritySearchVectorWithScore(query: number[], k: number): Promise<[Vector, number][]> {
-    const results: [Vector, number][] = [];
-    let magnitude = Math.sqrt(query.reduce((sum, val) => sum + val * val, 0));
-
-    const tasks = this.vectors.map(async (vector) => {
-      const similarity = calculateCosineSimilarity(query, vector.vector, magnitude, vector.magnitude);
-      results.push([vector, similarity]);
-    });
-
-    await Promise.all(tasks);
-
-    results.sort((a, b) => b[1] - a[1]);
-    return results.slice(0, k);
-  }
-
-  private generateId(): string {
-    return Math.random().toString(36).substring(2, 9);
-  }
-}
-
-export class Memory {
+export class Memory extends MemoryBase {
   private vectorStore: MemoryVectorStore;
-  private history: { role: string; content: string }[];
-  private config: Config["Embedding"];
-  private client: EmbeddingsBase;
 
-  constructor(config: Config["Embedding"]) {
-    this.vectorStore = new MemoryVectorStore();
-    this.history = [];
-    this.config = config;
+  private llm: Adapter;
+  private embedder: EmbeddingsBase;
 
-    const cacheManager = new CacheManager<number[]>(path.join(__dirname, `../../data/.vector_cache/memory.json`), false);
-    cacheManager.setAutoSave(5000);
-    this.client = getEmbedding(config, cacheManager);
+  constructor(
+    ctx: Context,
+    config: MemoryConfig,
+    parameters?: Config["Parameters"]
+  ) {
+    super();
+
+    this.vectorStore = new MemoryVectorStore(ctx);
+    this.llm = getAdapter(config.llm, parameters);
+    this.embedder = getEmbedding(config.embedder);
   }
 
-  async addMessage(message: string, role: string): Promise<void> {
-    if (isEmpty(message)) return;
-    this.history.push({ role, content: message });
-    let embedding = await this.client.embed(message, 6);
-    let magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    await this.vectorStore.addVectors([embedding], [message], [magnitude]);
+  get(memoryId: string): Promise<any> {
+    throw new Error("Method not implemented.");
+  }
+  getAll(): Promise<any[]> {
+    throw new Error("Method not implemented.");
+  }
+  update(memoryId: string, data: any): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
+  delete(memoryId: string): Promise<void> {
+    throw new Error("Method not implemented.");
+  }
+  history(memoryId: string): Promise<void> {
+    throw new Error("Method not implemented.");
   }
 
-  async getHistory(): Promise<{ role: string; content: string }[]> {
-    return this.history;
+  async add(messages: string | Message[], userId?: string) {
+    // 统一 messages 为数组形式
+    let messageArray: Message[];
+    if (typeof messages === "string") {
+      if (isEmpty(messages)) return;
+      messageArray = [{ role: "user", content: messages }];
+    } else {
+      messageArray = messages;
+    }
+
+    const userPrompt = parseMessages(messageArray);
+
+    // 生成响应
+    const response = await this.llm.chat([
+      SystemMessage(FACT_RETRIEVAL_PROMPT),
+      UserMessage(userPrompt),
+    ]);
+
+    let new_retrieved_facts: (string | { userId: string; content: string })[] =
+      [];
+    try {
+      const parsedResponse = JSON.parse(response.message.content);
+      new_retrieved_facts = parsedResponse.facts || [];
+    } catch (error) {
+      console.error(`Error parsing JSON response:`, error);
+    }
+
+    // 并行嵌入操作
+    const embeddingPromises = new_retrieved_facts.map(async (newMem) => {
+      let content: string;
+      if (typeof newMem === "string") {
+        content = newMem;
+      } else {
+        content = newMem.content;
+      }
+      try {
+        const embedding = await this.embedder.embed(content);
+        const magnitude = getMagnitude(embedding);
+        const metadata = {
+          content,
+          createdAt: new Date().getTime(),
+          userId,
+        };
+        return { embedding, magnitude, metadata };
+      } catch (error) {
+        console.error(`Error embedding content:`, error);
+        return null;
+      }
+    });
+
+    const embeddingResults = await Promise.all(embeddingPromises);
+    const vectors = embeddingResults.map((result) => result.embedding);
+    const metadatas = embeddingResults.map((result) => result.metadata);
+
+    // 添加向量
+    try {
+      await this.vectorStore.addVectors(vectors, metadatas);
+    } catch (error) {
+      console.error(`Error adding vectors to store:`, error);
+    }
   }
 
-  async getSimilarMessages(message: string, k = 5): Promise<string[]> {
-    let embedding = await this.client.embed(message, 6);
-    const results = await this.vectorStore.similaritySearchVectorWithScore(embedding, k);
-    return results.map((result) => result[0].metadata);
+  // search("")
+  async search(
+    query: string,
+    limit: number = 5,
+    userId?: string
+  ): Promise<string[]> {
+    const embedding = await this.embedder.embed(query);
+
+    const result = await this.vectorStore.similaritySearchVectorWithScore(
+      embedding,
+      limit
+    );
+    const response = result.map((item) => item[0].content);
+    return response;
   }
 }
 
-export default Memory;
+function parseMessages(messages: Message[]): string {
+  let response = "";
+  for (const message of messages) {
+    if (message.role === "user") {
+      response += `user: ${message.content}\n`;
+    }
+    if (message.role === "assistant") {
+      response += `assistant: ${message.content}\n`;
+    }
+    if (message.role === "system") {
+      response += `system: ${message.content}\n`;
+    }
+  }
+  return response;
+}
