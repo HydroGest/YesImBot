@@ -48,8 +48,8 @@ export function apply(ctx: Context, config: Config) {
   let adapterSwitcher: AdapterSwitcher;
   let verifier: ResponseVerifier;
   const sendQueue = new SendQueue(ctx, config);
-  const minTriggerTimeHandlers: { [key: string]: ReturnType<typeof ctx.debounce> } = {};
-  const maxTriggerTimeHandlers: { [key: string]: ReturnType<typeof ctx.debounce> } = {};
+  const minTriggerTimeHandlers: Map<string, ReturnType<typeof ctx.debounce<(session: Session) => Promise<boolean>>>> = new Map();
+  const maxTriggerTimeHandlers: Map<string, ReturnType<typeof ctx.debounce<(session: Session) => Promise<boolean>>>> = new Map();
 
   ctx.on("ready", async () => {
     process.setMaxListeners(20);
@@ -67,14 +67,18 @@ export function apply(ctx: Context, config: Config) {
   });
 
   ctx.on("dispose", async () => {
-    Object.keys(minTriggerTimeHandlers).forEach(key => {
-      minTriggerTimeHandlers[key].dispose?.();
-      delete minTriggerTimeHandlers[key];
-    });
-    Object.keys(maxTriggerTimeHandlers).forEach(key => {
-      maxTriggerTimeHandlers[key].dispose?.();
-      delete maxTriggerTimeHandlers[key];
-    });
+    for (let [channelId, handler] of [
+      ...minTriggerTimeHandlers,
+      ...maxTriggerTimeHandlers,
+    ]) {
+      handler.dispose?.();
+      try {
+        minTriggerTimeHandlers.delete(channelId);
+        maxTriggerTimeHandlers.delete(channelId);
+      } catch (error) {
+        ctx.logger.error(error);
+      }
+    }
   });
 
   ctx.on("message-created", async (session) => {
@@ -86,15 +90,18 @@ export function apply(ctx: Context, config: Config) {
       return;
     }
     if (config.MemorySlot.MaxTriggerTime > 0) {
-      if (!maxTriggerTimeHandlers[channelId]) {
-        maxTriggerTimeHandlers[channelId] = ctx.debounce(async (session) => {
-          if (!await handleMessage(session)) return;
-          if (shouldReTrigger) {
-            if (!await handleMessage(session)) return;
-          }
-        }, config.MemorySlot.MaxTriggerTime * 1000);
+      if (!maxTriggerTimeHandlers.has(channelId)) {
+        maxTriggerTimeHandlers.set(
+          channelId,
+          ctx.debounce(async (session: Session): Promise<boolean> => {
+            if (await handleMessage(session)) return true;
+            if (shouldReTrigger) {
+              if (await handleMessage(session)) return true;
+            }
+          }, config.MemorySlot.MaxTriggerTime * 1000)
+        );
       }
-      maxTriggerTimeHandlers[channelId](session);
+      if (await maxTriggerTimeHandlers[channelId](session)) return;
     }
   });
 
@@ -218,17 +225,23 @@ export function apply(ctx: Context, config: Config) {
     const shouldReply = (isAtMentioned && shouldReactToAt) || isTriggerCountReached || config.Debug.TestMode
 
     if (!shouldReply) return next();
-    if (!minTriggerTimeHandlers[channelId]) {
-      minTriggerTimeHandlers[channelId] = ctx.debounce(async (session) => {
-        if (!await handleMessage(session)) return next();
-        if (shouldReTrigger) {
-          if (!await handleMessage(session)) return next();
-        }
-      }, config.MemorySlot.MinTriggerTime);
+    if (!minTriggerTimeHandlers.has(channelId)) {
+      minTriggerTimeHandlers.set(
+        channelId,
+        ctx.debounce(async (session): Promise<boolean> => {
+          if (await handleMessage(session)) return true;
+          if (shouldReTrigger) {
+            if (await handleMessage(session)) return true;
+          }
+        }, config.MemorySlot.MinTriggerTime)
+      );
     }
-    minTriggerTimeHandlers[channelId](session);
+    if(await minTriggerTimeHandlers.get(channelId)(session)) return next();
   });
 
+  /**
+   * Return true 表示拦截后续中间件，即return next()
+   */
   async function handleMessage(session: Session): Promise<boolean> {
     const channelId = session.channelId;
 
@@ -308,7 +321,7 @@ ${content}
 消耗: 输入 ${usage?.prompt_tokens}, 输出 ${usage?.completion_tokens}`;
         await redirectLogicMessage(config, session, sendQueue, failTemplate);
         ctx.logger.error(`LLM provides unexpected response:\n${content}`);
-        return;
+        return false;
       }
 
       let { replyTo, finalReply, nextTriggerCount, logic, execute, quote } = chatResponse as ExpectedResponse;
