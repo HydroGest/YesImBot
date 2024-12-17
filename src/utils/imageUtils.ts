@@ -38,17 +38,26 @@ class ImageCache {
   }
 
   constructor(private savePath: string) {
-    this.metadataFile = path.join(this.savePath, "metadata.json");
+    // 确保目录存在
     if (!fs.existsSync(this.savePath)) {
       fs.mkdirSync(this.savePath, { recursive: true });
+    }
+
+    this.metadataFile = path.join(this.savePath, "metadata.json");
+
+    // 确保 metadata.json 文件存在
+    if (!fs.existsSync(this.metadataFile)) {
       fs.writeFileSync(this.metadataFile, "{}", "utf-8");
     }
+
     try {
       const metadataContent = fs.readFileSync(this.metadataFile, "utf-8");
       this.metadata = JSON.parse(metadataContent);
     } catch (error) {
       console.error("Error reading metadata file:", error);
       this.metadata = {};
+      // 如果读取失败，创建一个新的空metadata文件
+      fs.writeFileSync(this.metadataFile, "{}", "utf-8");
     }
   }
 
