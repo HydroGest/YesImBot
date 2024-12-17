@@ -159,16 +159,22 @@ const imageCache = new ImageCache(path.join(__dirname, "../../data/cache/downloa
  * @param url 图片的URL
  * @param cacheKey 指定缓存键
  * @param [ignoreCache=false] 是否忽略缓存
- *
- * @returns 图片的base64编码，包括base64前缀
- **/
-export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreCache = false): Promise<{ base64: string; cacheKey: string; originalSize: number; compressedSize: number }> {
+ * @returns {Promise<{
+ *   usingCached: boolean | undefined,
+ *   base64: string,
+ *   cacheKey: string,
+ *   originalSize: number,
+ *   compressedSize: number
+ * }>} 返回的对象包含：是否使用缓存、base64编码、缓存键、原始大小和压缩后大小
+ */
+export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreCache = false): Promise<{ usingCached: boolean, base64: string; cacheKey: string; originalSize: number; compressedSize: number }> {
   url = decodeURIComponent(url);
 
   if (!ignoreCache && imageCache.has(cacheKey)) {
     const base64 = imageCache.getBase64(cacheKey);
     const metadata = imageCache.getMetadata(cacheKey);
     return {
+      usingCached: true,
       base64,
       cacheKey: cacheKey || metadata.hash,
       originalSize: metadata.size, // 这里依然是压缩后大小，虽然写的是原始大小
@@ -195,10 +201,10 @@ export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreC
     const hash = createHash('md5').update(buffer).digest('hex');
     imageCache.set(url, buffer, contentType, hash, cacheKey || hash);
     const base64 = `data:${contentType};base64,${buffer.toString("base64")}`;
-    return { base64, cacheKey: cacheKey || hash, originalSize, compressedSize };
+    return { usingCached: false, base64, cacheKey: cacheKey || hash, originalSize, compressedSize };
   } catch (error) {
     console.error("Error converting image to base64:", error.message);
-    return { base64: "", cacheKey: "", originalSize: 0, compressedSize: 0 };
+    return { usingCached: undefined, base64: "", cacheKey: "", originalSize: 0, compressedSize: 0 };
   }
 }
 

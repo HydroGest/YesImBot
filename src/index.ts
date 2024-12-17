@@ -192,13 +192,13 @@ export function apply(ctx: Context, config: Config) {
     // 提前下载图片，防止链接过期
     h.select(parsedElements, 'img').forEach((element) => {
       convertUrltoBase64(element.attrs.src, getFileUnique(config, element, session.bot.platform), config.Debug.IgnoreImgCache)
-      .then(async ({ base64, cacheKey, originalSize, compressedSize }) => {
+      .then(async ({ usingCached, base64, cacheKey, originalSize, compressedSize }) => {
       const formatSize = (size: number) => {
         if (size >= 1073741824) return `${(size / 1073741824).toFixed(2)}GB`;
         if (size >= 1048576) return `${(size / 1048576).toFixed(2)}MB`;
         return `${(size / 1024).toFixed(2)}KB`;
       };
-      ctx.logger.info(`Image[${cacheKey.substring(0, 7)}] downloaded. file-size: ${originalSize === compressedSize ? formatSize(originalSize) : `${formatSize(originalSize)}->${formatSize(compressedSize)}`}`);
+      ctx.logger.info(`Image[${cacheKey.substring(0, 7)}] ${usingCached ? "loaded from cache" : "downloaded"}. file-size: ${originalSize === compressedSize ? formatSize(originalSize) : `${formatSize(originalSize)}->${formatSize(compressedSize)}`}`);
       if (config.ImageViewer.DescribeImmidately) {
         await getImageDescription(element.attrs.src, config, element, session.bot.platform, element.attrs.summary, base64, config.Debug.DebugAsInfo);
       }
