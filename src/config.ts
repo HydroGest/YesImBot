@@ -98,6 +98,8 @@ export interface Config {
   Debug: {
     DebugAsInfo: boolean;
     TestMode: boolean;
+    FileUniqueField: string;
+    IgnoreImgCache: boolean;
   };
 }
 
@@ -467,5 +469,11 @@ export const Config: Schema<Config> = Schema.object({
     TestMode: Schema.boolean()
       .default(false)
       .description("测试模式。如果你不知道这是什么，不要开启"),
+    FileUniqueField: Schema.string()
+      .default("fileid")
+      .description("图片的唯一标识字段"),
+    IgnoreImgCache: Schema.boolean()
+      .default(false)
+      .description("忽略图片缓存"),
   }).description("调试设置"),
 });

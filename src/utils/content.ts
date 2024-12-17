@@ -4,7 +4,6 @@ import { getImageDescription } from '../services/imageViewer';
 import { Config } from '../config';
 import { ChatMessage } from '../models/ChatMessage';
 import { Template } from './string';
-import { getMemberName } from './toolkit';
 
 /**
  * 处理用户消息
@@ -65,7 +64,7 @@ export async function processContent(config: Config, session: Session, messages:
           break;
         case "img":
           // const { src, summary, fileUnique } = elem.attrs;
-          userContent.push(await getImageDescription(elem.attrs.src, config, elem.attrs.summary, elem.attrs.fileUnique, config.Debug.DebugAsInfo));
+            userContent.push(await getImageDescription(elem.attrs.src, config, elem, session.bot.platform, elem.attrs.summary, undefined, config.Debug.DebugAsInfo));
           break;
         case "face":
           // const { id, name } = elem.attrs;

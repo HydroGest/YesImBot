@@ -74,8 +74,11 @@ export class CacheManager<T> {
    */
   private async saveCache(): Promise<void> {
     try {
+      // 确保目标目录存在
+      await fs.promises.mkdir(path.dirname(this.filePath), { recursive: true });
+
       if (this.enableBson) {
-        const serializedData = BSON.serialize(this.cache);
+        const serializedData = BSON.serialize(Object.fromEntries(this.cache));
         await fs.promises.writeFile(this.filePath, serializedData);
         return;
       }
@@ -87,10 +90,10 @@ export class CacheManager<T> {
       );
       await fs.promises.writeFile(this.filePath, serializedData, "utf-8");
     } catch (error) {
-      // 这里报错后会导致定时器终止
-      // 如果保存出错，后续应该如何处理？
-      console.error("Failed to save cache:", error);
-      throw error;
+      const llogger = logger || console;
+      llogger.error("Failed to save cache:", error);
+      // 不抛出错误，避免中断定时器
+      // 下次保存时会重试
     }
   }
 

@@ -26,11 +26,16 @@ interface Metadata {
   hash: string;
   contentType: string;
   createdAt: number;
+  fileUnique?: string;
 }
 
 class ImageCache {
   private metadata: { [key: string]: Metadata };
   private metadataFile: string;
+
+  public getMetadata(key: string): Metadata | undefined {
+    return this.metadata[key];
+  }
 
   constructor(private savePath: string) {
     this.metadataFile = path.join(this.savePath, "metadata.json");
@@ -74,14 +79,20 @@ class ImageCache {
     throw new Error(`Image not found: ${key}`);
   }
 
-  set(key: string, buffer: Buffer, contentType: string): void {
-    const hash = createHash('md5').update(buffer).digest('hex');
-    this.metadata[key] = {
-      url: key,
+  set(url: string, buffer: Buffer, contentType: string, hash?: string, fileUnique?: string): void {
+    if (!hash) {
+      hash = createHash('md5').update(buffer).digest('hex');
+    }
+    if (!fileUnique) {
+      fileUnique = hash;
+    }
+    this.metadata[fileUnique] = {
+      url: url,
       size: buffer.length,
       hash,
       contentType,
       createdAt: Date.now(),
+      fileUnique,
     };
     const filePath = path.join(this.savePath, hash);
     try {
@@ -89,7 +100,7 @@ class ImageCache {
       fs.writeFileSync(this.metadataFile, JSON.stringify(this.metadata, null, 2), "utf-8");
     } catch (error) {
       console.error("Error writing files:", error);
-      delete this.metadata[key];
+      delete this.metadata[fileUnique];
       fs.writeFileSync(this.metadataFile, JSON.stringify(this.metadata, null, 2), "utf-8");
       throw error;
     }
@@ -137,18 +148,23 @@ const imageCache = new ImageCache(path.join(__dirname, "../../data/cache/downloa
 /**
  * 从URL获取图片的base64编码
  * @param url 图片的URL
- * @param cacheKey 指定缓存键，没有就用URL
+ * @param cacheKey 指定缓存键
  * @param [ignoreCache=false] 是否忽略缓存
  *
  * @returns 图片的base64编码，包括base64前缀
  **/
-export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreCache = false): Promise<string> {
-  url = url.replace(/&amp;/g, "&");
-
-  cacheKey = cacheKey ?? url;
+export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreCache = false): Promise<{ base64: string; cacheKey: string; originalSize: number; compressedSize: number }> {
+  url = decodeURIComponent(url);
 
   if (!ignoreCache && imageCache.has(cacheKey)) {
-    return imageCache.getBase64(cacheKey);
+    const base64 = imageCache.getBase64(cacheKey);
+    const metadata = imageCache.getMetadata(cacheKey);
+    return {
+      base64,
+      cacheKey: cacheKey || metadata.hash,
+      originalSize: metadata.size, // 这里依然是压缩后大小，虽然写的是原始大小
+      compressedSize: metadata.size
+    };
   }
   try {
     const response = await axios.get(url, {
@@ -163,14 +179,17 @@ export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreC
       throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
     }
     let buffer = Buffer.from(response.data);
+    const originalSize = buffer.length;
     const contentType = response.headers["content-type"] || "image/jpeg";
     buffer = await compressImage(buffer);
-    imageCache.set(cacheKey, buffer, contentType);
+    const compressedSize = buffer.length;
+    const hash = createHash('md5').update(buffer).digest('hex');
+    imageCache.set(url, buffer, contentType, hash, cacheKey || hash);
     const base64 = `data:${contentType};base64,${buffer.toString("base64")}`;
-    return base64;
+    return { base64, cacheKey: cacheKey || hash, originalSize, compressedSize };
   } catch (error) {
     console.error("Error converting image to base64:", error.message);
-    return "";
+    return { base64: "", cacheKey: "", originalSize: 0, compressedSize: 0 };
   }
 }
 

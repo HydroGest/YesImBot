@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import https from "https";
-import { Session } from "koishi";
+import { h, Session } from "koishi";
 import { Mutex } from 'async-mutex';
 
 import { Config } from "../config";
@@ -211,6 +211,18 @@ export async function ensureGroupMemberList(session: any, channelId?: string) {
 // 计算 MD5 值作为缓存键
 export function computeMD5(input: string): string {
   return crypto.createHash("md5").update(input).digest("hex");
+}
+
+// 按照平台从img中获取fileUnique
+export function getFileUnique(config: Config, element: h, platform: string): string {
+  if (config.Debug.FileUniqueField) {
+    return element.attrs[config.Debug.FileUniqueField];
+  }
+  switch (platform) {
+    case "onebot":
+      return element.attrs.fileid;
+    // 其他平台有待添加
+  }
 }
 
 

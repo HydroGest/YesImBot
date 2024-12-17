@@ -22,6 +22,23 @@ export class Bot {
 
   async summarize(channelId, userId, content) {}
 
+
+  // ### Memory [last modified: ${DataModified}]
+  // ${RecallMemorySize} previous messages between you and the user are stored in recall memory (use functions to access them)
+  // ${ArchivalMemorySize} total memories you created are stored in archival memory (use functions to access them)
+
+  // Core memory shown below (limited in size, additional information stored in archival / recall memory):
+  // <persona characters="${Used}/${Total}">
+  // </persona>
+  // <human characters="${Used}/${Total}">
+  //   <${UserName}>
+  //   </${UserName}>
+  //   <${UserName}>
+  //   </${UserName}>
+  // </human>
+
+  async getCoreMemory(channelId, userId) {}
+
   /**
    * Add to archival memory. Make sure to phrase the memory contents such that it can be easily queried later.
    * @param content Content to write to the memory. All unicode (including emojis) are supported.

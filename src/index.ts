@@ -3,7 +3,7 @@ import { LoggerService } from "@cordisjs/logger";
 import { h, sleep } from "koishi";
 
 import { Config } from "./config";
-import { containsFilter, getBotName, isChannelAllowed } from "./utils/toolkit";
+import { containsFilter, getBotName, isChannelAllowed, getFileUnique } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { MarkType, SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
@@ -101,7 +101,7 @@ export function apply(ctx: Context, config: Config) {
           }, config.MemorySlot.MaxTriggerTime * 1000)
         );
       }
-      if (await maxTriggerTimeHandlers[channelId](session)) return;
+      if (await maxTriggerTimeHandlers.get(channelId)(session)) return;
     }
   });
 
@@ -190,20 +190,22 @@ export function apply(ctx: Context, config: Config) {
     const parsedElements = h.parse(session.content);
 
     // 提前下载图片，防止链接过期
-    // h.select 怎么用？
-    parsedElements.forEach((element) => {
-      if (element.type === "img") {
-        convertUrltoBase64(element.attrs.src, element.attrs.fileUnique)
-          .then(async () => {
-            ctx.logger.info(`Image[${element.attrs.fileUnique}] downloaded. file-size: ${element.attrs.fileSize}`);
-            if (config.ImageViewer.DescribeImmidately) {
-              await getImageDescription(element.attrs.src, config, element.attrs.summary, element.attrs.fileUnique, config.Debug.DebugAsInfo);
-            }
-          })
-          .catch((reason) => {
-            ctx.logger.warn(`Image[${element.attrs.fileUnique}] download failed. ${reason}`)
-          });
+    h.select(parsedElements, 'img').forEach((element) => {
+      convertUrltoBase64(element.attrs.src, getFileUnique(config, element, session.bot.platform), config.Debug.IgnoreImgCache)
+      .then(async ({ base64, cacheKey, originalSize, compressedSize }) => {
+      const formatSize = (size: number) => {
+        if (size >= 1073741824) return `${(size / 1073741824).toFixed(2)}GB`;
+        if (size >= 1048576) return `${(size / 1048576).toFixed(2)}MB`;
+        return `${(size / 1024).toFixed(2)}KB`;
+      };
+      ctx.logger.info(`Image[${cacheKey.substring(0, 7)}] downloaded. file-size: ${originalSize === compressedSize ? formatSize(originalSize) : `${formatSize(originalSize)}->${formatSize(compressedSize)}`}`);
+      if (config.ImageViewer.DescribeImmidately) {
+        await getImageDescription(element.attrs.src, config, element, session.bot.platform, element.attrs.summary, base64, config.Debug.DebugAsInfo);
       }
+      })
+      .catch((reason) => {
+      ctx.logger.warn(`Image[${element.attrs.src}] download failed. ${reason}`)
+      });
     });
 
     // 检查是否应该回复

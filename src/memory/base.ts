@@ -1,12 +1,15 @@
-abstract class MemoryBase {
-  /**
-   * Retrieve a memory by ID.
-   * @param memoryId
-   * @returns dict: Retrieved memory.
-   */
-  abstract get(memoryId: string): Promise<any>;
 
-  abstract getAll(): Promise<any[]>;
+import { Metadata } from "./vectorStore";
+
+/**
+ * MemoryBase
+ * https://github.com/mem0ai/mem0/blob/main/mem0/memory/base.py
+ */
+export abstract class MemoryBase {
+
+  abstract get(memoryId: string): Promise<Metadata>;
+
+  abstract getAll(): Promise<Metadata[]>;
 
   abstract update(memoryId: string, data: any): Promise<void>;
 
@@ -15,15 +18,24 @@ abstract class MemoryBase {
   abstract history(memoryId: string): Promise<void>;
 }
 
+export enum APIType {
+  OpenAI = "OpenAI",
+  Cloudflare = "Cloudflare",
+  Ollama = "Ollama",
+  CustomURL = "Custom URL",
+}
 
-// class Memory extends MemoryBase {
-//   async add(
-//     messages,
-//     userId,
-//     agentId,
-//     sessionId,
-//     metadata,
-//     filters,
-//     prompt
-//   )
-// }
+export interface MemoryConfig {
+  llm: {
+    APIType: APIType;
+    BaseURL: string;
+    APIKey: string;
+    AIModel: string;
+  };
+  embedder: {
+    APIType: APIType;
+    BaseURL: string;
+    APIKey: string;
+    AIModel: string;
+  };
+}

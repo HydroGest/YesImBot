@@ -24,9 +24,9 @@ import { CacheManager } from "../src/managers/cacheManager";
 jest.mock("../src/utils/http", () => {
   const originalModule = jest.requireActual("../src/utils/http");
   return {
-    //@ts-ignore
+    // @ts-ignore
     ...originalModule,
-    //@ts-ignore
+    // @ts-ignore
     sendRequest: jest.fn().mockImplementation(async (url: string, APIKey: string, requestBody: any) => {
           // 通过 url 细分, 返回不同的 response
           // TODO: 通过创建特定规则的 url, 测试不同格式的回复
@@ -86,7 +86,7 @@ jest.mock("../src/utils/http", () => {
               },
             };
           } else {
-            //@ts-ignore
+            // @ts-ignore
             return await originalModule.sendRequest(url, APIKey, requestBody);
           }
         }
@@ -117,7 +117,7 @@ class Test {
     this.app.plugin(help);
     this.app.plugin(logger);
     this.app.plugin(mock);
-    //@ts-ignore
+    // @ts-ignore
     this.app.plugin(yesimbot, testConfig);
 
     // 创建客户端

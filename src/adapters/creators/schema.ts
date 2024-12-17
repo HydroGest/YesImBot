@@ -1,3 +1,32 @@
+interface ToolSchema {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    strict: boolean;
+    parameters: ParameterSchema;
+  };
+}
+
+interface ParameterSchema {
+  type: "object";
+  properties: {
+    [key: string]: {
+      type: string;
+      description: string;
+    };
+  };
+  required: string[];
+  additionalProperties: boolean;
+}
+
+interface ArrayProperty {
+  type: "array";
+  items: {
+    type: "string";
+  };
+}
+
 interface SchemaNode {
   type: string;
   description: string;
