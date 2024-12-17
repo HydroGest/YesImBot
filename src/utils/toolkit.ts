@@ -220,7 +220,7 @@ export function getFileUnique(config: Config, element: h, platform: string): str
   }
   switch (platform) {
     case "onebot":
-      return element.attrs.fileid;
+      return element.attrs.file;
     // 其他平台有待添加
   }
 }
