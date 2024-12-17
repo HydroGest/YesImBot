@@ -39,9 +39,7 @@ export async function processContent(config: Config, session: Session, messages:
         case "at":
           const attrs = { ...elem.attrs };
           // 似乎getMemberName的实现有问题，无法正确获取到群昵称，总是获取到用户昵称。修复后，取消注释下面的代码
-          //if (attrs.name && attrs.id) {
-          //  attrs.name = await getMemberName(config, session, attrs.id, chatMessage.channelId) || attrs.name;
-          //}
+          attrs.name = userName;
           const safeAttrs = Object.entries(attrs)
             .map(([key, value]) => {
               // 确保value是字符串

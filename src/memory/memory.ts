@@ -1,6 +1,6 @@
 import { Context } from "koishi";
 
-import { Adapter } from "../adapters";
+import { BaseAdapter } from "../adapters/base";
 import { Message, SystemMessage, UserMessage } from "../adapters/creators/component";
 import { Config } from "../config";
 import { EmbeddingsBase } from "../embeddings/base";
@@ -13,7 +13,7 @@ import { isEmpty } from "../utils/string";
 export class Memory extends MemoryBase {
   private vectorStore: MemoryVectorStore;
 
-  private llm: Adapter;
+  private llm: BaseAdapter;
   private embedder: EmbeddingsBase;
 
   constructor(

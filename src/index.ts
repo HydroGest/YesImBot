@@ -6,17 +6,14 @@ import { Config } from "./config";
 import { containsFilter, getBotName, isChannelAllowed, getFileUnique } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { MarkType, SendQueue } from "./services/sendQueue";
-import { AdapterSwitcher } from "./adapters";
 import { functionPrompt, outputSchema } from "./adapters/creators/schema";
 import { initDatabase } from "./database";
-import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creators/component";
 import { processContent, processText } from "./utils/content";
 import { foldText, isEmpty } from "./utils/string";
 import { createMessage } from "./models/ChatMessage";
 import { convertUrltoBase64 } from "./utils/imageUtils";
-import { ResponseVerifier } from "./utils/verifier";
 import { getImageDescription } from "./services/imageViewer";
-import { Bot, FailedResponse, FunctionResponse, SkipResponse, SuccessResponse } from "./bot";
+import { Bot, FailedResponse, SkipResponse, SuccessResponse } from "./bot";
 
 export const name = "yesimbot";
 
@@ -271,31 +268,24 @@ export function apply(ctx: Context, config: Config) {
 
       let botName = await getBotName(config.Bot, session);
 
-      const chatResponse = await bot.generateResponse(
-        [
-          SystemMessage(
-            await genSysPrompt(
-              config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
-              {
-                config: config,
-                curGroupName: channelId,
-                BotName: botName,
-                BotSelfId: session.bot.selfId,
-                outputSchema,
-                functionPrompt,
-              }
-            )
-          ),
-          ...(() => {
-            let userMessages = [];
-            for (let message of chatHistory.split("\n")) {
-              userMessages.push(UserMessage(message));
-            }
-            return userMessages;
-          })(),
-        ],
-        config.Debug.DebugAsInfo
+      bot.setSystemPrompt(
+        await genSysPrompt(
+          config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
+          {
+            config: config,
+            curGroupName: channelId,
+            BotName: botName,
+            BotSelfId: session.bot.selfId,
+            outputSchema,
+            functionPrompt,
+            coreMemory: await bot.getCoreMemory(channelId, session.bot.userId),
+          }
+        )
       );
+
+      bot.setChatHistory(chatHistory);
+
+      const chatResponse = await bot.generateResponse([], config.Debug.DebugAsInfo);
 
       if (config.Debug.DebugAsInfo) ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
 
@@ -329,10 +319,10 @@ ${botName}想要跳过此次回复，来自 API ${current}
 ---
 消耗：输入 ${usage?.prompt_tokens}，输出 ${usage?.completion_tokens}`
         ctx.logger.info(`${botName}想要跳过此次回复`);
+        sendQueue.setTriggerCount(channelId, nextTriggerCount);
         return true
-      } else if (status === "function") {
-        const { functions, logic } = chatResponse as FunctionResponse;
       }
+
       // status === "success"
       let { replyTo, finalReply, nextTriggerCount, logic, functions, quote } = chatResponse as SuccessResponse;
 

@@ -1,23 +1,17 @@
-import { Context, Random, Session } from "koishi";
+import { Context, Random } from "koishi";
 import JSON5 from "json5";
 
 import { Memory } from "./memory/memory";
 import { Config } from "./config";
 import { escapeUnicodeCharacters } from "./utils/string";
-import { EmbeddingsConfig } from "./embeddings";
 import { EmojiManager } from "./managers/emojiManager";
 import { BaseAdapter, Usage } from "./adapters/base";
 import { EmbeddingsBase } from "./embeddings/base";
 import { AdapterSwitcher } from "./adapters";
 import { getEmbedding } from "./utils/factory";
-import { Message } from "./adapters/creators/component";
-import { SendQueue, MarkType } from "./services/sendQueue";
+import { Message, SystemMessage } from "./adapters/creators/component";
 import { ResponseVerifier } from "./utils/verifier";
-
-interface Function {
-  name: string;
-  params: { [key: string]: any };
-}
+import { SendQueue } from "./services/sendQueue";
 
 export interface SuccessResponse {
   status: "success";
@@ -33,7 +27,6 @@ export interface SuccessResponse {
 
 export interface SkipResponse {
   status: "skip";
-  content: string;
   nextTriggerCount: number;
   logic: string;
   functions: Array<Function>;
@@ -46,14 +39,6 @@ export interface FailedResponse {
   content: string;
   reason: string;
   usage: Usage;
-  adapterIndex: number;
-}
-
-export interface FunctionResponse {
-  status: "function";
-  functions: Array<Function>;
-  logic: string;
-  usage: Usage,
   adapterIndex: number;
 }
 
@@ -70,9 +55,11 @@ export class Bot {
   private allowErrorFormat: boolean;
 
   private history: Message[] = [];
+  private prompt: string; // 系统提示词
+  private tools: { [key: string]: (...args: any[]) => any };
+  private messageQueue: SendQueue;
 
   private emojiManager: EmojiManager;
-  private adapter: BaseAdapter;
   private embedder: EmbeddingsBase;
   readonly verifier: ResponseVerifier;
 
@@ -91,6 +78,17 @@ export class Bot {
       this.embedder = getEmbedding(config.Embedding)
     };
     if (config.Verifier.Enabled) this.verifier = new ResponseVerifier(config);
+
+    this.messageQueue = new SendQueue(ctx, config);
+
+    this.tools = {
+      insertArchivalMemory: this.insertArchivalMemory,
+      searchArchivalMemory: this.searchArchivalMemory,
+      appendCoreMemory: this.appendCoreMemory,
+      modifyCoreMemory: this.modifyCoreMemory,
+      searchConversation: this.searchConversation,
+      searchConversationWithDate: this.searchConversationWithDate,
+    }
   }
 
   updateConfig(config: Config) {
@@ -98,14 +96,27 @@ export class Bot {
     this.adapterSwitcher.updateConfig(config.API.APIList, config.Parameters);
   }
 
-  async generateResponse(messages: Message[], debug = false): Promise< SuccessResponse | SkipResponse | FailedResponse | FunctionResponse > {
+  setSystemPrompt(content: string) {
+    this.prompt = content;
+  }
+
+  setChatHistory(chatHistory: string) {
+    this.history = [];
+    for (const line of chatHistory.split("\n")) {
+      this.history.push({ role: "user", content: line });
+    }
+  }
+
+  async generateResponse(messages: Message[], debug = false): Promise< SuccessResponse | SkipResponse | FailedResponse> {
     let { current, adapter } = this.adapterSwitcher.getAdapter();
 
     if (!adapter) {
       throw new Error("没有可用的适配器");
     }
 
-    const response = await adapter.chat(messages, debug);
+    this.history.push(...messages);
+
+    const response = await adapter.chat([SystemMessage(this.prompt), ...this.history], debug);
     let content = response.message.content;
 
     if (typeof content !== "string") {
@@ -175,7 +186,6 @@ export class Bot {
       status = "skip";
       return {
         status: "skip",
-        content,
         nextTriggerCount,
         logic: finalLogic,
         usage: response.usage,
@@ -184,18 +194,22 @@ export class Bot {
       };
     } else if (LLMResponse.status === "function") {
       status = "function";
-      for (let func of LLMResponse.functions) {
-        let funcName = func.name;
-        let funcArgs = func.arguments;
+      let funcReturns: Message[] = [];
+      for (const func of LLMResponse.functions) {
+        const { name, params } = func;
+        let returnValue = await this.callFunction(name, params);
+        funcReturns.push({
+          role: "assistant",
+          content: JSON.stringify({
+            status: "OK",
+            name: name,
+            result: returnValue,
+            time: Date.now(),
+          }),
+        });
       }
-      return {
-        status: "function",
-        logic: finalLogic,
-        functions: LLMResponse.functions,
-        usage: response.usage,
-        adapterIndex: current,
-      }
-
+      // 递归调用
+      return await this.generateResponse(funcReturns, debug);
     } else {
       status = "fail";
       reason = `status 不是一个有效值: ${content}`;
@@ -288,8 +302,17 @@ export class Bot {
 
   async summarize(channelId, userId, content) {}
 
-  async runFunction() {}
+  async callFunction(name: string, params: { [key: string]: any }): Promise<any> {
+    const args = Object.values(params);
+    //getFunction
+    //bind args
+    //call
+    //add function return to history
+  }
 
+  // database
+  // type: core / recall / archival
+  //
   // ### Memory [last modified: ${DataModified}]
   // ${RecallMemorySize} previous messages between you and the user are stored in recall memory (use functions to access them)
   // ${ArchivalMemorySize} total memories you created are stored in archival memory (use functions to access them)
@@ -304,7 +327,32 @@ export class Bot {
   //   </${UserName}>
   // </human>
 
-  async getCoreMemory(channelId, userId) {}
+  async getCoreMemory(channelId, userId) {
+    return `### Memory [last modified: 2024-12-16 12:48:37 PM 中国标准时间+0800]
+4 previous messages between you and the user are stored in recall memory (use functions to access them)
+0 total memories you created are stored in archival memory (use functions to access them)
+
+Core memory shown below (limited in size, additional information stored in archival / recall memory):
+<persona characters="1017/5000">
+I am a personal assistant who answers a user's questions using Google web searches.
+When a user asks me a question and the answer is not in my context, I will use a tool called google_search which will search the web and return relevant summaries and the link they correspond to.
+It is my job to construct the best query to input into google_search based on the user's question, and to aggregate the response of google_search construct a final answer that also references the original links the information was pulled from.
+
+Here is an example:
+<example_question>
+Who founded OpenAI?
+</example_question>
+<example_response>
+OpenAI was founded by Ilya Sutskever, Greg Brockman, Trevor Blackwell, Vicki Cheung, Andrej Karpathy, Durk Kingma, Jessica Livingston, John Schulman, Pamela Vagata, and Wojciech Zaremba, with Sam Altman and Elon Musk serving as the initial Board of Directors members. ([Britannica](https://www.britannica.com/topic/OpenAI), [Wikipedia](https://en.wikipedia.org/wiki/OpenAI))
+</example_response>
+</persona>
+<human characters="276/5000">
+This is my section of core memory devoted to information about the human.
+I don't yet know anything about them.
+What's their name? Where are they from? What do they do? Who are they?
+I should update this memory over time as I interact with the human and learn more about them.
+</human>`
+  }
 
   /**
    * Add to archival memory. Make sure to phrase the memory contents such that it can be easily queried later.
@@ -336,6 +384,14 @@ export class Bot {
    * @returns void
    */
   appendCoreMemory(label: string, content: string): void {}
+
+  /**
+   * Replace the contents of core memory. To delete memories, use an empty string for newContent.
+   * @param label
+   * @param oldContent
+   * @param newContent
+   */
+  modifyCoreMemory(label: string, oldContent: string, newContent: string): void {}
 
   /**
    * Search prior conversation history using case-insensitive string matching.
