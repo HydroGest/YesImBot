@@ -5,7 +5,7 @@ import { createHash } from "crypto";
 import { h } from "koishi";
 
 import { Config } from "../config";
-import { convertUrltoBase64, removeBase64Prefix } from "../utils/imageUtils";
+import { convertUrltoBase64, removeBase64Prefix, compressImage } from "../utils/imageUtils";
 import { CacheManager } from "../managers/cacheManager";
 import { AssistantMessage, ImageComponent, SystemMessage, TextComponent, UserMessage } from "../adapters/creators/component";
 import { isEmpty } from "../utils/string";
@@ -214,7 +214,12 @@ export async function getImageDescription(
         }
 
         const question = config.ImageViewer.Question;
-        const cacheKey = getFileUnique(config, element, platform) || createHash('md5').update(Buffer.from(base64)).digest('hex');
+        // 从base64计算hash
+        const pureBase64 = removeBase64Prefix(base64);
+        const buffer = Buffer.from(pureBase64, 'base64');
+        const compressedBuffer = await compressImage(buffer);
+        const hash = createHash('md5').update(compressedBuffer).digest('hex');
+        const cacheKey = getFileUnique(config, element, platform) || hash;
         if (debug) console.log(`Cache key: ${cacheKey}`);
 
         // 尝试等待已有的处理完成

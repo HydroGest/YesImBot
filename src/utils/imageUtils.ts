@@ -10,7 +10,7 @@ import sharp from "sharp";
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 
-async function compressImage(buffer: Buffer): Promise<Buffer> {
+export async function compressImage(buffer: Buffer): Promise<Buffer> {
   while (buffer.length > MAX_IMAGE_SIZE) {
     const quality = Math.max(10, Math.floor((MAX_IMAGE_SIZE / buffer.length) * 80)); // 动态调整质量
     buffer = await sharp(buffer)
