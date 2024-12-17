@@ -7,7 +7,7 @@ import { containsFilter, getBotName, isChannelAllowed, getFileUnique } from "./u
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { MarkType, SendQueue } from "./services/sendQueue";
 import { AdapterSwitcher } from "./adapters";
-import { schemaPrompt } from "./adapters/creators/schema";
+import { functionPrompt, outputSchema } from "./adapters/creators/schema";
 import { initDatabase } from "./database";
 import { AssistantMessage, SystemMessage, UserMessage } from "./adapters/creators/component";
 import { processContent, processText } from "./utils/content";
@@ -16,7 +16,7 @@ import { createMessage } from "./models/ChatMessage";
 import { convertUrltoBase64 } from "./utils/imageUtils";
 import { ResponseVerifier } from "./utils/verifier";
 import { getImageDescription } from "./services/imageViewer";
-import { ExpectedResponse, FailedResponse } from "./adapters/base";
+import { Bot, FailedResponse, FunctionResponse, SkipResponse, SuccessResponse } from "./bot";
 
 export const name = "yesimbot";
 
@@ -42,20 +42,15 @@ declare global {
 export function apply(ctx: Context, config: Config) {
   globalThis.logger = ctx.logger;
   let shouldReTrigger = false;
+  let bot = new Bot(ctx, config);
 
   initDatabase(ctx);
-
-  let adapterSwitcher: AdapterSwitcher;
-  let verifier: ResponseVerifier;
   const sendQueue = new SendQueue(ctx, config);
   const minTriggerTimeHandlers: Map<string, ReturnType<typeof ctx.debounce<(session: Session) => Promise<boolean>>>> = new Map();
   const maxTriggerTimeHandlers: Map<string, ReturnType<typeof ctx.debounce<(session: Session) => Promise<boolean>>>> = new Map();
 
   ctx.on("ready", async () => {
     process.setMaxListeners(20);
-    adapterSwitcher = new AdapterSwitcher(config.API.APIList, config.Parameters);
-
-    if (config.Verifier.Enabled) verifier = new ResponseVerifier(config);
 
     if (!config.Settings.UpdatePromptOnLoad) return;
     ctx.logger.info("正在尝试更新 Prompt 文件...");
@@ -272,18 +267,11 @@ export function apply(ctx: Context, config: Config) {
 
       if (config.Debug.DebugAsInfo) ctx.logger.info("ChatHistory:\n" + chatHistory);
 
-      const { current, adapter } = adapterSwitcher.getAdapter();
-
-      if (!adapter) {
-        ctx.logger.warn("没有可用的适配器");
-        return false;
-      }
-
       if (config.Debug.DebugAsInfo) ctx.logger.info(`Request sent, awaiting for response...`);
 
       let botName = await getBotName(config.Bot, session);
 
-      const chatResponse = await adapter.generateResponse(
+      const chatResponse = await bot.generateResponse(
         [
           SystemMessage(
             await genSysPrompt(
@@ -293,84 +281,98 @@ export function apply(ctx: Context, config: Config) {
                 curGroupName: channelId,
                 BotName: botName,
                 BotSelfId: session.bot.selfId,
-                schemaPrompt,
+                outputSchema,
+                functionPrompt,
               }
             )
           ),
-          AssistantMessage("Resolve OK"),
-          UserMessage(chatHistory),
+          ...(() => {
+            let userMessages = [];
+            for (let message of chatHistory.split("\n")) {
+              userMessages.push(UserMessage(message));
+            }
+            return userMessages;
+          })(),
         ],
-        config.MemorySlot.MinTriggerCount,
-        config.MemorySlot.MaxTriggerCount,
-        config.Settings.AllowErrorFormat,
-        config.Embedding,
         config.Debug.DebugAsInfo
       );
 
       if (config.Debug.DebugAsInfo) ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
 
       // 处理响应
-      let { status, usage } = chatResponse;
+      let { status, adapterIndex: current, usage } = chatResponse;
+
+      let template = "";
 
       if (status === "fail") {
         const { content, reason } = chatResponse as FailedResponse;
-        const failTemplate = `
-LLM 的响应无法正确解析，来自 API ${current}:
+        template = `
+LLM 的响应无法正确解析，来自 API ${current}
 ${reason}
 原始响应:
 ${content}
 ---
 消耗: 输入 ${usage?.prompt_tokens}, 输出 ${usage?.completion_tokens}`;
-        await redirectLogicMessage(config, session, sendQueue, failTemplate);
+
         ctx.logger.error(`LLM provides unexpected response:\n${content}`);
         return false;
+      } else if (status === "skip") {
+        const { nextTriggerCount, logic, functions } = chatResponse as SkipResponse;
+        template = `
+${botName}想要跳过此次回复，来自 API ${current}
+---
+逻辑：${logic}
+---
+指令：${functions?.length ? functions : "无"}
+---
+距离下次：${nextTriggerCount}
+---
+消耗：输入 ${usage?.prompt_tokens}，输出 ${usage?.completion_tokens}`
+        ctx.logger.info(`${botName}想要跳过此次回复`);
+        return true
+      } else if (status === "function") {
+        const { functions, logic } = chatResponse as FunctionResponse;
       }
-
-      let { replyTo, finalReply, nextTriggerCount, logic, execute, quote } = chatResponse as ExpectedResponse;
+      // status === "success"
+      let { replyTo, finalReply, nextTriggerCount, logic, functions, quote } = chatResponse as SuccessResponse;
 
       if (isEmpty(replyTo)) replyTo = session.channelId;
 
       sendQueue.setTriggerCount(channelId, nextTriggerCount);
-
-      const template = `
-${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyTo} 的消息已生成`}，来自 API ${current}:
+      template = `
+回复于 ${replyTo} 的消息已生成，来自 API ${current}
 ---
-内容: ${finalReply && finalReply.trim() ? finalReply : "无"}
+内容：${finalReply && finalReply.trim() ? finalReply : "无"}
 ---
-逻辑: ${logic}
+逻辑：${logic}
 ---
-指令：${execute?.length ? execute : "无"}
+指令：${functions?.length ? functions : "无"}
 ---
 距离下次：${nextTriggerCount}
 ---
-消耗: 输入 ${usage?.prompt_tokens}, 输出 ${usage?.completion_tokens}`;
+消耗：输入 ${usage?.prompt_tokens}，输出 ${usage?.completion_tokens}`;
       await redirectLogicMessage(config, session, sendQueue, template);
 
       // 如果 AI 使用了指令
-      if (Array.isArray(execute) && execute.length > 0) {
-        execute.forEach(async (command) => {
-          try {
-            const messageIds = (replyTo === session.channelId)
-              ? await session.send(h("execute", {}, command))
-              : await session.bot.sendMessage(replyTo, h("execute", {}, command));
-            for (const messageId of messageIds) {
-              sendQueue.setMark(messageId, MarkType.Command);
-            }
-            ctx.logger.info(`已执行指令：${command}`);
-          } catch (error) {
-            ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`);
-          }
-        });
-      }
-
-      if (status === "skip") {
-        ctx.logger.info(`${botName}想要跳过此次回复`);
-        return true
-      };
+      // if (Array.isArray(functions) && functions.length > 0) {
+      //   functions.forEach(async (command) => {
+      //     try {
+      //       const messageIds = (replyTo === session.channelId)
+      //         ? await session.send(h("execute", {}, command))
+      //         : await session.bot.sendMessage(replyTo, h("execute", {}, command));
+      //       for (const messageId of messageIds) {
+      //         sendQueue.setMark(messageId, MarkType.Command);
+      //       }
+      //       ctx.logger.info(`已执行指令：${command}`);
+      //     } catch (error) {
+      //       ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`);
+      //     }
+      //   });
+      // }
 
       if (!isEmpty(finalReply)) {
 
-        if (config.Verifier.Enabled && !verifier.verifyResponse(replyTo, finalReply)) {
+        if (config.Verifier.Enabled && !bot.verifier.verifyResponse(replyTo, finalReply)) {
           if (config.Verifier.Action === "丢弃") {
             return true;
           } else {
@@ -429,8 +431,7 @@ ${status === "skip" ? `${botName}想要跳过此次回复` : `回复于 ${replyT
   }
 }
 
-
-async function redirectLogicMessage(
+export async function redirectLogicMessage(
   config: Config,
   session: Session,
   sendQueue: SendQueue,
@@ -442,5 +443,3 @@ async function redirectLogicMessage(
     sendQueue.setMark(messageId, MarkType.LogicRedirect);
   }
 }
-
-

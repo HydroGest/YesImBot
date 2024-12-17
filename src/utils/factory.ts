@@ -1,13 +1,11 @@
 import { Config } from "../config";
-import { Adapter, CloudflareAdapter, CustomAdapter, OllamaAdapter, OpenAIAdapter } from "../adapters";
+import { CloudflareAdapter, CustomAdapter, OllamaAdapter, OpenAIAdapter } from "../adapters";
 import { CustomEmbedding, OllamaEmbedding, OpenAIEmbedding } from "../embeddings";
 import { CacheManager } from "../managers/cacheManager";
 import { LLM } from "../adapters/config";
+import { BaseAdapter } from "../adapters/base";
 
-export function getAdapter(
-  config: LLM,
-  parameters?: Config["Parameters"]
-): Adapter {
+export function getAdapter(config: LLM, parameters?: Config["Parameters"]): BaseAdapter {
   switch (config.APIType) {
     case "Cloudflare":
       return new CloudflareAdapter(config, parameters);

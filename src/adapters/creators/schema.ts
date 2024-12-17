@@ -36,7 +36,7 @@ const schema = {
   status: {
     type: "enum",
     values: ["success", "skip", "function"],
-    description: "Response status, either 'success' or 'skip'.",
+    description: "Response status. `success` for sending a message, `skip` for skipping the message, `function` for waiting for the return value from a function.",
   },
   replyTo: {
     type: "string",
@@ -48,7 +48,7 @@ const schema = {
   },
   quote: {
     type: "string",
-    description: "Message ID to reference. Don't fill this field if you send a private message.",
+    description: "Message ID to reference. Don't fill this field if you send a private message. Don't abuse this",
   },
   logic: {
     type: "string",
@@ -64,17 +64,23 @@ const schema = {
   },
   finalReply: {
     type: "string",
-    description: "Final response after checks.",
+    description: "Final response after checks. The response will be sent to the channel or user based on the `replyTo` field.",
   },
-  execute: {
+  functions: {
     type: "array",
-    description: "Functions to execute.",
-  },
+    description: "Functions to execute. If you need to get the return value from a function, set `status` to `function`. If you use the `function` tag, only fill in the `status`, `logic` and `functions` field, don't fill in the other fields.",
+  }
 };
 
-export const schemaPrompt = `You will be given a chat history along with a prompt and a schema. You should generate output in JSON observing the schema provided. If the schema shows a type of integer or number, you must only show a integer for that field. A string should always be a valid string. If a value is unknown, leave it empty.
-
+export const outputSchema = `You should generate output in JSON observing the schema provided. If the schema shows a type of integer or number, you must only show a integer for that field. A string should always be a valid string. If a value is unknown, leave it empty.
 Only add data to the mostly appropriate field. Don't make up fields that aren't in the schema. If there isn't a value for a field, use null. Output should be in JSON.
 
 Schema:
 ${JSON.stringify(schema, null, 2)}`;
+
+
+export const functionPrompt = `Please select the most suitable function and parameters from the list of available functions below, based on the ongoing conversation. Provide your response in JSON format.
+Available functions:
+
+// TODO: 动态生成function prompt
+`

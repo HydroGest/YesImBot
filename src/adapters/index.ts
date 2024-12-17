@@ -4,17 +4,12 @@ import { CustomAdapter } from "./custom";
 import { OllamaAdapter } from "./ollama";
 import { OpenAIAdapter } from "./openai";
 import { getAdapter } from "../utils/factory";
+import { BaseAdapter } from "./base";
 
 export { CloudflareAdapter, CustomAdapter, OllamaAdapter, OpenAIAdapter };
 
-export type Adapter =
-  | CloudflareAdapter
-  | CustomAdapter
-  | OllamaAdapter
-  | OpenAIAdapter;
-
 export class AdapterSwitcher {
-  private adapters: Adapter[];
+  private adapters: BaseAdapter[];
   private current = 0;
   constructor(
     adapterConfig: Config["API"]["APIList"],
