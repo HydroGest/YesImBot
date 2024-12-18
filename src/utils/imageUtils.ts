@@ -5,6 +5,7 @@ import { createHash } from "crypto";
 
 import axios from "axios";
 import sharp from "sharp";
+import { formatSize } from "./string";
 
 
 
@@ -159,27 +160,18 @@ const imageCache = new ImageCache(path.join(__dirname, "../../data/cache/downloa
  * @param url 图片的URL
  * @param cacheKey 指定缓存键
  * @param [ignoreCache=false] 是否忽略缓存
- * @returns {Promise<{
- *   usingCached: boolean | undefined,
- *   base64: string,
- *   cacheKey: string,
- *   originalSize: number,
- *   compressedSize: number
- * }>} 返回的对象包含：是否使用缓存、base64编码、缓存键、原始大小和压缩后大小
+ * @returns 图片的base64编码
  */
-export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreCache = false): Promise<{ usingCached: boolean, base64: string; cacheKey: string; originalSize: number; compressedSize: number }> {
+export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreCache = false, debug = false): Promise<string> {
   url = decodeURIComponent(url);
 
   if (!ignoreCache && imageCache.has(cacheKey)) {
     const base64 = imageCache.getBase64(cacheKey);
     const metadata = imageCache.getMetadata(cacheKey);
-    return {
-      usingCached: true,
-      base64,
-      cacheKey: cacheKey || metadata.hash,
-      originalSize: metadata.size, // 这里依然是压缩后大小，虽然写的是原始大小
-      compressedSize: metadata.size
-    };
+    if (debug) {
+      logger.info(`Image loaded from cache: ${cacheKey.substring(0, 7)}. file-size: ${formatSize(metadata?.size || 0)}.`);
+    }
+    return `data:${metadata?.contentType};base64,${base64}`;
   }
   try {
     const response = await axios.get(url, {
@@ -193,18 +185,17 @@ export async function convertUrltoBase64(url: string, cacheKey?: string, ignoreC
     if (response.status !== 200) {
       throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
     }
-    let buffer = Buffer.from(response.data);
-    const originalSize = buffer.length;
     const contentType = response.headers["content-type"] || "image/jpeg";
-    buffer = await compressImage(buffer);
-    const compressedSize = buffer.length;
+    const buffer = await compressImage(Buffer.from(response.data));
     const hash = createHash('md5').update(buffer).digest('hex');
     imageCache.set(url, buffer, contentType, hash, cacheKey || hash);
-    const base64 = `data:${contentType};base64,${buffer.toString("base64")}`;
-    return { usingCached: false, base64, cacheKey: cacheKey || hash, originalSize, compressedSize };
+    if (debug) {
+      logger.info(`Image downloaded: ${url.substring(0, 7)}. file-size: ${formatSize(buffer.length)}.`);
+    }
+    return `data:${contentType};base64,${buffer.toString("base64")}`;
   } catch (error) {
-    console.error("Error converting image to base64:", error.message);
-    return { usingCached: undefined, base64: "", cacheKey: "", originalSize: 0, compressedSize: 0 };
+    logger.error("Error converting image to base64:", error.message);
+    return "";
   }
 }
 

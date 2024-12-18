@@ -13,6 +13,7 @@ import { Message, SystemMessage } from "./adapters/creators/component";
 import { ResponseVerifier } from "./utils/verifier";
 import { SendQueue } from "./services/sendQueue";
 import { Extension, getExtensions } from "./extensions/base";
+import { ImageViewer } from "./services/imageViewer";
 
 export interface Function {
   name: string;
@@ -71,6 +72,7 @@ export class Bot {
   private emojiManager: EmojiManager;
   private embedder: EmbeddingsBase;
   readonly verifier: ResponseVerifier;
+  readonly imageViewer: ImageViewer;
 
   private adapterSwitcher: AdapterSwitcher;
 
@@ -89,6 +91,8 @@ export class Bot {
     };
     if (config.Verifier.Enabled) this.verifier = new ResponseVerifier(config);
 
+    this.imageViewer = new ImageViewer(config);
+    
     this.messageQueue = new SendQueue(ctx, config);
 
     this.tools = {};

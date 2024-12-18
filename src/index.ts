@@ -12,7 +12,6 @@ import { processContent, processText } from "./utils/content";
 import { foldText, isEmpty } from "./utils/string";
 import { createMessage } from "./models/ChatMessage";
 import { convertUrltoBase64 } from "./utils/imageUtils";
-import { getImageDescription } from "./services/imageViewer";
 import { Bot, FailedResponse, SkipResponse, SuccessResponse } from "./bot";
 
 export const name = "yesimbot";
@@ -182,22 +181,26 @@ export function apply(ctx: Context, config: Config) {
     const parsedElements = h.parse(session.content);
 
     // 提前下载图片，防止链接过期
-    h.select(parsedElements, 'img').forEach((element) => {
-      convertUrltoBase64(element.attrs.src, getFileUnique(config, element, session.bot.platform), config.Debug.IgnoreImgCache)
-      .then(async ({ usingCached, base64, cacheKey, originalSize, compressedSize }) => {
-      const formatSize = (size: number) => {
-        if (size >= 1073741824) return `${(size / 1073741824).toFixed(2)}GB`;
-        if (size >= 1048576) return `${(size / 1048576).toFixed(2)}MB`;
-        return `${(size / 1024).toFixed(2)}KB`;
-      };
-      ctx.logger.info(`Image[${cacheKey.substring(0, 7)}] ${usingCached ? "loaded from cache" : "downloaded"}. file-size: ${originalSize === compressedSize ? formatSize(originalSize) : `${formatSize(originalSize)}->${formatSize(compressedSize)}`}`);
-      if (config.ImageViewer.DescribeImmidately) {
-        await getImageDescription(element.attrs.src, config, element, session.bot.platform, element.attrs.summary, base64, config.Debug.DebugAsInfo);
-      }
-      })
-      .catch((reason) => {
-      ctx.logger.warn(`Image[${element.attrs.src}] download failed. ${reason}`)
-      });
+    h.select(parsedElements, "img").forEach((element) => {
+      const cacheKey = getFileUnique(config, element, session.bot.platform);
+      convertUrltoBase64(
+        element.attrs.src,
+        cacheKey,
+        config.Debug.IgnoreImgCache
+      )
+        .then(async (base64) => {
+          if (config.ImageViewer.DescribeImmidately) {
+            await bot.imageViewer.getImageDescription(
+              element.attrs.src,
+              cacheKey,
+              element.attrs.summary,
+              config.Debug.DebugAsInfo
+            );
+          }
+        })
+        .catch((reason) => {
+          ctx.logger.warn(`Image[${element.attrs.src}] download failed. ${reason}`);
+        });
     });
 
     // 检查是否应该回复
@@ -254,7 +257,7 @@ export function apply(ctx: Context, config: Config) {
 
     try {
       // 处理内容
-      const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId));
+      const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId), bot.imageViewer);
 
       // 生成响应
       if (!chatHistory) {

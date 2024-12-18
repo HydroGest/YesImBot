@@ -1,10 +1,10 @@
 import { h, Session } from 'koishi';
 
-import { getImageDescription } from '../services/imageViewer';
 import { Config } from '../config';
 import { ChatMessage } from '../models/ChatMessage';
 import { Template } from './string';
-import { getMemberName } from './toolkit';
+import { getFileUnique, getMemberName } from './toolkit';
+import { ImageViewer } from '../services/imageViewer';
 
 /**
  * 处理用户消息
@@ -13,7 +13,7 @@ import { getMemberName } from './toolkit';
  * @param messages
  * @returns
  */
-export async function processContent(config: Config, session: Session, messages: ChatMessage[]): Promise<string> {
+export async function processContent(config: Config, session: Session, messages: ChatMessage[], imageViewer: ImageViewer): Promise<string> {
   const processedMessage: string[] = [];
 
   for (let chatMessage of messages) {
@@ -74,7 +74,8 @@ export async function processContent(config: Config, session: Session, messages:
           break;
         case "img":
           // const { src, summary, fileUnique } = elem.attrs;
-            userContent.push(await getImageDescription(elem.attrs.src, config, elem, session.bot.platform, elem.attrs.summary, undefined, config.Debug.DebugAsInfo));
+          let cacheKey = getFileUnique(config, elem, session.bot.platform);
+          userContent.push(await imageViewer.getImageDescription(elem.attrs.src, cacheKey, elem.attrs.summary, config.Debug.DebugAsInfo));
           break;
         case "face":
           // const { id, name } = elem.attrs;
