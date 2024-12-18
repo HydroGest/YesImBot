@@ -3,7 +3,7 @@ import JSON5 from "json5";
 
 import { Memory } from "./memory/memory";
 import { Config } from "./config";
-import { escapeUnicodeCharacters } from "./utils/string";
+import { escapeUnicodeCharacters, isEmpty } from "./utils/string";
 import { EmojiManager } from "./managers/emojiManager";
 import { BaseAdapter, Usage } from "./adapters/base";
 import { EmbeddingsBase } from "./embeddings/base";
@@ -12,6 +12,7 @@ import { getEmbedding } from "./utils/factory";
 import { Message, SystemMessage } from "./adapters/creators/component";
 import { ResponseVerifier } from "./utils/verifier";
 import { SendQueue } from "./services/sendQueue";
+import { Extension, getExtensions } from "./extensions/base";
 
 export interface Function {
   name: string;
@@ -63,7 +64,7 @@ export class Bot {
 
   private history: Message[] = [];
   private prompt: string; // 系统提示词
-  private tools: { [key: string]: (...args: any[]) => any };
+  private tools: { [key: string]: Extension & Function };
   private messageQueue: SendQueue;
   private lastModified: number = 0;
 
@@ -90,12 +91,10 @@ export class Bot {
 
     this.messageQueue = new SendQueue(ctx, config);
 
-    this.tools = {
-      insertArchivalMemory: this.insertArchivalMemory,
-      searchArchivalMemory: this.searchArchivalMemory,
-      appendCoreMemory: this.appendCoreMemory,
-      modifyCoreMemory: this.modifyCoreMemory,
-      searchConversation: this.searchConversation,
+    this.tools = {};
+    for (const extension of getExtensions()) {
+      // @ts-ignore
+      this.tools[extension.name] = extension;
     }
   }
 
@@ -315,15 +314,17 @@ export class Bot {
   async summarize(channelId, userId, content) {}
 
   async callFunction(name: string, params: { [key: string]: any }): Promise<any> {
-    const args = Object.values(params);
-    let func = this.tools.get(name);
-    if (!func) {
-      return "Function not found";
-    }
     try {
+      let func = this.tools[name];
+      const args = Object.values(params);
+      if (!func) {
+        return "Function not found";
+      }
+
+      // @ts-ignore
       return await func(...args);
     } catch (e) {
-      return "Function error";
+      return "Function error, reason: " + e.message;
     }
   }
 
@@ -353,6 +354,26 @@ ${humanMemories.join("\n")}
 `.trim();
   }
 
+  getFunctionPrompt() {
+    let lines = [];
+    Object.values(this.tools).forEach((func: (Extension & Function)) => {
+      lines.push(`${func.name}:`);
+      lines.push(`  description: ${func.description}`);
+      lines.push(`  params:`);
+      Object.entries(func.params).forEach(([key, value]) => {
+        lines.push(`    ${key}: ${value}`);
+      })
+    })
+
+    let s = lines.join("\n");
+
+    let functionPrompt = `Please select the most suitable function and parameters from the list of available functions below, based on the ongoing conversation. Provide your response in JSON format. You can run multiple functions in a single response.
+Available functions:
+${isEmpty(s) ? "No functions available." : s}`;
+
+    return functionPrompt;
+  }
+
   private collectUserID() {
     let users: Map<string, string> = new Map();
     let template = this.config.Settings.SingleMessageStrctureTemplate
@@ -376,60 +397,5 @@ ${humanMemories.join("\n")}
     }
 
     return users;
-  }
-
-  /**
-   * Add to archival memory. Make sure to phrase the memory contents such that it can be easily queried later.
-   * @param content Content to write to the memory. All unicode (including emojis) are supported.
-   * @returns void
-   */
-  insertArchivalMemory(content: string): void {
-    this.memory.add
-  }
-
-  /**
-   * Search archival memory using semantic (embedding-based) search.
-   * @param query String to search for.
-   * @param page Allows you to page through results. Only use on a follow-up query. Defaults to 0 (first page).
-   * @param start Starting index for the search results. Defaults to 0.
-   * @returns String[]
-   */
-  searchArchivalMemory(
-    query: string,
-    page: number = 0,
-    start: number = 0
-  ): string[] {
-    return [];
-  }
-
-  /**
-   * Append to the contents of core memory.
-   * @param label Section of the memory to be edited (self or human).
-   *
-   * @param content Content to write to the memory. All unicode (including emojis) are supported.
-   * @returns void
-   */
-  appendCoreMemory(label: string, content: string): void {}
-
-  /**
-   * Replace the contents of core memory. To delete memories, use an empty string for newContent.
-   * @param label
-   * @param oldContent
-   * @param newContent
-   */
-  modifyCoreMemory(label: string, oldContent: string, newContent: string): void {}
-
-  /**
-   * Search prior conversation history using case-insensitive string matching.
-   * @param query String to search for.
-   * @param userId  User ID to search for.
-   * @param page Allows you to page through results. Only use on a follow-up query. Defaults to 0 (first page).
-   */
-  searchConversation(
-    query: string,
-    userId?: string,
-    page: number = 0
-  ): string[] {
-    return [];
   }
 }

@@ -6,7 +6,7 @@ import { Config } from "./config";
 import { containsFilter, getBotName, isChannelAllowed, getFileUnique } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { MarkType, SendQueue } from "./services/sendQueue";
-import { functionPrompt, outputSchema } from "./adapters/creators/schema";
+import { outputSchema } from "./adapters/creators/schema";
 import { initDatabase } from "./database";
 import { processContent, processText } from "./utils/content";
 import { foldText, isEmpty } from "./utils/string";
@@ -279,7 +279,7 @@ export function apply(ctx: Context, config: Config) {
             BotName: botName,
             BotSelfId: session.bot.selfId,
             outputSchema,
-            functionPrompt,
+            functionPrompt: bot.getFunctionPrompt(),
             coreMemory: await bot.getCoreMemory(),
           }
         )
