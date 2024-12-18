@@ -1,36 +1,27 @@
+import { Config } from "../config";
 import { sendRequest } from "../utils/http";
-import { BaseAdapter } from "./base";
+import { BaseAdapter, Response } from "./base";
+import { LLM } from "./config";
+import { Message } from "./creators/component";
 
 export class OpenAIAdapter extends BaseAdapter {
-  private url: string;
-  private apiKey: string;
-  private model: string;
-
-  constructor(baseUrl: string, apiKey: string, model: string) {
-    super("OpenAI");
-    this.url = `${baseUrl}/v1/chat/completions`;
-    this.apiKey = apiKey;
-    this.model = model;
+  constructor(config: LLM, parameters?: Config["Parameters"]) {
+    super(config, parameters);
+    this.url = `${config.BaseURL}/v1/chat/completions`;
   }
 
-  protected async generateResponse(
-    sysPrompt: string,
-    userPrompt: string,
-    parameters: any,
-    detail: string,
-    eyeType: string,
-    debug: boolean
-  ) {
+  async chat(messages: Message[], debug = false): Promise<Response> {
     const requestBody = {
       model: this.model,
-      messages: await this.createMessages(sysPrompt, userPrompt, eyeType, detail),
-      temperature: parameters.Temperature,
-      max_tokens: parameters.MaxTokens,
-      top_p: parameters.TopP,
-      frequency_penalty: parameters.FrequencyPenalty,
-      presence_penalty: parameters.PresencePenalty,
-      stop: parameters.Stop,
-      ...parameters.OtherParameters,
+      messages,
+      temperature: this.parameters?.Temperature,
+      max_tokens: this.parameters?.MaxTokens,
+      frequency_penalty: this.parameters?.FrequencyPenalty,
+      presence_penalty: this.parameters?.PresencePenalty,
+      response_format: this.ability.includes("结构化输出")
+        ? { type: "json_object" }
+        : undefined,
+      ...this.otherParams,
     };
     let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
     try {
@@ -39,10 +30,10 @@ export class OpenAIAdapter extends BaseAdapter {
         created: response.created,
         message: {
           role: response.choices[0].message.role,
-          content: response.choices[0].message.content
+          content: response.choices[0].message.content,
         },
         usage: response.usage,
-      }
+      };
     } catch (error) {
       console.error("Error parsing response:", error);
       console.error("Response:", response);

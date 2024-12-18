@@ -7,6 +7,7 @@ export default {
       "private:all"
     ],
     AtReactPossibility: 1,
+    MinTriggerCount: 1
   },
   API: {
     APIList: [
@@ -39,6 +40,7 @@ export default {
   Bot: {
     NickorName: "用户昵称",
     WordsPerSecond: 0,
+    BotReplySpiltRegex: "(?<=[。?!？！])\s*",
   },
   Settings: {
     AllowErrorFormat: true,

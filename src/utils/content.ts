@@ -1,92 +1,148 @@
-import { Session } from 'koishi';
+import { h, Session } from 'koishi';
 
-import { getMemberName } from './prompt';
-import { replaceImageWith } from '../services/imageViewer';
 import { Config } from '../config';
-import { emojiManager } from '../managers/emojiManager';
-import { convertUrltoBase64 } from './imageUtils';
+import { ChatMessage } from '../models/ChatMessage';
+import { Template } from './string';
+import { getFileUnique, getMemberName } from './toolkit';
+import { ImageViewer } from '../services/imageViewer';
 
+/**
+ * 处理用户消息
+ * @param config
+ * @param session
+ * @param messages
+ * @returns
+ */
+export async function processContent(config: Config, session: Session, messages: ChatMessage[], imageViewer: ImageViewer): Promise<string> {
+  const processedMessage: string[] = [];
 
-// 对于QQ，只有type为1的表情才是QQ表情，其他的是普通emoji，无需转义。移除对type的处理
-
-export async function replaceTags(str: string, config: Config): Promise<string> {
-  const faceidRegex = /<face id="(\d+)"(?: name="([^"]*)")?(?: platform="[^"]*")?><img src="[^"]*"?\/><\/face>/g;
-  const imgRegex = /<img[^>]+src\s*=\s*"([^"]+)"[^>]*\/>/g;
-  const videoRegex = /<video[^>]+\/>/g;
-  const audioRegex = /<audio[^>]+\/>/g;
-
-  let finalString: string = str;
-
-  const faceidMatches = Array.from(finalString.matchAll(faceidRegex));
-  const faceidReplacements = await Promise.all(faceidMatches.map(async (match) => {
-    let [, id, name] = match;
-    if (!name) {
-      const emojiName = await emojiManager.getNameById(id);
-      name = emojiName ? emojiName : "未知";
+  for (let chatMessage of messages) {
+    // 12月3日星期二 17:34:00
+    const timeString = chatMessage.sendTime.toLocaleString("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    let senderName: string;
+    switch (config.Bot.NickorName) {
+      case "群昵称":
+        senderName = chatMessage.senderNick;
+        break;
+      case "用户昵称":
+      default:
+        senderName = chatMessage.senderName;
+        break;
     }
-    return {
-      match: match[0],
-      replacement: `[表情: ${name}]`,
-    };
-  }));
-  faceidReplacements.forEach(({ match, replacement }) => {
-    finalString = finalString.replace(match, replacement);
-  });
-
-  const imgMatches = Array.from(finalString.matchAll(imgRegex));
-  for (const match of imgMatches) {
-    const [fullMatch, src] = match;
-    const imageUrl = src.replace(/&amp;/g, '&');
-    let replacement = fullMatch;
-
-    if (config.ImageViewer.How === 'LLM API 自带的多模态能力') {
-      const base64 = await convertUrltoBase64(imageUrl);
-      replacement = `<img base64="${base64}" src="${imageUrl}"/>`;
-    } else {
-      replacement = await replaceImageWith(fullMatch, config);
+    const userContent = [];
+    const template = config.Settings.SingleMessageStrctureTemplate;
+    const elements = h.parse(chatMessage.content);
+    for (let elem of elements) {
+      switch (elem.type) {
+        case "text":
+          // const { content } = elem.attrs;
+          userContent.push(elem.attrs.content);
+          break;
+        case "at":
+          const attrs = { ...elem.attrs };
+          let userName: string;
+          switch (config.Bot.NickorName) {
+            case "群昵称":
+              userName = messages.filter((m) => m.senderId === attrs.id)[0]?.senderNick;
+              break;
+            case "用户昵称":
+            default:
+              userName = messages.filter((m) => m.senderId === attrs.id)[0]?.senderName;
+              break;
+          }
+          // 似乎getMemberName的实现有问题，无法正确获取到群昵称，总是获取到用户昵称。修复后，取消注释下面的代码
+          attrs.name = userName || attrs.name || await getMemberName(config, session, attrs.id, chatMessage.channelId);
+          const safeAttrs = Object.entries(attrs)
+            .map(([key, value]) => {
+              // 确保value是字符串
+              const strValue = String(value);
+              // 转义单引号和其他潜在的危险字符
+              const safeValue = strValue
+                .replace(/'/g, "&#39;")
+                .replace(/"/g, "&quot;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+              return `${key}='${safeValue}'`;
+            })
+            .join(' ');
+          const atMessage = `<at ${safeAttrs}/>`;
+          userContent.push(atMessage);
+          break;
+        case "quote":
+          // const { id } = elem.attrs;
+          chatMessage.quoteMessageId = elem.attrs.id;
+          break;
+        case "img":
+          // const { src, summary, fileUnique } = elem.attrs;
+          let cacheKey = getFileUnique(config, elem, session.bot.platform);
+          userContent.push(await imageViewer.getImageDescription(elem.attrs.src, cacheKey, elem.attrs.summary, config.Debug.DebugAsInfo));
+          break;
+        case "face":
+          // const { id, name } = elem.attrs;
+          userContent.push(`[表情:${elem.attrs.name}]`);
+          break;
+        case "mface":
+          // const { url, summary } = elem.attrs;
+          userContent.push(`[表情:${elem.attrs.summary?.replace(/^\[|\]$/g, '')}]`);
+          break;
+        default:
+      }
     }
-
-    finalString = finalString.replace(fullMatch, replacement);
+    // [messageId][{date} from_guild:{channelId}] {senderName}<{senderId}> 说: {userContent}
+    // [messageId][{date} from_guild:{channelId}] {senderName}<{senderId}> 回复({quoteMessageId}): {userContent}
+    // [messageId][{date} from_private] {senderName}<{senderId}> 说: {userContent}
+    // [messageId][{date} from_private] {senderName}<{senderId}> 回复({quoteMessageId}): {userContent}
+    let messageText = new Template(template, /\{\{(\w+(?:\.\w+)*)\}\}/g).render({
+      messageId: chatMessage.messageId,
+      date: timeString,
+      channelType: chatMessage.channelType,
+      channelInfo: (chatMessage.channelType === "guild") ? `from_guild:${chatMessage.channelId}` : `from_${chatMessage.channelType}`,
+      channelId: chatMessage.channelId,
+      senderName,
+      senderId: chatMessage.senderId,
+      quoteMessageId: chatMessage.quoteMessageId || "",
+      userContent: userContent.join(""),
+    }).replace(/{{hasQuote,(.*?),(.*?)}}/, (_, arg1, arg2) =>
+      chatMessage.quoteMessageId ? arg1 : arg2
+    ).replace(/{{isPrivate,(.*?),(.*?)}}/, (_, arg1, arg2) =>
+      chatMessage.channelType === "private" ? arg1 : arg2
+    );
+    processedMessage.push(messageText);
   }
 
-  finalString = finalString.replace(videoRegex, "[视频]");
-  finalString = finalString.replace(audioRegex, "[音频]");
-
-  return finalString;
+  return processedMessage.join("\n");
 }
 
-/*
-    @description: 处理 人类 的消息
-*/
-export async function processUserContent(config: Config, session: Session): Promise<{ content: string, name: string }> {
-  const regex = /<at id="([^"]+)"(?:\s+name="([^"]+)")?\s*\/>/g;
-  // 转码 <at> 消息，把<at id="0" name="YesImBot" /> 转换为 @Athena 或 @YesImBot
-  const matches = Array.from(session.content.matchAll(regex));
-  let finalName = "";
-
-  const userContentPromises = matches.map(async (match) => {
-
-    const id = match[1].trim();
-    const name = match[2]?.trim(); // 可能获取到 name
-
-    const memberName = await getMemberName(config, session, id);
-    finalName = memberName ? memberName : (name ? name : "UserNotFound");
-    return {
-      match: match[0],
-      replacement: `@${finalName}`,
+export function processText(splitRule: Config["Bot"]["BotReplySpiltRegex"], replaceRules: Config["Bot"]["BotSentencePostProcess"], text: string): string[] {
+  const replacements = replaceRules.map(item => ({
+    regex: new RegExp(item.replacethis, 'g'),
+    replacement: item.tothis
+  }));
+  let quoteMessageId;
+  let splitRegex = new RegExp(splitRule);
+  const sentences: string[] = [];
+  // 发送前先处理 Bot 消息
+  h.parse(text).forEach((node) => {
+    // 只针对纯文本进行处理
+    if (node.type === "text") {
+      let text: string = node.attrs.content;
+      // 关键词替换
+      for (let { regex, replacement } of replacements) {
+        text = text.replace(regex, replacement);
+      }
+      // 分句
+      let temp = text.split(splitRegex);
+      let last = sentences.pop() || "";
+      let first = temp.shift() || "";
+      sentences.push(last + first, ...temp);
+    } else if (node.type === "quote") {
+      quoteMessageId = node.attrs.id;
+    } else {
+      let temp = sentences.pop() || "";
+      temp += node.toString();
+      sentences.push(temp);
     }
   });
-
-  const userContents = await Promise.all(userContentPromises);
-  let userContent: string = session.content;
-  userContents.forEach(({ match, replacement }) => {
-    userContent = userContent.replace(match, replacement);
-  });
-
-  // 替换 <at type="all"/> 和 <at type="here"/>
-  userContent = userContent.replace(/<at type="all"\s*\/>/g, '@全体成员');
-  userContent = userContent.replace(/<at type="here"\s*\/>/g, '@在线成员');
-
-  userContent = await replaceTags(userContent, config);
-  return { content: userContent, name: finalName };
+  if (quoteMessageId) sentences[0] = h.quote(quoteMessageId).toString() + sentences[0];
+  return sentences;
 }

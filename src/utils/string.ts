@@ -1,5 +1,6 @@
 // 折叠文本中间部分
 export function foldText(text: string, maxLength: number): string {
+  if (!text) return "";
   if (text.length > maxLength) {
     const halfLength = Math.floor(maxLength / 2);
     const foldedChars = text.length - maxLength;
@@ -40,4 +41,57 @@ export function convertNumberToString(value?: number | string): string {
     return value;
   }
   return value.toString();
+}
+
+export function isEmpty(str: string){
+  return !str || String(str) == ""
+}
+
+/**
+ * 模板引擎
+ *
+ * 和 JS 模板字符串差不多
+ */
+export class Template {
+  constructor(
+    private templateString: string,
+    private regex: RegExp = /\$\{(\w+(?:\.\w+)*)\}/g
+  ){}
+  render(model: any){
+    return this.templateString.replace(this.regex, (match, key) => {
+      return this.getValue(model, key.split('.'));
+    });
+  }
+  private getValue(data: any, keys: string[]) {
+    let value = data;
+    for (let key of keys) {
+      if (value && typeof value === 'object') {
+        value = value[key];
+      } else {
+        return '';
+      }
+    }
+    return value || '';
+  };
+}
+
+export function parseJSON(text: string) {
+  const match = text.match(/{.*}/s);
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch (e) {
+      return null;
+    }
+  }
+}
+
+export function formatSize(size: number): string {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index++;
+  }
+  return `${size.toFixed(2)}${units[index]}`;
 }

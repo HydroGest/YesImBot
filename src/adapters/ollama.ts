@@ -1,41 +1,57 @@
+import { Config } from "../config";
 import { sendRequest } from "../utils/http";
-import { BaseAdapter, Message } from "./base";
-
+import { BaseAdapter, Response } from "./base";
+import { LLM } from "./config";
+import { Message } from "./creators/component";
+interface ToolCall {
+  function: {
+    name: string;
+    arguments: {
+      [key: string]: any;
+    }
+  }
+}
+interface ToolMessage {
+  role: "tool";
+  content: string;
+}
+function ToolMessage(content: string): ToolMessage {
+  return {
+    role: "tool",
+    content
+  }
+}
 export class OllamaAdapter extends BaseAdapter {
-  private url: string;
-  private apiKey: string;
-  private model: string;
-
-  constructor(baseUrl: string, apiKey: string, model: string) {
-    super("Ollama");
-    this.url = `${baseUrl}/api/chat`;
-    this.apiKey = apiKey;
-    this.model = model;
+  constructor(config: LLM, parameters?: Config["Parameters"]) {
+    super(config, parameters);
+    this.url = `${config.BaseURL}/api/chat`;
   }
 
-  protected async generateResponse(
-    sysPrompt: string,
-    userPrompt: string | Message,
-    parameters: any,
-    detail: string,
-    eyeType: string,
-    debug: boolean
-  ) {
+  async chat(messages: Message[], debug = false): Promise<Response> {
+    for (const message of messages) {
+      for (const component of message.content) {
+        if (typeof component === "string") continue;
+        if (component.type === "image_url") {
+          if (!message["images"]) message["images"] = [];
+          message["images"].push(component["image_url"]["url"]);
+        }
+      }
+    }
     const requestBody = {
       model: this.model,
       stream: false,
-      messages: await this.createMessages(sysPrompt, userPrompt, eyeType, detail),
+      format: this.ability.includes("结构化输出") ? "json" : undefined,
+      messages,
       options: {
-        top_p: parameters.TopP,
-        temperature: parameters.Temperature,
-        presence_penalty: parameters.PresencePenalty,
-        frequency_penalty: parameters.FrequencyPenalty,
-        stop: parameters.Stop,
-        num_ctx: parameters.MaxTokens,
+        num_ctx: this.parameters?.MaxTokens,
+        temperature: this.parameters?.Temperature,
+        presence_penalty: this.parameters?.PresencePenalty,
+        frequency_penalty: this.parameters?.FrequencyPenalty,
       },
-      ...parameters.OtherParameters,
+      ...this.otherParams,
     };
     let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
+
     try {
       return {
         model: response.model,
@@ -49,32 +65,15 @@ export class OllamaAdapter extends BaseAdapter {
           completion_tokens: response.eval_count,
           total_tokens: response.prompt_eval_count + response.eval_count,
         },
-      }
+      };
     } catch (error) {
       console.error("Error parsing response:", error);
       console.error("Response:", response);
     }
   }
 
-  async createMessages(sysInput: string, infoInput: string | Message, eyeType: any, detail: string) {
-    let userMessage: any = {
-      role: "user"
-    }
-    if (typeof infoInput === "string") {
-      userMessage.content = infoInput;
-    } else {
-      userMessage = infoInput;
-    }
-    return [
-      {
-        role: "system",
-        content: sysInput,
-      },
-      {
-        role: "assistant",
-        content: "Resolve OK",
-      },
-      userMessage
-    ];
+  async chatWithHistory(messages: Message[]): Promise<Response> {
+    this.history.push(...messages);
+    return this.chat(this.history);
   }
 }
