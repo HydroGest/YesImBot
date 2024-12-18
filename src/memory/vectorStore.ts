@@ -79,6 +79,10 @@ export class MemoryVectorStore {
     fs.writeFileSync(path.join(__dirname, "../../data/.vector_cache/memory.json"), vectors);
   }
 
+  filterVectors(filter: (vector: Vector) => boolean): Vector[] {
+    return this.vectors.filter(filter);
+  }
+
   /**
    * Find k most similar vectors to the given query vector.
    *
@@ -92,17 +96,18 @@ export class MemoryVectorStore {
    *          vector and the second element is the similarity score. The array is
    *          sorted in descending order of similarity score.
    */
-  async similaritySearchVectorWithScore(query: number[], k: number): Promise<[Vector, number][]> {
-    const results: [Vector, number][] = [];
+  async similaritySearchVectorWithScore(query: number[], k: number, filter?: (vector: Vector) => boolean): Promise<[Vector, number][]> {
+    let results: [Vector, number][] = [];
     let magnitude = getMagnitude(query);
 
     const tasks = this.vectors.map(async (vector) => {
       const similarity = calculateCosineSimilarity(query, vector.vector, magnitude, vector.magnitude);
       results.push([vector, similarity]);
     });
-
     await Promise.all(tasks);
-
+    if (filter) {
+      results = results.filter(x => filter(x[0]));
+    }
     results.sort((a, b) => b[1] - a[1]);
     return results.slice(0, k);
   }

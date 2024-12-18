@@ -17,25 +17,3 @@ export abstract class MemoryBase {
 
   abstract history(memoryId: string): Promise<void>;
 }
-
-export enum APIType {
-  OpenAI = "OpenAI",
-  Cloudflare = "Cloudflare",
-  Ollama = "Ollama",
-  CustomURL = "Custom URL",
-}
-
-export interface MemoryConfig {
-  llm: {
-    APIType: APIType;
-    BaseURL: string;
-    APIKey: string;
-    AIModel: string;
-  };
-  embedder: {
-    APIType: APIType;
-    BaseURL: string;
-    APIKey: string;
-    AIModel: string;
-  };
-}

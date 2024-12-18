@@ -1,14 +1,17 @@
-interface ToolSchema {
+import { readFileSync } from "fs";
+import path from "path";
+import { isEmpty } from "../../utils/string";
+
+export interface ToolSchema {
   type: "function";
   function: {
     name: string;
     description: string;
-    strict: boolean;
     parameters: ParameterSchema;
   };
 }
 
-interface ParameterSchema {
+export interface ParameterSchema {
   type: "object";
   properties: {
     [key: string]: {
@@ -17,19 +20,6 @@ interface ParameterSchema {
     };
   };
   required: string[];
-  additionalProperties: boolean;
-}
-
-interface ArrayProperty {
-  type: "array";
-  items: {
-    type: "string";
-  };
-}
-
-interface SchemaNode {
-  type: string;
-  description: string;
 }
 
 const schema = {
@@ -78,8 +68,31 @@ Only add data to the mostly appropriate field. Don't make up fields that aren't 
 Schema:
 ${JSON.stringify(schema, null, 2)}`;
 
+let s: string = "";
+try {
+  let data = readFileSync(
+    path.join(__dirname, "../../../data/availableFunctions.json"),
+    "utf-8"
+  );
+  let availableFunctions: ToolSchema[] = JSON.parse(data);
+  for (let func of availableFunctions) {
+    let params = "";
+    for (let [key, value] of Object.entries(
+      func.function.parameters.properties
+    )) {
+      params += `    ${key}: ${value.description}\n`;
+    }
+    s += `${func.function.name}:
+  description: ${func.function.description}
+  params:\n${params}\n`;
+  }
+} catch (e) {
+  console.log(e);
+}
+
+
 // TODO: 动态生成function prompt
 export const functionPrompt = `Please select the most suitable function and parameters from the list of available functions below, based on the ongoing conversation. Provide your response in JSON format.
 Available functions:
-
+${isEmpty(s) ? "No functions available." : s}
 `

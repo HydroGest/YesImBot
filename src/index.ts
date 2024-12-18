@@ -268,6 +268,8 @@ export function apply(ctx: Context, config: Config) {
 
       let botName = await getBotName(config.Bot, session);
 
+      bot.setChatHistory(chatHistory);
+
       bot.setSystemPrompt(
         await genSysPrompt(
           config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
@@ -278,12 +280,10 @@ export function apply(ctx: Context, config: Config) {
             BotSelfId: session.bot.selfId,
             outputSchema,
             functionPrompt,
-            coreMemory: await bot.getCoreMemory(channelId, session.bot.userId),
+            coreMemory: await bot.getCoreMemory(),
           }
         )
       );
-
-      bot.setChatHistory(chatHistory);
 
       const chatResponse = await bot.generateResponse([], config.Debug.DebugAsInfo);
 
@@ -343,22 +343,17 @@ ${botName}想要跳过此次回复，来自 API ${current}
 消耗：输入 ${usage?.prompt_tokens}，输出 ${usage?.completion_tokens}`;
       await redirectLogicMessage(config, session, sendQueue, template);
 
-      // 如果 AI 使用了指令
-      // if (Array.isArray(functions) && functions.length > 0) {
-      //   functions.forEach(async (command) => {
-      //     try {
-      //       const messageIds = (replyTo === session.channelId)
-      //         ? await session.send(h("execute", {}, command))
-      //         : await session.bot.sendMessage(replyTo, h("execute", {}, command));
-      //       for (const messageId of messageIds) {
-      //         sendQueue.setMark(messageId, MarkType.Command);
-      //       }
-      //       ctx.logger.info(`已执行指令：${command}`);
-      //     } catch (error) {
-      //       ctx.logger.error(`执行指令<${command.toString()}>时出错: ${error}`);
-      //     }
-      //   });
-      // }
+      //如果 AI 使用了指令
+      if (Array.isArray(functions) && functions.length > 0) {
+        functions.forEach(async (func) => {
+          try {
+            await bot.callFunction(func.name, func.params);
+            ctx.logger.info(`已执行指令：${func.name}`);
+          } catch (error) {
+            ctx.logger.error(`执行指令<${func.name}>时出错: ${error}`);
+          }
+        });
+      }
 
       if (!isEmpty(finalReply)) {
 
@@ -411,7 +406,7 @@ ${botName}想要跳过此次回复，来自 API ${current}
     }
 
     catch (error) {
-      ctx.logger.error(`处理消息时出错: ${error}`);
+      ctx.logger.error(`处理消息时出错: ${error.stack}`);
       return false;
     }
 

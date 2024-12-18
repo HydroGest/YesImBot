@@ -69,3 +69,11 @@ export abstract class BaseAdapter {
 
   abstract chat(messages: Message[], debug?: Boolean): Promise<Response>;
 }
+
+
+export class AdapterError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AdapterError";
+  }
+}

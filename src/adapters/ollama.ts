@@ -53,21 +53,6 @@ export class OllamaAdapter extends BaseAdapter {
     let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
 
     try {
-      if (this.ability.includes("工具调用") && response.message["tool_calls"]) {
-        const toolCalls: ToolCall[] = response.message["tool_calls"];
-
-        messages.push(response.message);
-
-        for (const toolCall of toolCalls) {
-          const funcName = toolCall.function.name;
-          const funcArgs = toolCall.function.arguments;
-          // TODO: support function call
-          messages.push(ToolMessage(""))
-        }
-
-        response = await sendRequest(this.url, this.apiKey, requestBody, debug);
-      }
-
       return {
         model: response.model,
         created: response.created_at,

@@ -13,6 +13,13 @@ import { Message, SystemMessage } from "./adapters/creators/component";
 import { ResponseVerifier } from "./utils/verifier";
 import { SendQueue } from "./services/sendQueue";
 
+export interface Function {
+  name: string;
+  params: {
+    [key: string]: any;
+  }
+}
+
 export interface SuccessResponse {
   status: "success";
   finalReply: string;
@@ -58,6 +65,7 @@ export class Bot {
   private prompt: string; // 系统提示词
   private tools: { [key: string]: (...args: any[]) => any };
   private messageQueue: SendQueue;
+  private lastModified: number = 0;
 
   private emojiManager: EmojiManager;
   private embedder: EmbeddingsBase;
@@ -75,7 +83,8 @@ export class Bot {
     );
     if (config.Embedding.Enabled) {
       this.emojiManager = new EmojiManager(config.Embedding);
-      this.embedder = getEmbedding(config.Embedding)
+      this.embedder = getEmbedding(config.Embedding);
+      this.memory = new Memory(ctx, config.API.APIList[0], config.Embedding, config.Parameters);
     };
     if (config.Verifier.Enabled) this.verifier = new ResponseVerifier(config);
 
@@ -87,7 +96,6 @@ export class Bot {
       appendCoreMemory: this.appendCoreMemory,
       modifyCoreMemory: this.modifyCoreMemory,
       searchConversation: this.searchConversation,
-      searchConversationWithDate: this.searchConversationWithDate,
     }
   }
 
@@ -117,6 +125,9 @@ export class Bot {
     this.history.push(...messages);
 
     const response = await adapter.chat([SystemMessage(this.prompt), ...this.history], debug);
+
+    this.history.push({ role: "assistant", content: JSON.stringify(JSON.parse(response.message.content)) });
+
     let content = response.message.content;
 
     if (typeof content !== "string") {
@@ -195,20 +206,21 @@ export class Bot {
     } else if (LLMResponse.status === "function") {
       status = "function";
       let funcReturns: Message[] = [];
-      for (const func of LLMResponse.functions) {
+      for (const func of LLMResponse.functions as Function[]) {
         const { name, params } = func;
         let returnValue = await this.callFunction(name, params);
         funcReturns.push({
-          role: "assistant",
+          role: "system",
           content: JSON.stringify({
-            status: "OK",
+            status: "success",
             name: name,
-            result: returnValue,
-            time: Date.now(),
+            result: returnValue || "null",
           }),
         });
       }
       // 递归调用
+      // TODO: 指定最大调用深度
+      // TODO: 上报函数调用信息
       return await this.generateResponse(funcReturns, debug);
     } else {
       status = "fail";
@@ -304,54 +316,55 @@ export class Bot {
 
   async callFunction(name: string, params: { [key: string]: any }): Promise<any> {
     const args = Object.values(params);
-    //getFunction
-    //bind args
-    //call
-    //add function return to history
+    let func = this.tools.get(name);
+    if (!func) {
+      return "Function not found";
+    }
+    try {
+      return await func(...args);
+    } catch (e) {
+      return "Function error";
+    }
   }
 
-  // database
-  // type: core / recall / archival
-  //
-  // ### Memory [last modified: ${DataModified}]
-  // ${RecallMemorySize} previous messages between you and the user are stored in recall memory (use functions to access them)
-  // ${ArchivalMemorySize} total memories you created are stored in archival memory (use functions to access them)
+  async getCoreMemory(): Promise<string> {
+    const userIds = this.collectUserID();
+    const recallSize = 0;
+    const archivalSize = 0;
 
-  // Core memory shown below (limited in size, additional information stored in archival / recall memory):
-  // <persona characters="${Used}/${Total}">
-  // </persona>
-  // <human characters="${Used}/${Total}">
-  //   <${UserName}>
-  //   </${UserName}>
-  //   <${UserName}>
-  //   </${UserName}>
-  // </human>
+    const humanMemories = Array.from(userIds.entries()).map(
+      ([userId, nickname]) =>
+        `<user id="${userId}" nickname="${nickname}">
+        ${this.memory.getUserMemory(userId).join("\n")}
+        </user>`
+    );
 
-  async getCoreMemory(channelId, userId) {
-    return `### Memory [last modified: 2024-12-16 12:48:37 PM 中国标准时间+0800]
-4 previous messages between you and the user are stored in recall memory (use functions to access them)
-0 total memories you created are stored in archival memory (use functions to access them)
+    return `### Memory [last modified: ${this.lastModified}]
+${recallSize} previous messages between you and the user are stored in recall memory (use functions to access them)
+${archivalSize} total memories you created are stored in archival memory (use functions to access them)
 
 Core memory shown below (limited in size, additional information stored in archival / recall memory):
-<persona characters="1017/5000">
-I am a personal assistant who answers a user's questions using Google web searches.
-When a user asks me a question and the answer is not in my context, I will use a tool called google_search which will search the web and return relevant summaries and the link they correspond to.
-It is my job to construct the best query to input into google_search based on the user's question, and to aggregate the response of google_search construct a final answer that also references the original links the information was pulled from.
 
-Here is an example:
-<example_question>
-Who founded OpenAI?
-</example_question>
-<example_response>
-OpenAI was founded by Ilya Sutskever, Greg Brockman, Trevor Blackwell, Vicki Cheung, Andrej Karpathy, Durk Kingma, Jessica Livingston, John Schulman, Pamela Vagata, and Wojciech Zaremba, with Sam Altman and Elon Musk serving as the initial Board of Directors members. ([Britannica](https://www.britannica.com/topic/OpenAI), [Wikipedia](https://en.wikipedia.org/wiki/OpenAI))
-</example_response>
+<persona>
+${this.memory.getSelfMemory().join("\n")}
 </persona>
-<human characters="276/5000">
-This is my section of core memory devoted to information about the human.
-I don't yet know anything about them.
-What's their name? Where are they from? What do they do? Who are they?
-I should update this memory over time as I interact with the human and learn more about them.
-</human>`
+
+${humanMemories.join("\n")}
+`.trim();
+  }
+
+  private collectUserID() {
+    let users: Map<string, string> = new Map();
+    let re = /\] (.+)<(\w+)> [说|回复]/
+
+    for (let history of this.history) {
+      let match = re.exec(history.content.toString());
+      if (match && match[2]) {
+        users.set(match[2], match[1]);
+      }
+    }
+
+    return users;
   }
 
   /**
@@ -359,7 +372,9 @@ I should update this memory over time as I interact with the human and learn mor
    * @param content Content to write to the memory. All unicode (including emojis) are supported.
    * @returns void
    */
-  insertArchivalMemory(content: string): void {}
+  insertArchivalMemory(content: string): void {
+    this.memory.add
+  }
 
   /**
    * Search archival memory using semantic (embedding-based) search.
@@ -378,7 +393,7 @@ I should update this memory over time as I interact with the human and learn mor
 
   /**
    * Append to the contents of core memory.
-   * @param label Section of the memory to be edited (persona or human).
+   * @param label Section of the memory to be edited (self or human).
    *
    * @param content Content to write to the memory. All unicode (including emojis) are supported.
    * @returns void
@@ -406,12 +421,4 @@ I should update this memory over time as I interact with the human and learn mor
   ): string[] {
     return [];
   }
-
-  /**
-   * Search prior conversation history using a date range.
-   * @param start The start of the date range to search, in the format 'YYYY-MM-DD'.
-   * @param end The end of the date range to search, in the format 'YYYY-MM-DD'.
-   * @param page Allows you to page through results. Only use on a follow-up query. Defaults to 0 (first page).
-   */
-  searchConversationWithDate(query: string, start: string, end: string, page: number) {}
 }

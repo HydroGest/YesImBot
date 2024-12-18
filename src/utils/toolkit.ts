@@ -261,3 +261,14 @@ export function downloadFile(url, filePath, debug) {
       logger.error("An error occurred while downloading prompt file: ", err.message.toString());
   });
 };
+
+/**
+ * 计算文本token数量
+ * 英文按单词分，中文按字分
+ * @param text
+ */
+export function tiktokenizer(text: string): number {
+  const tokenPattern = /(\w+)|([\u4e00-\u9fa5])|([^\w\s])/g;
+  const tokens = text.match(tokenPattern);
+  return tokens ? tokens.length : 0;
+}

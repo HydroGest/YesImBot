@@ -4,6 +4,7 @@ import { getImageDescription } from '../services/imageViewer';
 import { Config } from '../config';
 import { ChatMessage } from '../models/ChatMessage';
 import { Template } from './string';
+import { getMemberName } from './toolkit';
 
 /**
  * 处理用户消息
@@ -14,17 +15,18 @@ import { Template } from './string';
  */
 export async function processContent(config: Config, session: Session, messages: ChatMessage[]): Promise<string> {
   const processedMessage: string[] = [];
+
   for (let chatMessage of messages) {
     // 12月3日星期二 17:34:00
     const timeString = chatMessage.sendTime.toLocaleString("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    let userName: string;
+    let senderName: string;
     switch (config.Bot.NickorName) {
       case "群昵称":
-        userName = chatMessage.senderNick;
+        senderName = chatMessage.senderNick;
         break;
       case "用户昵称":
       default:
-        userName = chatMessage.senderName;
+        senderName = chatMessage.senderName;
         break;
     }
     const userContent = [];
@@ -38,8 +40,18 @@ export async function processContent(config: Config, session: Session, messages:
           break;
         case "at":
           const attrs = { ...elem.attrs };
+          let userName: string;
+          switch (config.Bot.NickorName) {
+            case "群昵称":
+              userName = messages.filter((m) => m.senderId === attrs.id)[0]?.senderNick;
+              break;
+            case "用户昵称":
+            default:
+              userName = messages.filter((m) => m.senderId === attrs.id)[0]?.senderName;
+              break;
+          }
           // 似乎getMemberName的实现有问题，无法正确获取到群昵称，总是获取到用户昵称。修复后，取消注释下面的代码
-          attrs.name = userName;
+          attrs.name = userName || attrs.name || await getMemberName(config, session, attrs.id, chatMessage.channelId);
           const safeAttrs = Object.entries(attrs)
             .map(([key, value]) => {
               // 确保value是字符串
@@ -85,7 +97,7 @@ export async function processContent(config: Config, session: Session, messages:
       channelType: chatMessage.channelType,
       channelInfo: (chatMessage.channelType === "guild") ? `from_guild:${chatMessage.channelId}` : `from_${chatMessage.channelType}`,
       channelId: chatMessage.channelId,
-      senderName: userName,
+      senderName,
       senderId: chatMessage.senderId,
       quoteMessageId: chatMessage.quoteMessageId || "",
       userContent: userContent.join(""),
