@@ -26,7 +26,7 @@ const schema = {
   status: {
     type: "enum",
     values: ["success", "skip", "function"],
-    description: "Response status. `success` for sending a message, `skip` for skipping the message, `function` for waiting for the return value from a function.",
+    description: "Response status. `success` for sending a message, `skip` for skipping the message, `function` for waiting for the return value from a function. If the function has no return value, or the function can't run when the status is `function`, set the status to `success` or `skip`. In other words, you can also run functions if the status is `success` or `skip`.",
   },
   replyTo: {
     type: "string",
@@ -58,7 +58,7 @@ const schema = {
   },
   functions: {
     type: "array",
-    description: "Functions to execute. If you need to get the return value from a function, set `status` to `function`. If you use the `function` tag, only fill in the `status`, `logic` and `functions` field, don't fill in the other fields.",
+    description: "Functions to execute. If you need to get the return value from a function, set `status` to `function`. You can also run functions when the `status` is `skip` or `success`, depending on your needs. If you use the `function` tag, only fill in the `status`, `logic` and `functions` field, don't fill in the other fields.",
   }
 };
 

@@ -207,15 +207,26 @@ export class Bot {
       let funcReturns: Message[] = [];
       for (const func of LLMResponse.functions as Function[]) {
         const { name, params } = func;
-        let returnValue = await this.callFunction(name, params);
-        funcReturns.push({
-          role: "system",
-          content: JSON.stringify({
-            status: "success",
-            name: name,
-            result: returnValue || "null",
-          }),
-        });
+        try {
+          let returnValue = await this.callFunction(name, params);
+          funcReturns.push({
+            role: "tool",
+            content: JSON.stringify({
+              status: "success",
+              name: name,
+              result: returnValue || "null",
+            }),
+          });
+        } catch (e) {
+          funcReturns.push({
+            role: "tool",
+            content: JSON.stringify({
+              status: "failed",
+              name: name,
+              reason: e.message,
+            }),
+          });
+        }
       }
       // 递归调用
       // TODO: 指定最大调用深度
@@ -314,18 +325,16 @@ export class Bot {
   async summarize(channelId, userId, content) {}
 
   async callFunction(name: string, params: { [key: string]: any }): Promise<any> {
-    try {
-      let func = this.tools[name];
-      const args = Object.values(params);
-      if (!func) {
-        return "Function not found";
-      }
 
-      // @ts-ignore
-      return await func(...args);
-    } catch (e) {
-      return "Function error, reason: " + e.message;
+    let func = this.tools[name];
+    const args = Object.values(params || {});
+    if (!func) {
+      throw new Error(`Function not found: ${name}`);
     }
+
+    // @ts-ignore
+    return await func(...args);
+
   }
 
   async getCoreMemory(): Promise<string> {
@@ -367,7 +376,8 @@ ${humanMemories.join("\n")}
 
     let s = lines.join("\n");
 
-    let functionPrompt = `Please select the most suitable function and parameters from the list of available functions below, based on the ongoing conversation. Provide your response in JSON format. You can run multiple functions in a single response.
+    let functionPrompt = `Please select the most suitable function and parameters from the list of available functions below, based on the ongoing conversation. You can run multiple functions in a single response.
+Provide your response in JSON format: [{ "name": "<function name>", "params": { "<param name>": "<param value>", ... } }].
 Available functions:
 ${isEmpty(s) ? "No functions available." : s}`;
 
