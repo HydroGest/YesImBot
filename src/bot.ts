@@ -355,12 +355,23 @@ ${humanMemories.join("\n")}
 
   private collectUserID() {
     let users: Map<string, string> = new Map();
-    let re = /\] (.+)<(\w+)> [说|回复]/
+    let template = this.config.Settings.SingleMessageStrctureTemplate
+      .replace("{{messageId}}", "(?<messageId>.+?)")
+      .replace("{{date}}", "(?<date>.+?)")
+      .replace("{{channelInfo}}", "(?<channelInfo>.+?)")
+      .replace("{{senderName}}", "(?<senderName>.+?)")
+      .replace("{{senderId}}", "(?<senderId>.+?)")
+      .replace("{{userContent}}", "(?<userContent>.+?)")
+      .replace(/\[/g, "\\[")
+      .replace(/\]/g, "\\]")
+      .replace(/\{\{[^{}]*\}\}/g, "")
+      .replace(/\{\{[^{}]*\}\}/g, ".*");
+    let re = new RegExp(template);
 
     for (let history of this.history) {
       let match = re.exec(history.content.toString());
-      if (match && match[2]) {
-        users.set(match[2], match[1]);
+      if (match && match.groups) {
+        users.set(match.groups.senderId, match.groups.senderName);
       }
     }
 
