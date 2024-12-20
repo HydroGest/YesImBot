@@ -43,7 +43,7 @@ class BaiduService implements ImageDescriptionService {
     };
 
     if (!base64) {
-      base64 = await convertUrltoBase64(src, cacheKey, config.Debug.IgnoreImgCache);
+      base64 = await convertUrltoBase64(src, cacheKey, config.Debug.IgnoreImgCache, config.Debug.DebugAsInfo);
     }
     submitData.image = removeBase64Prefix(base64);
 
@@ -103,7 +103,7 @@ class MyOwnService implements ImageDescriptionService {
     } = config.ImageViewer.Server;
 
     if (!base64 && requestBody.includes("<base64>")) {
-      base64Value = await convertUrltoBase64(src, cacheKey, config.Debug.IgnoreImgCache);
+      base64Value = await convertUrltoBase64(src, cacheKey, config.Debug.IgnoreImgCache, config.Debug.DebugAsInfo);
     }
 
     const requestBodyParsed = requestBody
@@ -145,7 +145,7 @@ class AnotherLLMService implements ImageDescriptionService {
     const { Question: question } = config.ImageViewer;
 
     if (!base64) {
-      base64 = await convertUrltoBase64(src, cacheKey, config.Debug.IgnoreImgCache);
+      base64 = await convertUrltoBase64(src, cacheKey, config.Debug.IgnoreImgCache, config.Debug.DebugAsInfo);
     }
 
     const adapterConfig = {
@@ -216,7 +216,7 @@ export class ImageViewer {
         }
 
         try {
-          let base64 = await convertUrltoBase64(imgUrl, cacheKey, this.ignoreCache);
+          let base64 = await convertUrltoBase64(imgUrl, cacheKey, this.ignoreCache, debug);
 
           if (debug) console.log(`Cache key: ${cacheKey}`);
 

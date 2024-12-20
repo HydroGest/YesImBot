@@ -51,22 +51,9 @@ export async function genSysPrompt(
   PromptFileUrl: string,
   extra: any
 ): Promise<string> {
-  // 获取当前日期与时间
-  const currentDate = new Date();
-  // 2024年12月2日星期一 00:25:12
-  const formattedDate = currentDate.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    weekday: "long"
-  });
   let content = fs.readFileSync(getFileNameFromUrl(PromptFileUrl),"utf-8");
   let template = new Template(content);
   return template.render({
-    currentDate: formattedDate,
     ...extra
   });
 }

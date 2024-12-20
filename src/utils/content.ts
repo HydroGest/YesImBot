@@ -3,8 +3,11 @@ import { h, Session } from 'koishi';
 import { Config } from '../config';
 import { ChatMessage } from '../models/ChatMessage';
 import { Template } from './string';
-import { getFileUnique, getMemberName } from './toolkit';
+import { getFileUnique, getMemberName, getFormatDateTime } from './toolkit';
 import { ImageViewer } from '../services/imageViewer';
+import { convertUrltoBase64 } from "../utils/imageUtils";
+import { Message, AssistantMessage, ImageComponent, SystemMessage, TextComponent, UserMessage } from "../adapters/creators/component";
+import { image } from '@satorijs/element/jsx-runtime';
 
 /**
  * 处理用户消息
@@ -13,12 +16,13 @@ import { ImageViewer } from '../services/imageViewer';
  * @param messages
  * @returns
  */
-export async function processContent(config: Config, session: Session, messages: ChatMessage[], imageViewer: ImageViewer): Promise<string> {
-  const processedMessage: string[] = [];
+export async function processContent(config: Config, session: Session, messages: ChatMessage[], imageViewer: ImageViewer): Promise<Message[]> {
+  const processedMessage: Message[] = [];
+  let pendingProcessImgCount = 0;
 
   for (let chatMessage of messages) {
-    // 12月3日星期二 17:34:00
-    const timeString = chatMessage.sendTime.toLocaleString("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    // 2024年12月3日星期二17:34:00
+    const timeString = getFormatDateTime(chatMessage.sendTime);
     let senderName: string;
     switch (config.Bot.NickorName) {
       case "群昵称":
@@ -29,14 +33,14 @@ export async function processContent(config: Config, session: Session, messages:
         senderName = chatMessage.senderName;
         break;
     }
-    const userContent = [];
     const template = config.Settings.SingleMessageStrctureTemplate;
     const elements = h.parse(chatMessage.content);
+    let components: (TextComponent | ImageComponent)[] = [];
     for (let elem of elements) {
       switch (elem.type) {
         case "text":
           // const { content } = elem.attrs;
-          userContent.push(elem.attrs.content);
+          components.push(TextComponent(elem.attrs.content));
           break;
         case "at":
           const attrs = { ...elem.attrs };
@@ -66,7 +70,7 @@ export async function processContent(config: Config, session: Session, messages:
             })
             .join(' ');
           const atMessage = `<at ${safeAttrs}/>`;
-          userContent.push(atMessage);
+          components.push(TextComponent(atMessage));
           break;
         case "quote":
           // const { id } = elem.attrs;
@@ -75,15 +79,17 @@ export async function processContent(config: Config, session: Session, messages:
         case "img":
           // const { src, summary, fileUnique } = elem.attrs;
           let cacheKey = getFileUnique(config, elem, session.bot.platform);
-          userContent.push(await imageViewer.getImageDescription(elem.attrs.src, cacheKey, elem.attrs.summary, config.Debug.DebugAsInfo));
+          elem.attrs.cachekey = cacheKey;
+          components.push(ImageComponent(h.img(elem.attrs.src, { cachekey: elem.attrs.cachekey, summary: elem.attrs.summary }).toString()));
+          pendingProcessImgCount++;
           break;
         case "face":
           // const { id, name } = elem.attrs;
-          userContent.push(`[表情:${elem.attrs.name}]`);
+          components.push(TextComponent(`[表情:${elem.attrs.name}]`));
           break;
         case "mface":
           // const { url, summary } = elem.attrs;
-          userContent.push(`[表情:${elem.attrs.summary?.replace(/^\[|\]$/g, '')}]`);
+          components.push(TextComponent(`[表情:${elem.attrs.summary?.replace(/^\[|\]$/g, '')}]`));
           break;
         default:
       }
@@ -92,7 +98,7 @@ export async function processContent(config: Config, session: Session, messages:
     // [messageId][{date} from_guild:{channelId}] {senderName}<{senderId}> 回复({quoteMessageId}): {userContent}
     // [messageId][{date} from_private] {senderName}<{senderId}> 说: {userContent}
     // [messageId][{date} from_private] {senderName}<{senderId}> 回复({quoteMessageId}): {userContent}
-    let messageText = new Template(template, /\{\{(\w+(?:\.\w+)*)\}\}/g).render({
+    let messageText = new Template(template, /\{\{(\w+(?:\.\w+)*)\}\}/g, /\{\{(\w+),([^,]*),([^}]*)\}\}/g).render({
       messageId: chatMessage.messageId,
       date: timeString,
       channelType: chatMessage.channelType,
@@ -100,18 +106,69 @@ export async function processContent(config: Config, session: Session, messages:
       channelId: chatMessage.channelId,
       senderName,
       senderId: chatMessage.senderId,
+      userContent: "{{userContent}}",
       quoteMessageId: chatMessage.quoteMessageId || "",
-      userContent: userContent.join(""),
-    }).replace(/{{hasQuote,(.*?),(.*?)}}/, (_, arg1, arg2) =>
-      chatMessage.quoteMessageId ? arg1 : arg2
-    ).replace(/{{isPrivate,(.*?),(.*?)}}/, (_, arg1, arg2) =>
-      chatMessage.channelType === "private" ? arg1 : arg2
-    );
-    processedMessage.push(messageText);
+      hasQuote: !!chatMessage.quoteMessageId,
+      isPrivate: chatMessage.channelType === "private",
+    });
+    const parts = messageText.split(/({{userContent}})/);
+    components = parts.flatMap(part => {
+      if (part === '{{userContent}}') {
+        return components;
+      }
+      return [TextComponent(part)];
+    });
+    if (chatMessage.senderId === session.bot.selfId) {
+      processedMessage.push(AssistantMessage(...components));
+    } else {
+      processedMessage.push(UserMessage(...components));
+    }
   }
+  // 处理图片组件
+  for (const message of processedMessage) {
+    if (typeof message.content === 'string') continue;
 
-  return processedMessage.join("\n");
+    for (let i = 0; i < message.content.length; i++) {
+      const component = message.content[i];
+      if (component.type !== 'image_url') continue;
+      // 解析图片URL中的属性
+      const elem = h.parse((component as ImageComponent).image_url.url)[0];
+      const cacheKey = elem.attrs.cachekey;
+      const src = elem.attrs.src;
+      const summary = elem.attrs.summary;
+
+      if (pendingProcessImgCount > config.ImageViewer.Memory && config.ImageViewer.Memory !== -1) {
+        // 获取图片描述
+        const description = await imageViewer.getImageDescription(src, cacheKey, summary);
+        message.content[i] = TextComponent(description);
+      } else {
+        // 转换为base64
+        const base64 = await convertUrltoBase64(src);
+        message.content[i] = ImageComponent(base64, config.ImageViewer.Server.Detail);
+      }
+
+      pendingProcessImgCount--;
+    }
+
+    // 合并每条message中相邻的 TextComponent
+    message.content = message.content.reduce((acc, curr, i) => {
+      if (i === 0) return [curr];
+
+      const prev = acc[acc.length - 1];
+      if (prev.type === 'text' && curr.type === 'text') {
+        // 合并相邻的 TextComponent
+        prev.text += (curr as TextComponent).text;
+        return acc;
+      }
+
+      return [...acc, curr];
+    }, []);
+  }
+  return processedMessage;
 }
+
+
+
 
 export function processText(splitRule: Config["Bot"]["BotReplySpiltRegex"], replaceRules: Config["Bot"]["BotSentencePostProcess"], text: string): string[] {
   const replacements = replaceRules.map(item => ({

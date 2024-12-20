@@ -208,11 +208,6 @@ export async function ensureGroupMemberList(session: any, channelId?: string) {
   return groupMemberList;
 }
 
-// 计算 MD5 值作为缓存键
-export function computeMD5(input: string): string {
-  return crypto.createHash("md5").update(input).digest("hex");
-}
-
 // 按照平台从img中获取fileUnique
 export function getFileUnique(config: Config, element: h, platform: string): string {
   if (config.Debug.FileUniqueField) {
@@ -262,9 +257,24 @@ export function downloadFile(url, filePath, debug) {
   });
 };
 
+export function getFormatDateTime(date?: Date): string {
+  const targetDate = date || new Date();
+  const dateTime = targetDate.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+  return dateTime.replace(/\s+/g, '');
+}
+
 /**
  * 计算文本token数量
  * 英文按单词分，中文按字分
+ * 这会导致结果比实际值偏大。应考虑使用tiktoken包，或参考SillyTavern的实现
  * @param text
  */
 export function tiktokenizer(text: string): number {

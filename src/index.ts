@@ -3,7 +3,7 @@ import { LoggerService } from "@cordisjs/logger";
 import { h, sleep } from "koishi";
 
 import { Config } from "./config";
-import { containsFilter, getBotName, isChannelAllowed, getFileUnique } from "./utils/toolkit";
+import { containsFilter, getBotName, isChannelAllowed, getFileUnique, getFormatDateTime } from "./utils/toolkit";
 import { ensurePromptFileExists, genSysPrompt } from "./utils/prompt";
 import { MarkType, SendQueue } from "./services/sendQueue";
 import { outputSchema } from "./adapters/creators/schema";
@@ -186,9 +186,10 @@ export function apply(ctx: Context, config: Config) {
       convertUrltoBase64(
         element.attrs.src,
         cacheKey,
-        config.Debug.IgnoreImgCache
+        config.Debug.IgnoreImgCache,
+        config.Debug.DebugAsInfo
       )
-        .then(async (base64) => {
+        .then(async () => {
           if (config.ImageViewer.DescribeImmidately) {
             await bot.imageViewer.getImageDescription(
               element.attrs.src,
@@ -260,33 +261,35 @@ export function apply(ctx: Context, config: Config) {
       const chatHistory = await processContent(config, session, await sendQueue.getMixedQueue(channelId), bot.imageViewer);
 
       // 生成响应
-      if (!chatHistory) {
+      if (!chatHistory || (Array.isArray(chatHistory) && chatHistory.length === 0)) {
         if (config.Debug.DebugAsInfo) ctx.logger.info(`未获取到${channelId}的聊天记录`);
         return false;
       }
 
-      if (config.Debug.DebugAsInfo) ctx.logger.info("ChatHistory:\n" + chatHistory);
+      bot.setChatHistory(chatHistory, config.Settings.MultiTurn);
 
-      if (config.Debug.DebugAsInfo) ctx.logger.info(`Request sent, awaiting for response...`);
+      if (config.Debug.DebugAsInfo) ctx.logger.info("ChatHistory:\n" + JSON.stringify(bot.getChatHistory(), null, 2));
 
       let botName = await getBotName(config.Bot, session);
-
-      bot.setChatHistory(chatHistory);
 
       bot.setSystemPrompt(
         await genSysPrompt(
           config.Bot.PromptFileUrl[config.Bot.PromptFileSelected],
           {
             config: config,
-            curGroupName: channelId,
+            curDate: getFormatDateTime(),
+            curGroupId: channelId,
             BotName: botName,
             BotSelfId: session.bot.selfId,
             outputSchema,
+            // functionPrompt: bot.getAdapter().adapter.ability.includes("工具调用") ? "" : bot.getFunctionPrompt(),
             functionPrompt: bot.getFunctionPrompt(),
             coreMemory: await bot.getCoreMemory(),
           }
         )
       );
+
+      if (config.Debug.DebugAsInfo) ctx.logger.info(`Request sent, awaiting for response...`);
 
       const chatResponse = await bot.generateResponse([], config.Debug.DebugAsInfo);
 

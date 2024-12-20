@@ -43,7 +43,7 @@ export function convertNumberToString(value?: number | string): string {
   return value.toString();
 }
 
-export function isEmpty(str: string){
+export function isEmpty(str: string) {
   return !str || String(str) == ""
 }
 
@@ -55,13 +55,10 @@ export function isEmpty(str: string){
 export class Template {
   constructor(
     private templateString: string,
-    private regex: RegExp = /\$\{(\w+(?:\.\w+)*)\}/g
-  ){}
-  render(model: any){
-    return this.templateString.replace(this.regex, (match, key) => {
-      return this.getValue(model, key.split('.'));
-    });
-  }
+    private regex: RegExp = /\$\{(\w+(?:\.\w+)*)\}/g,
+    private conditionRegex: RegExp = /\$\{(\w+),([^,]*),([^}]*)\}/g
+  ) { }
+
   private getValue(data: any, keys: string[]) {
     let value = data;
     for (let key of keys) {
@@ -73,6 +70,59 @@ export class Template {
     }
     return value || '';
   };
+
+  render(model: any) {
+    let result = this.templateString.replace(this.regex, (match, key) => {
+      return this.getValue(model, key.split('.'));
+    });
+
+    return result.replace(this.conditionRegex, (match, condition, trueValue, falseValue) => {
+      const conditionValue = this.getValue(model, condition.split('.'));
+      return conditionValue ? trueValue : falseValue;
+    });
+  }
+
+  unrender(source: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    let template = this.templateString;
+    let processedSource = source;
+
+    template = template.replace(this.conditionRegex, (match, condition, trueValue, falseValue) => {
+      const generalizedTrueValue = trueValue.replace(/\{\{.*?\}\}/g, '.*?');
+      const pattern = new RegExp(generalizedTrueValue);
+
+      if (pattern.test(processedSource)) {
+        result[condition] = 'true';
+        return trueValue;
+      } else {
+        result[condition] = 'false';
+        return falseValue || '';
+      }
+    });
+
+    const parts = template.split(/\{\{|\}\}/);
+    for (let i = 1; i < parts.length; i += 2) {
+      const key = parts[i];
+      if (!key.includes(',')) {
+        const prevPart = escapeRegExp(parts[i - 1]);
+        const nextPart = parts[i + 1] ? escapeRegExp(parts[i + 1]) : '';
+
+        let pattern;
+        if (i === parts.length - 2) {
+          pattern = new RegExp(`${prevPart}(.*?)$`);
+        } else {
+          pattern = new RegExp(`${prevPart}(.*?)${nextPart}`);
+        }
+
+        const match = source.match(pattern);
+        if (match) {
+          result[key] = match[1].trim();
+        }
+      }
+    }
+
+    return result;
+  }
 }
 
 export function parseJSON(text: string) {
@@ -95,3 +145,7 @@ export function formatSize(size: number): string {
   }
   return `${size.toFixed(2)}${units[index]}`;
 }
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
