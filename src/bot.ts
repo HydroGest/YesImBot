@@ -169,10 +169,7 @@ export class Bot {
       let str = Object.values(this.extensions)
         .map((extension) => getFunctionPrompt(extension))
         .join("\n");
-      this.prompt = this.prompt.replace(
-        "${functionPrompt}",
-        functionPrompt + `${isEmpty(str) ? "No functions available." : str}`
-      );
+      this.prompt += functionPrompt + `${isEmpty(str) ? "No functions available." : str}`;
     }
 
     const response = await adapter.chat([SystemMessage(this.prompt), ...this.history], adapter.ability.includes("原生工具调用") ? this.toolsSchema : undefined, debug);
@@ -190,7 +187,7 @@ export class Bot {
 
       let toolCalls = response.message.tool_calls;
       let returns: ToolMessage[] = [];
-      toolCalls.forEach(async toolCall => {
+      toolCalls?.forEach(async toolCall => {
         let result = await this.callFunction(toolCall.function.name, toolCall.function.arguments);
         if (!isEmpty(result)) returns.push(ToolMessage(result, toolCall.id));
       })

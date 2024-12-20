@@ -2,7 +2,7 @@ import { h, Session } from 'koishi';
 
 import { Config } from '../config';
 import { ChannelType, ChatMessage } from '../models/ChatMessage';
-import { Template } from './string';
+import { isEmpty, Template } from './string';
 import { getFileUnique, getMemberName, getFormatDateTime } from './toolkit';
 import { ImageViewer } from '../services/imageViewer';
 import { convertUrltoBase64 } from "../utils/imageUtils";
@@ -21,6 +21,10 @@ export async function processContent(config: Config, session: Session, messages:
   let pendingProcessImgCount = 0;
 
   for (let chatMessage of messages) {
+    if (!isEmpty(chatMessage.raw)) {
+      processedMessage.push(AssistantMessage(chatMessage.raw));
+      continue;
+    }
     // 2024年12月3日星期二17:34:00
     const timeString = getFormatDateTime(chatMessage.sendTime);
     let senderName: string;
@@ -53,6 +57,9 @@ export async function processContent(config: Config, session: Session, messages:
             default:
               userName = messages.filter((m) => m.senderId === attrs.id)[0]?.senderName;
               break;
+          }
+          if (attrs.id === session.selfId && config.Bot.SelfAwareness === "此页面设置的名字") {
+            userName = config.Bot.BotName;
           }
           // 似乎getMemberName的实现有问题，无法正确获取到群昵称，总是获取到用户昵称。修复后，取消注释下面的代码
           attrs.name = userName || attrs.name || await getMemberName(config, session, attrs.id, chatMessage.channelId);

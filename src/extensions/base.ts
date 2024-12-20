@@ -2,13 +2,22 @@ import fs from "fs";
 import { SchemaNode, ToolSchema } from "../adapters/creators/schema";
 
 export abstract class Extension {
-  abstract name: string;
-  abstract description: string;
-  abstract params: {
-    [key: string]: SchemaNode;
-  };
+  readonly name: string;
+  readonly description: string;
+  readonly params: { [key: string]: SchemaNode };
+
   constructor() {
-    return this.apply.bind(this);
+    // 读取类的静态属性来初始化实例属性
+    const funcName = (this.constructor as any)["funcName"];
+    const description = (this.constructor as any)["description"];
+    const params = (this.constructor as any)["params"];
+
+    // 返回一个函数实例，使得类实例可以调用
+    const callable = (keyword: string) => this.apply(keyword);
+    Object.defineProperty(callable, "name", { value: funcName });
+    Object.defineProperty(callable, "description", { value: description });
+    Object.defineProperty(callable, "params", { value: params });
+    return callable as any;
   }
 
   abstract apply(...args: any[]): any;
@@ -75,4 +84,27 @@ export function getFunctionPrompt(ext: Extension): string {
   return lines.join("\n");
 }
 
+export function Name(funcName: string) {
+  return function (target: Function) {
+    target["funcName"] = funcName;
+  };
+}
 
+export function Description(description: string) {
+  return function (target: Function) {
+    target["description"] = description;
+  };
+}
+
+
+export function Param(param: string, schema: string | SchemaNode) {
+  return function (target: Function) {
+    if (!target["params"]) {
+      target["params"] = {};
+    }
+    if (typeof schema === "string") {
+      schema = SchemaNode.String(schema);
+    }
+    target["params"][param] = schema;
+  };
+}
