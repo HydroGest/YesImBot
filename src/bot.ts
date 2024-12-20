@@ -83,8 +83,8 @@ export class Bot {
   private adapterSwitcher: AdapterSwitcher;
 
   constructor(private ctx: Context, private config: Config) {
-    this.minTriggerCount = config.MemorySlot.MinTriggerCount;
-    this.maxTriggerCount = config.MemorySlot.MaxTriggerCount;
+    this.minTriggerCount = Math.min(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount);
+    this.maxTriggerCount = Math.max(config.MemorySlot.MinTriggerCount, config.MemorySlot.MaxTriggerCount);
     this.allowErrorFormat = config.Settings.AllowErrorFormat;
     this.adapterSwitcher = new AdapterSwitcher(
       config.API.APIList,
@@ -280,7 +280,7 @@ export class Bot {
       // 规范化 nextTriggerCount，确保在设置的范围内
       const nextTriggerCountbyLLM = Math.max(
         this.minTriggerCount,
-        Math.min(LLMResponse.nextReplyIn ?? this.minTriggerCount, this.maxTriggerCount)
+        Math.min(Number(LLMResponse.nextReplyIn) ?? this.minTriggerCount, this.maxTriggerCount)
       );
       nextTriggerCount = Number(nextTriggerCountbyLLM) || nextTriggerCount;
       finalLogic = LLMResponse.logic || "";
