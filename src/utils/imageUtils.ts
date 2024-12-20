@@ -8,7 +8,6 @@ import sharp from "sharp";
 import { formatSize } from "./string";
 
 
-
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export async function compressImage(buffer: Buffer): Promise<Buffer> {

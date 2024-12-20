@@ -1,7 +1,6 @@
-import crypto from "crypto";
 import fs from "fs";
 import https from "https";
-import { h, Session } from "koishi";
+import { Element, Session } from "koishi";
 import { Mutex } from 'async-mutex';
 
 import { Config } from "../config";
@@ -209,19 +208,35 @@ export async function ensureGroupMemberList(session: any, channelId?: string) {
 }
 
 // 按照平台从img中获取fileUnique
-export function getFileUnique(config: Config, element: h, platform: string): string {
-  if (config.Debug.FileUniqueField) {
-    return element.attrs[config.Debug.FileUniqueField];
-  }
+export function getFileUnique(element: Element, platform: string): string {
   switch (platform) {
     case "onebot":
-      return element.attrs.file;
+      let keys: string[] = [
+        element.attrs.file,
+        element.attrs.fileId,
+        element.attrs.fileUnique
+      ].filter(Boolean);
+
+      let shortest = keys.reduce((shortestItem, currentItem) => {
+        return currentItem.length < shortestItem.length ? currentItem : shortestItem;
+      });
+
+      shortest = removeFileSuffix(shortest).slice(-32).toLowerCase();
+
+      return shortest;
     // 其他平台有待添加
     default:
       return undefined;
   }
 }
 
+function removeFileSuffix(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex !== -1) {
+    return fileName.substring(0, dotIndex);
+  }
+  return fileName;
+}
 
 export function getFileNameFromUrl(url: string): string {
   try {
