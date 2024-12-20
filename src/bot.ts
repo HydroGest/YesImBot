@@ -13,9 +13,9 @@ import { getEmbedding } from "./utils/factory";
 import { Message, SystemMessage, AssistantMessage, TextComponent, ImageComponent, UserMessage, ToolMessage } from "./adapters/creators/component";
 import { ResponseVerifier } from "./utils/verifier";
 import { SendQueue } from "./services/sendQueue";
-import { Extension, getExtensions, getToolSchema } from "./extensions/base";
+import { Extension, getExtensions, getFunctionPrompt, getToolSchema } from "./extensions/base";
 import { ImageViewer } from "./services/imageViewer";
-import { ToolSchema } from "./adapters/creators/schema";
+import { functionPrompt, ToolSchema } from "./adapters/creators/schema";
 
 export interface Function {
   name: string;
@@ -70,7 +70,7 @@ export class Bot {
   private history: Message[] = [];
   private prompt: string; // 系统提示词
   private template: Template;
-  private tools: { [key: string]: Extension & Function } = {};
+  private extensions: { [key: string]: Extension & Function } = {};
   private toolsSchema: ToolSchema[] = [];
   private messageQueue: SendQueue;
   private lastModified: number = 0;
@@ -104,7 +104,7 @@ export class Bot {
     this.messageQueue = new SendQueue(ctx, config);
 
     for (const extension of getExtensions()) {
-      this.tools[extension.name] = extension;
+      this.extensions[extension.name] = extension;
       this.toolsSchema.push(getToolSchema(extension));
     }
   }
@@ -164,6 +164,16 @@ export class Bot {
     }
 
     this.history.push(...messages);
+
+    if (!adapter.ability.includes("原生工具调用")) {
+      let str = Object.values(this.extensions)
+        .map((extension) => getFunctionPrompt(extension))
+        .join("\n");
+      this.prompt = this.prompt.replace(
+        "${functionPrompt}",
+        functionPrompt + `${isEmpty(str) ? "No functions available." : str}`
+      );
+    }
 
     const response = await adapter.chat([SystemMessage(this.prompt), ...this.history], adapter.ability.includes("原生工具调用") ? this.toolsSchema : undefined, debug);
     let content = response.message.content;
@@ -401,7 +411,7 @@ export class Bot {
 
   async callFunction(name: string, params: { [key: string]: any }): Promise<any> {
 
-    let func = this.tools[name];
+    let func = this.extensions[name];
     const args = Object.values(params || {});
     if (!func) {
       throw new Error(`Function not found: ${name}`);
@@ -459,27 +469,6 @@ ${humanMemories.join("\n")}
       message = message.replace(match, replacement);
     });
     return message;
-  }
-
-  getFunctionPrompt() {
-    let lines = [];
-    Object.values(this.tools).forEach((func: (Extension & Function)) => {
-      lines.push(`${func.name}:`);
-      lines.push(`  description: ${func.description}`);
-      lines.push(`  params:`);
-      Object.entries(func.params).forEach(([key, value]) => {
-        lines.push(`    ${key}: ${value}`);
-      })
-    })
-
-    let s = lines.join("\n");
-
-    let functionPrompt = `Please select the most suitable function and parameters from the list of available functions below, based on the ongoing conversation. You can run multiple functions in a single response.
-Provide your response in JSON format: [{ "name": "<function name>", "params": { "<param name>": "<param value>", ... } }].
-Available functions:
-${isEmpty(s) ? "No functions available." : s}`;
-
-    return functionPrompt;
   }
 
   private collectUserID() {

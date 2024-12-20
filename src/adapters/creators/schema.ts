@@ -123,3 +123,7 @@ Only add data to the mostly appropriate field. Don't make up fields that aren't 
 
 Schema:
 ${JSON.stringify(schema, null, 2)}`;
+
+export const functionPrompt = `Please select the most suitable function and parameters from the list of available functions below, based on the ongoing conversation. You can run multiple functions in a single response.
+Provide your response in JSON format: [{ "name": "<function name>", "params": { "<param name>": "<param value>", ... } }].
+Available functions:`;

@@ -282,8 +282,6 @@ export function apply(ctx: Context, config: Config) {
             BotName: botName,
             BotSelfId: session.bot.selfId,
             outputSchema,
-            // functionPrompt: bot.getAdapter().adapter.ability.includes("工具调用") ? "" : bot.getFunctionPrompt(),
-            functionPrompt: bot.getFunctionPrompt(),
             coreMemory: await bot.getCoreMemory(),
           }
         )
