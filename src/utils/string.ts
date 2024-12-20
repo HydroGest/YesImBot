@@ -56,7 +56,7 @@ export class Template {
   constructor(
     private templateString: string,
     private regex: RegExp = /\$\{(\w+(?:\.\w+)*)\}/g,
-    private conditionRegex: RegExp = /\$\{(\w+),([^,]*),([^}]*)\}/g
+    private conditionRegex: RegExp = /\$\{(\w+(?:\.\w+)*),([^,]*),([^}]*)\}/g
   ) { }
 
   private getValue(data: any, keys: string[]) {

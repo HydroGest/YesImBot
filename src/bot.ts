@@ -97,7 +97,7 @@ export class Bot {
     };
     if (config.Verifier.Enabled) this.verifier = new ResponseVerifier(config);
 
-    this.template = new Template(config.Settings.SingleMessageStrctureTemplate, /\{\{(\w+(?:\.\w+)*)\}\}/g, /\{\{(\w+),([^,]*),([^}]*)\}\}/g);
+    this.template = new Template(config.Settings.SingleMessageStrctureTemplate, /\{\{(\w+(?:\.\w+)*)\}\}/g, /\{\{(\w+(?:\.\w+)*),([^,]*),([^}]*)\}\}/g);
 
     this.imageViewer = new ImageViewer(config);
 

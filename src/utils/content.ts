@@ -98,7 +98,7 @@ export async function processContent(config: Config, session: Session, messages:
     // [messageId][{date} from_guild:{channelId}] {senderName}<{senderId}> 回复({quoteMessageId}): {userContent}
     // [messageId][{date} from_private] {senderName}<{senderId}> 说: {userContent}
     // [messageId][{date} from_private] {senderName}<{senderId}> 回复({quoteMessageId}): {userContent}
-    let messageText = new Template(template, /\{\{(\w+(?:\.\w+)*)\}\}/g, /\{\{(\w+),([^,]*),([^}]*)\}\}/g).render({
+    let messageText = new Template(template, /\{\{(\w+(?:\.\w+)*)\}\}/g, /\{\{(\w+(?:\.\w+)*),([^,]*),([^}]*)\}\}/g).render({
       messageId: chatMessage.messageId,
       date: timeString,
       channelType: chatMessage.channelType,
