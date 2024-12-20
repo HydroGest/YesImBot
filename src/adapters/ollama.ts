@@ -3,6 +3,8 @@ import { sendRequest } from "../utils/http";
 import { BaseAdapter, Response } from "./base";
 import { LLM } from "./config";
 import { Message } from "./creators/component";
+import { ToolSchema } from "./creators/schema";
+
 interface ToolCall {
   function: {
     name: string;
@@ -11,23 +13,26 @@ interface ToolCall {
     }
   }
 }
+
 interface ToolMessage {
   role: "tool";
   content: string;
 }
+
 function ToolMessage(content: string): ToolMessage {
   return {
     role: "tool",
     content
   }
 }
+
 export class OllamaAdapter extends BaseAdapter {
   constructor(config: LLM, parameters?: Config["Parameters"]) {
     super(config, parameters);
     this.url = `${config.BaseURL}/api/chat`;
   }
 
-  async chat(messages: Message[], debug = false): Promise<Response> {
+  async chat(messages: Message[], toolsSchema?: ToolSchema[], debug = false): Promise<Response> {
     for (const message of messages) {
       for (const component of message.content) {
         if (typeof component === "string") continue;
@@ -42,6 +47,7 @@ export class OllamaAdapter extends BaseAdapter {
       stream: false,
       format: this.ability.includes("结构化输出") ? "json" : undefined,
       messages,
+      tools: toolsSchema,
       options: {
         num_ctx: this.parameters?.MaxTokens,
         temperature: this.parameters?.Temperature,
@@ -59,6 +65,7 @@ export class OllamaAdapter extends BaseAdapter {
         message: {
           role: response.message.role,
           content: response.message.content,
+          tool_calls: response.message.tool_calls,
         },
         usage: {
           prompt_tokens: response.prompt_eval_count,
@@ -70,10 +77,5 @@ export class OllamaAdapter extends BaseAdapter {
       console.error("Error parsing response:", error);
       console.error("Response:", response);
     }
-  }
-
-  async chatWithHistory(messages: Message[]): Promise<Response> {
-    this.history.push(...messages);
-    return this.chat(this.history);
   }
 }

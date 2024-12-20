@@ -22,6 +22,62 @@ export interface ParameterSchema {
   required: string[];
 }
 
+export interface SchemaNode {
+  type: string;
+  description: string;
+  default?: any;
+}
+
+export namespace SchemaNode {
+  export function String(desc: string, defaultValue?: string): SchemaNode {
+    return {
+      type: "string",
+      description: desc,
+      default: defaultValue
+    };
+  }
+
+  export function Integer(desc: string, defaultValue?: number): SchemaNode {
+    return {
+      type: "integer",
+      description: desc,
+    };
+  }
+
+  export function Array(desc: string, defaultValue?: string[]): SchemaNode & { items: { type: "string" } } {
+    return {
+      type: "array",
+      items: {
+        type: "string"
+      },
+      description: desc
+    }
+  }
+
+  export function Boolean(desc: string, defaultValue?: boolean): SchemaNode {
+    return {
+      type: "boolean",
+      description: desc,
+    };
+  }
+
+  export function Enum(desc: string, values: string[], defaultValue?: string): SchemaNode & { values: string[] } {
+    return {
+      type: "enum",
+      values,
+      description: desc,
+    };
+  }
+
+  export function Union(desc: string, values: string[], defaultValue?: string): SchemaNode & { values: string[] } {
+    return {
+      type: "union",
+      values,
+      description: desc,
+    };
+  }
+}
+
 const schema = {
   status: {
     type: "enum",

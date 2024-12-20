@@ -1,6 +1,7 @@
 import { Config } from "../config";
-import { Message } from "./creators/component";
+import { AssistantMessage, Message } from "./creators/component";
 import { LLM } from "./config";
+import { ToolSchema } from "./creators/schema";
 
 export interface Usage {
   prompt_tokens: number;
@@ -11,10 +12,7 @@ export interface Usage {
 export interface Response {
   model: string;
   created: string;
-  message: {
-    role: "system" | "assistant" | "user";
-    content: string;
-  };
+  message: AssistantMessage;
   usage: Usage;
 }
 
@@ -23,7 +21,7 @@ export abstract class BaseAdapter {
   protected readonly apiKey: string;
   protected readonly model: string;
   protected readonly otherParams: Record<string, any>;
-  readonly ability: ("工具调用" | "识图功能" | "结构化输出")[];
+  readonly ability: ("原生工具调用" | "识图功能" | "结构化输出")[];
 
   protected history: Message[] = [];
 
@@ -67,7 +65,7 @@ export abstract class BaseAdapter {
     logger.info(`Adapter: ${APIType} registered`);
   }
 
-  abstract chat(messages: Message[], debug?: Boolean): Promise<Response>;
+  abstract chat(messages: Message[], tools?: ToolSchema[], debug?: Boolean): Promise<Response>;
 }
 
 

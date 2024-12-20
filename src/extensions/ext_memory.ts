@@ -1,10 +1,11 @@
+import { SchemaNode } from "../adapters/creators/schema";
 import { Extension } from "./base";
 
 class InsertArchivalMemory extends Extension {
   name = "insertArchivalMemory";
   description = "Add to archival memory. Make sure to phrase the memory contents such that it can be easily queried later.";
   params = {
-    content: "Content to write to the memory. All unicode (including emojis) are supported.",
+    content: SchemaNode.String("Content to write to the memory. All unicode (including emojis) are supported."),
   };
 
   async apply(content: string) {
@@ -18,9 +19,9 @@ class SearchArchivalMemory extends Extension {
   name = "searchArchivalMemory";
   description = "Search archival memory using semantic (embedding-based) search.";
   params = {
-    query: "String to search for.",
-    page: "Allows you to page through results. Only use on a follow-up query. Defaults to 0 (first page).",
-    start: "Starting index for the search results. Defaults to 0.",
+    query: SchemaNode.String("String to search for."),
+    page: SchemaNode.Integer("Allows you to page through results. Only use on a follow-up query. Defaults to 0 (first page).", 0),
+    start: SchemaNode.Integer("Starting index for the search results. Defaults to 0.", 0),
   };
 
   async apply(query: string, page: number = 0, start: number = 0) {
@@ -34,8 +35,8 @@ class AppendCoreMemory extends Extension {
   name = "appendCoreMemory";
   description = "Append to the contents of core memory.";
   params = {
-    label: "Section of the memory to be edited (persona or human).",
-    content: "Content to write to the memory. All unicode (including emojis) are supported.",
+    label: SchemaNode.String("Section of the memory to be edited (persona or human)."),
+    content: SchemaNode.String("Content to write to the memory. All unicode (including emojis) are supported."),
   };
 
   async apply(label: string, content: string) {
@@ -49,9 +50,9 @@ class ModifyCoreMemory extends Extension {
   name = "modifyCoreMemory";
   description = "Replace the contents of core memory. To delete memories, use an empty string for newContent.";
   params = {
-    label: "Section of the memory to be edited (persona or human).",
-    oldContent: "The current content of the memory.",
-    newContent: "The new content of the memory. All unicode (including emojis) are supported.",
+    label: SchemaNode.String("Section of the memory to be edited (persona or human)."),
+    oldContent: SchemaNode.String("The current content of the memory."),
+    newContent: SchemaNode.String("The new content of the memory. All unicode (including emojis) are supported."),
   };
 
   async apply(label: string, oldContent: string, newContent: string) {
@@ -65,9 +66,9 @@ class SearchConversation extends Extension {
   name = "searchConversation";
   description = "Search conversation using semantic (embedding-based) search.";
   params = {
-    query: "String to search for.",
-    page: "Allows you to page through results. Only use on a follow-up query. Defaults to 0 (first page).",
-    start: "Starting index for the search results. Defaults to 0.",
+    query: SchemaNode.String("String to search for."),
+    page: SchemaNode.Integer("Allows you to page through results. Only use on a follow-up query. Defaults to 0 (first page).", 0),
+    start: SchemaNode.Integer("Starting index for the search results. Defaults to 0.", 0),
   };
 
   async apply(query: string, page: number = 0, start: number = 0) {

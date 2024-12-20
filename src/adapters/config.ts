@@ -6,7 +6,7 @@ export interface LLM {
   UID?: string;
   APIKey: string;
   AIModel: string;
-  Ability?: Array<"工具调用" | "识图功能" | "结构化输出">;
+  Ability?: Array<"原生工具调用" | "识图功能" | "结构化输出">;
 }
 
 export interface Config {
@@ -27,7 +27,7 @@ export const API: Schema<LLM> = Schema.object({
   AIModel: Schema.string()
     .default("@cf/meta/llama-3-8b-instruct")
     .description("模型 ID"),
-  Ability: Schema.array(Schema.union(["工具调用", "识图功能", "结构化输出"]))
+  Ability: Schema.array(Schema.union(["原生工具调用", "识图功能", "结构化输出"]))
     .role("checkbox")
     .experimental()
     .default([])

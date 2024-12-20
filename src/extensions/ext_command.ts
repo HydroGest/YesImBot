@@ -1,6 +1,7 @@
 import { h } from "koishi";
 
 import { Extension } from "./base";
+import { SchemaNode } from "../adapters/creators/schema";
 
 class Execute extends Extension {
   name = "execute";
@@ -14,11 +15,11 @@ class Execute extends Extension {
   这个函数没有返回值。
   请务必将此处可以运行的命令与你允许调用的函数区分开来。`;
   params = {
-    cmd: "要运行的命令"
+    cmd: SchemaNode.String("要运行的命令")
   };
 
-  async apply(command: string) {
-    return h("execute", {}, command);
+  async apply(cmd: string) {
+    return h("execute", {}, cmd);
   }
 }
 

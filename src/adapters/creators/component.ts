@@ -41,6 +41,8 @@ export interface UserMessage extends Message {
 
 export interface AssistantMessage extends Message {
   role: "assistant";
+  content: string;
+  tool_calls?: ToolCall[];
 }
 
 export interface ToolMessage extends Message {
@@ -55,7 +57,7 @@ export interface ToolCall {
   type: "function";
   function: {
     name: string;
-    arguments: string;
+    arguments: { [key: string]: string };
   }
 }
 
@@ -92,7 +94,7 @@ export function AssistantMessage(
   const wrappedContent = wrapContent(content);
   return {
     role: "assistant",
-    content: wrappedContent,
+    content: wrappedContent as string,
   };
 }
 

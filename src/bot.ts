@@ -10,11 +10,12 @@ import { BaseAdapter, Usage } from "./adapters/base";
 import { EmbeddingsBase } from "./embeddings/base";
 import { AdapterSwitcher } from "./adapters";
 import { getEmbedding } from "./utils/factory";
-import { Message, SystemMessage, AssistantMessage, TextComponent, ImageComponent, UserMessage } from "./adapters/creators/component";
+import { Message, SystemMessage, AssistantMessage, TextComponent, ImageComponent, UserMessage, ToolMessage } from "./adapters/creators/component";
 import { ResponseVerifier } from "./utils/verifier";
 import { SendQueue } from "./services/sendQueue";
-import { Extension, getExtensions } from "./extensions/base";
+import { Extension, getExtensions, getToolSchema } from "./extensions/base";
 import { ImageViewer } from "./services/imageViewer";
+import { ToolSchema } from "./adapters/creators/schema";
 
 export interface Function {
   name: string;
@@ -69,7 +70,8 @@ export class Bot {
   private history: Message[] = [];
   private prompt: string; // 系统提示词
   private template: Template;
-  private tools: { [key: string]: Extension & Function };
+  private tools: { [key: string]: Extension & Function } = {};
+  private toolsSchema: ToolSchema[] = [];
   private messageQueue: SendQueue;
   private lastModified: number = 0;
 
@@ -101,10 +103,9 @@ export class Bot {
 
     this.messageQueue = new SendQueue(ctx, config);
 
-    this.tools = {};
     for (const extension of getExtensions()) {
-      // @ts-ignore
       this.tools[extension.name] = extension;
+      this.toolsSchema.push(getToolSchema(extension));
     }
   }
 
@@ -164,7 +165,7 @@ export class Bot {
 
     this.history.push(...messages);
 
-    const response = await adapter.chat([SystemMessage(this.prompt), ...this.history], debug);
+    const response = await adapter.chat([SystemMessage(this.prompt), ...this.history], adapter.ability.includes("原生工具调用") ? this.toolsSchema : undefined, debug);
     let content = response.message.content;
     if (debug) logger.info(`Adapter: ${current}, Response: \n${content}`);
 
@@ -174,6 +175,20 @@ export class Bot {
     let nextTriggerCount: number = Random.int(this.minTriggerCount, this.maxTriggerCount + 1); // 双闭区间
     let functions: Function[] = [];
     let reason: string;
+
+    if (adapter.ability.includes("原生工具调用")) {
+
+      let toolCalls = response.message.tool_calls;
+      let returns: ToolMessage[] = [];
+      toolCalls.forEach(async toolCall => {
+        let result = await this.callFunction(toolCall.function.name, toolCall.function.arguments);
+        if (!isEmpty(result)) returns.push(ToolMessage(result, toolCall.id));
+      })
+      if (returns.length > 0) {
+        this.history.push(...returns);
+        return this.generateResponse(this.history, debug);
+      }
+    }
 
     if (this.config.Settings.MultiTurn) {
       this.history.push(AssistantMessage(TextComponent(content)));
