@@ -34,13 +34,18 @@ export class OllamaAdapter extends BaseAdapter {
 
   async chat(messages: Message[], toolsSchema?: ToolSchema[], debug = false): Promise<Response> {
     for (const message of messages) {
+      let content = "";
       for (const component of message.content) {
-        if (typeof component === "string") continue;
-        if (component.type === "image_url") {
+        if (typeof component === "string"){
+          content += component;
+        } else if (component.type === "image_url") {
           if (!message["images"]) message["images"] = [];
           message["images"].push(component["image_url"]["url"]);
+        } else if (component.type === "text") {
+          content += component["text"];
         }
       }
+      message["content"] = content;
     }
     const requestBody = {
       model: this.model,
