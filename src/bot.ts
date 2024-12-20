@@ -206,7 +206,7 @@ export class Bot {
           return {
             status: "success",
             raw: content,
-            finalReply: finalResponse,
+            finalReply: await this.unparseFaceMessage(finalResponse),
             replyTo,
             quote: result.quoteMessageId || "",
             nextTriggerCount,
@@ -365,27 +365,8 @@ export class Bot {
         }
       }
 
-      // 反转义 <face> 消息
-      const faceRegex = /\[表情[:：]\s*([^\]]+)\]/g;
-      const matches = Array.from(finalResponse.matchAll(faceRegex));
+      finalResponse = await this.unparseFaceMessage(finalResponse);
 
-      const replacements = await Promise.all(
-        matches.map(async (match) => {
-          const name = match[1];
-          let id = await this.emojiManager.getIdByName(name);
-          if (!id) {
-            id = (await this.emojiManager.getIdByName(await this.emojiManager.getNameByTextSimilarity(name))) || "500";
-          }
-          return {
-            match: match[0],
-            replacement: `<face id="${id}" name="${(await this.emojiManager.getNameById(id)) || undefined}"></face>`,
-          };
-        })
-      );
-
-      replacements.forEach(({ match, replacement }) => {
-        finalResponse = finalResponse.replace(match, replacement);
-      });
       return {
         status: "success",
         raw: content,
@@ -439,6 +420,30 @@ ${this.memory.getSelfMemory().join("\n")}
 
 ${humanMemories.join("\n")}
 `.trim();
+  }
+
+  async unparseFaceMessage(message: string) {
+    // 反转义 <face> 消息
+    const faceRegex = /\[表情[:：]\s*([^\]]+)\]/g;
+    const matches = Array.from(message.matchAll(faceRegex));
+
+    const replacements = await Promise.all(
+      matches.map(async (match) => {
+        const name = match[1];
+        let id = await this.emojiManager.getIdByName(name);
+        if (!id) {
+          id = (await this.emojiManager.getIdByName(await this.emojiManager.getNameByTextSimilarity(name))) || "500";
+        }
+        return {
+          match: match[0],
+          replacement: `<face id="${id}" name="${(await this.emojiManager.getNameById(id)) || undefined}"></face>`,
+        };
+      })
+    );
+    replacements.forEach(({ match, replacement }) => {
+      message = message.replace(match, replacement);
+    });
+    return message;
   }
 
   getFunctionPrompt() {

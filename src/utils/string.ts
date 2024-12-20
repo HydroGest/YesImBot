@@ -89,7 +89,7 @@ export class Template {
 
     template = template.replace(this.conditionRegex, (match, condition, trueValue, falseValue) => {
       const generalizedTrueValue = trueValue.replace(/\{\{.*?\}\}/g, '.*?');
-      const pattern = new RegExp(generalizedTrueValue);
+      const pattern = new RegExp(generalizedTrueValue, 's');
 
       if (pattern.test(processedSource)) {
         result[condition] = 'true';
@@ -109,9 +109,9 @@ export class Template {
 
         let pattern;
         if (i === parts.length - 2) {
-          pattern = new RegExp(`${prevPart}(.*?)$`);
+          pattern = new RegExp(`${prevPart}([\\s\\S]*?)$`);
         } else {
-          pattern = new RegExp(`${prevPart}(.*?)${nextPart}`);
+          pattern = new RegExp(`${prevPart}([\\s\\S]*?)${nextPart}`);
         }
 
         const match = source.match(pattern);

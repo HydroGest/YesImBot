@@ -144,7 +144,7 @@ export async function processContent(config: Config, session: Session, messages:
       } else {
         // 转换为base64
         const base64 = await convertUrltoBase64(src);
-        message.content[i] = ImageComponent(base64, config.ImageViewer.Server.Detail);
+        message.content[i] = ImageComponent(base64, config.ImageViewer.Server.Detail || "auto");
       }
 
       pendingProcessImgCount--;
