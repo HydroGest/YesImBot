@@ -1,10 +1,10 @@
-import { Context } from "koishi";
+import { Context, Session } from "koishi";
 import { defineAccessor } from "@satorijs/core";
 import { Mutex } from "async-mutex";
 import { Config } from "../config";
 import { QueueManager } from "../managers/queueManager";
 import { ChatMessage } from "../models/ChatMessage";
-import { foldText } from "../utils/string";
+import { foldText, randomString } from "../utils/string";
 import { isChannelAllowed, ProcessingLock } from "../utils/toolkit";
 
 export enum MarkType {
@@ -23,6 +23,7 @@ export interface SendQueue {
   clearAll(): Promise<boolean>;
   clearPrivateAll(): Promise<boolean>;
 }
+
 export class SendQueue {
   private slotContains: Set<string>[] = [];
   private slotSize: number;
@@ -89,6 +90,20 @@ export class SendQueue {
       logger.info(`New message received, guildId = ${message.channelId}, content = ${foldText(message.content, 1000)}`);
     }
     this.processingLock.end(message.messageId);
+  }
+
+  async addRawMessage(session: Session, raw: string) {
+    await this.queueManager.enqueue({
+      senderId: session.selfId,
+      senderName: null,
+      senderNick: null,
+      channelId: session.channelId,
+      channelType: null,
+      sendTime: new Date(),
+      content: null,
+      messageId: randomString(16),
+      raw: raw,
+    });
   }
 
   getChannelMutex(channelId: string): Mutex {

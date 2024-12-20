@@ -25,9 +25,10 @@ export interface Function {
 
 export interface SuccessResponse {
   status: "success";
+  raw: string;
   finalReply: string;
-  replyTo: string;
-  quote: string;
+  replyTo?: string;
+  quote?: string;
   nextTriggerCount: number;
   logic: string;
   functions: Array<Function>;
@@ -37,6 +38,7 @@ export interface SuccessResponse {
 
 export interface SkipResponse {
   status: "skip";
+  raw: string;
   nextTriggerCount: number;
   logic: string;
   functions: Array<Function>;
@@ -46,7 +48,7 @@ export interface SkipResponse {
 
 export interface FailedResponse {
   status: "fail";
-  content: string;
+  raw: string;
   reason: string;
   usage: Usage;
   adapterIndex: number;
@@ -165,7 +167,7 @@ export class Bot {
     const response = await adapter.chat([SystemMessage(this.prompt), ...this.history], debug);
     let content = response.message.content;
     if (debug) logger.info(`Adapter: ${current}, Response: \n${content}`);
-    let status: string = "success";
+
     let finalResponse: string = "";
     let finalLogic: string = "";
     let replyTo: string = "";
@@ -182,7 +184,7 @@ export class Bot {
       if (result.userContent === undefined || !channelId) {
         return {
           status: "fail",
-          content,
+          raw: content,
           usage: response.usage,
           reason: "解析失败",
           adapterIndex: current,
@@ -193,6 +195,7 @@ export class Bot {
         if (finalResponse.trim() === "") {
           return {
             status: "skip",
+            raw: content,
             nextTriggerCount,
             logic: finalLogic,
             usage: response.usage,
@@ -202,6 +205,7 @@ export class Bot {
         } else {
           return {
             status: "success",
+            raw: content,
             finalReply: finalResponse,
             replyTo,
             quote: result.quoteMessageId || "",
@@ -226,24 +230,22 @@ export class Bot {
           LLMResponse = JSON5.parse(escapeUnicodeCharacters(jsonMatch[0]));
           this.history.push(AssistantMessage(JSON.stringify(LLMResponse)));
         } catch (e) {
-          status = "fail";
           reason = `JSON 解析失败: ${e.message}`;
           if (debug) logger.warn(reason);
           return {
             status: "fail",
-            content,
+            raw: content,
             usage: response.usage,
             reason,
             adapterIndex: current,
           };
         }
       } else {
-        status = "fail"; // 没有找到 JSON
         reason = `没有找到 JSON: ${content}`;
         if (debug) logger.warn(reason);
         return {
           status: "fail",
-          content,
+          raw: content,
           usage: response.usage,
           reason,
           adapterIndex: current,
@@ -265,12 +267,11 @@ export class Bot {
       }
 
       // 检查 status 字段
-      if (LLMResponse.status === "success") {
-        status = LLMResponse.status;
-      } else if (LLMResponse.status === "skip") {
-        status = "skip";
+      if (LLMResponse.status === "success") {}
+      else if (LLMResponse.status === "skip") {
         return {
           status: "skip",
+          raw: content,
           nextTriggerCount,
           logic: finalLogic,
           usage: response.usage,
@@ -278,7 +279,6 @@ export class Bot {
           adapterIndex: current,
         };
       } else if (LLMResponse.status === "function") {
-        status = "function";
         let funcReturns: Message[] = [];
         for (const func of LLMResponse.functions as Function[]) {
           const { name, params } = func;
@@ -308,12 +308,11 @@ export class Bot {
         // TODO: 上报函数调用信息
         return await this.generateResponse(funcReturns, debug);
       } else {
-        status = "fail";
         reason = `status 不是一个有效值: ${content}`;
         if (debug) logger.warn(reason);
         return {
           status: "fail",
-          content,
+          raw: content,
           usage: response.usage,
           reason,
           adapterIndex: current,
@@ -325,12 +324,11 @@ export class Bot {
         if (LLMResponse.finalReply || LLMResponse.reply) {
           finalResponse += LLMResponse.finalReply || LLMResponse.reply || "";
         } else {
-          status = "fail";
           reason = `回复格式错误: ${content}`;
           if (debug) logger.warn(reason);
           return {
             status: "fail",
-            content,
+            raw: content,
             usage: response.usage,
             reason,
             adapterIndex: current,
@@ -361,6 +359,10 @@ export class Bot {
         if (numericMatch) {
           replyTo = numericMatch[0].replace(/\s/g, "");
         }
+        // 不合法的 channelId
+        if (replyTo.match(/\{.+\}/)) {
+          replyTo = "";
+        }
       }
 
       // 反转义 <face> 消息
@@ -386,6 +388,7 @@ export class Bot {
       });
       return {
         status: "success",
+        raw: content,
         finalReply: finalResponse,
         replyTo,
         quote: LLMResponse.quote || "",
@@ -410,7 +413,6 @@ export class Bot {
 
     // @ts-ignore
     return await func(...args);
-
   }
 
   async getCoreMemory(): Promise<string> {

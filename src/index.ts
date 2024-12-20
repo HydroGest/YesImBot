@@ -10,7 +10,7 @@ import { outputSchema } from "./adapters/creators/schema";
 import { initDatabase } from "./database";
 import { processContent, processText } from "./utils/content";
 import { foldText, isEmpty } from "./utils/string";
-import { createMessage } from "./models/ChatMessage";
+import { ChannelType, createMessage } from "./models/ChatMessage";
 import { convertUrltoBase64 } from "./utils/imageUtils";
 import { Bot, FailedResponse, SkipResponse, SuccessResponse } from "./bot";
 
@@ -182,7 +182,7 @@ export function apply(ctx: Context, config: Config) {
 
     // 提前下载图片，防止链接过期
     h.select(parsedElements, "img").forEach((element) => {
-      const cacheKey = getFileUnique(config, element, session.bot.platform);
+      const cacheKey = getFileUnique(element, session.bot.platform);
       convertUrltoBase64(
         element.attrs.src,
         cacheKey,
@@ -296,21 +296,21 @@ export function apply(ctx: Context, config: Config) {
       if (config.Debug.DebugAsInfo) ctx.logger.info(foldText(JSON.stringify(chatResponse, null, 2), 3500));
 
       // 处理响应
-      let { status, adapterIndex: current, usage } = chatResponse;
+      let { status, raw, adapterIndex: current, usage } = chatResponse;
 
       let template = "";
 
       if (status === "fail") {
-        const { content, reason } = chatResponse as FailedResponse;
+        const { reason } = chatResponse as FailedResponse;
         template = `
 LLM 的响应无法正确解析，来自 API ${current}
 ${reason}
 原始响应:
-${content}
+${raw}
 ---
 消耗: 输入 ${usage?.prompt_tokens}, 输出 ${usage?.completion_tokens}`;
 
-        ctx.logger.error(`LLM provides unexpected response:\n${content}`);
+        ctx.logger.error(`LLM provides unexpected response:\n${raw}`);
         return false;
       } else if (status === "skip") {
         const { nextTriggerCount, logic, functions } = chatResponse as SkipResponse;
@@ -325,6 +325,7 @@ ${botName}想要跳过此次回复，来自 API ${current}
 ---
 消耗：输入 ${usage?.prompt_tokens}，输出 ${usage?.completion_tokens}`
         ctx.logger.info(`${botName}想要跳过此次回复`);
+        await sendQueue.addRawMessage(session, raw);
         sendQueue.setTriggerCount(channelId, nextTriggerCount);
         return true
       }
@@ -396,14 +397,16 @@ ${botName}想要跳过此次回复，来自 API ${current}
         await sendQueue.addMessage({
           senderId: session.selfId,
           senderName: session.bot.user.name,
-          senderNick: await getBotName(config.Bot, session),
+          senderNick: botName,
           messageId: messageIds[0],
           channelId: replyTo,
-          channelType: replyTo.startsWith("private:") ? "private" : (replyTo === "#" ? "sandbox" : "guild"),
+          channelType: replyTo.startsWith("private:") ? ChannelType.Private : (replyTo === "#" ? ChannelType.Sandbox : ChannelType.Guild),
           sendTime: new Date(),
           content: finalReply,
-          quoteMessageId: quote
+          quoteMessageId: quote,
+          raw,
         });
+
         for (const messageId of messageIds) {
           sendQueue.setMark(messageId, MarkType.Added);
         }

@@ -177,7 +177,6 @@ class AnotherLLMService extends ImageDescriptionService {
 
 export class ImageViewer {
   private question: string;
-  private questionHash: string;
   private ignoreCache: boolean;
   private method: Config['ImageViewer']['How'];
   private serviceType?: string;
@@ -186,7 +185,6 @@ export class ImageViewer {
 
   constructor(private config: Config) {
     this.question = config.ImageViewer.Question;
-    this.questionHash = createHash("md5").update(this.question).digest("hex");
     this.ignoreCache = config.Debug.IgnoreImgCache;
     this.method = config.ImageViewer.How;
     this.serviceType = config.ImageViewer?.Server?.Type;
@@ -208,6 +206,7 @@ export class ImageViewer {
   ): Promise<string> {
     switch (this.method) {
       case "图片描述服务": {
+        const questionHash = createHash("md5").update(this.question).digest("hex");
         const service = this.serviceMap[this.serviceType];
         if (!service) {
           throw new Error(`Unsupported server: ${this.serviceType}`);
@@ -225,9 +224,9 @@ export class ImageViewer {
             // 检查缓存
             if (this.cacheManager.has(cacheKey)) {
               const descriptions = this.cacheManager.get(cacheKey);
-              if (descriptions[this.questionHash]) {
-                logger.info(`Image[${cacheKey?.substring(0, 7)}] described with question "${this.question}". Description: ${descriptions[this.questionHash]}`);
-                return `[图片: ${descriptions[this.questionHash]}]`;
+              if (descriptions[questionHash]) {
+                logger.info(`Image[${cacheKey?.substring(0, 7)}] described with question "${this.question}". Description: ${descriptions[questionHash]}`);
+                return `[图片: ${descriptions[questionHash]}]`;
               }
             }
           } catch (e) {
@@ -241,9 +240,9 @@ export class ImageViewer {
             // 再次检查缓存(可能在等待过程中已经处理完)
             if (this.cacheManager.has(cacheKey)) {
               const descriptions = this.cacheManager.get(cacheKey);
-              if (descriptions[this.questionHash]) {
-                logger.info(`Image[${cacheKey?.substring(0, 7)}] described with question "${this.question}". Description: ${descriptions[this.questionHash]}`);
-                return `[图片: ${descriptions[this.questionHash]}]`;
+              if (descriptions[questionHash]) {
+                logger.info(`Image[${cacheKey?.substring(0, 7)}] described with question "${this.question}". Description: ${descriptions[questionHash]}`);
+                return `[图片: ${descriptions[questionHash]}]`;
               }
             }
 
@@ -252,7 +251,7 @@ export class ImageViewer {
             const description = await service.getDescription(imgUrl, base64);
 
             let descriptions = this.cacheManager.get(cacheKey) || {};
-            descriptions[this.questionHash] = description;
+            descriptions[questionHash] = description;
             await this.cacheManager.set(cacheKey, descriptions);
 
             logger.info(`Image[${cacheKey?.substring(0, 7)}] described with question "${this.question}". Description: ${description}`);

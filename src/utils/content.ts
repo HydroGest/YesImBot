@@ -1,13 +1,13 @@
 import { h, Session } from 'koishi';
 
 import { Config } from '../config';
-import { ChatMessage } from '../models/ChatMessage';
+import { ChannelType, ChatMessage } from '../models/ChatMessage';
 import { Template } from './string';
 import { getFileUnique, getMemberName, getFormatDateTime } from './toolkit';
 import { ImageViewer } from '../services/imageViewer';
 import { convertUrltoBase64 } from "../utils/imageUtils";
 import { Message, AssistantMessage, ImageComponent, SystemMessage, TextComponent, UserMessage } from "../adapters/creators/component";
-import { image } from '@satorijs/element/jsx-runtime';
+
 
 /**
  * 处理用户消息
@@ -78,7 +78,7 @@ export async function processContent(config: Config, session: Session, messages:
           break;
         case "img":
           // const { src, summary, fileUnique } = elem.attrs;
-          let cacheKey = getFileUnique(config, elem, session.bot.platform);
+          let cacheKey = getFileUnique(elem, session.bot.platform);
           elem.attrs.cachekey = cacheKey;
           components.push(ImageComponent(h.img(elem.attrs.src, { cachekey: elem.attrs.cachekey, summary: elem.attrs.summary }).toString()));
           pendingProcessImgCount++;
@@ -102,14 +102,14 @@ export async function processContent(config: Config, session: Session, messages:
       messageId: chatMessage.messageId,
       date: timeString,
       channelType: chatMessage.channelType,
-      channelInfo: (chatMessage.channelType === "guild") ? `from_guild:${chatMessage.channelId}` : `from_${chatMessage.channelType}`,
+      channelInfo: (chatMessage.channelType === ChannelType.Guild) ? `from_guild:${chatMessage.channelId}` : `${ chatMessage.channelType === ChannelType.Private ? "from_private" : "from_sandbox" }`,
       channelId: chatMessage.channelId,
       senderName,
       senderId: chatMessage.senderId,
       userContent: "{{userContent}}",
       quoteMessageId: chatMessage.quoteMessageId || "",
       hasQuote: !!chatMessage.quoteMessageId,
-      isPrivate: chatMessage.channelType === "private",
+      isPrivate: chatMessage.channelType === ChannelType.Private,
     });
     const parts = messageText.split(/({{userContent}})/);
     components = parts.flatMap(part => {
