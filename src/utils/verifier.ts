@@ -1,4 +1,4 @@
-import { Adapter } from "../adapters";
+import { BaseAdapter } from "../adapters/base";
 import { AssistantMessage, SystemMessage, UserMessage } from "../adapters/creators/component";
 import { Config } from "../config";
 import { calculateCosineSimilarity, EmbeddingsBase } from "../embeddings/base";
@@ -7,7 +7,7 @@ import { getAdapter, getEmbedding } from "./factory";
 export class ResponseVerifier {
   private previousResponse = new Map<string, string>();
   private config: Config;
-  private client: EmbeddingsBase | Adapter;
+  private client: EmbeddingsBase | BaseAdapter;
 
   constructor(config: Config) {
     this.config = config;
@@ -65,6 +65,7 @@ export class ResponseVerifier {
             AssistantMessage("Resolve OK"),
             UserMessage(promptInput)
           ],
+          null,
           this.config.Debug.DebugAsInfo
         );
 

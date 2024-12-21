@@ -165,7 +165,9 @@ class AnotherLLMService extends ImageDescriptionService {
             ImageComponent(base64, this.config.ImageViewer.Server.Detail),
             TextComponent(question)
           )
-        ], this.config.Debug.DebugAsInfo
+        ],
+        null,
+        this.config.Debug.DebugAsInfo
       );
       return response.message.content;
     } catch (error) {
