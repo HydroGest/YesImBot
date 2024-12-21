@@ -1,44 +1,46 @@
-import { register } from "../adapters";
+import { BaseAdapter } from "../adapters/base";
+import { AssistantMessage, SystemMessage, UserMessage } from "../adapters/creators/component";
 import { Config } from "../config";
-import { calculateCosineSimilarity, runEmbedding } from "../services/embeddingService";
+import { calculateCosineSimilarity, EmbeddingsBase } from "../embeddings/base";
+import { getAdapter, getEmbedding } from "./factory";
 
 export class ResponseVerifier {
-  private previousResponse: string = "";
+  private previousResponse = new Map<string, string>();
   private config: Config;
+  private client: EmbeddingsBase | BaseAdapter;
 
-  loadConfig(config: Config) {
+  constructor(config: Config) {
     this.config = config;
+    if (this.config.Verifier.Method.Type === "Embedding") {
+      if (this.config.Embedding.Enabled) {
+        this.client = getEmbedding(config.Embedding);
+      } else {
+        throw new Error("Embedding 模型未启用，请检查配置");
+      }
+    } else {
+      this.client = getAdapter(
+        this.config.Verifier.Method,
+        this.config.Parameters
+      );
+    }
   }
 
-  setPreviousResponse(response: string) {
-    this.previousResponse = response;
+  setPreviousResponse(channelId, response) {
+    this.previousResponse.set(channelId, response);
   }
 
-  async verifyResponse(currentResponse: string): Promise<boolean> {
-    if (!this.config.Verifier.Enabled || !this.previousResponse) {
+  async verifyResponse(channelId, currentResponse: string): Promise<boolean> {
+    if (!this.config.Verifier.Enabled || !this.previousResponse.has(channelId)) {
+      this.setPreviousResponse(channelId, currentResponse);
       return true; // Allow if verification is disabled or no previous response
     }
 
     try {
-      if (this.config.Verifier.API.AIModel.includes("embedding")) {
+      if (this.client instanceof EmbeddingsBase) {
         // 使用 embedding 模型验证相似度
-        const previousEmbedding = await runEmbedding(
-          this.config.Verifier.API.APIType,
-          this.config.Verifier.API.BaseURL,
-          this.config.Verifier.API.APIKey,
-          this.config.Verifier.API.AIModel,
-          this.previousResponse,
-          this.config.Debug.DebugAsInfo
-        );
+        const previousEmbedding = await this.client._embed(this.previousResponse.get(channelId));
 
-        const currentEmbedding = await runEmbedding(
-          this.config.Verifier.API.APIType,
-          this.config.Verifier.API.BaseURL,
-          this.config.Verifier.API.APIKey,
-          this.config.Verifier.API.AIModel,
-          currentResponse,
-          this.config.Debug.DebugAsInfo
-        );
+        const currentEmbedding = await this.client._embed(currentResponse);
 
         const similarityScore = calculateCosineSimilarity(
           previousEmbedding,
@@ -56,20 +58,14 @@ export class ResponseVerifier {
 3. 如果两段文本表达了相同的情感或态度，认为相似度较高
 
 如果你理解了我的需求，请回复“Resolve OK”，我将在这之后给你提供要分析相似度的两个句子, 分别用 'A:' 和 'B:' 标识。`;
-        const promptInput = `A: ${this.previousResponse}\nB: ${currentResponse}`;
-        const adapter = register(
-          this.config.Verifier.API.APIType,
-          this.config.Verifier.API.BaseURL,
-          this.config.Verifier.API.APIKey,
-          this.config.Verifier.API.UID,
-          this.config.Verifier.API.AIModel
-        )
-        const response = await adapter.runChatCompeletion(
-          sysPrompt,
-          promptInput,
-          Object.create(this.config.Parameters),
-          this.config.ImageViewer.Detail,
-          this.config.ImageViewer.How,
+        const promptInput = `A: ${this.previousResponse.get(channelId)}\nB: ${currentResponse}`;
+        const response = await this.client.chat(
+          [
+            SystemMessage(sysPrompt),
+            AssistantMessage("Resolve OK"),
+            UserMessage(promptInput)
+          ],
+          null,
           this.config.Debug.DebugAsInfo
         );
 

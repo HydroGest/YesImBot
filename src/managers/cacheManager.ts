@@ -1,19 +1,26 @@
 import fs from "fs";
+import path from "path";
 
+import BSON from "bson";
+
+// TODO: 允许自己指定缓存路径
+// TODO: 使用 zlib 进行压缩
 export class CacheManager<T> {
   private cache: Map<string, T>; // 内存缓存
   private dirtyCache: Map<string, T>; // 临时缓存
-  private filePath: string;
   private isDirty: boolean; // 标记是否有需要保存的数据
   private saveImmediately: boolean;
   private timer: NodeJS.Timeout;
 
-  constructor(filePath: string) {
+  constructor(
+    private filePath: string,
+    private enableBson = false
+  ) {
     this.cache = new Map<string, T>();
     this.dirtyCache = new Map<string, T>();
     this.isDirty = false;
-    this.filePath = filePath;
     this.saveImmediately = true;
+
     this.loadCache();
 
     // 监听退出事件，确保退出前保存数据
@@ -61,28 +68,68 @@ export class CacheManager<T> {
     }
   }
 
-  // 序列化并存储数据到文件
-  private saveCache(): void {
-    const serializedData = JSON.stringify(
-      Array.from(this.cache.entries()).map(([key, value]) => [key, this.serialize(value)]),
-      null,
-      2
-    );
-    fs.writeFileSync(this.filePath, serializedData, "utf-8");
+  /**
+   * 序列化并存储数据到文件
+   * @returns
+   */
+  private async saveCache(): Promise<void> {
+    try {
+      // 确保目标目录存在
+      await fs.promises.mkdir(path.dirname(this.filePath), { recursive: true });
+
+      if (this.enableBson) {
+        const serializedData = BSON.serialize(Object.fromEntries(this.cache));
+        await fs.promises.writeFile(this.filePath, serializedData);
+        return;
+      }
+
+      const serializedData = JSON.stringify(
+        Array.from(this.cache.entries()).map(([key, value]) => [key, this.serialize(value)]),
+        null,
+        2
+      );
+      await fs.promises.writeFile(this.filePath, serializedData, "utf-8");
+    } catch (error) {
+      const llogger = logger || console;
+      llogger.error("Failed to save cache:", error);
+      // 不抛出错误，避免中断定时器
+      // 下次保存时会重试
+    }
   }
 
-  // 反序列化并加载缓存数据
-  private loadCache(): void {
+  /**
+   * 反序列化并加载缓存数据
+   * @returns
+   */
+  private async loadCache(): Promise<void> {
     try {
-      if (fs.existsSync(this.filePath)) {
-        const serializedData = fs.readFileSync(this.filePath, "utf-8");
-        const entries: [string, string][] = JSON.parse(serializedData);
-        entries.forEach(([key, value]) => {
-          this.cache.set(key, this.deserialize(value));
-        });
+      if (!fs.existsSync(this.filePath)) {
+        await fs.promises.mkdir(path.dirname(this.filePath), { recursive: true });
+        if (this.enableBson) {
+          await fs.promises.writeFile(this.filePath, BSON.serialize(this.cache));
+        } else {
+          await fs.promises.writeFile(this.filePath, "[]", "utf-8");
+        }
+        return;
       }
+
+      if (this.enableBson) {
+        const serializedData = await fs.promises.readFile(this.filePath);
+        const entries: { [key: string]: T } = BSON.deserialize(serializedData);
+        Object.entries(entries).forEach(([key, value]) => {
+          this.cache.set(key, value);
+        });
+        return;
+      }
+
+      const serializedData = await fs.promises.readFile(this.filePath, "utf-8");
+      const entries: [string, string][] = JSON.parse(serializedData);
+      entries.forEach(([key, value]) => {
+        this.cache.set(key, this.deserialize(value));
+      });
     } catch (error) {
-      console.error("加载缓存失败:", error);
+      const llogger = logger || console;
+      llogger.warn("加载缓存失败:", error);
     }
   }
 
@@ -94,16 +141,20 @@ export class CacheManager<T> {
     return Array.from(this.cache.keys());
   }
 
+  public entries(): [string, T][] {
+    return Array.from(this.cache.entries());
+  }
+
   private markDirty(key: string, value: T): void {
     this.dirtyCache.set(key, value);
     this.isDirty = true;
   }
 
   // 添加数据到缓存
-  public set(key: string, value: T): void {
+  public async set(key: string, value: T): Promise<void> {
     this.cache.set(key, value);
     if (this.saveImmediately) {
-      this.saveCache();
+      await this.saveCache();
       return;
     }
     this.markDirty(key, value);
@@ -137,31 +188,47 @@ export class CacheManager<T> {
   }
 
   // 统一提交缓存到文件
-  public commit(): void {
+  public async commit(): Promise<void> {
     if (this.isDirty) {
       // 将内存缓存合并到文件缓存
       this.dirtyCache.forEach((value, key) => {
         this.cache.set(key, value);
       });
-      this.saveCache();
+      await this.saveCache();
       this.dirtyCache.clear();
       this.isDirty = false;
     }
   }
 
-  // 在定时器中定期保存缓存
-  public autoSave(interval: number = 5000): void {
+  /**
+   * 在定时器中定期保存缓存
+   * @param interval
+   * @returns
+   */
+  public setAutoSave(interval: number = 5000): void {
+    if (interval <= 0) {
+      this.saveImmediately = true;
+      this.timer && clearTimeout(this.timer); // 清除现有的定时器
+      return;
+    }
+
     this.saveImmediately = false;
-    this.timer = setInterval(() => {
+
+    const autoSave = async () => {
       if (this.isDirty) {
-        this.commit();
+        await this.commit(); // 异步保存缓存
       }
-    }, interval);
+      this.timer = setTimeout(autoSave, interval); // 递归调用自身
+    };
+
+    this.timer && clearTimeout(this.timer); // 清除现有的定时器
+    this.timer = setTimeout(autoSave, interval); // 启动新的定时器
   }
 
   private handleExit(): void {
-    this.commit(); // 在退出前统一保存数据
-    clearInterval(this.timer);
-    process.exit(); // 确保进程退出
+    this.commit().then(() => {
+      clearTimeout(this.timer!);
+      process.exit(); // 确保进程退出
+    });
   }
 }

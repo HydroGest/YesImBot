@@ -1,4 +1,6 @@
 import { Schema } from "koishi";
+import { Config as EmbeddingsConfig } from "./embeddings/config";
+import { Config as AdapterConfig } from "./adapters/config";
 
 export interface Config {
   MemorySlot: {
@@ -12,22 +14,14 @@ export interface Config {
     AtReactPossibility?: number;
     Filter: string[];
   };
-  API: {
-    APIList: {
-      APIType: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
-      BaseURL: string;
-      UID: string;
-      APIKey: string;
-      AIModel: string;
-    }[];
-  };
+  API: AdapterConfig;
   Parameters: {
-    Temperature: number;
-    MaxTokens: number;
-    TopP: number;
-    FrequencyPenalty: number;
-    PresencePenalty: number;
-    Stop: string[];
+    Temperature?: number;
+    MaxTokens?: number;
+    TopP?: number;
+    FrequencyPenalty?: number;
+    PresencePenalty?: number;
+    Stop?: string[];
     OtherParameters: {
       key: string;
       value: string;
@@ -35,41 +29,38 @@ export interface Config {
   };
   Verifier: {
     Enabled?: boolean;
-    API?: {
-      APIType: string;
+    Action?: "丢弃" | "重新生成";
+    SimilarityThreshold?: number;
+    Method?: {
+      Type: "Embedding" | "LLM";
+      APIType: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
       BaseURL: string;
       UID: string;
       APIKey: string;
       AIModel: string;
     };
-    SimilarityThreshold?: number;
   };
-  Embedding: {
-    Enabled?: boolean;
-    APIType?: string;
-    BaseURL?: string;
-    APIKey?: string;
-    EmbeddingModel?: string;
-    RequestBody?: string;
-    GetVecRegex?: string;
-  };
+  Embedding: EmbeddingsConfig;
   ImageViewer: {
-    How:
+    How?:
       | "LLM API 自带的多模态能力"
       | "图片描述服务"
       | "替换成[图片:summary]"
       | "替换成[图片]"
       | "不做处理，以<img>标签形式呈现";
-    Detail: "low" | "high" | "auto";
-    Memory: number;
-    Server: "百度AI开放平台" | "自己搭建的服务" | "另一个LLM";
-    BaseURL: string;
-    Adapter: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
-    Model: string;
-    RequestBody: string;
-    GetDescRegex: string;
-    APIKey: string;
-    Question: string;
+    Memory?: number;
+    DescribeImmidately?: boolean;
+    Question?: string;
+    BaseURL?: string;
+    APIKey?: string;
+    Server?: {
+      Type: "百度AI开放平台" | "自己搭建的服务" | "另一个LLM";
+      Adapter?: "OpenAI" | "Cloudflare" | "Ollama" | "Custom URL";
+      Model?: string;
+      Detail?: "low" | "high" | "auto";
+      RequestBody?: string;
+      GetDescRegex?: string;
+    };
   };
   Bot: {
     PromptFileUrl: string[];
@@ -87,25 +78,29 @@ export interface Config {
     BotBackground: string;
     WordsPerSecond: number;
     CuteMode: boolean;
-    BotSentencePostProcess: {
+    BotReplySpiltRegex: string;
+    BotSentencePostProcess: Array<{
       replacethis: string;
       tothis: string;
-    }[];
+    }>;
   };
   Settings: {
+    SingleMessageStrctureTemplate: string;
     LogicRedirect: {
       Enabled?: boolean;
       Target?: string;
     };
     FirsttoAll: boolean;
-    AddWhattoQueue: "所有消息" | "所有此插件发送和接收的消息" | "所有和LLM交互的消息";
-    WholetoSplit: boolean;
+    SelfReport: Array<"指令消息" | "逻辑重定向" | "和LLM交互的消息">;
     UpdatePromptOnLoad: boolean;
     AllowErrorFormat: boolean;
+    MultiTurn: boolean;
   };
   Debug: {
     DebugAsInfo: boolean;
     TestMode: boolean;
+    FileUniqueField: string;
+    IgnoreImgCache: boolean;
   };
 }
 
@@ -152,25 +147,7 @@ export const Config: Schema<Config> = Schema.object({
       .description("过滤的词汇（防止被调皮群友/机器人自己搞傻）"),
   }).description("记忆槽位设置"),
 
-  API: Schema.object({
-    APIList: Schema.array(
-      Schema.object({
-        APIType: Schema.union(["OpenAI", "Cloudflare", "Ollama", "Custom URL"])
-          .default("OpenAI")
-          .description("API 类型"),
-        BaseURL: Schema.string()
-          .default("https://api.openai.com/")
-          .description("API 基础 URL, 设置为“Custom URL”需要填写完整的 URL"),
-        UID: Schema.string()
-          .default("若非 Cloudflare 可不填")
-          .description("Cloudflare UID"),
-        APIKey: Schema.string().required().description("你的 API 令牌"),
-        AIModel: Schema.string()
-          .default("@cf/meta/llama-3-8b-instruct")
-          .description("模型 ID"),
-      })
-    ).description("单个 LLM API 配置，可配置多个 API 进行负载均衡。"),
-  }).description("LLM API 相关配置"),
+  API: AdapterConfig,
 
   Parameters: Schema.object({
     Temperature: Schema.number()
@@ -210,51 +187,70 @@ export const Config: Schema<Config> = Schema.object({
     Stop: Schema.array(Schema.string())
       .default(["<|endoftext|>"])
       .role("table")
-      .description("自定义停止词。对于 OpenAI 官方的api，最多可以设置4个自定义停止词。生成会在遇到这些停止词时停止"),
+      .description("自定义停止词。对于 OpenAI 官方的 API，最多可以设置4个自定义停止词。生成会在遇到这些停止词时停止"),
     OtherParameters: Schema.array(
       Schema.object({
         key: Schema.string().description("键名"),
         value: Schema.string().description("键值"),
       })
     )
-      .default([
-        { key: "do_sample", value: "true" },
-      ])
+      .default([{ key: "do_sample", value: "true" }])
       .role("table")
-      .description("自定义请求体中的其他参数。有些api可能包含一些特别有用的功能，例如 dry_base 和 response_format。\n如果在调用api时出现400或422错误，请尝试删除此处的自定义参数。\n提示：直接将gbnf内容作为grammar_string的值粘贴至此时，换行符会被转换成空格，需要手动替换为\\n后方可生效"),
+      .description(
+        `自定义请求体中的其他参数。有些api可能包含一些特别有用的功能，例如 dry_base 和 response_format。<br/>
+        如果在调用api时出现400或422错误，请尝试删除此处的自定义参数。<br/>
+        提示：直接将gbnf内容作为grammar_string的值粘贴至此时，换行符会被转换成空格，需要手动替换为\\n后方可生效`.trim()
+      ),
   }).description("API 参数"),
 
   Verifier: Schema.intersect([
     Schema.object({
-      Enabled: Schema.boolean().default(false),
-    }).description("是否启用相似度验证"),
+      Enabled: Schema.boolean()
+        .default(false)
+        .description("是否开启相似度验证"),
+    }).description("相似度验证"),
     Schema.union([
       Schema.object({
         Enabled: Schema.const(true).required(),
-        API: Schema.object({
-          APIType: Schema.union(["OpenAI", "Cloudflare", "Custom URL"])
-            .default("OpenAI")
-            .description("验证器 API 类型"),
-          BaseURL: Schema.string()
-            .default("https://api.openai.com/")
-            .description("验证器 API 基础 URL"),
-          UID: Schema.string()
-            .default("")
-            .description("验证器 Cloudflare UID（如果适用）"),
-          APIKey: Schema.string()
-            .default("sk-xxxxxxx")
-            .description("验证器 API 令牌"),
-          AIModel: Schema.string()
-            .default("gpt-3.5-turbo")
-            .description("验证器使用的模型，可以使用embedding模型"),
-        }).description("验证器 API 配置"),
         SimilarityThreshold: Schema.number()
           .default(0.75)
           .min(0)
           .max(1)
           .step(0.05)
           .role("slider")
-          .description("相似度阈值，超过此值的回复将被过滤"),
+          .description("相似度阈值。超过此值的回复将被过滤"),
+        Action: Schema.union(["丢弃", "重新生成"])
+          .default("丢弃")
+          .description("相似度高于阈值时的行为"),
+        Method: Schema.intersect([
+          Schema.object({
+            Type: Schema.union(["Embedding", "LLM"])
+              .default("Embedding")
+              .description("验证器类型。如果选择 Embedding，请填写下方Embedding配置"),
+          }),
+          Schema.union([
+            Schema.object({
+              Type: Schema.const("Embedding").required(),
+            }),
+            Schema.object({
+              Type: Schema.const("LLM").required(),
+              APIType: Schema.union(["OpenAI", "Cloudflare", "Ollama", "Custom URL"])
+                .default("OpenAI")
+                .description("API 类型"),
+              BaseURL: Schema.string()
+                .default("https://api.openai.com/")
+                .description("API 基础 URL, 设置为“Custom URL”需要填写完整的 URL"),
+              UID: Schema.string()
+                .default("若非 Cloudflare 可不填")
+                .description("Cloudflare UID"),
+              APIKey: Schema.string().description("你的 API 令牌"),
+              AIModel: Schema.string()
+                .default("@cf/meta/llama-3-8b-instruct")
+                .description("模型 ID"),
+            }),
+            Schema.object({}),
+          ]),
+        ]),
       }),
       Schema.object({}),
     ]),
@@ -293,66 +289,86 @@ export const Config: Schema<Config> = Schema.object({
   //     ])
   // ]),
 
-  Embedding: Schema.intersect([
+  Embedding: EmbeddingsConfig,
+
+  ImageViewer: Schema.intersect([
     Schema.object({
-      Enabled: Schema.boolean().default(false),
-    }).description("是否启用 Embedding"),
+      How: Schema.union([
+        "LLM API 自带的多模态能力",
+        "图片描述服务",
+        "替换成[图片:summary]",
+        "替换成[图片]",
+        "不做处理，以<img>标签形式呈现",
+      ])
+        .default("替换成[图片]")
+        .description("处理图片的方式。失败时会自动尝试后一种方式"),
+    }).description("图片查看器"),
     Schema.union([
       Schema.object({
-        Enabled: Schema.const(true).required(),
-        APIType: Schema.union(["OpenAI", "Custom"])
-          .default("OpenAI")
-          .description("Embedding API 类型"),
+        How: Schema.const("LLM API 自带的多模态能力").required(),
+        Memory: Schema.number()
+          .default(1)
+          .min(-1)
+          .description("使用 LLM API 自带的多模态能力时，LLM 真正能看到的最近的图片数量。设为-1取消此限制"),
+      }),
+      Schema.object({
+        How: Schema.const("图片描述服务").required(),
+        DescribeImmidately: Schema.boolean()
+          .default(false)
+          .description("是否在收到图片时立即描述图片"),
+        Question: Schema.string()
+          .default("这张图里有什么？")
+          .description("图片描述服务针对输入图片的问题"),
         BaseURL: Schema.string()
-          .default("https://api.openai.com")
-          .description("Embedding API 基础 URL"),
-        APIKey: Schema.string().required().description("API 令牌"),
-        EmbeddingModel: Schema.string()
-          .default("text-embedding-3-large")
-          .description("Embedding 模型 ID"),
-        RequestBody: Schema.string().description("自定义请求体。其中：`<text>`（包含尖括号）会被替换成用于计算嵌入向量的文本；`<apikey>`（包含尖括号）会被替换成此页面设置的 API 密钥；<model>（包含尖括号）会被替换成此页面设置的模型名称"),
-        GetVecRegex: Schema.string().description("从自定义Embedding服务提取嵌入向量的正则表达式。注意转义"),
+          .default("http://127.0.0.1")
+          .description("自己搭建的图片描述服务或另一个LLM的完整 URL"),
+        APIKey: Schema.string().description("图片描述服务可能需要的 API 密钥，对于不同服务，它们的名称可能不同。例如`access_token`"),
+        Server: Schema.intersect([
+          Schema.object({
+            Type: Schema.union(["百度AI开放平台", "自己搭建的服务", "另一个LLM"])
+              .required()
+              .default("百度AI开放平台")
+              .description("图片查看器使用的服务提供商"),
+          }),
+          Schema.union([
+            Schema.object({
+              Type: Schema.const("百度AI开放平台"),
+            }),
+            Schema.object({
+              Type: Schema.const("自己搭建的服务").required(),
+              RequestBody: Schema.string()
+                .role('textarea', { rows: [1, 4] })
+                .description("自己搭建的图片描述服务需要的请求体。<br/>其中：<br/>\
+                  `<url>`(包含尖括号)会被替换成消息中出现的图片的url;<br/>\
+                  `<base64>`(包含尖括号)会被替换成图片的base64(自带`data:image/jpeg;base64,`头，无需另行添加);<br/>\
+                  `<question>`(包含尖括号)会被替换成此页面设置的针对输入图片的问题;<br/>\
+                  `<apikey>`(包含尖括号)会被替换成此页面设置的图片描述服务可能需要的 API 密钥".trim()),
+              GetDescRegex: Schema.string().description("从自己搭建的图片描述服务提取所需信息的正则表达式。注意转义"),
+            }),
+            Schema.object({
+              Type: Schema.const("另一个LLM").required(),
+              Adapter: Schema.union([
+                "OpenAI",
+                "Custom URL",
+                "Ollama",
+                "Cloudflare"
+              ])
+                .default("OpenAI")
+                .description("使用另一个LLM时的适配器类型"),
+              Model: Schema.string()
+                .default("gpt-4o-mini")
+                .description("使用另一个LLM时的模型名称"),
+              Detail: Schema.union(["low", "high", "auto"])
+                .default("low")
+                .description("使用 LLM 时的图片处理细节，这关系到 Token 消耗"),
+            }),
+            Schema.object({}),
+          ]),
+        ]),
       }),
       Schema.object({}),
     ]),
   ]),
-
-  ImageViewer: Schema.object({
-    How: Schema.union([
-      "LLM API 自带的多模态能力",
-      "图片描述服务",
-      "替换成[图片:summary]",
-      "替换成[图片]",
-      "不做处理，以<img>标签形式呈现",
-    ])
-      .default("替换成[图片]")
-      .description("处理图片的方式。失败时会自动尝试后一种方式"),
-    Detail: Schema.union(["low", "high", "auto"])
-      .default("low")
-      .description("使用 LLM 时的图片处理细节，这关系到 Token 消耗"),
-    Memory: Schema.number()
-      .default(1)
-      .min(-1)
-      .description("使用 LLM API 自带的多模态能力时，LLM 真正能看到的最近的图片数量。设为-1取消此限制"),
-    Server: Schema.union(["百度AI开放平台", "自己搭建的服务", "另一个LLM"])
-      .default("百度AI开放平台")
-      .description("图片查看器使用的服务提供商"),
-    BaseURL: Schema.string()
-      .default("http://127.0.0.1")
-      .description("自己搭建的图片描述服务或另一个LLM的完整 URL"),
-    Adapter: Schema.union(["OpenAI", "Custom URL", "Ollama", "Cloudflare"])
-      .default("OpenAI")
-      .description("适配器类型"),
-    Model: Schema.string()
-      .default("gpt-4o-mini")
-      .description("使用另一个LLM时的模型名称"),
-    RequestBody: Schema.string().description("自己搭建的图片描述服务需要的请求体。其中：`<url>`（包含尖括号）会被替换成消息中出现的图片的url；`<base64>`(包含尖括号)会被替换成图片的base64（自带`data:image/jpeg;base64,`头，无需另行添加）；`<question>`（包含尖括号）会被替换成此页面设置的针对输入图片的问题；`<apikey>`（包含尖括号）会被替换成此页面设置的图片描述服务可能需要的 API 密钥"),
-    GetDescRegex: Schema.string().description("从自己搭建的图片描述服务提取所需信息的正则表达式。注意转义"),
-    APIKey: Schema.string().description("图片描述服务可能需要的 API 密钥，对于不同服务，它们的名称可能不同。例如`access_token`"),
-    Question: Schema.string()
-      .default("这张图里有什么？")
-      .description("图片描述服务针对输入图片的问题"),
-  }).description("图片查看器"),
 
   Bot: Schema.object({
     PromptFileUrl: Schema.array(Schema.string())
@@ -395,6 +411,9 @@ export const Config: Schema<Config> = Schema.object({
       .step(0.1)
       .role("slider")
       .description("Bot 的打字速度（每秒字数）。设为 0 取消打字间隔。"),
+    BotReplySpiltRegex: Schema.string()
+      .default("(?<=[。?!？！])\s*")
+      .description("分割 Bot 生成的句子时所用的正则表达式。如果要关闭分割，请设为`(?!)`而不是空字符串"),
     BotSentencePostProcess: Schema.array(
       Schema.object({
         replacethis: Schema.string().description("需要替换的文本"),
@@ -408,6 +427,9 @@ export const Config: Schema<Config> = Schema.object({
   }).description("机器人设定"),
 
   Settings: Schema.object({
+    SingleMessageStrctureTemplate: Schema.string()
+      .default("[{{messageId}}][{{date}} {{channelInfo}}] {{senderName}}<{{senderId}}> {{hasQuote,回复[{{quoteMessageId}}]: ,说: }}{{userContent}}")
+      .description("单条消息的结构模板"),
     LogicRedirect: Schema.intersect([
       Schema.object({
         Enabled: Schema.boolean()
@@ -427,22 +449,21 @@ export const Config: Schema<Config> = Schema.object({
     FirsttoAll: Schema.boolean()
       .default(false)
       .description("记忆槽位的行为改为：如果多个槽位都包含同一群号，所有包含该群号的槽位都将被应用"),
-    AddWhattoQueue: Schema.union([
-      "所有消息",
-      "所有此插件发送和接收的消息",
-      "所有和LLM交互的消息",
-    ])
-      .default("所有和LLM交互的消息")
-      .description("将哪些消息添加到消息队列。选择“所有消息”时，将使用事件监听器来更新消息队列，请打开自身消息上报，这将导致WholetoSplit失效(始终以实际的分条存入消息队列)"),
-    WholetoSplit: Schema.boolean()
-      .default(false)
-      .description("BOT的消息是否按照实际的分条存入消息队列，关闭表示一次调用API的消息在消息队列中会呈现为一条，开启表示按照实际发送的分条存入消息队列"),
+    SelfReport: Schema.array(
+      Schema.union(["指令消息", "逻辑重定向", "和LLM交互的消息"])
+    )
+      .default(["和LLM交互的消息"])
+      .role("checkbox")
+      .description("选择将 Bot 的哪些消息添加到数据库"),
     UpdatePromptOnLoad: Schema.boolean()
       .default(true)
       .description("每次启动时尝试更新 Prompt 文件"),
     AllowErrorFormat: Schema.boolean()
       .default(false)
       .description("兼容几种较为常见的大模型错误输出格式"),
+    MultiTurn: Schema.boolean()
+      .default(false)
+      .description("将历史消息以多轮对话格式传递给LLM，这会使得LLM更好地理解哪些消息是自己曾发出的，但会将期望的LLM输出格式从json改为单条消息的结构模板的格式，因此将无法使用某些功能"),
   }).description("插件设置"),
 
   Debug: Schema.object({
@@ -452,5 +473,11 @@ export const Config: Schema<Config> = Schema.object({
     TestMode: Schema.boolean()
       .default(false)
       .description("测试模式。如果你不知道这是什么，不要开启"),
+    FileUniqueField: Schema.string()
+      .default("file")
+      .description("图片的唯一标识字段"),
+    IgnoreImgCache: Schema.boolean()
+      .default(false)
+      .description("忽略图片缓存"),
   }).description("调试设置"),
 });

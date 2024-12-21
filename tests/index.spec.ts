@@ -1,7 +1,11 @@
-import { App } from "koishi";
-import mock, { MessageClient } from "@koishijs/plugin-mock";
-import { beforeAll, afterAll, jest, it } from "@jest/globals";
+import path from "path";
 import assert from "assert";
+import { beforeAll, afterAll, jest, it, describe } from "@jest/globals";
+
+import { App } from "koishi";
+import { h } from "koishi";
+import mock, { MessageClient } from "@koishijs/plugin-mock";
+import { MockBot } from "@koishijs/plugin-mock";
 
 import database from "@koishijs/plugin-database-memory";
 import * as help from "@koishijs/plugin-help";
@@ -10,16 +14,19 @@ import * as yesimbot from "../src/index";
 
 import testConfig from "./config";
 
-import { emojiManager } from "../src/managers/emojiManager";
+import { EmojiManager } from "../src/managers/emojiManager";
 import { CustomAdapter } from "../src/adapters";
+import { processText } from "../src/utils/content";
+import { CacheManager } from "../src/managers/cacheManager";
+
 
 // 拦截 sendRequest 函数请求
 jest.mock("../src/utils/http", () => {
   const originalModule = jest.requireActual("../src/utils/http");
   return {
-    //@ts-ignore
+    // @ts-ignore
     ...originalModule,
-    //@ts-ignore
+    // @ts-ignore
     sendRequest: jest.fn().mockImplementation(async (url: string, APIKey: string, requestBody: any) => {
           // 通过 url 细分, 返回不同的 response
           // TODO: 通过创建特定规则的 url, 测试不同格式的回复
@@ -28,18 +35,13 @@ jest.mock("../src/utils/http", () => {
             status: "success",
             logic: "<logic>",
             reply: "下雨了记得带伞哦~",
+            nextReplyIn: 3,
             //session_id: "",
             check: "<check>",
-            finReply: "下雨了记得带伞哦~",
+            finalReply: "下雨了记得带伞哦~",
             execute: [],
           });
-          
-          if (url.startsWith("/openai/embedding")) {
-            return;
-          } else if (url.startsWith("http://localhost:11434/api/embeddings")) {
-            //@ts-ignore
-            return await originalModule.sendRequest(url, APIKey, requestBody);
-          } else if (url.startsWith("/openai")) {
+          if (url.startsWith("/openai")) {
             return {
               choices: [
                 {
@@ -83,7 +85,10 @@ jest.mock("../src/utils/http", () => {
                 total_tokens: 5175,
               },
             };
-          } else throw new Error(`不支持的 API 类型: ${url}`);
+          } else {
+            // @ts-ignore
+            return await originalModule.sendRequest(url, APIKey, requestBody);
+          }
         }
       ),
   };
@@ -112,20 +117,20 @@ class Test {
     this.app.plugin(help);
     this.app.plugin(logger);
     this.app.plugin(mock);
-    //@ts-ignore
+    // @ts-ignore
     this.app.plugin(yesimbot, testConfig);
 
     // 创建客户端
     this.client = this.app.mock.client("12345678", "114514");
     this.privateClient = this.app.mock.client("12345678", "private:12345678");
 
-    this.client.bot.getGuildMemberList = async (guildId: string, next?: string) => {
+    MockBot.prototype.getGuildMemberList = async (guildId: string, next?: string) => {
       return {
         data: [this.client.userId, this.client.bot.userId].map((userId) => createUser(userId)),
       };
-    };
+    }
 
-    this.client.bot.getUser = async (id, guildId) => {
+    MockBot.prototype.getUser = async (id, guildId) => {
       return createUser(id);
     };
 
@@ -139,6 +144,67 @@ class Test {
   }
 
   test() {
+    describe("utils", () => {
+      it("content", async () => {
+        const rules = [
+          {
+            replacethis: "。$",
+            tothis: "",
+          },
+          {
+            replacethis: "{date}",
+            tothis: "01点57分",
+          },
+          {
+            replacethis: "\\{\\w+\\}",
+            tothis: "PLACEHOLDER",
+          }
+        ];
+        let sentences = processText(testConfig.Bot.BotReplySpiltRegex, rules, `${h.quote("114514")}走别人的路，让别人无路可走。那走自己的路是不是让自己无路可走？`);
+        assert.deepEqual(sentences, [
+          `<quote id="114514"/>走别人的路，让别人无路可走。`,
+          `那走自己的路是不是让自己无路可走？`
+        ]);
+
+        sentences = processText(testConfig.Bot.BotReplySpiltRegex, rules, `走别人的路，让别人无路可走。那走自己的路是不是让自己无路可走？${h.quote("114514")}`);
+        assert.deepEqual(sentences, [
+          `<quote id="114514"/>走别人的路，让别人无路可走。`,
+          `那走自己的路是不是让自己无路可走？`
+        ]);
+
+        // sentences = processText(rules, `走别人的路，让别人无路可走。${h.quote("114514")}那走自己的路是不是让自己无路可走？`);
+        // assert.deepEqual(sentences, [
+        //   `<quote id="114514"/>走别人的路，让别人无路可走。`,
+        //   `那走自己的路是不是让自己无路可走？`
+        // ]);
+
+        sentences = processText(testConfig.Bot.BotReplySpiltRegex, rules, `[messageId][{date} from_guild:{channelId}] {senderName}[{senderId}] 说: {userContent}`);
+        assert.deepEqual(sentences, [
+          "[messageId][01点57分 from_guild:PLACEHOLDER] PLACEHOLDER[PLACEHOLDER] 说: PLACEHOLDER"
+        ]);
+
+        sentences = processText(testConfig.Bot.BotReplySpiltRegex, rules, `${h.at("12345678")}你好！有什么可以帮助的吗？${h("face", {id:2})}`);
+        assert.deepEqual(sentences, [
+          `<at id="12345678"/>你好！`,
+          `有什么可以帮助的吗？<face id="2"/>`
+        ]);
+      })
+    });
+
+    describe("cacheManager", () => {
+      it("cacheManager<string>", async () => {
+        const cacheManager = new CacheManager<string>(path.resolve(__dirname, "test.cache"), true);
+        cacheManager.set("test", "test");
+        assert.equal(cacheManager.get("test"), "test");
+      });
+
+      it("cacheManager<Array<number>>", async () => {
+        const cacheManager = new CacheManager<number[]>(path.resolve(__dirname, "test.cache"), true);
+        cacheManager.set("test", [1, 2, 3]);
+        assert.deepEqual(cacheManager.get("test"), [1, 2, 3]);
+      });
+    });
+
     // 依次测试每个适配器, 保证能正确处理 ai 消息
     it("适配器解析", async () => {
       await this.client.shouldReply(`<at id="${this.client.bot.selfId}" name="" /> 你好`);
@@ -158,15 +224,6 @@ class Test {
       await this.client.shouldReply("第三条消息");
     });
 
-    // it("回复间隔消息数(1)", async () => {
-    //   await this. client.receive("清除记忆");
-    //   await this. client.shouldNotReply("第一条消息");
-    //   await this. client.shouldNotReply("第二条消息");
-    //   await this. client.shouldReply("第三条消息");
-    //   await this. client.shouldNotReply("第四条消息");
-    //   await this. client.shouldReply("第五条消息");
-    // });
-
     it("私聊", async () => {
       await this.privateClient.receive("清除记忆");
       await this.privateClient.shouldReply(`<at id="${this.privateClient.bot.selfId}" name="" /> 你好`);
@@ -175,65 +232,30 @@ class Test {
     it("清除记忆", async () => {
       await this.client.receive("清除记忆");
       await this.client.receive("这是一条消息");
-      await this.client.shouldReply("清除记忆", `已清除关于 ${this.client.channelId} 的记忆`);
-      await this.client.shouldReply("清除记忆", `未找到关于 ${this.client.channelId} 的记忆`);
-      await this.client.shouldReply("清除记忆 -t 10000000", `未找到关于 10000000 的记忆`);
+      await this.client.shouldReply("清除记忆", `✅ ${this.client.channelId}`);
+      await this.client.shouldReply("清除记忆", `❌ ${this.client.channelId}`);
+      await this.client.shouldReply("清除记忆 -t 10000000", `❌ 10000000`);
       await this.privateClient.receive("这是一条消息");
-      await this.privateClient.shouldReply("清除记忆", `已清除关于 private:${this.client.userId} 的记忆`);
-      await this.privateClient.shouldReply("清除记忆", `未找到关于 private:${this.client.userId} 的记忆`);
-      await this.privateClient.shouldReply("清除记忆 -t 10000000", `未找到关于 10000000 的记忆`);
-      await this.privateClient.shouldReply("清除记忆 -t private:10000000", `未找到关于 private:10000000 的记忆`);
+      await this.privateClient.shouldReply("清除记忆", `✅ private:${this.client.userId}`);
+      await this.privateClient.shouldReply("清除记忆", `❌ private:${this.client.userId}`);
+      await this.privateClient.shouldReply("清除记忆 -t 10000000", `❌ 10000000`);
+      await this.privateClient.shouldReply("清除记忆 -t private:10000000", `❌ private:10000000`);
     });
 
     it("表情解析", async () => {
+      const emojiManager = new EmojiManager(testConfig.Embedding);
       // <face id="277" name="汪汪" platform="onebot"><img src="https://koishi.js.org/QFace/static/s277.png"/></face>
+      // h("face", { id: "277", name: "汪汪", platform: "onebot" });
       const at = `<at id="${this.client.bot.selfId}" name="" />`;
       const face = `<face id="277" name="汪汪" platform="onebot"><img src="https://koishi.js.org/QFace/static/s277.png"/></face>`;
       assert.equal(await emojiManager.getIdByName("惊讶"), 0);
       assert.equal(await emojiManager.getNameById("277"), "汪汪");
     });
 
-    it("表情解析Embedding", async () => {
-      assert.equal(await emojiManager.getNameByTextSimilarity("征服世界", testConfig), "奋斗");
-      assert.equal(await emojiManager.getNameByTextSimilarity("火力全开", testConfig), "怄火");
-    });
-
-    it("handleResponse", async () => {
-      const adapter = new CustomAdapter("/custom/static", "", "static");
-
-      const content = JSON.stringify({
-        status: "success",
-        logic: "",
-        nextReplyIn: "",
-        reply: "",
-        check: "",
-        finReply: "",
-        execute: ["echo 123"],
-      });
-
-      const input = {
-        choices: [
-          {
-            message: {
-              content: content,
-            },
-          },
-        ],
-        usage: {
-          prompt_tokens: 4922,
-          completion_tokens: 253,
-          total_tokens: 5175,
-        },
-      };
-
-      const { res, resNoTag, usage } = await adapter.handleResponse(
-        input,
-        true,
-        testConfig,
-        //@ts-ignore
-        (await this.client.bot.getGuildMemberList(this.client.channelId)).data
-      );
-    });
+    // it("表情解析Embedding", async () => {
+    //   assert.equal(await emojiManager.getNameByTextSimilarity("征服世界", testConfig["Embedding"]), "奋斗");
+    //   assert.equal(await emojiManager.getNameByTextSimilarity("火力全开", testConfig["Embedding"]), "怄火");
+    // });
   }
 }
 

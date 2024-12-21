@@ -1,12 +1,12 @@
 import path from "path";
-import JSON5 from "json5";
 import { readFileSync } from "fs";
+import JSON5 from "json5";
 
-import { Config } from "../config";
-import {
-  runEmbedding,
-  calculateCosineSimilarity,
-} from "../services/embeddingService";
+import { calculateCosineSimilarity, EmbeddingsBase } from "../embeddings/base";
+import { getEmbedding } from "../utils/factory";
+import { CacheManager } from "./cacheManager";
+import { Config as EmbeddingsConfig } from "../embeddings/config";
+
 
 interface Emoji {
   id: string;
@@ -18,8 +18,9 @@ export class EmojiManager {
   private nameToId: { [key: string]: string } = {};
   private nameEmbeddings: { [key: string]: number[] } = {};
   private lastEmbeddingModel: string | null = null;
+  private client: EmbeddingsBase;
 
-  constructor() {
+  constructor(private embeddingConfig: EmbeddingsConfig) {
     const emojisFile = path.join(__dirname, "../../data/emojis.json");
     const emojis: Emoji[] = JSON5.parse(readFileSync(emojisFile, "utf-8"));
 
@@ -27,29 +28,15 @@ export class EmojiManager {
       this.idToName[emoji.id] = emoji.name;
       this.nameToId[emoji.name] = emoji.id;
     });
+
+    const modelName = embeddingConfig.EmbeddingModel;
+    const cacheFile = path.join(__dirname, `../../data/.vector_cache/emoji_${modelName}.bin`);
+    const cacheManager = new CacheManager<number[]>(cacheFile, true);
+    this.client = getEmbedding(embeddingConfig, cacheManager);
   }
 
-  private async getEmbedding(text: string, config: Config): Promise<number[]> {
-    try {
-      const vec = await runEmbedding(
-        config.Embedding.APIType,
-        config.Embedding.BaseURL,
-        config.Embedding.APIKey,
-        config.Embedding.EmbeddingModel,
-        text,
-        config.Debug.DebugAsInfo,
-        config.Embedding.RequestBody,
-        config.Embedding.GetVecRegex
-      );
-      return vec;
-    } catch (error) {
-      console.error("获取嵌入向量失败:", error);
-      throw error;
-    }
-  }
-
-  private async initializeEmbeddings(config: Config): Promise<void> {
-    const currentModel = config.Embedding?.EmbeddingModel;
+  private async initializeEmbeddings(): Promise<void> {
+    const currentModel = this.embeddingConfig.EmbeddingModel;
     const needsRecompute =
       Object.keys(this.nameEmbeddings).length === 0 ||
       this.lastEmbeddingModel !== currentModel;
@@ -60,7 +47,7 @@ export class EmojiManager {
 
       const names = Object.values(this.idToName);
       for (const name of names) {
-        this.nameEmbeddings[name] = await this.getEmbedding(name, config);
+        this.nameEmbeddings[name] = await this.client.embed(name);
       }
 
       // 更新已使用的模型记录
@@ -82,16 +69,13 @@ export class EmojiManager {
     return this.nameToId[name];
   }
 
-  async getNameByTextSimilarity(
-    name: string,
-    config: Config
-  ): Promise<string | undefined> {
+  async getNameByTextSimilarity(name: string): Promise<string | undefined> {
     try {
       // 确保已初始化所有表情名称的嵌入向量
-      await this.initializeEmbeddings(config);
+      await this.initializeEmbeddings();
 
       // 获取输入文本的嵌入向量
-      const inputEmbedding = await this.getEmbedding(name, config);
+      const inputEmbedding = await this.client._embed(name);
 
       let maxSimilarity = 0;
       let mostSimilarName: string | undefined;
@@ -106,13 +90,10 @@ export class EmojiManager {
           mostSimilarName = emojiName;
         }
       }
-
       return mostSimilarName;
     } catch (error) {
-      console.error("查找相似表情失败:", error);
+      logger.warn("查找相似表情失败:", error);
       return undefined;
     }
   }
 }
-
-export const emojiManager = new EmojiManager();

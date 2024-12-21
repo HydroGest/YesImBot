@@ -1,194 +1,153 @@
-import fs from "fs";
-import path from "path";
-
+import { Context, Session } from "koishi";
+import { defineAccessor } from "@satorijs/core";
+import { Mutex } from "async-mutex";
 import { Config } from "../config";
-import { QueueItem, QueueManager, QuietTimerManager, TriggerManager } from "../managers/queueManager";
-import { parseTimestamp } from "../utils/timeUtils";
-import { getMemberName } from "../utils/prompt";
+import { QueueManager } from "../managers/queueManager";
+import { ChatMessage } from "../models/ChatMessage";
+import { foldText, randomString } from "../utils/string";
+import { isChannelAllowed, ProcessingLock } from "../utils/toolkit";
+
+export enum MarkType {
+  Command = "指令消息",
+  LogicRedirect = "逻辑重定向",
+  LLM = "和LLM交互的消息",
+  Added = "已被添加",
+  Unknown = "未标记",
+  Ignore = "忽略"
+}
+
+export interface SendQueue {
+  getQueue(channelId: string): Promise<ChatMessage[]>;
+  clearBySenderId(senderId: string): Promise<boolean>;
+  clearChannel(channelId: string): Promise<boolean>;
+  clearAll(): Promise<boolean>;
+  clearPrivateAll(): Promise<boolean>;
+}
 
 export class SendQueue {
+  private slotContains: Set<string>[] = [];
+  private slotSize: number;
   private queueManager: QueueManager;
-  private triggerManager: TriggerManager;
-  private quietTimerManager: QuietTimerManager;
+  private triggerCount: Map<string, number> = new Map();
+  private mark = new Map<string, MarkType>();
+  readonly processingLock = new ProcessingLock();
+  private channelMutexes: Map<string, Mutex> = new Map();
 
-  constructor(private config: Config) {
-    const filePath = path.join(__dirname, "../../data/queue.json");
-    this.queueManager = new QueueManager(filePath);
-    this.triggerManager = new TriggerManager(config);
-    this.quietTimerManager = new QuietTimerManager();
+  constructor(private ctx: Context, private config: Config) {
+    for (let slotContain of config.MemorySlot.SlotContains) {
+      this.slotContains.push(
+        new Set(slotContain.split(",").map((slot) => slot.trim()))
+      );
+    }
+    this.slotSize = config.MemorySlot.SlotSize;
+    this.queueManager = new QueueManager(ctx);
   }
 
-  public updateSendQueue(
-    group: string,
-    sender: string,
-    sender_id: string,
-    content: string,
-    id: string,
-    FilterList: string[],
-    TriggerCount: number,
-    selfId: string
-  ): void {
-    this.queueManager.enqueue(
-      group,
-      sender,
-      sender_id,
-      content,
-      id,
-      FilterList
-    );
-
-    const currentCount = this.triggerManager.getTriggerCount(group);
-    this.triggerManager.setTriggerCount(
-      group,
-      selfId === sender_id ? currentCount : currentCount - 1
+  async checkQueueSize(channelId: string): Promise<boolean> {
+    return (
+      (await this.queueManager.getQueue(channelId, this.slotSize)).length >
+      this.slotSize
     );
   }
 
-  public startQuietCheck(groupId: string, callback: () => void): void {
-    this.quietTimerManager.startTimer(groupId, this.triggerManager.maxTriggerTime, callback);
-  }
-
-  public clearQuietTimeout(groupId: string): void {
-    this.quietTimerManager.clearTimer(groupId);
-  }
-
-  public getLastTriggerTime(group: string): number {
-    return this.triggerManager.getLastTriggerTime(group);
-  }
-
-  public updateLastTriggerTime(group: string): void {
-    this.triggerManager.updateLastTriggerTime(group);
-    this.quietTimerManager.clearTimer(group);
-  }
-
-  public checkQueueSize(group: string, size: number): boolean {
-    const queue = this.queueManager.getQueue(group);
-    console.log(`此会话的记忆容量: ${queue.length} / ${size}`);
-    return queue.length >= size;
-  }
-
-
-  public getShouldIncludeQueue(groups: Set<string>, groupId?: string): { included: Set<string>, excluded: Set<string> } {
-    const hasPrivateAll = groups.has('private:all');
-    const hasAll = groups.has('all');
-
-    const shouldIncludeQueue = (key: string): boolean => {
-      if (hasPrivateAll && hasAll) return true;
-      if (hasPrivateAll) return key.startsWith('private:') || groups.has(key);
-      if (hasAll) return !key.startsWith('private:') || groups.has(key);
-      return groups.has(key);
-    };
-
-    const keysToCheck = groupId
-      ? [...this.queueManager.getGroupKeys(), groupId]
-      : [...this.queueManager.getGroupKeys()];
-
-    const included = new Set<string>();
-    const excluded = new Set<string>();
-
-    keysToCheck.forEach(key => {
-      if (shouldIncludeQueue(key)) {
-        included.add(key);
-      } else {
-        if (groups.has(key)) {
-          excluded.add(key);
-        }
-      }
-    });
-
-    return { included, excluded };
-  }
-
-  public checkMixedQueueSize(groups: Set<string>, size: number): boolean {
-    const { included } = this.getShouldIncludeQueue(groups);
-    const totalLength = Array.from(included)
-      .reduce((sum, key) => sum + (this.queueManager.getQueue(key).length || 0), 0);
-    console.log(`记忆槽位的容量: ${totalLength} / ${size}`);
-    return totalLength >= size;
-  }
-
-  public checkTriggerCount(group: string): boolean {
-    return this.triggerManager.checkTrigger(group);
-  }
-
-  public resetTriggerCount(group: string, nextTriggerCount: number): void {
-    this.triggerManager.resetTriggerCount(group, nextTriggerCount);
-  }
-
-  public resetSendQueue(group: string, maxQueueSize: number): void {
-    this.queueManager.resetQueue(group, maxQueueSize);
-  }
-
-  public clearSendQueue(group: string): boolean {
-    return this.queueManager.clearQueue(group);
-  }
-
-  public clearSendQueueByQQ(sender_id: string): boolean {
-    return this.queueManager.clearBySenderId(sender_id);
-  }
-
-  public findGroupByMessageId(messageId: string, groups: Set<string>): string | null {
-    return this.queueManager.findGroupByMessageId(messageId, groups);
-  }
-
-  public async getPrompt(groups: Set<string>, config: Config, session: any): Promise<string> {
-    
-    // 收集所有指定群组的消息
-    const queues = this.queueManager.getQueuesByGroups(groups);
-    let messages: QueueItem[] = [];
-    for (const queue of queues) {
-      messages = messages.concat(queue);
-    }
-
-    // 按照时间戳排序
-    messages.sort((a, b) => {
-      return parseTimestamp(a.timestamp).getTime() - parseTimestamp(b.timestamp).getTime();
-    });
-
-    // 如果超过长度限制，丢弃旧的消息
-    const maxSize = config.MemorySlot.SlotSize;
-    if (messages.length > maxSize) {
-      messages = messages.slice(-maxSize);
-    }
-
-    if (messages.length === 0) {
-      return "[]";
-    }
-
-    // 转换为 promptArr
-    const promptArr = await Promise.all(messages.map(async (item) => {
-      return {
-        time: item.timestamp,
-        session_id: item.guildId,
-        id: item.id,
-        author: await getMemberName(config, session, item.sender_id),
-        author_id: item.sender_id,
-        msg: item.content,
-      };
-    }));
-
-    // 转换为字符串
-    let promptStr = JSON.stringify(promptArr);
-
-    // 处理 <img base64="xxx" /> 标签
-    const imgTagRegex = /<img base64=\\"[^\\"]*\\"\s*\/?>/g;
-    const matches = promptStr.match(imgTagRegex);
-    if (matches && config.ImageViewer.Memory !== -1) {
-      const imgCount = matches.length;
-      const imgToKeep = config.ImageViewer.Memory;
-      const imgToReplace = imgCount - imgToKeep;
-
-      if (imgToReplace > 0) {
-        let replacedCount = 0;
-        promptStr = promptStr.replace(imgTagRegex, (match) => {
-          if (replacedCount < imgToReplace) {
-            replacedCount++;
-            return "[图片]";
-          }
-          return match;
-        });
+  async checkMixedQueueSize(channelId: string): Promise<boolean> {
+    for (let slotContain of this.slotContains) {
+      if (slotContain.has(channelId)) {
+        return (
+          (await this.queueManager.getMixedQueue(slotContain, this.slotSize))
+            .length > this.slotSize
+        );
       }
     }
-    return promptStr;
+    return false;
+  }
+
+  async getMixedQueue(channelId: string): Promise<ChatMessage[]> {
+    for (let slotContain of this.slotContains) {
+      if (slotContain.has(channelId) || channelId.startsWith("private:") && slotContain.has("private:all") || !channelId.startsWith("private:") && slotContain.has("all")) {
+        return await this.queueManager.getMixedQueue(
+          slotContain,
+          this.slotSize
+        );
+      }
+    }
+    return [];
+  }
+
+  // 向数据库中添加一条消息
+  // TODO: 删除过期消息并进行总结
+  // TODO: 防提示词注入
+  async addMessage(message: ChatMessage) {
+    if (!isChannelAllowed(this.config.MemorySlot.SlotContains, message.channelId)) return;
+    this.processingLock.start(message.messageId);
+    const markType = this.getMark(message.messageId) || MarkType.Unknown;
+    // @ts-ignore
+    if (markType === MarkType.Unknown || this.config.Settings.SelfReport.includes(markType)) {
+      // 调用 Bot 指令的消息不知道怎么清除
+      // 这是ctx.command先于addMessage执行完毕的原因，导致ctx.command未能清除新添加的消息
+      this.setMark(message.messageId, MarkType.Added);
+      await this.queueManager.enqueue(message);
+      logger.info(`New message received, guildId = ${message.channelId}, content = ${foldText(message.content, 1000)}`);
+    }
+    this.processingLock.end(message.messageId);
+  }
+
+  async addRawMessage(session: Session, raw: string) {
+    await this.queueManager.enqueue({
+      senderId: session.selfId,
+      senderName: null,
+      senderNick: null,
+      channelId: session.channelId,
+      channelType: null,
+      sendTime: new Date(),
+      content: null,
+      messageId: randomString(16),
+      raw: raw,
+    });
+  }
+
+  getChannelMutex(channelId: string): Mutex {
+    let mutex = this.channelMutexes.get(channelId);
+    if (!mutex) {
+      mutex = new Mutex();
+      this.channelMutexes.set(channelId, mutex);
+    }
+    return mutex;
+  }
+
+  getMark(messageId: string): MarkType {
+    return this.mark.get(messageId);
+  }
+
+  setMark(messageId: string, mark: MarkType) {
+    this.mark.set(messageId, mark);
+  }
+
+  setTriggerCount(channelId: string, nextTriggerCount: number) {
+    this.triggerCount.set(channelId, nextTriggerCount);
+    logger.info(`触发次数已被设置为 ${nextTriggerCount}`)
+  }
+
+  // 如果没有触发，将触发次数-1
+  // 关于 triggerCount 的含义:
+  // prompt 中有写到 `那么你可能会想要把这个值设为1，表示再收到一条消息你就会立马发言一次。`
+  // 所以为 1 时就应该返回 true，而这个值不应该是 0
+  checkTriggerCount(channelId: string): boolean {
+    let triggerCount = this.triggerCount.get(channelId) ?? this.config.MemorySlot.FirstTriggerCount;
+    if (triggerCount > 1) {
+      this.triggerCount.set(channelId, --triggerCount);
+      logger.info(`距离下次回复还剩 ${triggerCount} 次`);
+      return false;
+    }
+    // 触发后删除对应条目，这样即使没有更新计数，也会使用默认值
+    this.triggerCount.delete(channelId);
+    return true;
   }
 }
+
+defineAccessor(SendQueue.prototype, "getQueue", ["queueManager", "getQueue"])
+defineAccessor(SendQueue.prototype, "clearBySenderId", ["queueManager", "clearBySenderId"])
+defineAccessor(SendQueue.prototype, "clearChannel", ["queueManager", "clearChannel"])
+defineAccessor(SendQueue.prototype, "clearAll", ["queueManager", "clearAll"])
+defineAccessor(SendQueue.prototype, "clearPrivateAll", ["queueManager", "clearPrivateAll"])
+//defineAccessor(SendQueue.prototype, "addMessage", ["queueManager", "enqueue"])

@@ -1,228 +1,112 @@
-import fs from "fs";
+import { Context, Query } from "koishi";
 
-import { Config } from "../config";
-import { getCurrentTimestamp } from "../utils/timeUtils";
-import { containsFilter } from "../utils/toolkit";
-
-export interface QueueItem {
-  id: string;
-  sender: string;
-  sender_id: string;
-  content: string;
-  timestamp: string;
-  guildId: string;
-}
+import { ChatMessage } from "../models/ChatMessage";
+import { DATABASE_NAME } from "..";
 
 export class QueueManager {
-  private sendQueueMap: Map<string, QueueItem[]>;
+  private ctx: Context;
 
-  constructor(private filePath: string) {
-    this.sendQueueMap = new Map();
-    this.loadFromFile();
+  constructor(ctx: Context) {
+    this.ctx = ctx;
   }
 
-  getQueue(group: string): QueueItem[] {
-    return this.sendQueueMap.get(group) || [];
+  async getQueue(channelId: string, limit: number): Promise<ChatMessage[]> {
+    let chatMessages = await this.ctx.database
+      .select(DATABASE_NAME)
+      .where({ channelId })
+      .orderBy("sendTime", "desc") // 逆序
+      .limit(limit)
+      .execute();
+    return chatMessages.reverse();
   }
 
-  setQueue(group: string, queue: QueueItem[]): void {
-    this.sendQueueMap.set(group, queue);
-  }
+  async getMixedQueue(
+    channels: Set<string>,
+    limit: number
+  ): Promise<ChatMessage[]> {
+    const selectQuery = async (query: Query) => {
+      let chatMessages = await this.ctx.database
+        .select(DATABASE_NAME)
+        .where(query)
+        .orderBy("sendTime", "desc") // 逆序
+        .limit(limit)
+        .execute();
+      return chatMessages.reverse();
+    };
 
-
-  // 保存数据到文件
-  public saveToFile(): void {
-    try {
-      const data = {
-        sendQueueMap: Object.fromEntries(this.sendQueueMap),
-      };
-      fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2));
-    } catch (error) {
-      console.error('存档队列数据失败:', error);
+    if (channels.has("all")) {
+      return selectQuery({
+        $or: [
+          { channelType: "guild" },
+          { channelId: { $in: Array.from(channels) } },
+        ],
+      });
     }
-  }
 
-  // 从文件加载数据
-  private loadFromFile(): void {
-    try {
-      if (fs.existsSync(this.filePath)) {
-        const fileContent = fs.readFileSync(this.filePath, 'utf-8');
-        const data = JSON.parse(fileContent);
-
-        // 将普通对象转换回 Map，并确保包含 timestamp 属性
-        this.sendQueueMap = new Map(
-          Object.entries(data.sendQueueMap).map(([key, value]) => [
-            key,
-            (value as any[]).map((item) => ({
-              ...item,
-              timestamp: item.timestamp || '', // 兼容旧数据
-            })),
-          ])
-        );
-        console.log('已从文件加载队列数据');
-      }
-    } catch (error) {
-      console.error('加载队列数据失败:', error);
+    if (channels.has("private:all")) {
+      return selectQuery({
+        $or: [
+          { channelType: "private" },
+          { channelId: { $in: Array.from(channels) } },
+        ],
+      });
     }
-  }
 
-  public enqueue(
-    group: string,
-    sender: string,
-    sender_id: string,
-    content: string,
-    id: string,
-    FilterList: string[]
-  ): void {
-    const timestamp = getCurrentTimestamp();
-    if (containsFilter(content, FilterList)) return;
-    const queue = this.getQueue(group);
-    queue.push({
-      id,
-      sender,
-      sender_id,
-      content,
-      timestamp,
-      guildId: group,
+    return selectQuery({
+      channelId: { $in: Array.from(channels) },
     });
-    this.setQueue(group, queue);
-    this.saveToFile();
   }
 
-  public clearBySenderId(sender_id: string): boolean {
-    let hasCleared = false;
-    for (const [group, messages] of this.sendQueueMap.entries()) {
-      if (!group.startsWith('private:')) {
-        const originalLength = messages.length;
-        const filteredMessages = messages.filter(msg => msg.sender_id !== sender_id);
-        if (filteredMessages.length < originalLength) {
-          this.setQueue(group, filteredMessages);
-          hasCleared = true;
-        }
+  // 消息入队
+  public async enqueue(chatMessage: ChatMessage): Promise<void> {
+    try {
+      await this.ctx.database.create(DATABASE_NAME, chatMessage);
+    } catch (error) {
+      if (error.message.includes('UNIQUE constraint failed')) {
+        // 更新已存在的记录
+        const { messageId, ...updateData } = chatMessage;
+        logger.warn(`存在重复的数据库条目：${messageId}，先前的数据将被覆盖`)
+        await this.ctx.database.set(DATABASE_NAME, { messageId }, updateData);
+      } else {
+        throw error; // 重新抛出其他类型的错误
       }
     }
-    const privatePrefix = `private:${sender_id}`;
-    for (const group of this.sendQueueMap.keys()) {
-      if (group.startsWith(privatePrefix)) {
-        this.sendQueueMap.delete(group);
-        hasCleared = true;
-      }
-    }
-    if (hasCleared) {
-      this.saveToFile();
-    }
-    return hasCleared;
   }
 
-  public getQueuesByGroups(groups: Set<string>): QueueItem[][] {
-    const result: QueueItem[][] = [];
-    for (const group of groups) {
-      if (this.sendQueueMap.has(group)) {
-        result.push(this.getQueue(group));
-      }
-    }
-    return result;
+  public async clearBySenderId(senderId: string): Promise<boolean> {
+    const result = await this.ctx.database.remove(DATABASE_NAME, {
+      senderId,
+    });
+    return result.removed > 0;
   }
 
-  public getGroupKeys(): string[] {
-    return Array.from(this.sendQueueMap.keys());
+  public async clearChannel(channelId: string): Promise<boolean> {
+    const result = await this.ctx.database.remove(DATABASE_NAME, {
+      channelId,
+    });
+    return result.removed > 0;
   }
 
-  public findGroupByMessageId(messageId: string, groups: Set<string>): string | null {
-    if (messageId.trim() === "") {
-      return null;
-    }
-    for (const group of groups) {
-      if (this.sendQueueMap.has(group)) {
-        const queue = this.getQueue(group);
-        for (const message of queue) {
-          if (message.id === messageId) {
-            return group;
-          }
-        }
-      }
-    }
-    return null;
+  public async clearAll(): Promise<boolean> {
+    const result = await this.ctx.database.remove(DATABASE_NAME, {
+      channelId: { $regex: /^(?!.*private:[a-zA-Z0-9_]+).*$/ },
+    });
+    return result.removed > 0;
   }
 
-  public resetQueue(group: string, maxQueueSize: number): void {
-    const queue = this.getQueue(group);
-    if (queue && queue.length > 0) {
-      const newQueue = queue.slice(-maxQueueSize);
-      this.setQueue(group, newQueue);
-      this.saveToFile();
-      console.log(`此会话队列已满，已出队至 ${newQueue.length} 条`);
-    }
+  public async clearPrivateAll(): Promise<boolean> {
+    const result = await this.ctx.database.remove(DATABASE_NAME, {
+      channelId: { $regex: /private:[a-zA-Z0-9_]+/ },
+    });
+    return result.removed > 0;
   }
 
-  public clearQueue(group: string): boolean {
-    if (this.sendQueueMap.has(group)) {
-      this.sendQueueMap.delete(group);
-      this.saveToFile();
-      console.log(`已清空此会话: ${group}`);
-      return true;
-    } else {
-      console.log(`此会话不存在: ${group}`);
-      return false;
-    }
+  public async findChannelByMessageId(messageId: string): Promise<string> {
+    const messages = await this.ctx.database
+      .select(DATABASE_NAME)
+      .where({ messageId })
+      .execute();
+    if (messages.length == 0) return null;
+    return messages[0].channelId;
   }
 }
-
-export class TriggerManager {
-    private triggerCountMap: Map<string, number>;
-    private lastTriggerTimeMap: Map<string, number>;
-    readonly maxTriggerTime: number;
-
-    constructor(private config: Config) {
-        this.triggerCountMap = new Map();
-        this.lastTriggerTimeMap = new Map();
-        this.maxTriggerTime = config.MemorySlot.MaxTriggerTime * 1000 || 2147483647;
-    }
-
-    public getTriggerCount(group: string): number {
-        return this.triggerCountMap.get(group) || 0;
-    }
-
-    public setTriggerCount(group: string, count: number): void {
-        this.triggerCountMap.set(group, count);
-    }
-
-    public resetTriggerCount(group: string, nextTriggerCount: number): void {
-        this.setTriggerCount(group, nextTriggerCount);
-    }
-
-    public checkTrigger(group: string): boolean {
-        const count = this.getTriggerCount(group);
-        return count <= 0;
-    }
-
-    public getLastTriggerTime(group: string): number {
-        return this.lastTriggerTimeMap.get(group) || 0;
-    }
-
-    public updateLastTriggerTime(group: string): void {
-        this.lastTriggerTimeMap.set(group, Date.now());
-    }
-}
-
-  export class QuietTimerManager {
-    private quietTimeoutMap: Map<string, NodeJS.Timeout>;
-  
-    constructor() {
-      this.quietTimeoutMap = new Map();
-    }
-  
-    public startTimer(groupId: string, delay: number, callback: () => void): void {
-      this.clearTimer(groupId);
-      const timeout = setTimeout(callback, delay);
-      this.quietTimeoutMap.set(groupId, timeout);
-    }
-  
-    public clearTimer(groupId: string): void {
-      const existingTimeout = this.quietTimeoutMap.get(groupId);
-      if (existingTimeout) {
-        clearTimeout(existingTimeout);
-        this.quietTimeoutMap.delete(groupId);
-      }
-    }
-  }

@@ -1,55 +1,44 @@
+import { Config } from "../config";
 import { sendRequest } from "../utils/http";
-import { BaseAdapter } from "./base";
+import { BaseAdapter, Response } from "./base";
+import { LLM } from "./config";
+import { Message } from "./creators/component";
+import { ToolSchema } from "./creators/schema";
 
 export class CloudflareAdapter extends BaseAdapter {
-  private url: string;
-  private apiKey: string;
-  private uid: string;
-  private model: string;
-
-  constructor(baseUrl: string, apiKey: string, uid: string, model: string) {
-    super("Cloudflare");
-    this.url = `${baseUrl}/accounts/${uid}/ai/run/${model}`;
-    this.apiKey = apiKey;
-    this.uid = uid;
-    this.model = model;
+  constructor(config: LLM, parameters?: Config["Parameters"]) {
+    super(config, parameters);
+    const { BaseURL, UID, AIModel } = config;
+    this.url = `${BaseURL}/accounts/${UID}/ai/run/${AIModel}`;
   }
 
-  protected async generateResponse(
-    sysPrompt: string,
-    userPrompt: string,
-    parameters: any,
-    detail: string,
-    eyeType: string,
-    debug: boolean
-  ) {
+  async chat(messages: Message[], toolsSchema?: ToolSchema[], debug = false): Promise<Response> {
     const requestBody = {
       model: this.model,
-      messages: await this.createMessages(sysPrompt, userPrompt, eyeType, detail),
-      temperature: parameters.Temperature,
-      max_tokens: parameters.MaxTokens,
-      top_p: parameters.TopP,
-      frequency_penalty: parameters.FrequencyPenalty,
-      presence_penalty: parameters.PresencePenalty,
-      stop: parameters.Stop,
-      ...parameters.OtherParameters,
+      messages,
+      tools: toolsSchema,
+      temperature: this.parameters?.Temperature,
+      max_tokens: this.parameters?.MaxTokens,
+      frequency_penalty: this.parameters?.FrequencyPenalty,
+      presence_penalty: this.parameters?.PresencePenalty,
+      ...this.otherParams,
     };
     let response = await sendRequest(this.url, this.apiKey, requestBody, debug);
     try {
       return {
-        model: "",
-        created: "",
+        model: this.model,
+        created: new Date().toISOString(),
         message: {
           role: response.result.role,
           content: response.result.response,
-          images: [],
+          tool_calls: response.result.tool_calls,
         },
         usage: {
           prompt_tokens: 0,
           completion_tokens: 0,
-          total_tokens: 0
+          total_tokens: 0,
         },
-      }
+      };
     } catch (error) {
       console.error("Error parsing response:", error);
       console.error("Response:", response);
