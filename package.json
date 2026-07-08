@@ -1,0 +1,54 @@
+{
+  "name": "@root/yesimbot",
+  "private": true,
+  "homepage": "github:HydroGest/YesImBot",
+  "license": "MIT",
+  "contributors": [
+    "HydroGest <2445691453@qq.com>",
+    "Dispure <3116716016@qq.com>",
+    "MiaowFISH <1293865264@qq.com>",
+    "Touch-Night <1762918301@qq.com>"
+  ],
+  "workspaces": [
+    "core",
+    "packages/*",
+    "plugins/*",
+    "providers/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "check-types": "turbo run check-types",
+    "clean": "turbo run clean && rimraf .turbo",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check .",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "prepare": "husky",
+    "pub": "turbo run pub",
+    "release": "node scripts/release.mjs",
+    "release:beta": "node scripts/release.mjs --beta",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.2",
+    "bumpp": "^10.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "oxfmt": "^0.33.0",
+    "oxlint": "^1.48.0",
+    "pkgroll": "^2.21.4",
+    "rimraf": "^6.1.2",
+    "turbo": "^2.9.6",
+    "typescript": "^5.9.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,mjs,cjs,js,jsx}": [
+      "oxlint --fix",
+      "oxfmt --write"
+    ],
+    "*.json": [
+      "oxfmt --write"
+    ]
+  },
+  "packageManager": "yarn@4.12.0"
+}

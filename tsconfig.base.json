@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "composite": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "bundler",
+    "strict": true,
+    "experimentalDecorators": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@satorijs/element",
+    "types": ["node"]
+  },
+  "exclude": ["dist", "node_modules", "references"]
+}

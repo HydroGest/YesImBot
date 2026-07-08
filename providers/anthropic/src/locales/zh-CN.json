@@ -1,0 +1,17 @@
+{
+  "_config": {
+    "id": "提供商标识符",
+    "apiKey": "API 密钥",
+    "baseURL": "API 基础地址",
+    "models": "模型列表",
+    "defaultParams": {
+      "$desc": "默认参数",
+      "temperature": "温度（0-2，越高越随机）",
+      "maxOutputTokens": "最大输出 token 数",
+      "topP": "Top-P 采样参数"
+    },
+    "advancedOverride": "JSON 格式的高级覆盖参数（解析失败时忽略）",
+    "projectId": "Anthropic 项目 ID（用于用量追踪）",
+    "sessionId": "会话 ID（用于用量追踪）"
+  }
+}

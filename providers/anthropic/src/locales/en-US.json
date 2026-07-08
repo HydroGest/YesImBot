@@ -1,0 +1,17 @@
+{
+  "_config": {
+    "id": "Provider identifier",
+    "apiKey": "API key",
+    "baseURL": "API base URL",
+    "models": "Model list",
+    "defaultParams": {
+      "$desc": "Default parameters",
+      "temperature": "Temperature (0-2, higher = more random)",
+      "maxOutputTokens": "Max output tokens",
+      "topP": "Top-P sampling parameter"
+    },
+    "advancedOverride": "JSON override for headers, options, per-model params (parse errors ignored)",
+    "projectId": "Anthropic project ID (for usage tracking)",
+    "sessionId": "Session ID (for usage tracking)"
+  }
+}

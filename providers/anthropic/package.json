@@ -1,0 +1,68 @@
+{
+  "name": "@yesimbot/koishi-plugin-provider-anthropic",
+  "version": "0.1.0-beta.1",
+  "description": "",
+  "bugs": {
+    "url": "https://github.com/YesWeAreBot/YesImBot/issues"
+  },
+  "license": "MIT",
+  "contributors": [
+    "MiaowFISH <miaowfish@qq.com>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YesWeAreBot/YesImBot.git",
+    "directory": "providers/anthropic"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "npx pkgroll --sourcemap",
+    "check-types": "tsc --noEmit",
+    "clean": "rimraf .turbo && rimraf dist && rimraf tsconfig.tsbuildinfo",
+    "fmt": "oxfmt",
+    "lint": "oxlint",
+    "pub": "yarn npm publish --access public"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.0"
+  },
+  "devDependencies": {
+    "@yesimbot/agent-runtime": "workspace:^",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^",
+    "zod": "^3.25.76"
+  },
+  "peerDependencies": {
+    "@yesimbot/agent-runtime": "workspace:^",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^",
+    "zod": "^3.25.76"
+  },
+  "koishi": {
+    "description": {
+      "zh": "",
+      "en": ""
+    },
+    "service": {
+      "required": [
+        "yesimbot.model"
+      ]
+    }
+  }
+}

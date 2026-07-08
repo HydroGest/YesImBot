@@ -1,0 +1,15 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# Stop the editor from looking for .editorconfig files in the parent directories
+root = true
+
+[*]
+# Non-configurable Prettier behaviors
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cjs,mjs,js,jsx,ts,tsx,css,scss,sass,html,json}]
+indent_style = space
+indent_size = 2
