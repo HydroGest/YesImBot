@@ -1,0 +1,83 @@
+{
+  "name": "koishi-plugin-yesimbot",
+  "version": "4.0.0-beta.5",
+  "bugs": {
+    "url": "https://github.com/YesWeAreBot/YesImBot/issues"
+  },
+  "license": "MIT",
+  "contributors": [
+    "HydroGest <2445691453@qq.com>",
+    "Dispure <3116716016@qq.com>",
+    "MiaowFISH <miaowfish@qq.com>",
+    "Touch-Night <1762918301@qq.com>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YesWeAreBot/YesImBot.git",
+    "directory": "core"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    },
+    "./model": {
+      "types": "./dist/model/index.d.ts",
+      "require": "./dist/model/index.cjs",
+      "default": "./dist/model/index.js"
+    },
+    "./platform": {
+      "types": "./dist/platform.d.ts",
+      "require": "./dist/platform.cjs",
+      "default": "./dist/platform.js"
+    },
+    "./channel": {
+      "types": "./dist/channel.d.ts",
+      "require": "./dist/channel.cjs",
+      "default": "./dist/channel.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "npx pkgroll --sourcemap",
+    "check-types": "tsc --noEmit",
+    "clean": "rimraf .turbo && rimraf dist && rimraf tsconfig.tsbuildinfo",
+    "pub": "yarn npm publish --access public",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@yesimbot/agent-runtime": "workspace:^",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/json-schema": "^7.0.15",
+    "koishi": "^4.18.11",
+    "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "koishi": "^4.18.11"
+  },
+  "koishi": {
+    "description": {
+      "zh": "让语言大模型机器人假装群友并和群友聊天！",
+      "en": "A Koishi plugin that allows LLM chat in your guild."
+    },
+    "service": {
+      "implements": [
+        "yesimbot"
+      ]
+    }
+  }
+}

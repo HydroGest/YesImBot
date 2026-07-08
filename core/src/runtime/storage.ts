@@ -1,0 +1,37 @@
+import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
+import { dirname } from "node:path";
+
+import type { AgentEntry, AgentStorage } from "@yesimbot/agent-runtime";
+
+export function createJsonlStorage<T extends AgentEntry = AgentEntry>(
+  filePath: string,
+): AgentStorage<T> {
+  return {
+    async append(...entries) {
+      if (!entries.length) {
+        return;
+      }
+
+      await mkdir(dirname(filePath), { recursive: true });
+      const payload = entries.map((entry) => JSON.stringify(entry)).join("\n");
+      await appendFile(filePath, `${payload}\n`, "utf8");
+    },
+    async read() {
+      try {
+        const content = await readFile(filePath, "utf8");
+        return content
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as T);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return [];
+        }
+        throw error;
+      }
+    },
+    async clear() {
+      await rm(filePath, { force: true });
+    },
+  };
+}
