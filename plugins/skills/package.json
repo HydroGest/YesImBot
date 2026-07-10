@@ -1,5 +1,5 @@
 {
-  "name": "koishi-plugin-yesimbot-skill",
+  "name": "koishi-plugin-yesimbot-skills",
   "version": "0.0.1",
   "files": [
     "dist"

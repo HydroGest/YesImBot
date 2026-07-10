@@ -13,7 +13,7 @@ export interface SkillConfig {
 }
 
 export default class SkillPlugin {
-  static name = "yesimbot-skill";
+  static name = "yesimbot-skills";
   static usage = "技能插件，提供技能加载和管理功能";
   static inject = ["yesimbot"];
   static Config: Schema<SkillConfig> = Schema.object({

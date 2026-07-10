@@ -9,14 +9,12 @@ Athena / YesImBot v4 is a Yarn 4 monorepo for Koishi-based LLM chat agents. The 
 - `plugins/*` are optional Koishi integrations that register `@yesimbot/agent-runtime` `AgentPlugin`s through `ctx.yesimbot.registerAgentPlugin()`.
 - `providers/*` are model provider plugins built on AI SDK providers and registered into `ctx["yesimbot.model"]`.
 
-`README.md` and `ROADMAP.md` carry product vision and may lag behind the current implementation. Prefer `package.json`, source files, and tests for exact architecture.
-
 ## Working Rules
 
 - 默认用中文沟通；代码、标识符、日志和错误信息保持原文。
 - Follow KISS / YAGNI / DRY / SOLID: keep changes direct, scoped, justified by current requirements, and easy to verify.
 - This repo uses Yarn 4 with `nodeLinker: node-modules`; use `yarn`, not `pnpm` or `npm`.
-- Shell commands should follow `/root/.codex/RTK.md` when available: prefix commands with `rtk` (`rtk yarn test`, `rtk git status`). Use `rtk proxy <cmd>` only when raw command output is needed.
+- Shell commands should follow `~/.agents/RTK.md` when available: prefix commands with `rtk` (`rtk yarn test`, `rtk git status`). Use `rtk proxy <cmd>` only when raw command output is needed.
 - Pre-commit runs `npx lint-staged`, which applies `oxlint --fix` and `oxfmt --write` to staged JS/TS and JSON files.
 - `dist/`, `.turbo/`, caches, and generated outputs are not source of truth.
 - `references/` and `node_modules/` are `.gitignore`-excluded. If you must inspect them, use absolute paths and do not let them dominate source-based decisions.
@@ -28,7 +26,6 @@ Athena / YesImBot v4 is a Yarn 4 monorepo for Koishi-based LLM chat agents. The 
 - Use `mcp__augment_context_engine.codebase_retrieval` first for semantic codebase understanding or when file locations are uncertain.
 - Use `rg` / `rg --files` for exact identifiers, known strings, and fast file discovery.
 - Use subagents for independent research or risky parallel work, and always wait for them before yielding.
-- Prefer current source and tests over archived docs. `docs/archive/CONTEXT.md` is historical context; verify it against current code before relying on it.
 
 ## Build And Verification
 
@@ -49,8 +46,8 @@ rtk yarn turbo run check-types --filter=@yesimbot/agent-runtime
 rtk yarn turbo run test --filter=@yesimbot/agent-runtime
 rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot-workspace
 rtk yarn turbo run test --filter=koishi-plugin-yesimbot-workspace
-rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot-skill
-rtk yarn turbo run test --filter=koishi-plugin-yesimbot-skill
+rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot-skills
+rtk yarn turbo run test --filter=koishi-plugin-yesimbot-skills
 rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot-mcp-client
 rtk yarn turbo run test --filter=koishi-plugin-yesimbot-mcp-client
 rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot-memos-client
@@ -81,21 +78,21 @@ rtk yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/too
 
 ## Workspace Package Names
 
-| Directory | npm name |
-| --- | --- |
-| `core/` | `koishi-plugin-yesimbot` |
-| `packages/agent-runtime/` | `@yesimbot/agent-runtime` |
-| `plugins/workspace/` | `koishi-plugin-yesimbot-workspace` |
-| `plugins/skill/` | `koishi-plugin-yesimbot-skill` |
-| `plugins/mcp-client/` | `koishi-plugin-yesimbot-mcp-client` |
-| `plugins/memos-client/` | `koishi-plugin-yesimbot-memos-client` |
-| `plugins/onebot-utils/` | `koishi-plugin-yesimbot-onebot-utils` |
-| `plugins/search-service/` | `koishi-plugin-yesimbot-search-service` |
-| `plugins/sticker/` | `koishi-plugin-yesimbot-sticker` |
-| `providers/openai/` | `@yesimbot/koishi-plugin-provider-openai` |
-| `providers/anthropic/` | `@yesimbot/koishi-plugin-provider-anthropic` |
-| `providers/deepseek/` | `@yesimbot/koishi-plugin-provider-deepseek` |
-| `providers/google/` | `@yesimbot/koishi-plugin-provider-google` |
+| Directory                 | npm name                                     |
+| ------------------------- | -------------------------------------------- |
+| `core/`                   | `koishi-plugin-yesimbot`                     |
+| `packages/agent-runtime/` | `@yesimbot/agent-runtime`                    |
+| `plugins/workspace/`      | `koishi-plugin-yesimbot-workspace`           |
+| `plugins/skills/`         | `koishi-plugin-yesimbot-skills`              |
+| `plugins/mcp-client/`     | `koishi-plugin-yesimbot-mcp-client`          |
+| `plugins/memos-client/`   | `koishi-plugin-yesimbot-memos-client`        |
+| `plugins/onebot-utils/`   | `koishi-plugin-yesimbot-onebot-utils`        |
+| `plugins/search-service/` | `koishi-plugin-yesimbot-search-service`      |
+| `plugins/sticker/`        | `koishi-plugin-yesimbot-sticker`             |
+| `providers/openai/`       | `@yesimbot/koishi-plugin-provider-openai`    |
+| `providers/anthropic/`    | `@yesimbot/koishi-plugin-provider-anthropic` |
+| `providers/deepseek/`     | `@yesimbot/koishi-plugin-provider-deepseek`  |
+| `providers/google/`       | `@yesimbot/koishi-plugin-provider-google`    |
 
 ## Context Files
 
@@ -105,20 +102,8 @@ Load these on demand when deeper context is needed:
 - `core/src/runtime/` — channel key/path, platform message conversion, prompt file loading, JSONL storage, output rendering.
 - `core/src/model/` — model config, provider contracts, schema helpers, model resolution.
 - `packages/agent-runtime/src/` — runtime core, plugin host, tools, storage, messages, events, turn queue, state.
-- `packages/agent-runtime/src/plugins/` — built-in runtime plugins such as compact/audit.
 - `plugins/*/src/index.ts` — Koishi optional plugin entrypoints and `registerAgentPlugin()` usage.
 - `providers/*/src/index.ts` — provider plugin definitions and default model schemas.
-
-## Reference Projects
-
-`references/` contains ignored design references. Read them by absolute path only, and only when relevant:
-
-| Directory | Use When |
-| --- | --- |
-| `/home/workspace/Athena/references/koishi-docs/zh-CN` | Koishi plugin API, Schema, database, sandbox, or integration details are uncertain. |
-| `/home/workspace/Athena/references/pi-mono` | Comparing agent loop, tool calling, provider abstraction, or monorepo patterns. |
-| `/home/workspace/Athena/references/plast-mem` | Designing memory, session segmentation, semantic recall, or compaction strategy. |
-| `/home/workspace/Athena/references/CyberGroupmate` | Designing group-chat behavior, message routing, CodeAct style tools, multimodal flow, or dashboards. |
 
 ## Reporting
 
