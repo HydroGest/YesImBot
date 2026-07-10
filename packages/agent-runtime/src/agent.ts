@@ -24,7 +24,12 @@ import {
   toAiToolSet,
 } from "./tools.js";
 import type { AgentToolExecuteContext } from "./tools.js";
-import { createTurnQueue, TurnResult, type TurnRequest } from "./turn.js";
+import {
+  createTurnQueue,
+  TurnResult,
+  type AgentWaitOptions,
+  type TurnRequest,
+} from "./turn.js";
 import { Awaitable } from "./types/base.js";
 import type { AgentEntry } from "./types/entry.js";
 import type { AgentInternalEvent, AgentInternalEventInit } from "./types/event.js";
@@ -68,7 +73,7 @@ export interface Agent {
   append(message: AgentMessage): Promise<void>;
   send(message: AgentMessage, options?: AgentSendOptions): string;
   run(message: AgentMessage, options?: AgentSendOptions): AsyncIterable<AgentInternalEvent>;
-  waitTurn(turnId: string): Promise<TurnResult>;
+  wait(options?: AgentWaitOptions): Promise<void>;
   interrupt(reason?: unknown): Awaitable<void>;
   setTools(tools: AgentToolSet): void;
   getModel(): LanguageModel;
@@ -105,8 +110,10 @@ function raceAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   ]);
 }
 
-function isTurnEvent(event: AgentInternalEvent): event is AgentInternalEvent & { turnId: string } {
-  return "turnId" in event && event.type.startsWith("turn.");
+function isTurnScopedEvent(
+  event: AgentInternalEvent,
+): event is AgentInternalEvent & { turnId: string } {
+  return "turnId" in event && typeof (event as { turnId?: unknown }).turnId === "string";
 }
 
 function isTerminalTurnEvent(event: AgentInternalEvent) {
@@ -160,8 +167,6 @@ export function createAgent(config: AgentConfig): Agent {
 
   let initialized = false;
   let initPromise: Promise<void> | undefined;
-  let activeAbortController: AbortController | undefined;
-  let activeAbortTurnId: string | undefined;
   const turnStreams = new Map<string, Set<(event: AgentInternalEvent) => void>>();
   const turnEventBuffer = new Map<string, AgentInternalEvent[]>();
   let appendPipelineReady = Promise.resolve();
@@ -182,7 +187,7 @@ export function createAgent(config: AgentConfig): Agent {
   const emitInternal = <T extends AgentInternalEventInit>(event: T): AgentInternalEvent<T> => {
     const created = createInternalEvent(event);
 
-    if (isTurnEvent(created)) {
+    if (isTurnScopedEvent(created)) {
       const buffered = turnEventBuffer.get(created.turnId) ?? [];
       buffered.push(created);
       turnEventBuffer.set(created.turnId, buffered);
@@ -540,9 +545,7 @@ export function createAgent(config: AgentConfig): Agent {
     const allMessages: AgentMessage[] = [];
     let usage: Partial<LanguageModelUsage> | undefined;
     let currentBatch = request.messages.splice(0, request.messages.length);
-    const abortController = new AbortController();
-    activeAbortController = abortController;
-    activeAbortTurnId = request.turnId;
+    const abortSignal = request.signal;
 
     try {
       await ensureInit();
@@ -555,20 +558,20 @@ export function createAgent(config: AgentConfig): Agent {
         const modelMessages = await buildBoundaryModelMessages(
           request.turnId,
           currentEntries,
-          abortController.signal,
+          abortSignal,
         );
 
         let aborted = false;
         let persistedResponseMessageCount = 0;
         const response = streamText({
           model,
-          system: await resolveSystemPrompt(request.turnId, abortController.signal),
+          system: await resolveSystemPrompt(request.turnId, abortSignal),
           messages: modelMessages,
-          tools: toAiToolSet(await resolveTools(request.turnId, abortController.signal)),
+          tools: toAiToolSet(await resolveTools(request.turnId, abortSignal)),
           stopWhen: terminalToolName
             ? [isLoopFinished(), hasToolCall(terminalToolName)]
             : isLoopFinished(),
-          abortSignal: abortController.signal,
+          abortSignal,
           prepareStep: async ({ stepNumber }) => {
             if (stepNumber === 0) {
               return undefined;
@@ -577,11 +580,7 @@ export function createAgent(config: AgentConfig): Agent {
             const joined = await request.drainJoined();
             if (joined.length === 0) {
               return {
-                messages: await buildBoundaryModelMessages(
-                  request.turnId,
-                  [],
-                  abortController.signal,
-                ),
+                messages: await buildBoundaryModelMessages(request.turnId, [], abortSignal),
               };
             }
             const joinedEntries = await persistCurrentMessages(joined, request.turnId);
@@ -590,7 +589,7 @@ export function createAgent(config: AgentConfig): Agent {
               messages: await buildBoundaryModelMessages(
                 request.turnId,
                 joinedEntries,
-                abortController.signal,
+                abortSignal,
               ),
             };
           },
@@ -651,7 +650,7 @@ export function createAgent(config: AgentConfig): Agent {
           }
         }
 
-        if (aborted || abortController.signal.aborted) {
+        if (aborted || abortSignal.aborted) {
           throw createAbortError();
         }
 
@@ -694,11 +693,6 @@ export function createAgent(config: AgentConfig): Agent {
         turnId: request.turnId,
       });
       return result;
-    } finally {
-      if (activeAbortTurnId === request.turnId) {
-        activeAbortTurnId = undefined;
-        activeAbortController = undefined;
-      }
     }
   };
 
@@ -753,22 +747,11 @@ export function createAgent(config: AgentConfig): Agent {
       const turnId = this.send(message, options);
       return createTurnStream(turnId);
     },
-    waitTurn(turnId) {
-      return turnQueue.wait(turnId);
+    wait(options = {}) {
+      return turnQueue.wait(options);
     },
-    async interrupt() {
-      const turnId = activeAbortTurnId;
-      const controller = activeAbortController;
-
-      if (!turnId || !controller) {
-        return;
-      }
-
-      controller.abort();
-      await turnQueue.wait(turnId).then(
-        () => undefined,
-        () => undefined,
-      );
+    interrupt(reason) {
+      return turnQueue.interrupt(reason);
     },
     setTools(nextTools) {
       tools = nextTools;
@@ -786,7 +769,7 @@ export function createAgent(config: AgentConfig): Agent {
       return turnQueue.activeTurnId;
     },
     isIdle() {
-      return turnQueue.activeTurnId === undefined;
+      return turnQueue.isIdle();
     },
   };
 

@@ -2,6 +2,7 @@ import {
   createAgent,
   type Agent,
   type AgentEntry,
+  type AgentMessage,
   type AgentPlugin,
   type AgentStorage,
 } from "@yesimbot/agent-runtime";
@@ -190,8 +191,6 @@ export class YesImBotService extends Service<Config> {
       return;
     }
 
-    let turnId: string | undefined;
-
     try {
       const { runtime } = await this.getChannelAgent(session);
       const message = createPlatformMessage(session);
@@ -206,16 +205,28 @@ export class YesImBotService extends Service<Config> {
         return;
       }
 
-      turnId = runtime.send(message);
-      this.activeTurns.set(key, turnId);
+      this.activeTurns.set(key, "active");
+      try {
+        const stream = runtime.run(message);
+        const assistantMessages: AgentMessage[] = [];
 
-      const result = await runtime.waitTurn(turnId);
-      if (result.status === "failed") {
-        throw new Error(result.error?.message ?? "turn failed");
-      }
+        for await (const event of stream) {
+          if (event.type === "message.appended" && event.message.role === "assistant") {
+            assistantMessages.push(event.message);
+          }
+          if (event.type === "turn.failed") {
+            throw new Error(event.error?.message ?? "turn failed");
+          }
+          if (event.type === "turn.queued" || event.type === "turn.start") {
+            this.activeTurns.set(key, event.turnId);
+          }
+        }
 
-      for (const text of extractAssistantTexts(result.messages)) {
-        await session.send?.(text);
+        for (const text of extractAssistantTexts(assistantMessages)) {
+          await session.send?.(text);
+        }
+      } finally {
+        this.activeTurns.delete(key);
       }
     } catch (error) {
       this.logger.error({
@@ -227,10 +238,6 @@ export class YesImBotService extends Service<Config> {
 
       if (route.action !== "append") {
         await session.send?.(GENERIC_ERROR_REPLY);
-      }
-    } finally {
-      if (turnId !== undefined && this.activeTurns.get(key) === turnId) {
-        this.activeTurns.delete(key);
       }
     }
   }

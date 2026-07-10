@@ -277,7 +277,7 @@ describe("system prompt resolution", () => {
     });
 
     const turnId = agent.send(createUserMessage("hello"));
-    await agent.waitTurn(turnId);
+    await agent.wait();
 
     expect(streamTextMock).toHaveBeenCalledOnce();
     expect(streamTextMock.mock.calls[0]![0].system).toEqual([
@@ -309,7 +309,7 @@ describe("system prompt resolution", () => {
     });
 
     const turnId = agent.send(createUserMessage("hello"));
-    await agent.waitTurn(turnId);
+    await agent.wait();
 
     expect(streamTextMock.mock.calls[0]![0].system).toBe("base\nlegacy");
   });
@@ -330,7 +330,7 @@ describe("system prompt resolution", () => {
     });
 
     const turnId = agent.send(createUserMessage("hello"));
-    await agent.waitTurn(turnId);
+    await agent.wait();
 
     expect(legacy).not.toHaveBeenCalled();
     expect(streamTextMock.mock.calls[0]![0].system).toEqual([

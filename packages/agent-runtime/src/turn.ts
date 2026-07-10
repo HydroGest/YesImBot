@@ -1,6 +1,6 @@
 import { LanguageModelUsage } from "ai";
 
-import { AgentBusyError, TurnNotFoundError } from "./errors.js";
+import { AgentBusyError } from "./errors.js";
 import { createRandomId } from "./id.js";
 import { AgentMessage } from "./types/message.js";
 
@@ -10,6 +10,7 @@ export interface TurnRequest {
   readonly turnId: string;
   readonly submittedAt: number;
   readonly messages: AgentMessage[];
+  readonly signal: AbortSignal;
   addJoined(messages: AgentMessage[], persistence?: Promise<void>): void;
   drainJoined(): Promise<AgentMessage[]>;
 }
@@ -34,14 +35,25 @@ export interface TurnResult {
   usage?: Partial<LanguageModelUsage>;
 }
 
-function createTurnRequest(messages: AgentMessage[]): TurnRequest {
+export interface AgentWaitOptions {
+  signal?: AbortSignal;
+}
+
+interface QueuedTurn {
+  request: TurnRequest;
+  controller: AbortController;
+}
+
+function createQueuedTurn(messages: AgentMessage[]): QueuedTurn {
+  const controller = new AbortController();
   const joined: AgentMessage[] = [];
   const joinedPersistence: Promise<void>[] = [];
 
-  return {
+  const request: TurnRequest = {
     turnId: createRandomId(),
     submittedAt: Date.now(),
     messages: [...messages],
+    signal: controller.signal,
     addJoined(nextMessages, persistence) {
       joined.push(...nextMessages);
       if (persistence) {
@@ -56,41 +68,80 @@ function createTurnRequest(messages: AgentMessage[]): TurnRequest {
       return joined.splice(0, joined.length);
     },
   };
+
+  return { request, controller };
+}
+
+function createAbortError(): DOMException {
+  return new DOMException("The operation was aborted.", "AbortError");
 }
 
 export function createTurnQueue(options: TurnQueueOptions) {
-  const queue: TurnRequest[] = [];
-  const retained = new Map<string, TurnResult>();
-  const waiters = new Map<string, Array<(result: TurnResult) => void>>();
-  let active: TurnRequest | undefined;
+  const queue: QueuedTurn[] = [];
+  const idleWaiters = new Set<{
+    resolve: () => void;
+    reject: (error: unknown) => void;
+    signal?: AbortSignal;
+    onAbort?: () => void;
+  }>();
 
-  function settle(result: TurnResult) {
-    retained.set(result.turnId, result);
-    for (const resolve of waiters.get(result.turnId) ?? []) {
-      resolve(result);
+  let active: QueuedTurn | undefined;
+  let activeDone: Promise<void> | undefined;
+  let pumping = false;
+
+  const isIdle = () => active === undefined && queue.length === 0 && !pumping;
+
+  const notifyIdleWaiters = () => {
+    if (!isIdle()) {
+      return;
     }
-    waiters.delete(result.turnId);
-  }
+
+    for (const waiter of [...idleWaiters]) {
+      idleWaiters.delete(waiter);
+      if (waiter.signal && waiter.onAbort) {
+        waiter.signal.removeEventListener("abort", waiter.onAbort);
+      }
+      waiter.resolve();
+    }
+  };
 
   async function pump() {
-    if (active) return;
+    if (active || pumping) {
+      return;
+    }
 
     const next = queue.shift();
-    if (!next) return;
+    if (!next) {
+      notifyIdleWaiters();
+      return;
+    }
 
+    pumping = true;
     active = next;
+
+    let settleActive!: () => void;
+    activeDone = new Promise<void>((resolve) => {
+      settleActive = resolve;
+    });
+
     try {
-      settle(await options.onRun(next));
+      await options.onRun(next.request);
     } finally {
       active = undefined;
+      const done = settleActive;
+      activeDone = undefined;
+      pumping = false;
+      done();
       void pump();
+      notifyIdleWaiters();
     }
   }
 
   return {
     get activeTurnId() {
-      return active?.turnId;
+      return active?.request.turnId;
     },
+    isIdle,
     enqueue(
       messages: AgentMessage[],
       behavior: BusyBehavior = "defer",
@@ -101,28 +152,60 @@ export function createTurnQueue(options: TurnQueueOptions) {
       }
 
       if (active && behavior === "join") {
-        active.addJoined(messages, persistence);
-        return active.turnId;
+        active.request.addJoined(messages, persistence);
+        return active.request.turnId;
       }
 
-      const request = createTurnRequest(messages);
-      queue.push(request);
+      const queued = createQueuedTurn(messages);
+      queue.push(queued);
       void pump();
-      return request.turnId;
+      return queued.request.turnId;
     },
-    wait(turnId: string) {
-      const result = retained.get(turnId);
-      if (result) {
-        return Promise.resolve(result);
+    wait(options: AgentWaitOptions = {}) {
+      const { signal } = options;
+
+      if (signal?.aborted) {
+        return Promise.reject(createAbortError());
       }
 
-      if (active?.turnId !== turnId && !queue.some((request) => request.turnId === turnId)) {
-        return Promise.reject(new TurnNotFoundError(turnId));
+      if (isIdle()) {
+        return Promise.resolve();
       }
 
-      return new Promise<TurnResult>((resolve) => {
-        waiters.set(turnId, [...(waiters.get(turnId) ?? []), resolve]);
+      return new Promise<void>((resolve, reject) => {
+        const waiter: {
+          resolve: () => void;
+          reject: (error: unknown) => void;
+          signal?: AbortSignal;
+          onAbort?: () => void;
+        } = {
+          resolve,
+          reject,
+          signal,
+        };
+
+        waiter.onAbort = () => {
+          idleWaiters.delete(waiter);
+          reject(createAbortError());
+        };
+
+        idleWaiters.add(waiter);
+        signal?.addEventListener("abort", waiter.onAbort, { once: true });
       });
+    },
+    async interrupt(reason?: unknown) {
+      if (!active) {
+        return;
+      }
+
+      if (!active.controller.signal.aborted) {
+        active.controller.abort(reason);
+      }
+
+      await activeDone?.then(
+        () => undefined,
+        () => undefined,
+      );
     },
   };
 }

@@ -59,18 +59,17 @@ function createFailingModel(onCall?: () => void) {
 }
 
 describe("turn lifecycle", () => {
-  it("waitTurn resolves retained completed results", async () => {
+  it("wait resolves when the agent becomes idle", async () => {
     const agent = createAgent({ model: createTextModel() });
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("hello"));
 
-    const result = await agent.waitTurn(turnId);
-    const retained = await agent.waitTurn(turnId);
+    await agent.wait();
+    await agent.wait();
 
-    expect(result.status).toBe("done");
-    expect(retained).toEqual(result);
+    expect(agent.isIdle()).toBe(true);
   });
 
-  it("run returns turn-scoped events", async () => {
+  it("run returns all turn-scoped internal events", async () => {
     const agent = createAgent({ model: createTextModel() });
     const stream = agent.run(createUserMessage("hello"));
     const types: string[] = [];
@@ -82,11 +81,28 @@ describe("turn lifecycle", () => {
 
     expect(types[0]).toBe("turn.queued");
     expect(types).toContain("turn.start");
+    expect(types).toContain("message.appended");
     expect(types).toContain("turn.done");
-    expect(types.every((type) => type.startsWith("turn."))).toBe(true);
+    expect(types.every((type) => type !== "agent.init")).toBe(true);
   });
 
-  it("does not block turn completion when turn.done listeners await waitTurn", async () => {
+  it("run yields turn.failed before the stream ends", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const agent = createAgent({ model: createFailingModel() });
+    const types: string[] = [];
+
+    try {
+      for await (const event of agent.run(createUserMessage("hello"))) {
+        types.push(event.type);
+      }
+
+      expect(types.at(-1)).toBe("turn.failed");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("does not block turn completion when turn.done listeners await idle wait", async () => {
     const agent = createAgent({ model: createTextModel() });
     const seen: string[] = [];
 
@@ -96,20 +112,20 @@ describe("turn lifecycle", () => {
       }
 
       seen.push("listener:start");
-      await agent.waitTurn(event.turnId);
+      await agent.wait();
       seen.push("listener:done");
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("hello"));
     const result = await Promise.race([
-      agent.waitTurn(turnId),
+      agent.wait(),
       new Promise<symbol>((resolve) => {
         setTimeout(() => resolve(Symbol.for("timeout")), 100);
       }),
     ]);
 
     expect(result).not.toBe(Symbol.for("timeout"));
-    expect(result).toMatchObject({ turnId, status: "done" });
+    expect(agent.isIdle()).toBe(true);
 
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 0);
@@ -117,10 +133,14 @@ describe("turn lifecycle", () => {
     expect(seen).toEqual(["listener:start", "listener:done"]);
   });
 
-  it("waitTurn rejects unknown turn ids", async () => {
+  it("wait rejects when its signal aborts before idle", async () => {
     const agent = createAgent({ model: createTextModel() });
-
-    await expect(agent.waitTurn("turn_missing")).rejects.toThrow("Turn not found");
+    agent.send(createUserMessage("hello"));
+    const controller = new AbortController();
+    const waiting = agent.wait({ signal: controller.signal });
+    controller.abort();
+    await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    await agent.wait();
   });
 
   it("waits for lazy plugin initialization before model execution", async () => {
@@ -149,13 +169,13 @@ describe("turn lifecycle", () => {
       ],
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("hello"));
     await Promise.resolve();
 
     expect(calls).toEqual([]);
 
     releaseInit?.();
-    await agent.waitTurn(turnId);
+    await agent.wait();
 
     expect(calls).toEqual(["init", "model"]);
   });
@@ -182,20 +202,19 @@ describe("turn lifecycle", () => {
       ],
     });
 
+    let failedTurnId: string | undefined;
     agent.channel.subscribe("internal", (event) => {
       if (event.type === "turn.failed") {
         events.push("turn.failed");
+        failedTurnId = event.turnId;
       }
     });
 
     const turnId = agent.send(createUserMessage("hello"));
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({
-      turnId,
-      status: "failed",
-      error: expect.objectContaining({ message: "init boom" }),
-    });
+    await agent.wait();
 
     expect(events).toEqual(["init", "turn.failed"]);
+    expect(failedTurnId).toBe(turnId);
     const entries = await agent.storage.read();
     expect(entries.filter((entry) => entry.type === "event")).toEqual([
       expect.objectContaining({
@@ -214,12 +233,7 @@ describe("turn lifecycle", () => {
     const turnId = agent.send(createUserMessage("hello"));
 
     try {
-      await expect(agent.waitTurn(turnId)).resolves.toMatchObject({
-        turnId,
-        status: "failed",
-        error: expect.objectContaining({ message: "model boom" }),
-      });
-
+      await agent.wait();
       expect(calls).toBe(1);
 
       const entries = await agent.storage.read();

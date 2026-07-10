@@ -15,12 +15,6 @@ export class AgentBusyError extends AgentRuntimeError {
   }
 }
 
-export class TurnNotFoundError extends AgentRuntimeError {
-  constructor(turnId: string) {
-    super(`Turn not found: ${turnId}`);
-    this.name = "TurnNotFoundError";
-  }
-}
 
 export class ToolConflictError extends AgentRuntimeError {
   constructor(toolName: string) {

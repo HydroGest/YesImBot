@@ -92,7 +92,7 @@ describe("busy behavior", () => {
     const joinedMessage = createUserMessage("joined");
 
     agent.send(joinedMessage, { ifBusy: "join" });
-    const result = await agent.waitTurn(turnId);
+    await agent.wait();
 
     const entries = await agent.storage.read();
     const messages = entries.filter((entry) => entry.type === "message");
@@ -105,7 +105,7 @@ describe("busy behavior", () => {
     expect(persistedJoined).toBeDefined();
     expect("turnId" in persistedJoined!.data).toBe(false);
     expect("meta" in persistedJoined!.data).toBe(false);
-    expect(result.messages).toEqual(expect.arrayContaining([joinedMessage]));
+    expect(messages.map((entry) => entry.data)).toEqual(expect.arrayContaining([joinedMessage]));
   });
 
   it("defaults to defer with a new top-level turn", async () => {
@@ -115,10 +115,9 @@ describe("busy behavior", () => {
 
     expect(secondTurnId).not.toBe(firstTurnId);
 
-    await expect(agent.waitTurn(secondTurnId)).resolves.toMatchObject({
-      turnId: secondTurnId,
-      status: "done",
-    });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
+    expect(secondTurnId).not.toBe(firstTurnId);
   });
 
   it("does not duplicate joined persistence when storage append is slow", async () => {
@@ -142,7 +141,8 @@ describe("busy behavior", () => {
     expect(joinedBeforeRelease.length).toBeLessThanOrEqual(1);
 
     deferredStorage.release();
-    await expect(agent.waitTurn(firstTurnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
 
     const joinedAfterDone = (await agent.storage.read()).filter(
       (entry) =>

@@ -72,7 +72,7 @@ rtk yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/too
 - Runtime prompt composition starts with `buildCoreSystemPrompt()` and then optionally appends runtime prompt files from the configured data `basePath`: `AGENTS.md` and `PERSONA.md`. Do not confuse those runtime prompt files with this repository developer guide.
 - `core/src/model/` owns `ctx["yesimbot.model"]`, `models.json` loading, aliases/defaults, Koishi schema refresh, and provider registration.
 - Provider packages use `createProviderPlugin()` from `koishi-plugin-yesimbot/model` and AI SDK provider packages.
-- `packages/agent-runtime/src/agent.ts` owns the turn lifecycle: `append()`, `send()`, `run()`, `waitTurn()`, interruption, storage serialization, tool wrapping, streamed model execution, and terminal events.
+- `packages/agent-runtime/src/agent.ts` owns the turn lifecycle: `append()`, `send()`, `run()`, idle `wait()`, interruption, storage serialization, tool wrapping, streamed model execution, and terminal events.
 - `packages/agent-runtime/src/plugin.ts` owns ordered plugin hooks: append/message transforms, model projection, prompt/tool extension, tool call hooks, and turn finish hooks.
 - Optional plugins should register agent behavior via `ctx.yesimbot.registerAgentPlugin(factory)`. The old `core/src/extension/*` files are currently empty placeholders and are not the active plugin lifecycle.
 

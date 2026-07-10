@@ -145,12 +145,20 @@ describe("tools", () => {
       ],
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
-
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({
-      status: "failed",
-      error: { name: "ToolConflictError" },
+    const events: Array<{ type: string; error?: { name?: string } }> = [];
+    agent.channel.subscribe("internal", (event) => {
+      if (event.type === "turn.failed") {
+        events.push(event);
+      }
     });
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "turn.failed",
+        error: expect.objectContaining({ name: "ToolConflictError" }),
+      }),
+    ]);
   });
 
   it("uses stable plugin tools without running dynamic hooks", async () => {
@@ -176,9 +184,11 @@ describe("tools", () => {
     });
 
     const firstTurnId = agent.send(createUserMessage("hello"));
-    await expect(agent.waitTurn(firstTurnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     const secondTurnId = agent.send(createUserMessage("again"));
-    await expect(agent.waitTurn(secondTurnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
 
     expect(createCount).toBe(1);
     expect((model as unknown as { observedToolNames: string[][] }).observedToolNames).toEqual([
@@ -209,7 +219,8 @@ describe("tools", () => {
     });
 
     const turnId = agent.send(createUserMessage("hello"));
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
 
     expect(seen).toEqual([["base", "stable"]]);
     expect((model as unknown as { observedToolNames: string[][] }).observedToolNames).toEqual([
@@ -250,7 +261,8 @@ describe("tools", () => {
     });
 
     const turnId = agent.send(createUserMessage("hello"));
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
 
     expect(seen).toEqual([
       {
@@ -260,6 +272,27 @@ describe("tools", () => {
         hasSignal: true,
       },
     ]);
+  });
+
+  it("includes tool events in the run stream", async () => {
+    const agent = createAgent({
+      model: createSingleToolCallModel(),
+      tools: [
+        {
+          name: "inspect",
+          inputSchema: z.object({}),
+          execute: async () => "ok",
+        } as never,
+      ],
+    });
+    const types: string[] = [];
+
+    for await (const event of agent.run(createUserMessage("hello"))) {
+      types.push(event.type);
+    }
+
+    expect(types).toContain("tool.start");
+    expect(types).toContain("tool.done");
   });
 
   it("short-circuits before hooks on block", async () => {
@@ -340,7 +373,8 @@ describe("tools", () => {
 
     const turnId = agent.send(createUserMessage("hello"));
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(seen).toEqual([{ query: "replaced" }]);
   });
 
@@ -395,7 +429,8 @@ describe("tools", () => {
 
     const turnId = agent.send(createUserMessage("hello"));
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(seen).toEqual([
       {
         toolCallId: "call_1",
@@ -441,7 +476,8 @@ describe("tools", () => {
 
     const turnId = agent.send(createUserMessage("hello"));
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(pluginErrors).toContain("broken-observer:observer boom");
   });
 
@@ -475,7 +511,8 @@ describe("tools", () => {
     });
 
     const turnId = agent.send(createUserMessage("hello"));
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(seen).toEqual(["broken-tools:Error:bad tools"]);
     expect((model as unknown as { observedToolNames: string[][] }).observedToolNames).toHaveLength(
       1,
@@ -600,7 +637,8 @@ describe("terminal tool", () => {
 
     const turnId = agent.send(createUserMessage("hello"));
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(model.observedToolNames).toEqual([[]]);
   });
 
@@ -614,7 +652,8 @@ describe("terminal tool", () => {
 
     const turnId = agent.send(createUserMessage("hello"));
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(model.observedToolNames).toEqual([["finalize_response"]]);
   });
 
@@ -626,12 +665,12 @@ describe("terminal tool", () => {
       terminalTool: true,
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
-    const result = await agent.waitTurn(turnId);
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
 
-    expect(result.status).toBe("done");
+    const entries = await agent.storage.read();
     expect(model.callCount).toBe(1);
-    expect(JSON.stringify(result.messages)).toContain('"finalized":true');
+    expect(JSON.stringify(entries)).toContain('"finalized":true');
   });
 
   it("supports custom terminal tool names", async () => {
@@ -644,7 +683,8 @@ describe("terminal tool", () => {
 
     const turnId = agent.send(createUserMessage("hello"));
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(model.callCount).toBe(1);
   });
 
@@ -661,10 +701,14 @@ describe("terminal tool", () => {
       ],
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
-    const result = await agent.waitTurn(turnId);
+    const events: Array<{ type: string; error?: { message?: string } }> = [];
+    agent.channel.subscribe("internal", (event) => {
+      if (event.type === "turn.failed") events.push(event);
+    });
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
 
-    expect(result.status).toBe("failed");
-    expect(result.error?.message).toContain("finalize_response");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.error?.message).toContain("finalize_response");
   });
 });

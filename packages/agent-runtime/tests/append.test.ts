@@ -351,7 +351,8 @@ describe("append", () => {
 
     const turnId = agent.send(createUserMessage("hello"));
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(modelRequests[0].map(flattenPromptContent)).toEqual([["hello"]]);
   });
 
@@ -376,10 +377,12 @@ describe("append", () => {
       ],
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("hello"));
 
-    const result = await agent.waitTurn(turnId);
-    expect(result.messages[0]).toMatchObject({ role: "user", content: "hello transformed" });
+    await agent.wait();
+    const entries = await agent.storage.read();
+    const messages = entries.filter((entry) => entry.type === "message").map((entry) => entry.data);
+    expect(messages[0]).toMatchObject({ role: "user", content: "hello transformed" });
     expect(modelRequests[0].map(flattenPromptContent)).toEqual([["hello transformed"]]);
   });
 
@@ -417,7 +420,8 @@ describe("append", () => {
     await agent.append(createUserMessage("observed while busy"));
     releaseTool?.();
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
 
     expect(modelRequests).toHaveLength(2);
     expect(modelRequests[1].map(flattenPromptContent)).toEqual([
@@ -443,7 +447,8 @@ describe("append", () => {
 
     const turnId = agent.send(createUserMessage("trigger"));
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(modelRequests).toHaveLength(2);
 
     const secondPrompt = modelRequests[1];
@@ -481,7 +486,8 @@ describe("append", () => {
 
     const turnId = agent.send(createUserMessage("trigger"));
 
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
     expect(modelRequests).toHaveLength(3);
     expect(modelRequests[2].map(flattenPromptContent)).toEqual([
       ["trigger"],
@@ -565,7 +571,8 @@ describe("append", () => {
     releaseSlowAppend?.();
 
     await Promise.all([slowAppend, fastAppend]);
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "done" });
+    await agent.wait();
+    expect(agent.isIdle()).toBe(true);
 
     expect(modelRequests).toHaveLength(2);
     expect(modelRequests[1].map(flattenPromptContent).slice(0, 3)).toEqual([
@@ -610,14 +617,16 @@ describe("append", () => {
     agent.send(createUserMessage("joined while busy"), { ifBusy: "join" });
     releaseTool?.();
 
-    const result = await agent.waitTurn(turnId);
+    await agent.wait();
 
-    expect(result).toMatchObject({ status: "done" });
-    expect(
-      result.messages.filter(
-        (message) => message.role === "user" && message.content === "joined while busy",
-      ),
-    ).toHaveLength(1);
+    const entries = await agent.storage.read();
+    const joined = entries.filter(
+      (entry) =>
+        entry.type === "message" &&
+        entry.data.role === "user" &&
+        entry.data.content === "joined while busy",
+    );
+    expect(joined).toHaveLength(1);
 
     expect(modelRequests).toHaveLength(2);
     expect(modelRequests[1].map(flattenPromptContent)).toEqual([

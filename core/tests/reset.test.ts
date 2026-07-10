@@ -14,7 +14,7 @@ const runtimeMocks = vi.hoisted(() => {
       stop: ReturnType<typeof vi.fn>;
       append: ReturnType<typeof vi.fn>;
       send: ReturnType<typeof vi.fn>;
-      waitTurn: ReturnType<typeof vi.fn>;
+      wait: ReturnType<typeof vi.fn>;
       channel: { emit: (event: unknown) => void; subscribe: ReturnType<typeof vi.fn> };
     }>,
     storages: [] as Array<{
@@ -69,8 +69,13 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
         }),
         append: vi.fn(async () => undefined),
         send: vi.fn(() => "turn_1"),
-        run: vi.fn(),
-        waitTurn: vi.fn(async () => ({ turnId: "turn_1", status: "done", messages: [] })),
+        run: vi.fn(() => ({
+          async *[Symbol.asyncIterator]() {
+            yield { type: "turn.queued", turnId: "turn_1" };
+            yield { type: "turn.done", turnId: "turn_1" };
+          },
+        })),
+        wait: vi.fn(async () => undefined),
         interrupt: vi.fn(async () => {
           await runtimeMocks.state.nextInterrupt?.();
         }),

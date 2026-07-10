@@ -116,14 +116,33 @@ function createToolCallModel() {
 }
 
 describe("interrupt", () => {
+  it("run yields turn.aborted before the stream ends", async () => {
+    const agent = createAgent({ model: createInterruptibleModel() });
+    const types: string[] = [];
+    const stream = agent.run(createUserMessage("hello"));
+    const interrupted = agent.interrupt("test");
+
+    for await (const event of stream) {
+      types.push(event.type);
+    }
+    await interrupted;
+
+    expect(types.at(-1)).toBe("turn.aborted");
+  });
+
   it("settles an active turn as aborted", async () => {
     const agent = createAgent({ model: createInterruptibleModel() });
-    const turnId = agent.send(createUserMessage("hello"));
+    const events: string[] = [];
+    agent.channel.subscribe("internal", (event) => {
+      if ("type" in event) events.push(event.type);
+    });
+    agent.send(createUserMessage("hello"));
 
     await agent.interrupt("reset");
-    const result = await agent.waitTurn(turnId);
+    await agent.wait();
 
-    expect(result.status).toBe("aborted");
+    expect(agent.isIdle()).toBe(true);
+    expect(events).toContain("turn.aborted");
   });
 
   it("is a no-op without an active turn", async () => {
@@ -134,13 +153,22 @@ describe("interrupt", () => {
   it("allows later turns after interrupt", async () => {
     const agent = createAgent({ model: createTextModel("after") });
     agent.setTools([]);
-    const first = agent.send(createUserMessage("first"));
+    const events: string[] = [];
+    agent.channel.subscribe("internal", (event) => {
+      if (event.type === "turn.aborted" || event.type === "turn.done") {
+        events.push(event.type);
+      }
+    });
 
+    agent.send(createUserMessage("first"));
     await agent.interrupt("test");
-    expect((await agent.waitTurn(first)).status).toBe("aborted");
+    await agent.wait();
+    expect(events).toContain("turn.aborted");
 
-    const second = agent.send(createUserMessage("second"));
-    expect((await agent.waitTurn(second)).status).toBe("done");
+    agent.send(createUserMessage("second"));
+    await agent.wait();
+    expect(events).toContain("turn.done");
+    expect(agent.isIdle()).toBe(true);
   });
 
   it("settles aborted when a running tool does not cooperate with abort", async () => {
@@ -154,6 +182,10 @@ describe("interrupt", () => {
         } as never,
       ],
     });
+    const events: string[] = [];
+    agent.channel.subscribe("internal", (event) => {
+      if (event.type === "turn.aborted") events.push(event.type);
+    });
     const toolStarted = new Promise<void>((resolve) => {
       const unsubscribe = agent.channel.subscribe("internal", (event) => {
         if (event.type === "tool.start") {
@@ -163,10 +195,12 @@ describe("interrupt", () => {
       });
     });
 
-    const turnId = agent.send(createUserMessage("use tool"));
+    agent.send(createUserMessage("use tool"));
     await toolStarted;
 
     await expect(agent.interrupt("reset")).resolves.toBeUndefined();
-    await expect(agent.waitTurn(turnId)).resolves.toMatchObject({ status: "aborted" });
+    await agent.wait();
+    expect(events).toContain("turn.aborted");
+    expect(agent.isIdle()).toBe(true);
   });
 });

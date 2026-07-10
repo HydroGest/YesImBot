@@ -32,11 +32,10 @@ const agent = createAgent({
   systemPrompt: "You are a concise assistant.",
 });
 
-const turnId = agent.send(createUserMessage("hello"));
-const result = await agent.waitTurn(turnId);
-
-if (result.status === "done") {
-  console.log(result.messages);
+for await (const event of agent.run(createUserMessage("hello"))) {
+  if (event.type === "message.appended" && event.message.role === "assistant") {
+    console.log(event.message.content);
+  }
 }
 ```
 
@@ -50,7 +49,7 @@ if (result.status === "done") {
 | `append(message)`         | Records an observation without starting a model turn.                     |
 | `send(message, options?)` | Enqueues a turn and returns a `turnId`.                                   |
 | `run(message, options?)`  | Enqueues a turn and returns a turn-scoped async event stream.             |
-| `waitTurn(turnId)`        | Resolves the retained `TurnResult`.                                       |
+| `wait(options?)`          | Resolves when no turn is active or queued; returns `void`.                |
 | `interrupt(reason?)`      | Aborts the active turn, if any.                                           |
 | `setTools(tools)`         | Replaces runtime-level tools.                                             |
 | `setModel(model)`         | Replaces the active model.                                                |
@@ -88,11 +87,11 @@ const note = createCustomMessage("example.note", {
 
 ## Turns And Events
 
-Use `waitTurn()` when you only need the final result:
+Use `wait()` when you only need to wait until the runtime is idle:
 
 ```ts
-const turnId = agent.send(createUserMessage("status"));
-const result = await agent.waitTurn(turnId);
+agent.send(createUserMessage("status"));
+await agent.wait();
 ```
 
 Use `run()` when you want turn events:

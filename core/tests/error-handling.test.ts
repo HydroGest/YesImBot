@@ -6,17 +6,23 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 const runtimeMocks = vi.hoisted(() => {
   const state = {
     appendError: undefined as Error | undefined,
-    waitTurnResult: undefined as
-      | { turnId: string; status: "done"; messages: [] }
-      | { turnId: string; status: "failed"; messages: []; error: { message: string } }
-      | undefined,
+    runEvents: [] as Array<Record<string, unknown>>,
   };
 
   return {
     state,
     reset() {
       state.appendError = undefined;
-      state.waitTurnResult = undefined;
+      state.runEvents = [
+        { type: "turn.queued", turnId: "turn_1" },
+        { type: "turn.start", turnId: "turn_1" },
+        {
+          type: "message.appended",
+          turnId: "turn_1",
+          message: { role: "assistant", content: "ok" },
+        },
+        { type: "turn.done", turnId: "turn_1" },
+      ];
     },
   };
 });
@@ -42,10 +48,14 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
         }
       }),
       send: vi.fn(() => "turn_1"),
-      run: vi.fn(),
-      waitTurn: vi.fn(async () => {
-        return runtimeMocks.state.waitTurnResult ?? { turnId: "turn_1", status: "done", messages: [] };
-      }),
+      run: vi.fn(() => ({
+        async *[Symbol.asyncIterator]() {
+          for (const event of runtimeMocks.state.runEvents) {
+            yield event;
+          }
+        },
+      })),
+      wait: vi.fn(async () => undefined),
       interrupt: vi.fn(async () => undefined),
       setTools: vi.fn(),
       getModel: vi.fn(),
@@ -110,12 +120,11 @@ describe("error handling", () => {
   ])(
     "logs and sends a generic error reply when $label turn processing fails",
     async ({ session: overrides }) => {
-      runtimeMocks.state.waitTurnResult = {
-        turnId: "turn_1",
-        status: "failed",
-        messages: [],
-        error: { message: "turn failed" },
-      };
+      runtimeMocks.state.runEvents = [
+        { type: "turn.queued", turnId: "turn_1" },
+        { type: "turn.start", turnId: "turn_1" },
+        { type: "turn.failed", turnId: "turn_1", error: { message: "turn failed" } },
+      ];
       const service = createService();
       const session = {
         platform: "discord",

@@ -16,8 +16,13 @@ const runtimeMocks = vi.hoisted(() => ({
     stop: vi.fn(async () => undefined),
     append: vi.fn(async () => undefined),
     send: vi.fn(() => "turn_1"),
-    run: vi.fn(),
-    waitTurn: vi.fn(async () => ({ turnId: "turn_1", status: "done", messages: [] })),
+    run: vi.fn(() => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: "turn.queued", turnId: "turn_1" };
+        yield { type: "turn.done", turnId: "turn_1" };
+      },
+    })),
+    wait: vi.fn(async () => undefined),
     interrupt: vi.fn(async () => undefined),
     setTools: vi.fn(),
     getModel: vi.fn(),
