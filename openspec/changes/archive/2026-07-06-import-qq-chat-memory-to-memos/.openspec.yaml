@@ -1,0 +1,4 @@
+schema: superpowers-bridge
+created: 2026-07-05
+goal: Replace the reviewed QQ chat history import pipeline with a standalone
+  trusted-source MemOS import script and keep runtime retrieval isolation.
