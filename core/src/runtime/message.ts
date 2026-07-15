@@ -2,9 +2,9 @@ import { createCustomMessage, type AgentPlugin } from "@yesimbot/agent-runtime";
 import { Session } from "koishi";
 
 import type { ChannelScope } from "../channel.js";
-import type { PlatformAuthor, PlatformMessage, PlatformSource } from "../platform.js";
+import type { PlatformAuthor, PlatformMessage, PlatformSource } from "../platform/index.js";
 
-export type { PlatformMessage } from "../platform.js";
+export type { PlatformMessage } from "../platform/index.js";
 
 export type ChannelType = "private" | "group";
 export type MessageRoute = { action: "ignore" | "append" | "send" | "join" };

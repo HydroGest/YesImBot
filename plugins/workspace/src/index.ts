@@ -3,8 +3,7 @@ import { join, resolve } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
-import { createChannelScopeId, type ChannelScope } from "koishi-plugin-yesimbot/channel";
-import type {} from "koishi-plugin-yesimbot";
+import { createChannelScopeId, type ChannelScope } from "koishi-plugin-yesimbot";
 
 import { createBashToolSet } from "./bash-tool";
 import { assertValidMountConfig } from "./mounts";

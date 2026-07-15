@@ -1,4 +1,4 @@
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -18,7 +18,7 @@ describe("runtime key helpers", () => {
 
   it("resolves relative basePath against ctx.baseDir", () => {
     expect(resolveBasePath("data/yesimbot-core", "/tmp/athena")).toBe(
-      join("/tmp/athena", "data/yesimbot-core"),
+      resolve("/tmp/athena", "data/yesimbot-core"),
     );
   });
 

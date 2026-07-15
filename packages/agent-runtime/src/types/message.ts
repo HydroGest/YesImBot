@@ -20,7 +20,9 @@ export interface CustomMessageBase<
   data: D;
 }
 
-export interface AgentCustomMessages {}
+export interface AgentCustomMessages {
+  "custom": CustomMessageBase<"custom", unknown>;
+}
 
 export type AgentCustomMessage<T extends keyof AgentCustomMessages = keyof AgentCustomMessages> =
   AgentCustomMessages[T];

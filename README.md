@@ -17,7 +17,7 @@ _让 AI 更像人类，让聊天更有温度_
 
 ---
 
-**Athena（YesImBot）** 是一套基于 Koishi 的群聊 AI 插件与运行时，让大语言模型以自然的方式融入你的群聊。
+**YesImBot** 是一套基于 Koishi 的群聊 AI 插件与运行时，让大语言模型以自然的方式融入你的群聊。
 
 ## Features
 
@@ -30,7 +30,7 @@ _让 AI 更像人类，让聊天更有温度_
 
 ## Quick Start
 
-Athena 作为 Koishi 插件运行，安装方式与普通 Koishi 插件一致：
+YesImBot 作为 Koishi 插件运行，安装方式与普通 Koishi 插件一致：
 
 ```bash
 # 使用 yarn（推荐）
@@ -47,7 +47,7 @@ npm install koishi-plugin-yesimbot
 
 ## Plugins
 
-Athena 的能力通过插件系统按需加载。
+YesImBot 的能力通过插件系统按需加载。
 
 | 插件        | 包名                                    | 能力                           |
 | ----------- | --------------------------------------- | ------------------------------ |
@@ -108,7 +108,7 @@ yarn turbo run check-types --filter=koishi-plugin-yesimbot
 
 ## Contributors
 
-感谢所有为 Athena 付出努力的人：
+感谢所有为 YesImBot 付出努力的人：
 
 [![Contributors](https://contrib.rocks/image?repo=YesWeAreBot/YesImBot)](https://github.com/YesWeAreBot/YesImBot/graphs/contributors)
 

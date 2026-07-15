@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createChannelScopeId } from "koishi-plugin-yesimbot/channel";
+import { createChannelScopeId } from "koishi-plugin-yesimbot";
 
 vi.mock("koishi", () => ({
   Context: class {},
@@ -54,7 +54,14 @@ vi.mock("koishi", () => ({
   },
 }));
 
-vi.mock("koishi-plugin-yesimbot", () => ({}));
+const mockCreateChannelScopeId = vi.hoisted(() => {
+  return (scope: { platform: string; selfId: string; channelId: string }) =>
+    `ch_v1_mock_${scope.platform}_${scope.selfId}_${scope.channelId}` as const;
+});
+
+vi.mock("koishi-plugin-yesimbot", () => ({
+  createChannelScopeId: mockCreateChannelScopeId,
+}));
 
 import WorkspacePlugin from "../src";
 

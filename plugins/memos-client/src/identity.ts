@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { createChannelScopeId } from "koishi-plugin-yesimbot/channel";
+import { createChannelScopeId } from "koishi-plugin-yesimbot";
 
 import type {
   MemosChannelType,

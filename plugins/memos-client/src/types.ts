@@ -1,4 +1,4 @@
-import type { ChannelScope } from "koishi-plugin-yesimbot/channel";
+import type { ChannelScope } from "koishi-plugin-yesimbot";
 
 export type MemosChannelType = "private" | "group";
 export type MemosMemoryScope = "auto" | "channel" | "user";

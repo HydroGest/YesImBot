@@ -1,4 +1,4 @@
-import { createChannelScopeId } from "koishi-plugin-yesimbot/channel";
+import { createChannelScopeId } from "koishi-plugin-yesimbot";
 import { describe, expect, it } from "vitest";
 
 import { deriveMemosIdentity } from "../src/identity.js";

@@ -1,5 +1,5 @@
 import type { AgentPlugin, AgentToolExecuteContext } from "@yesimbot/agent-runtime";
-import { createChannelScopeId } from "koishi-plugin-yesimbot/channel";
+import { createChannelScopeId } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MemosClientConfig } from "../src/types.js";
