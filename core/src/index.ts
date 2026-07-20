@@ -8,6 +8,7 @@ import { YesImBotService } from "./runtime/service.js";
 export const name = "yesimbot";
 export const usage = ``;
 export const inject = [];
+export { Config } from "./config.js";
 
 export * from "./channel.js";
 export { ModelService } from "./model/service.js";

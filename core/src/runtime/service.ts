@@ -5,6 +5,7 @@ import {
   createAgent,
   type Agent,
   type AgentEntry,
+  type AgentInternalEvent,
   type AgentMessage,
   type AgentPlugin,
   type AgentStorage,
@@ -23,6 +24,7 @@ import {
   createPlatformMessage,
   getChannelScope,
   getChannelType,
+  MessageClassification,
 } from "./message.js";
 import { extractAssistantTexts } from "./render.js";
 import { createJsonlStorage } from "./storage.js";
@@ -264,8 +266,8 @@ export class YesImBotService extends Service<Config> {
     } as Session;
     // Run prepare + initial submission inside the FIFO queue;
     // stream consumption runs outside the lock.
-    let stream: AsyncIterable<import("@yesimbot/agent-runtime").AgentInternalEvent> | undefined;
-    let classification: import("./message.js").MessageClassification | undefined;
+    let stream: AsyncIterable<AgentInternalEvent> | undefined;
+    let classification: MessageClassification | undefined;
     let submittedAction: "append" | "send" | "run" | undefined;
 
     try {
