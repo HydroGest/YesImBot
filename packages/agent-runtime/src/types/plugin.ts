@@ -23,6 +23,7 @@ export interface AgentPlugin {
   version?: string;
   enforce?: "pre" | "post";
   optional?: boolean;
+  requiresMessageId?: boolean;
   tools?: AgentToolSet | ((runtime: AgentPluginRuntime) => Awaitable<AgentToolSet | void>);
   init?(runtime: AgentPluginRuntime): Awaitable<void>;
   stop?(): Awaitable<void>;

@@ -15,7 +15,6 @@ export class AgentBusyError extends AgentRuntimeError {
   }
 }
 
-
 export class ToolConflictError extends AgentRuntimeError {
   constructor(toolName: string) {
     super(`Tool conflict: ${toolName}`);

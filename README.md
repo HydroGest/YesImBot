@@ -25,6 +25,7 @@ _让 AI 更像人类，让聊天更有温度_
 - **多模型即插即用** — 通过 provider 插件接入 OpenAI、Anthropic、DeepSeek、Google 等模型，运行时支持模型热切换与 `models.json` 配置。
 - **强大的插件体系** — 工具、提示词、消息转换、生命周期钩子，每个维度都可扩展。插件按 `pre` / normal / `post` 顺序编排，互不干扰。
 - **上下文持久化** — 每频道独立 JSONL 会话文件，支持恢复与调试。运行时可加载 `AGENTS.md` 与 `PERSONA.md` 文件定制行为。
+- **平台输入边界** — 平台适配器通过 `ctx.yesimbot.platform` 细化消息或发布事件；核心按频道顺序准备、持久化并投递消息。图片在入库前按固定数量、字节、并发和超时限制冻结为频道私有资源。
 - **丰富的能力插件** — 虚拟文件系统与 Bash 沙箱、MCP 客户端、Skill 加载、Web 搜索、MemOS Cloud 记忆、OneBot 工具、贴纸处理等。
 - **Koishi 原生集成** — 作为 `koishi-plugin-yesimbot` 运行，复用 Koishi 生态的适配器、中间件和插件体系。
 
@@ -49,15 +50,16 @@ npm install koishi-plugin-yesimbot
 
 YesImBot 的能力通过插件系统按需加载。
 
-| 插件        | 包名                                    | 能力                           |
-| ----------- | --------------------------------------- | ------------------------------ |
-| 工作区      | `koishi-plugin-yesimbot-workspace`      | 文件操作、命令执行等工作区工具 |
-| MCP 客户端  | `koishi-plugin-yesimbot-mcp-client`     | 通过 MCP 协议接入外部工具服务  |
-| 技能        | `koishi-plugin-yesimbot-skills`         | 动态加载与执行预定义技能       |
-| MemOS       | `koishi-plugin-yesimbot-memos-client`   | 接入 MemOS Cloud 长期记忆      |
-| 搜索        | `koishi-plugin-yesimbot-search-service` | 网络搜索与信息检索             |
-| OneBot 工具 | `koishi-plugin-yesimbot-onebot-utils`   | OneBot 平台工具集成            |
-| 贴纸        | `koishi-plugin-yesimbot-sticker`        | 表情与贴纸处理                 |
+| 插件        | 包名                                     | 能力                                |
+| ----------- | ---------------------------------------- | ----------------------------------- |
+| 工作区      | `koishi-plugin-yesimbot-workspace`       | 文件操作、命令执行等工作区工具      |
+| MCP 客户端  | `koishi-plugin-yesimbot-mcp-client`      | 通过 MCP 协议接入外部工具服务       |
+| 技能        | `koishi-plugin-yesimbot-skills`          | 动态加载与执行预定义技能            |
+| MemOS       | `koishi-plugin-yesimbot-memos-client`    | 接入 MemOS Cloud 长期记忆           |
+| 搜索        | `koishi-plugin-yesimbot-search-service`  | 网络搜索与信息检索                  |
+| OneBot 平台 | `koishi-plugin-yesimbot-platform-onebot` | OneBot 入站消息、图片准备与事件适配 |
+| OneBot 工具 | `koishi-plugin-yesimbot-onebot-utils`    | OneBot 平台工具集成                 |
+| 贴纸        | `koishi-plugin-yesimbot-sticker`         | 表情与贴纸处理                      |
 
 ### LLM Provider
 
@@ -74,6 +76,7 @@ YesImBot 的能力通过插件系统按需加载。
 Athena/
 ├── core/                     Koishi 主插件：消息路由、模型服务、频道运行时
 ├── packages/agent-runtime/   通用消息运行时：回合队列、工具调用、插件钩子、状态与存储
+├── platforms/                平台适配器：OneBot 入站消息与事件边界
 ├── providers/                模型 Provider 插件：OpenAI / Anthropic / DeepSeek / Google
 ├── plugins/                  可选能力插件：Workspace / MCP / Skill / Search / MemOS 等
 ├── docs/                     设计记录与归档文档

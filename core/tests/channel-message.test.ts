@@ -1,120 +1,65 @@
-import { createCustomMessage } from "@yesimbot/agent-runtime";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import {
-  createPlatformMessage,
-  createMessageRoute,
-  platformMessagePlugin,
-  type PlatformMessage,
-} from "../src/runtime/message.js";
+vi.mock("koishi", async () => import("@koishijs/core"));
+
+import { h } from "koishi";
+
+import type { Platform } from "../src/platform/index.js";
+import { classifyMessage, createPlatformMessage } from "../src/runtime/message.js";
 
 describe("platform message runtime plugin", () => {
-  it("creates a platform custom message while preserving Koishi content exactly", () => {
-    const message = createPlatformMessage({
-      id: "session_1",
+  it("creates a platform custom message with persisted literal content", () => {
+    const platformMessage: Platform.Message = {
+      source: { platform: "onebot", selfId: "bot" },
+      scope: { type: "channel", channelId: "group" },
+      sender: { id: "user_1", name: "Alice" },
       messageId: "message_1",
       timestamp: 123,
-      platform: "onebot",
-      selfId: "bot",
-      channelId: "group",
-      userId: "user_1",
-      username: "Alice",
-      content: '<at id="bot"/> hello',
-    });
+      receivedAt: 456,
+      elements: [h("at", { id: "bot" }), h.text(" hello")],
+    };
+
+    const message = createPlatformMessage(platformMessage);
 
     expect(message).toMatchObject({
       role: "custom",
       type: "athena.platform.message",
       id: "message_1",
       timestamp: 123,
-      data: {
-        version: 1,
-        source: {
-          platform: "onebot",
-          selfId: "bot",
-          channelId: "group",
-          conversationType: "group",
-        },
-        author: { id: "user_1", name: "Alice" },
-        message: { content: '<at id="bot"/> hello' },
-      },
     });
+    const data = message.data as Platform.MessageRecord;
+    expect(data.content).toBe('<at id="bot"/> hello');
+    expect(data).not.toHaveProperty("elements");
   });
 
-  it("lets runtime message defaults fill missing message id and timestamp", () => {
-    const message = createPlatformMessage({
+  it("uses receivedAt as fallback when timestamp is absent", () => {
+    const platformMessage: Platform.Message = {
+      source: { platform: "onebot", selfId: "bot" },
+      scope: { type: "channel", channelId: "group" },
+      sender: { id: "user_1" },
+      messageId: "message_2",
+      receivedAt: 789,
+      elements: [h.text("hello")],
+    };
+
+    const message = createPlatformMessage(platformMessage);
+
+    expect(message).toMatchObject({
+      id: "message_2",
+      timestamp: 789,
+    });
+    expect((message.data as Platform.MessageRecord).content).toBe("hello");
+  });
+
+  it("uses the same sender id for self-message routing", () => {
+    const classification = classifyMessage({
       platform: "onebot",
       selfId: "bot",
       channelId: "group",
-      userId: "user_1",
+      author: { id: "bot" },
       content: "hello",
-    });
+    } as never);
 
-    expect(message.id).toMatch(/[0-9a-f-]{36}/i);
-    expect(message.timestamp).toEqual(expect.any(Number));
-  });
-
-  it("uses the same author fallback for self-message routing", () => {
-    const route = createMessageRoute(
-      {
-        platform: "onebot",
-        selfId: "bot",
-        channelId: "group",
-        author: { id: "bot" },
-        content: "hello",
-      } as never,
-      { isBusy: false },
-    );
-
-    expect(route).toEqual({ action: "ignore" });
-  });
-
-  it("projects platform messages to user model messages with sender display", async () => {
-    const data: PlatformMessage = {
-      version: 1,
-      source: {
-        platform: "onebot",
-        selfId: "bot",
-        channelId: "group",
-        conversationType: "group",
-      },
-      author: { id: "u1", name: "Alice" },
-      message: { content: '<at id="bot"/> hello' },
-    };
-
-    const result = await platformMessagePlugin.toModelMessages?.(
-      createCustomMessage("athena.platform.message", data, { id: "m1", timestamp: 1 }),
-      {} as never,
-    );
-
-    expect(result).toEqual({
-      role: "user",
-      content: '[Alice]: <at id="bot"/> hello',
-    });
-  });
-
-  it("leaves unknown custom messages for other plugins", async () => {
-    const result = await platformMessagePlugin.toModelMessages?.(
-      {
-        role: "custom",
-        type: "athena.platform.event",
-        id: "evt_1",
-        timestamp: 1,
-        data: {
-          version: 1,
-          kind: "test.event",
-          source: {
-            platform: "onebot",
-            selfId: "bot",
-            channelId: "group",
-            conversationType: "group",
-          },
-          author: { id: "u1" },
-        },
-      },
-      {} as never,
-    );
-
-    expect(result).toBeUndefined();
+    expect(classification).toBe("ignore");
   });
 });

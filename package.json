@@ -12,6 +12,7 @@
   "workspaces": [
     "core",
     "packages/*",
+    "platforms/*",
     "plugins/*",
     "providers/*"
   ],

@@ -1,4 +1,4 @@
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import {
   createChannelScopeId,
@@ -22,4 +22,13 @@ export function createChannelSessionPath(basePath: string, scope: ChannelScope):
     "sessions",
     "messages.jsonl",
   );
+}
+
+export function createChannelAssetPath(
+  basePath: string,
+  scope: ChannelScope,
+  hash?: string,
+): string {
+  const root = join(basePath, "assets", createChannelScopeId(scope));
+  return hash ? join(root, hash) : root;
 }

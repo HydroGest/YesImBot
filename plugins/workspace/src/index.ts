@@ -33,9 +33,9 @@ export default class WorkspacePlugin {
       .default("data/yesimbot/workspace")
       .description("工作区根目录"),
     cwd: Schema.string().default("/home/workspace").description("虚拟文件系统默认目录"),
-    persistPaths: Schema.dict(Schema.path({ filters: ["directory"], allowCreate: true })).description(
-      "持久化路径映射",
-    ),
+    persistPaths: Schema.dict(
+      Schema.path({ filters: ["directory"], allowCreate: true }),
+    ).description("持久化路径映射"),
     readOnlyPaths: Schema.dict(Schema.path({ filters: ["directory"] })).description("只读路径映射"),
     overlayPaths: Schema.dict(Schema.path({ filters: ["directory"] })).description(
       "覆盖层路径映射：读取宿主目录，写入保留在虚拟文件系统中",

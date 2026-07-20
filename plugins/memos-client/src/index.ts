@@ -1,4 +1,4 @@
-import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
+import type { AgentCustomMessage, AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
 import { Schema, type Context, type Logger } from "koishi";
 import type {} from "koishi-plugin-yesimbot";
 
@@ -13,14 +13,7 @@ import {
 } from "./tools/core/search-message.js";
 import type { MemosChannelType, MemosClientConfig } from "./types.js";
 
-interface CapturedPlatformMessage {
-  role: "custom";
-  type: "athena.platform.message";
-  data: {
-    author?: { id?: string };
-    message?: { messageId?: string };
-  };
-}
+type CapturedPlatformMessage = AgentCustomMessage<"athena.platform.message">;
 
 function isCapturedPlatformMessage(message: unknown): message is CapturedPlatformMessage {
   const candidate = message as Partial<CapturedPlatformMessage>;
@@ -36,8 +29,8 @@ function capturePlatformMessage(
   }
 
   assign({
-    authorId: message.data.author?.id ?? "",
-    messageId: message.data.message?.messageId,
+    authorId: message.data.sender.id,
+    messageId: message.data.messageId,
   });
 }
 

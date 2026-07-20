@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **platform-onebot**: New `koishi-plugin-yesimbot-platform-onebot` adapter registers OneBot platform input handling through `ctx.yesimbot.platform`
 - **agent-runtime**: New `@yesimbot/agent-runtime` package — standalone agent runtime with createAgent, turn queue, message storage, plugin hooks, tool registry, channel events, and state management
 - **workspace**: bash-tool sandbox integration with virtual filesystem mounts, channel-scoped workspace, and AbortSignal timeout bridge
 - **memos-client**: New `koishi-plugin-yesimbot-memos-client` plugin — MemOS Cloud memory integration with CRUD operations, identity generation, QQ chat memory import script, and debug channel memory search
@@ -19,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **core**: **Breaking**: Replaced the Platform message contract with `Platform.Message` (`Element[]`), persisted `Platform.MessageRecord`, typed publish-only `Platform.Event`, and flat `Adapter.refine()` / `prepare()` contracts; legacy platform-message JSONL is unsupported and must be cleared or replaced before upgrade
+- **core**: Exposed the single plugin-facing platform service path as `ctx.yesimbot.platform`; platform collection, preparation, final busy-state routing, initial submission, and reset now use a per-channel FIFO
+- **core**: Stores only verified, channel-local inbound image assets; preparation permits four images, 5 MiB per image, 10 MiB per message, two concurrent downloads, and a 10-second timeout
+- **onebot-utils**: `onebot_get_forward_message` now returns sanitized, bounded, paginated text from raw or structured OneBot forward payloads without URLs, raw fields, child IDs, media bytes, or asset IDs
 - **core**: Migrated from legacy `packages/agent/` to `@yesimbot/agent-runtime` as the foundation; rebuilt `service.ts` as slim Koishi wrapper; removed `internal/` and `services/extension/` legacy modules
 - **workspace**: Replaced custom tool implementations (`edit-file`, `execute-command`, `glob`, `grep`, `read-file`, `write-file`) with just-bash sandbox
 - **mcp-client**: Tool refresh support and transport configuration updates
@@ -29,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **memos-client**: Read platform custom-message sender and message IDs from the current `Platform.MessageRecord` payload
 - **agent-runtime**: Deduplicate tool messages in multi-step loops
 
 ### Removed

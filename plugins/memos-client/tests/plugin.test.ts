@@ -218,19 +218,12 @@ describe("MemosClientPlugin", () => {
       id: "platform-message",
       timestamp: Date.now(),
       data: {
-        version: 1,
-        source: {
-          platform: "onebot",
-          selfId: "bot-raw",
-          channelId: "group-raw",
-          conversationType: "group",
-        },
-        author: { id: "author-raw", name: "Ada" },
-        message: {
-          messageId: "message-raw",
-          content: "hello",
-          timestamp: Date.now(),
-        },
+        source: { platform: "onebot", selfId: "bot-raw" },
+        scope: { type: "channel", channelId: "group-raw" },
+        sender: { id: "author-raw", name: "Ada" },
+        messageId: "message-raw",
+        receivedAt: Date.now(),
+        content: "hello",
       },
     };
     const earlierPlugin = {

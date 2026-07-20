@@ -21,7 +21,7 @@ export interface CustomMessageBase<
 }
 
 export interface AgentCustomMessages {
-  "custom": CustomMessageBase<"custom", unknown>;
+  custom: CustomMessageBase<"custom", unknown>;
 }
 
 export type AgentCustomMessage<T extends keyof AgentCustomMessages = keyof AgentCustomMessages> =

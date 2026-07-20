@@ -12,7 +12,9 @@ function formatMountLabel(kind: Workspace["mounts"][number]["kind"]): string {
 
 export function formatWorkspacePrompt(workspace: Workspace): string {
   const networkState = workspace.config.bash.network ? "enabled" : "disabled";
-  const mountLines = workspace.mounts.map((mount) => `- ${mount.path}: ${formatMountLabel(mount.kind)}`);
+  const mountLines = workspace.mounts.map(
+    (mount) => `- ${mount.path}: ${formatMountLabel(mount.kind)}`,
+  );
 
   return [
     "## Workspace Sandbox",

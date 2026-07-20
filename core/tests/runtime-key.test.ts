@@ -23,9 +23,7 @@ describe("runtime key helpers", () => {
   });
 
   it("keeps absolute basePath unchanged", () => {
-    const basePath = isAbsolute("/var/lib/athena")
-      ? "/var/lib/athena"
-      : "C:\\athena\\data";
+    const basePath = isAbsolute("/var/lib/athena") ? "/var/lib/athena" : "C:\\athena\\data";
     expect(resolveBasePath(basePath, "/tmp/athena")).toBe(basePath);
   });
 

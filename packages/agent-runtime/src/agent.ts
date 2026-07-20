@@ -24,12 +24,7 @@ import {
   toAiToolSet,
 } from "./tools.js";
 import type { AgentToolExecuteContext } from "./tools.js";
-import {
-  createTurnQueue,
-  TurnResult,
-  type AgentWaitOptions,
-  type TurnRequest,
-} from "./turn.js";
+import { createTurnQueue, TurnResult, type AgentWaitOptions, type TurnRequest } from "./turn.js";
 import { Awaitable } from "./types/base.js";
 import type { AgentEntry } from "./types/entry.js";
 import type { AgentInternalEvent, AgentInternalEventInit } from "./types/event.js";
@@ -79,7 +74,7 @@ export interface Agent {
   getModel(): LanguageModel;
   setModel(model: LanguageModel): void;
   clear(): Promise<void>;
-  getActiveTurnId(): string | undefined;
+  getActiveTurnId(): string | null;
   isIdle(): boolean;
 }
 
@@ -766,7 +761,7 @@ export function createAgent(config: AgentConfig): Agent {
       await storage.clear();
     },
     getActiveTurnId() {
-      return turnQueue.activeTurnId;
+      return turnQueue.activeTurnId ?? null;
     },
     isIdle() {
       return turnQueue.isIdle();

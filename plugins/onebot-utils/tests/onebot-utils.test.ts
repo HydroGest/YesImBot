@@ -80,6 +80,38 @@ async function getTools(plugin: AgentPlugin): Promise<AgentTool[]> {
     : plugin.tools;
 }
 
+interface ForwardResult {
+  forwardId: string;
+  offset: number;
+  messages: Array<{ sender: string; time?: string; content: string }>;
+  hasMore: boolean;
+}
+
+async function executeForward(
+  raw: unknown,
+  input: { offset?: number; limit?: number } = {},
+): Promise<ForwardResult> {
+  const getForwardMsg = vi.fn(async () => raw);
+  const { ctx, factories } = createContext();
+  const plugin = new OnebotUtilsPlugin(ctx as never, {});
+  await plugin.start();
+
+  const runtimePlugin = factories[0]!({
+    ...createChannelContext(),
+    platform: {
+      name: "onebot",
+      unsafeBot: { internal: { getForwardMsg } },
+    },
+  } as never);
+  const tools = await getTools(runtimePlugin);
+  const tool = tools.find((item) => item.name === "onebot_get_forward_message");
+
+  return tool?.execute?.(
+    { messageId: "forward-id", ...input },
+    {} as never,
+  ) as Promise<ForwardResult>;
+}
+
 describe("onebot-utils plugin", () => {
   it("registers exactly one factory and disposes it on stop", async () => {
     const { ctx, dispose } = createContext();
@@ -146,8 +178,10 @@ describe("onebot-utils plugin", () => {
     );
   });
 
-  it("fetches forward messages through unsafe bot internals", async () => {
-    const getForwardMsg = vi.fn(async () => [{ message_id: 1 }]);
+  it("fetches forward messages through unsafe bot internals with pagination", async () => {
+    const getForwardMsg = vi.fn(async () => [
+      { sender: { user_id: 1, nickname: "Alice" }, time: 1700000000, raw_message: "hello" },
+    ]);
     const { ctx, factories } = createContext();
     const plugin = new OnebotUtilsPlugin(ctx as never, {});
 
@@ -167,10 +201,119 @@ describe("onebot-utils plugin", () => {
     const tools = await getTools(runtimePlugin);
     const tool = tools.find((item) => item.name === "onebot_get_forward_message");
 
-    await expect(tool?.execute?.({ messageId: "forward-id" }, {} as never)).resolves.toEqual([
-      { message_id: 1 },
-    ]);
+    const result = await tool?.execute?.({ messageId: "forward-id" }, {} as never);
+
+    expect(result).toMatchObject({
+      forwardId: "forward-id",
+      offset: 0,
+      hasMore: false,
+    });
+    expect(Array.isArray(result.messages)).toBe(true);
+    expect(result.messages[0]).toMatchObject({
+      sender: expect.stringContaining("Alice"),
+      content: "hello",
+    });
+    expect(result.messages[0]).not.toHaveProperty("message_id");
     expect(getForwardMsg).toHaveBeenCalledWith("forward-id");
+  });
+
+  it("normalizes structured segments without stringifying objects", async () => {
+    const result = await executeForward([
+      {
+        sender: { user_id: 1, card: "Alice" },
+        raw_message: "",
+        message: [
+          { type: "text", data: { text: "hello " } },
+          { type: "image", data: { url: "https://example.com/image.png" } },
+          { type: "text", data: { text: " world" } },
+          { type: "file", data: { name: "secret.txt" } },
+        ],
+      },
+    ]);
+
+    expect(result.messages[0]?.content).toBe("hello [图片] world[文件]");
+    expect(JSON.stringify(result)).not.toContain("[object Object]");
+    expect(JSON.stringify(result)).not.toContain("https://");
+  });
+
+  it("normalizes string-valued message content when raw_message is unavailable", async () => {
+    const result = await executeForward([
+      {
+        sender: { user_id: 1, card: "Alice" },
+        message: "hello [CQ:image,file=private.png]",
+      },
+    ]);
+
+    expect(result.messages[0]?.content).toBe("hello [图片]");
+  });
+
+  it("drops malformed and unknown forward objects without leaking their data", async () => {
+    const result = await executeForward([
+      {
+        sender: { user_id: { valueOf: () => "leaked-user" } },
+        message_id: "child-id",
+        raw_message: { secret: "raw-secret" },
+        message: [
+          { type: "record", data: {} },
+          { type: "video", data: {} },
+          { type: "unknown", data: { text: "secret" } },
+          { type: "text", data: { text: { valueOf: () => "leaked-text" } } },
+          { type: "image", data: "malformed" },
+          null,
+        ],
+      },
+    ]);
+
+    expect(result.messages[0]).toEqual({ sender: "unknown", content: "[语音][视频]" });
+    expect(JSON.stringify(result)).not.toMatch(/child-id|raw-secret|leaked-/);
+  });
+
+  it("sanitizes raw CQ media, URLs, asset IDs, and unsupported CQ syntax", async () => {
+    const assetId = `asset_${"a".repeat(64)}`;
+    const result = await executeForward([
+      {
+        sender: { user_id: 1, nickname: "Alice" },
+        raw_message: `look [CQ:image,url=https://example.com/a] https://example.com/b ${assetId} [CQ:at,qq=2]`,
+      },
+    ]);
+
+    expect(result.messages[0]?.content).toBe("look [图片] [链接]");
+    expect(JSON.stringify(result)).not.toMatch(/https:\/\/|asset_|CQ:/);
+  });
+
+  it("enforces deterministic pagination and record and page content limits", async () => {
+    const result = await executeForward(
+      Array.from({ length: 25 }, (_, index) => ({
+        message_id: `child-${index}`,
+        sender: { user_id: index },
+        raw_message: `${index}-`.padEnd(1_200, "x"),
+      })),
+      { offset: -3, limit: 99 },
+    );
+
+    expect(result.offset).toBe(0);
+    expect(result.messages).toHaveLength(6);
+    expect(result.messages.every((message) => message.content.length <= 1_000)).toBe(true);
+    expect(
+      result.messages.reduce((sum, message) => sum + message.content.length, 0),
+    ).toBeLessThanOrEqual(6_000);
+    expect(result.hasMore).toBe(true);
+    expect(JSON.stringify(result)).not.toMatch(/message_id|child-/);
+  });
+
+  it("preserves offset pagination after the page content limit", async () => {
+    const result = await executeForward(
+      Array.from({ length: 8 }, (_, index) => ({
+        sender: { user_id: index },
+        raw_message: `${index}-`.padEnd(1_200, "x"),
+      })),
+      { offset: 6, limit: 10 },
+    );
+
+    expect(result.offset).toBe(6);
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0]?.content.startsWith("6-")).toBe(true);
+    expect(result.hasMore).toBe(false);
   });
 
   it("fails reaction calls when OneBot request capability is unavailable", async () => {

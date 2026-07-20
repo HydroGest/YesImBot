@@ -173,13 +173,7 @@ yarn-error.log
 
 # Add here any additional files/directories you want to ignore in your project
 .claude/
-.omp/
-.opencode/
-.specify/
 .vscode/
-.worktrees/
 references/
-scripts/convert-session.ts
-scripts/qq-chat-to-session.ts
+.mcp.json
 yarn.lock
-.ace-tool/

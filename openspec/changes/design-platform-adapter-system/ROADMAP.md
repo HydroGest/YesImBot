@@ -19,7 +19,9 @@ specs. Raw decision history remains in `brainstorm.md`.
 | Public API naming | Complete for the first implementation | Naming Decisions below |
 | Slice tasks | Slice 01 complete | `slices/01-first-implementation/tasks.md` |
 | Slice plans | Slice 01 complete | `slices/01-first-implementation/plan.md` |
-| Production code | Not started | This change is design-only so far |
+| Production code | Slice 01 implemented and verified | `slices/01-first-implementation/verify.md` |
+| PlatformService refactor | Complete | `docs/platform-service-refactor-20250718.md` |
+| Slice 01 retrospective | Complete | `docs/retrospective.md` |
 
 OpenSpec validation passes with the resource-snapshot and naming decisions:
 
@@ -83,9 +85,9 @@ facts they will consume later.
 
 ### Slice 01 Planning Gate
 
-**Status:** In progress
+**Status:** Closed (Verified 2026-07-18)
 
-**Exit criteria:**
+**Exit criteria (all met):**
 
 - Public names are confirmed.
 - `brainstorm.md`, `design.md`, and delta specs include the resource-snapshot
@@ -93,6 +95,8 @@ facts they will consume later.
 - OpenSpec strict validation passes.
 - `slices/01-first-implementation/tasks.md` and `plan.md` contain no unresolved
   placeholders.
+- Root `fmt:check` baseline explicitly accepted (pre-existing, not caused by
+  Slice 01). Separate formatting cleanup may be pursued outside this change.
 
 ## Slice Workflow
 
@@ -136,8 +140,8 @@ slice progress. `openspec validate --strict` must still pass after every slice.
 
 | Slice | Scope | Status | Depends On |
 | --- | --- | --- | --- |
-| 01 | Complete first implementation: core input, stable views, resource snapshots, OneBot validation | Planned; ready for apply | None |
-| 02 | Standard event consumers, world state, and explicit guild/account routing | Deferred | Slice 01 verified plus separate design |
+| 01 | Complete first implementation: core input, stable views, resource snapshots, OneBot validation | **Verified** — all 25 deltas have passing evidence; pre-existing `fmt:check` baseline explicitly accepted | None |
+| 02 | Standard event consumers, world state, and explicit guild/account routing | **Exploring** — separate design in progress | Slice 01 verified; separate design artifact |
 | 03 | Additional platform validation and expanded model media handling | Deferred | Slice 02 scope review |
 
 Each slice is a complete releasable version. Milestones inside a slice do not
@@ -166,57 +170,26 @@ receive separate task, plan, apply, or verify cycles.
   not repeat the original source, Koishi/Satori, or legacy exploration unless a
   recorded assumption has changed.
 
-### Slice 01 Milestone 1: Core Input Boundary
+### Slice 01 Milestones (All Complete — Verified 2026-07-18)
 
-**Status:** Not started
+The slice was executed as one task/plan/apply/verify cycle covering four
+milestones in a single implementation:
 
-**Deliverables:**
-
-- Single Satori Session collection path with middleware correlation.
-- Stable message, event, source, scope, entity, time, and extension schemas.
-- Live disposable registrations and deterministic adapter selection.
-- Structured publication and synchronous consumer notification.
-- Existing private, mention, ordinary observation, self-ignore, and busy-join
-  behavior preserved by tests.
-
-### Slice 01 Milestone 2: Stable Views
-
-**Status:** Not started
-
-**Deliverables:**
-
-- Separate typed message-content and event-fact presentation models.
-- Deterministic core `toModelMessages` path with no platform/network I/O and
-  only immutable channel-local asset reads by content hash.
-- Safe media presentation and template boundaries.
-
-### Slice 01 Milestone 3: Resource Snapshots
-
-**Status:** Not started
-
-**Deliverables:**
-
-- Resource discovery, configured pre-persistence resolution, and frozen message
-  snapshots.
-- Forward/quote limits and stable failure snapshots.
-- Channel-local content-addressed binary assets and reset cleanup.
-
-### Slice 01 Milestone 4: OneBot Validation
-
-**Status:** Not started
-
-**Deliverables:**
-
-- Explicit OneBot implementation-profile support without raw fingerprinting.
-- Native reaction event conversion.
-- Forward-message resource reader using the OneBot internal API.
-- Image acquisition through the common resource path.
-- Contract tests proving core behavior does not depend on OneBot event-name
-  declarations or platform plugin `toModelMessages` hooks.
+1. **Core Input Boundary** — Single `internal/session` collection with
+   middleware correlation, stable schemas, live disposables, structured
+   publication, preserved routing.
+2. **Stable Views** — Typed `MessageView`/`EventView` models, deterministic
+   `toModelMessages` with no platform I/O, safe media presentation, template
+   boundaries.
+3. **Resource Snapshots** — Pre-persistence resolution, frozen snapshots,
+   forward/quote limits, stable failures, channel-local content-addressed
+   assets, reset cleanup.
+4. **OneBot Validation** — Explicit profile matching, native reaction event,
+   forward reader, image acquisition, contract tests proving core independence.
 
 ### Slice 02: Standard Event Consumers
 
-**Status:** Deferred
+**Status:** Exploring — separate design in progress
 
 **Candidate work:**
 
@@ -280,10 +253,19 @@ rtk openspec status --change design-platform-adapter-system
 rtk openspec validate design-platform-adapter-system --strict
 ```
 
-Do not revert unrelated working-tree changes. Continue from the first unchecked
-Slice 01 resumes from the first unchecked task in
-`slices/01-first-implementation/tasks.md`. Do not repeat source and legacy
+Do not revert unrelated working-tree changes. Continue from the active slice
+artifacts. When starting Slice 02, read the exploration output and then create
+`tasks.md`, `plan.md`, and `verify.md` under
+`slices/02-standard-event-consumers/`. Do not repeat source and legacy
 exploration.
+
+## Next Action
+
+Begin Slice 02 exploration: design the standard event consumer system covering
+world-state consumers for Satori guild, member, role, reaction, and request
+events, explicit routes from guild/account facts to agent contexts, and
+consumer-owned persistence and idempotency. Produce a separate `design.md` for
+world-state ownership and routing before creating Slice 02 tasks and plan.
 
 ## Decision Log
 
@@ -303,3 +285,16 @@ exploration.
   starts the apply phase at Task 1 and updates task status incrementally.
 - 2026-07-16: Added a self-contained HANDOFF for sequential subagent execution
   of Slice 01 in the current shared workspace.
+- 2026-07-17: Completed Slice 01 Task 7 focused, package, root, OpenSpec, and
+  patch verification. All required tests, typechecks, builds, strict validation,
+  and diff checks passed; root `fmt:check` failed across the existing tracked
+  formatter baseline, so Task 7.2 and Slice 01 Verified status remain pending.
+- 2026-07-18: PlatformService refactor completed (4 commits, 30 files,
+  +1160/−1147): factory→class conversions, `registry.ts` merged into
+  `PlatformService`, `runtime/prompt.ts` inlined, config split via
+  `Schema.intersect`.
+- 2026-07-18: Slice 01 final whole-change review completed. All 25 deltas have
+  passing evidence from committed state; pre-existing `fmt:check` baseline
+  explicitly accepted. Slice 01 status changed to **Verified**.
+- 2026-07-18: Slice 02 exploration begins. Scope: standard event consumers,
+  world state, and explicit guild/account routing.

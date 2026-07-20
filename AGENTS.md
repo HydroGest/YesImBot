@@ -6,6 +6,7 @@ Athena / YesImBot v4 is a Yarn 4 monorepo for Koishi-based LLM chat agents. The 
 
 - `core/` is the main `koishi-plugin-yesimbot` package: Koishi integration, model registry, message routing, prompt files, JSONL channel storage, and per-channel agent creation.
 - `packages/agent-runtime/` is the generic runtime core: `createAgent`, turn queue, message storage, plugin hooks, tools, state, channel events, and dogfood plugins.
+- `platforms/*` are platform-input adapters. They register `Platform.Adapter` instances through `ctx.yesimbot.platform` and keep platform-specific Session refinement and bounded input preparation outside core.
 - `plugins/*` are optional Koishi integrations that register `@yesimbot/agent-runtime` `AgentPlugin`s through `ctx.yesimbot.registerAgentPlugin()`.
 - `providers/*` are model provider plugins built on AI SDK providers and registered into `ctx["yesimbot.model"]`.
 
@@ -14,8 +15,7 @@ Athena / YesImBot v4 is a Yarn 4 monorepo for Koishi-based LLM chat agents. The 
 - 默认用中文沟通；代码、标识符、日志和错误信息保持原文。
 - Follow KISS / YAGNI / DRY / SOLID: keep changes direct, scoped, justified by current requirements, and easy to verify.
 - This repo uses Yarn 4 with `nodeLinker: node-modules`; use `yarn`, not `pnpm` or `npm`.
-- Shell commands should follow `~/.agents/RTK.md` when available: prefix commands with `rtk` (`rtk yarn test`, `rtk git status`). Use `rtk proxy <cmd>` only when raw command output is needed.
-- Pre-commit runs `npx lint-staged`, which applies `oxlint --fix` and `oxfmt --write` to staged JS/TS and JSON files.
+- Shell commands should follow rtk instructions when available: prefix commands with `rtk` (`rtk yarn test`, `rtk git status`). Use `rtk proxy <cmd>` only when raw command output is needed.
 - `dist/`, `.turbo/`, caches, and generated outputs are not source of truth.
 - `references/` and `node_modules/` are `.gitignore`-excluded. If you must inspect them, use absolute paths and do not let them dominate source-based decisions.
 - Do not overwrite or revert user changes unless explicitly asked.
@@ -23,7 +23,7 @@ Athena / YesImBot v4 is a Yarn 4 monorepo for Koishi-based LLM chat agents. The 
 
 ## Search And Context
 
-- Use `mcp__augment_context_engine.codebase_retrieval` first for semantic codebase understanding or when file locations are uncertain.
+- Use `codegraph_explore` first for semantic codebase understanding or when file locations are uncertain.
 - Use `rg` / `rg --files` for exact identifiers, known strings, and fast file discovery.
 - Use subagents for independent research or risky parallel work, and always wait for them before yielding.
 
@@ -33,30 +33,20 @@ Use the narrowest command that proves the change.
 
 ```bash
 # full pipeline (CI order)
-rtk yarn lint
-rtk yarn fmt:check
-rtk yarn check-types
-rtk yarn build
-rtk yarn test
+yarn lint
+yarn fmt:check
+yarn check-types
+yarn build
+yarn test
 
 # package-scoped checks
-rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot
-rtk yarn turbo run test --filter=koishi-plugin-yesimbot
-rtk yarn turbo run check-types --filter=@yesimbot/agent-runtime
-rtk yarn turbo run test --filter=@yesimbot/agent-runtime
-rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot-workspace
-rtk yarn turbo run test --filter=koishi-plugin-yesimbot-workspace
-rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot-skills
-rtk yarn turbo run test --filter=koishi-plugin-yesimbot-skills
-rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot-mcp-client
-rtk yarn turbo run test --filter=koishi-plugin-yesimbot-mcp-client
-rtk yarn turbo run check-types --filter=koishi-plugin-yesimbot-memos-client
-rtk yarn turbo run test --filter=koishi-plugin-yesimbot-memos-client
+yarn turbo run check-types --filter=<package>
+yarn turbo run test --filter=<package>
 
 # single test files
-rtk yarn workspace @yesimbot/agent-runtime exec vitest run tests/turn.test.ts
-rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/message-flow.test.ts
-rtk yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/tools.test.ts
+yarn workspace @yesimbot/agent-runtime exec vitest run tests/turn.test.ts
+yarn workspace koishi-plugin-yesimbot exec vitest run tests/message-flow.test.ts
+yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/tools.test.ts
 ```
 
 - Root `yarn test` runs workspaces with a `test` script; Turbo task `test` depends on `build`.
@@ -65,10 +55,11 @@ rtk yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/too
 
 ## Current Architecture
 
-- `core/src/index.ts` is the Koishi entrypoint. It registers `ModelService` and `YesImBotService`.
-- `core/src/service.ts` owns the public `ctx.yesimbot` service. It handles `yesimbot.reset`, Koishi middleware, per-channel runtime cache, plugin factory registration, and `createAgent()` wiring.
+- `core/src/index.ts` is the Koishi entrypoint. It registers `PlatformService`, `ModelService`, and `YesImBotService` in that order.
+- `core/src/runtime/service.ts` owns the public `ctx.yesimbot` service and its `platform` property. It handles `yesimbot.reset`, Koishi middleware, per-channel runtime cache, plugin factory registration, and `createAgent()` wiring.
 - Channel runtime keys are `platform:selfId:channelId`; JSONL history lives under `<basePath>/sessions/<platform-selfId-channelId>.jsonl`.
-- Message routing is intentionally small: self messages are ignored; non-private/non-mention messages are appended as observation; private or mention messages start a turn; busy channels join the active turn.
+- `PlatformService` collects a Session once, selects and runs one adapter refiner, and retains an admitted `Platform.Message` only for that Session. It publishes only `Platform.Event` values to subscribers through `ctx.yesimbot.platform`.
+- The message pipeline is: Session collection and refinement -> per-channel FIFO classification -> adapter image preparation and sealing -> channel Agent resolution -> append, busy `send(join)`, or `run`. The final busy read occurs after preparation; stream consumption occurs outside the FIFO. Reset queues `interrupt`, `stop`, storage clear, asset clear, and runtime-cache deletion in that order.
 - Runtime prompt composition starts with `buildCoreSystemPrompt()` and then optionally appends runtime prompt files from the configured data `basePath`: `AGENTS.md` and `PERSONA.md`. Do not confuse those runtime prompt files with this repository developer guide.
 - `core/src/model/` owns `ctx["yesimbot.model"]`, `models.json` loading, aliases/defaults, Koishi schema refresh, and provider registration.
 - Provider packages use `createProviderPlugin()` from `koishi-plugin-yesimbot/model` and AI SDK provider packages.
@@ -82,6 +73,7 @@ rtk yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/too
 | ------------------------- | -------------------------------------------- |
 | `core/`                   | `koishi-plugin-yesimbot`                     |
 | `packages/agent-runtime/` | `@yesimbot/agent-runtime`                    |
+| `platforms/onebot/`       | `koishi-plugin-yesimbot-platform-onebot`     |
 | `plugins/workspace/`      | `koishi-plugin-yesimbot-workspace`           |
 | `plugins/skills/`         | `koishi-plugin-yesimbot-skills`              |
 | `plugins/mcp-client/`     | `koishi-plugin-yesimbot-mcp-client`          |
@@ -98,11 +90,13 @@ rtk yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/too
 
 Load these on demand when deeper context is needed:
 
-- `core/src/service.ts` — Koishi service, channel routing, per-channel agent creation, reset/stop lifecycle.
+- `core/src/platform/` — public platform contracts, adapter selection/refinement, event publication, image asset storage, message sealing, and projection.
+- `core/src/runtime/service.ts` — public YesImBot service, channel FIFO, routing, per-channel Agent creation, reset/stop lifecycle.
 - `core/src/runtime/` — channel key/path, platform message conversion, prompt file loading, JSONL storage, output rendering.
 - `core/src/model/` — model config, provider contracts, schema helpers, model resolution.
 - `packages/agent-runtime/src/` — runtime core, plugin host, tools, storage, messages, events, turn queue, state.
 - `plugins/*/src/index.ts` — Koishi optional plugin entrypoints and `registerAgentPlugin()` usage.
+- `platforms/*/src/index.ts` — platform adapter entrypoints and `ctx.yesimbot.platform.register()` usage.
 - `providers/*/src/index.ts` — provider plugin definitions and default model schemas.
 
 ## Reporting

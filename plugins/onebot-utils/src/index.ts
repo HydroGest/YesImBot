@@ -2,7 +2,7 @@ import { type AgentPlugin, type AgentTool, jsonSchema } from "@yesimbot/agent-ru
 import { Context, Logger, Schema } from "koishi";
 import type {} from "koishi-plugin-yesimbot";
 
-import type { ForwardMessage, OneBotCapableBot, OneBotInternal } from "./types.js";
+import type { OneBotCapableBot, OneBotInternal } from "./types.js";
 
 export interface OnebotUtilsConfig {}
 
@@ -16,10 +16,21 @@ const FORWARD_MESSAGE_SCHEMA = jsonSchema({
       type: "string",
       description: "合并转发消息的 ID",
     },
+    offset: {
+      type: "integer",
+      minimum: 0,
+      description: "分页偏移，默认 0",
+    },
+    limit: {
+      type: "integer",
+      minimum: 1,
+      maximum: 20,
+      description: "每页条数，默认 10，最大 20",
+    },
   },
   required: ["messageId"],
   additionalProperties: false,
-}) as AgentTool<{ messageId: string }>["inputSchema"];
+}) as AgentTool<{ messageId: string; offset?: number; limit?: number }>["inputSchema"];
 
 const CREATE_REACTION_SCHEMA = jsonSchema({
   type: "object",
@@ -57,14 +68,147 @@ function getOneBotInternal(unsafeBot: unknown): OneBotInternal {
   return internal;
 }
 
+interface ForwardRecord {
+  sender: string;
+  time?: string;
+  content: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function scalarString(value: unknown): string | undefined {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function firstNonEmpty(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const text = scalarString(value);
+    if (text !== undefined) return text;
+  }
+  return undefined;
+}
+
+function sanitizeForwardSegments(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  return value
+    .map((segment) => {
+      if (!isRecord(segment) || !isRecord(segment.data)) return "";
+      switch (segment.type) {
+        case "text":
+          return typeof segment.data.text === "string" ? segment.data.text : "";
+        case "image":
+          return "[图片]";
+        case "record":
+          return "[语音]";
+        case "video":
+          return "[视频]";
+        case "file":
+          return "[文件]";
+        default:
+          return "";
+      }
+    })
+    .join("");
+}
+
+function formatForwardTime(value: unknown): string | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value * 1000));
+}
+
+function sanitizeForwardRecords(raw: unknown): ForwardRecord[] {
+  const items = Array.isArray(raw)
+    ? raw
+    : isRecord(raw) && Array.isArray(raw.messages)
+      ? raw.messages
+      : [];
+
+  return items.map((item): ForwardRecord => {
+    const record = isRecord(item) ? item : {};
+    const sender = isRecord(record.sender) ? record.sender : {};
+    const displayName = firstNonEmpty(sender.card, sender.nickname);
+    const userId = scalarString(sender.user_id);
+    const senderName =
+      displayName && userId && displayName !== userId
+        ? `${displayName} (${userId})`
+        : (displayName ?? userId ?? "unknown");
+    const rawContent =
+      typeof record.raw_message === "string" && record.raw_message.length > 0
+        ? record.raw_message
+        : typeof record.message === "string"
+          ? record.message
+          : sanitizeForwardSegments(record.message);
+    const time = formatForwardTime(record.time);
+
+    return {
+      sender: senderName,
+      ...(time ? { time } : {}),
+      content: sanitizeForwardContent(rawContent),
+    };
+  });
+}
+
+function sanitizeForwardContent(raw: string): string {
+  return raw
+    .replace(/\[CQ:image,[^\]]*\]/gi, "[图片]")
+    .replace(/\[CQ:record,[^\]]*\]/gi, "[语音]")
+    .replace(/\[CQ:video,[^\]]*\]/gi, "[视频]")
+    .replace(/\[CQ:file,[^\]]*\]/gi, "[文件]")
+    .replace(/https?:\/\/\S+/gi, "[链接]")
+    .replace(/\basset_[a-f0-9]{64}\b/gi, "")
+    .replace(/\[CQ:[^\]]*\]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function createOneBotTools(unsafeBot: unknown): AgentTool[] {
-  const getForwardMessageTool: AgentTool<{ messageId: string }, ForwardMessage[] | unknown> = {
+  const getForwardMessageTool: AgentTool<
+    { messageId: string; offset?: number; limit?: number },
+    {
+      forwardId: string;
+      offset: number;
+      messages: Array<{ sender: string; time?: string; content: string }>;
+      hasMore: boolean;
+    }
+  > = {
     name: "onebot_get_forward_message",
-    description: "获取合并转发消息的原始消息列表",
+    description: "分页获取合并转发消息的详情",
     inputSchema: FORWARD_MESSAGE_SCHEMA,
-    execute: async ({ messageId }) => {
+    execute: async ({ messageId, offset = 0, limit = 10 }) => {
       const internal = getOneBotInternal(unsafeBot);
-      return internal.getForwardMsg(messageId);
+      const raw = await internal.getForwardMsg(messageId);
+      const records = sanitizeForwardRecords(raw);
+      const clampedLimit = Math.min(20, Math.max(1, limit ?? 10));
+      const start = Math.max(0, offset ?? 0);
+      const slice = records.slice(start, start + clampedLimit);
+
+      const messages: Array<{ sender: string; time?: string; content: string }> = [];
+      let totalChars = 0;
+      for (const rec of slice) {
+        let content = rec.content.length > 1000 ? rec.content.slice(0, 1000) : rec.content;
+        if (totalChars + content.length > 6000) break;
+        messages.push({ ...rec, content });
+        totalChars += content.length;
+      }
+
+      return {
+        forwardId: messageId,
+        offset: start,
+        messages,
+        hasMore: start + messages.length < records.length,
+      };
     },
   };
 
@@ -130,6 +274,7 @@ export default class OnebotUtilsPlugin {
 
       return {
         name: "onebot-utils",
+        requiresMessageId: true,
         tools: createOneBotTools(context.platform.unsafeBot),
       } satisfies AgentPlugin;
     });

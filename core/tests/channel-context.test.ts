@@ -1,6 +1,8 @@
 import { Context } from "@koishijs/core";
 import { describe, expect, it, vi } from "vitest";
 
+import { createTestPlatformService } from "./platform-service-helper.js";
+
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 const runtimeMocks = vi.hoisted(() => ({
@@ -42,7 +44,7 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
 });
 
 import type { Config } from "../src/config.js";
-import { YesImBotService } from "../src/service.js";
+import { YesImBotService } from "../src/runtime/service.js";
 import type { ChannelAgentContext } from "../src/shared/types.js";
 
 const config: Config = {
@@ -68,7 +70,9 @@ function createContext() {
 
 describe("channel agent context", () => {
   it("captures the raw Koishi bot from the first channel session", async () => {
-    const service = new YesImBotService(createContext(), config);
+    const ctx = createContext();
+    createTestPlatformService({ ctx: ctx as never });
+    const service = new YesImBotService(ctx, config);
     const unsafeBot = { selfId: "bot", internal: { protocol: "onebot" } };
     let seen: ChannelAgentContext | undefined;
 

@@ -50,7 +50,7 @@
   },
   "scripts": {
     "build": "npx pkgroll --sourcemap",
-    "check-types": "tsc --noEmit",
+    "check-types": "yarn --cwd .. exec tsc --noEmit --project core/tsconfig.json && yarn --cwd .. exec tsc --noEmit --project core/tsconfig.type-tests.json",
     "clean": "rimraf .turbo && rimraf dist && rimraf tsconfig.tsbuildinfo",
     "pub": "yarn npm publish --access public",
     "test": "vitest run"

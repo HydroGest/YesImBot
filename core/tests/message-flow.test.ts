@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+vi.mock("koishi", async () => import("@koishijs/core"));
+
+import { h } from "koishi";
+
+import type { Platform } from "../src/platform/types.js";
 import {
-  createMessageRoute,
+  classifyMessage,
+  createPlatformMessage,
   getChannelScope,
   getChannelType,
   isSelfMessage,
@@ -42,7 +48,7 @@ describe("message flow helpers", () => {
     expect(mentionsSelf({ selfId: "bot", content: '<at id="other"/> hello' })).toBe(false);
   });
 
-  it("routes ordinary group messages to append and reply-eligible messages to send or join", () => {
+  it("classifies messages without consulting runtime busy state", () => {
     const group = {
       platform: "onebot",
       selfId: "bot",
@@ -51,18 +57,29 @@ describe("message flow helpers", () => {
       content: "hello",
     };
 
-    expect(createMessageRoute(group, { isBusy: false })).toEqual({ action: "append" });
-    expect(
-      createMessageRoute({ ...group, content: '<at id="bot"/> hello' }, { isBusy: false }),
-    ).toEqual({ action: "send" });
-    expect(
-      createMessageRoute({ ...group, content: '<at id="bot"/> hello' }, { isBusy: true }),
-    ).toEqual({ action: "join" });
-    expect(createMessageRoute({ ...group, subtype: "private" }, { isBusy: false })).toEqual({
-      action: "send",
-    });
-    expect(createMessageRoute({ ...group, userId: "bot" }, { isBusy: false })).toEqual({
-      action: "ignore",
-    });
+    expect(classifyMessage(group)).toBe("append");
+    expect(classifyMessage({ ...group, content: '<at id="bot"/> hello' })).toBe("reply");
+    expect(classifyMessage({ ...group, subtype: "private" })).toBe("reply");
+    expect(classifyMessage({ ...group, userId: "bot" })).toBe("ignore");
+  });
+
+  it("creates a persisted platform message from a domain message with elements", () => {
+    const domainMessage: Platform.Message = {
+      source: { platform: "onebot", selfId: "bot" },
+      scope: { type: "channel", channelId: "group" },
+      sender: { id: "user", name: "Alice" },
+      messageId: "m1",
+      receivedAt: 1,
+      elements: [h.text("hello")],
+    };
+
+    const runtimeMessage = createPlatformMessage(domainMessage);
+
+    expect(runtimeMessage.role).toBe("custom");
+    expect(runtimeMessage.type).toBe("athena.platform.message");
+    // Data is a MessageRecord (content literal, not elements).
+    const data = runtimeMessage.data as Record<string, unknown>;
+    expect(data.content).toBe("hello");
+    expect(data.elements).toBeUndefined();
   });
 });

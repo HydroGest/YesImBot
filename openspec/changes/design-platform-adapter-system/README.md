@@ -6,7 +6,7 @@ Start with [HANDOFF.md](./HANDOFF.md) when applying Slice 01 in a new agent
 session. Use [ROADMAP.md](./ROADMAP.md) as the authoritative progress index.
 
 Implementation is divided into numbered directories under `slices/`; each slice
-owns its own `tasks.md`,
-`plan.md`, apply cycle, and `verify.md`. A slice represents one complete
-releasable implementation version and can contain several internal milestones.
-Update the roadmap after every slice status or cross-slice design change.
+owns its own `tasks.md`, `plan.md`, apply cycle, and `verify.md`. Slice 01 is
+implemented and its fresh verification record is available at
+[`slices/01-first-implementation/verify.md`](./slices/01-first-implementation/verify.md).
+The root formatting gate remains pending, so the slice is not yet Verified.

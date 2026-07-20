@@ -1,13 +1,13 @@
+import { constants } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { access } from "node:fs/promises";
-import { constants } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createChannelScopeId } from "koishi-plugin-yesimbot";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", () => ({
   Context: class {},
