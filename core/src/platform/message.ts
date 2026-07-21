@@ -29,6 +29,7 @@ export function draftMessageFromSession(
     scope: {
       type: "channel",
       channelId: session.channelId,
+      channelType: session.isDirect === true || session.subtype === "private" ? "private" : "group",
       ...(session.guildId ? { guildId: session.guildId } : {}),
     },
     sender: {
@@ -53,6 +54,10 @@ export function sealMessage(message: Platform.Message): Platform.Message {
 }
 
 export function messageFromRecord(data: Platform.MessageRecord): Platform.Message {
+  if (data.scope.channelType !== "private" && data.scope.channelType !== "group") {
+    throw new Error("Platform message record channelType is required");
+  }
+
   return {
     source: data.source,
     scope: data.scope,

@@ -1,69 +1,38 @@
 import { createCustomMessage } from "@yesimbot/agent-runtime";
-import { Session } from "koishi";
 
+import type { ChannelScope } from "../channel.js";
+import type { MessageRoutingConfig } from "../config.js";
 import type { Platform } from "../platform/index.js";
 import { elementsToLiteral } from "../platform/message.js";
 
-export type ChannelType = "private" | "group";
 export type MessageClassification = "ignore" | "append" | "reply";
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function firstString(...values: Array<string | undefined>): string | undefined {
-  return values.find((value) => value !== undefined && value.length > 0);
-}
-
-export function getAuthorId(
-  session: Pick<Session, "userId" | "author" | "event">,
-): string | undefined {
-  return firstString(session.userId, session.author?.id, session.event?.user?.id);
-}
-
-export function isSelfMessage(
-  session: Pick<Session, "userId" | "selfId" | "author" | "event">,
-): boolean {
-  return getAuthorId(session) === session.selfId;
-}
-
-export function getChannelType(session: Pick<Session, "subtype" | "isDirect">): ChannelType {
-  return session.isDirect === true || session.subtype === "private" ? "private" : "group";
-}
-
-export function getChannelScope(session: Session): import("../channel.js").ChannelScope {
+export function getChannelScope(message: Platform.Message): ChannelScope {
   return {
-    platform: session.platform,
-    selfId: session.selfId,
-    channelId: session.channelId!,
+    platform: message.source.platform,
+    selfId: message.source.selfId,
+    channelId: message.scope.channelId,
   };
 }
 
-export function mentionsSelf(session: Pick<Session, "selfId" | "content" | "elements">): boolean {
-  if (
-    session.elements?.some(
-      (element) => element.type === "at" && String(element.attrs?.id) === session.selfId,
-    )
-  ) {
-    return true;
-  }
+export function isSelfMessage(message: Platform.Message): boolean {
+  return message.sender.id === message.source.selfId;
+}
 
-  const content = session.content ?? "";
-  const id = escapeRegExp(session.selfId);
-  return new RegExp(`<at\\s+[^>]*id=["']?${id}["']?[^>]*/?>`).test(content);
+export function mentionsSelf(message: Platform.Message): boolean {
+  return message.elements.some(
+    (element) => element.type === "at" && String(element.attrs?.id) === message.source.selfId,
+  );
 }
 
 export function classifyMessage(
-  session: Pick<
-    Session,
-    "userId" | "selfId" | "author" | "event" | "subtype" | "isDirect" | "content" | "elements"
-  >,
+  message: Platform.Message,
+  routing: MessageRoutingConfig,
 ): MessageClassification {
-  if (isSelfMessage(session)) {
-    return "ignore";
-  }
-
-  return getChannelType(session) === "private" || mentionsSelf(session) ? "reply" : "append";
+  if (isSelfMessage(message)) return "ignore";
+  if (message.scope.channelType === "private") return routing.direct;
+  if (mentionsSelf(message)) return routing.mention;
+  return routing.group;
 }
 
 export function createPlatformMessage(message: Platform.Message) {

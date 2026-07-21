@@ -4,6 +4,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h } from "koishi";
 
+import { DEFAULT_MESSAGE_ROUTING } from "../src/config.js";
 import type { Platform } from "../src/platform/index.js";
 import { classifyMessage, createPlatformMessage } from "../src/runtime/message.js";
 
@@ -11,7 +12,7 @@ describe("platform message runtime plugin", () => {
   it("creates a platform custom message with persisted literal content", () => {
     const platformMessage: Platform.Message = {
       source: { platform: "onebot", selfId: "bot" },
-      scope: { type: "channel", channelId: "group" },
+      scope: { type: "channel", channelId: "group", channelType: "group" },
       sender: { id: "user_1", name: "Alice" },
       messageId: "message_1",
       timestamp: 123,
@@ -35,7 +36,7 @@ describe("platform message runtime plugin", () => {
   it("uses receivedAt as fallback when timestamp is absent", () => {
     const platformMessage: Platform.Message = {
       source: { platform: "onebot", selfId: "bot" },
-      scope: { type: "channel", channelId: "group" },
+      scope: { type: "channel", channelId: "group", channelType: "group" },
       sender: { id: "user_1" },
       messageId: "message_2",
       receivedAt: 789,
@@ -51,14 +52,18 @@ describe("platform message runtime plugin", () => {
     expect((message.data as Platform.MessageRecord).content).toBe("hello");
   });
 
-  it("uses the same sender id for self-message routing", () => {
-    const classification = classifyMessage({
-      platform: "onebot",
-      selfId: "bot",
-      channelId: "group",
-      author: { id: "bot" },
-      content: "hello",
-    } as never);
+  it("uses canonical sender identity for self-message routing", () => {
+    const classification = classifyMessage(
+      {
+        source: { platform: "onebot", selfId: "bot" },
+        scope: { type: "channel", channelId: "group", channelType: "group" },
+        sender: { id: "bot" },
+        messageId: "message_3",
+        receivedAt: 1,
+        elements: [h.text("hello")],
+      },
+      DEFAULT_MESSAGE_ROUTING,
+    );
 
     expect(classification).toBe("ignore");
   });

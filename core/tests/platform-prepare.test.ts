@@ -61,6 +61,7 @@ describe("prepareMessage (ImagePrepareSink)", () => {
 
     expect(prepared.messageId).toBe(draft.messageId);
     expect(prepared.receivedAt).toBe(draft.receivedAt);
+    expect(prepared.scope.channelType).toBe("group");
     expect(elementsToLiteral(prepared.elements)).toContain("b");
   });
 

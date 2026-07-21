@@ -56,7 +56,7 @@ describe("element normalization", () => {
   it("sealMessage rewrites remote img to unavailable", () => {
     const message = {
       source: { platform: "t", selfId: "b" },
-      scope: { type: "channel" as const, channelId: "c" },
+      scope: { type: "channel" as const, channelId: "c", channelType: "group" as const },
       sender: { id: "u" },
       messageId: "m",
       receivedAt: 1,
@@ -71,7 +71,7 @@ describe("element normalization", () => {
   it("seals nested remote images without dropping surrounding text", () => {
     const message = {
       source: { platform: "t", selfId: "b" },
-      scope: { type: "channel" as const, channelId: "c" },
+      scope: { type: "channel" as const, channelId: "c", channelType: "group" as const },
       sender: { id: "u" },
       messageId: "m",
       receivedAt: 1,
@@ -91,7 +91,7 @@ describe("element normalization", () => {
   it("preserves asset images through seal", () => {
     const message = {
       source: { platform: "t", selfId: "b" },
-      scope: { type: "channel" as const, channelId: "c" },
+      scope: { type: "channel" as const, channelId: "c", channelType: "group" as const },
       sender: { id: "u" },
       messageId: "m",
       receivedAt: 1,

@@ -88,7 +88,7 @@ describe("channel agent context", () => {
       userId: "user",
       content: "ordinary message",
       bot: unsafeBot,
-      send: vi.fn(async () => undefined),
+      send: vi.fn(async () => ["m1"]),
     } as never);
 
     expect(seen?.channel).toEqual({

@@ -29,7 +29,7 @@ const scope: ChannelScope = {
 
 const baseData: Platform.MessageRecord = {
   source: { platform: "test", selfId: "bot" },
-  scope: { type: "channel", channelId: "room" },
+  scope: { type: "channel", channelId: "room", channelType: "group" },
   sender: { id: "u1", name: "Alice" },
   messageId: "m1",
   receivedAt: Date.parse("2026-07-18T12:34:00+08:00"),
@@ -52,7 +52,22 @@ describe("message persistence helpers", () => {
     const msg = messageFromRecord(data);
     expect(msg.elements.length).toBeGreaterThanOrEqual(2);
     expect(msg.sender).toEqual({ id: "u1", name: "Alice" });
-    expect(msg.scope).toEqual({ type: "channel", channelId: "room" });
+    expect(msg.scope).toEqual({ type: "channel", channelId: "room", channelType: "group" });
+  });
+
+  it("preserves channelType and rejects legacy records", () => {
+    const record = {
+      ...baseData,
+      scope: { type: "channel" as const, channelId: "room", channelType: "group" as const },
+    } as unknown as Platform.MessageRecord;
+
+    expect(messageFromRecord(record).scope.channelType).toBe("group");
+
+    const legacy = {
+      ...record,
+      scope: { type: "channel", channelId: "room" },
+    } as unknown as Platform.MessageRecord;
+    expect(() => messageFromRecord(legacy)).toThrow("channelType");
   });
 });
 

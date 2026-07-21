@@ -28,7 +28,9 @@ export namespace Platform {
 
   export interface Message {
     source: Source;
-    scope: Extract<Scope, { type: "channel" }>;
+    scope: Extract<Scope, { type: "channel" }> & {
+      channelType: "private" | "group";
+    };
     sender: Sender;
     messageId: string;
     timestamp?: number;

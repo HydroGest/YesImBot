@@ -1,5 +1,6 @@
 import type { TextPart } from "@ai-sdk/provider-utils";
 import type { AgentMessage } from "@yesimbot/agent-runtime";
+import type { Fragment } from "koishi";
 
 function isTextPart(value: unknown): value is TextPart {
   return (
@@ -10,8 +11,8 @@ function isTextPart(value: unknown): value is TextPart {
   );
 }
 
-export function extractAssistantTexts(messages: readonly AgentMessage[]): string[] {
-  const texts: string[] = [];
+export function extractAssistantOutputs(messages: readonly AgentMessage[]): Fragment[] {
+  const outputs: Fragment[] = [];
 
   for (const message of messages) {
     if (message.role !== "assistant") {
@@ -20,7 +21,7 @@ export function extractAssistantTexts(messages: readonly AgentMessage[]): string
 
     if (typeof message.content === "string") {
       if (message.content.trim().length > 0) {
-        texts.push(message.content);
+        outputs.push(message.content);
       }
       continue;
     }
@@ -31,10 +32,10 @@ export function extractAssistantTexts(messages: readonly AgentMessage[]): string
         .map((part) => part.text)
         .join("");
       if (text.trim().length > 0) {
-        texts.push(text);
+        outputs.push(text);
       }
     }
   }
 
-  return texts;
+  return outputs;
 }

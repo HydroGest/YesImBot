@@ -19,7 +19,7 @@ describe("Platform contracts", () => {
 
     const message: Platform.Message = {
       source: { platform: "test", selfId: "bot" },
-      scope: { type: "channel", channelId: "room" },
+      scope: { type: "channel", channelId: "room", channelType: "group" },
       sender: { id: "user", name: "Alice" },
       messageId: "m-1",
       receivedAt: 1,
@@ -36,7 +36,7 @@ describe("Platform contracts", () => {
 
     const record: Platform.MessageRecord = {
       source: { platform: "test", selfId: "bot" },
-      scope: { type: "channel", channelId: "room" },
+      scope: { type: "channel", channelId: "room", channelType: "group" },
       sender: { id: "user" },
       messageId: "m1",
       receivedAt: 1,
@@ -84,7 +84,7 @@ describe("Platform contracts", () => {
   it("supports sender without display name", () => {
     const message: Platform.Message = {
       source: { platform: "onebot", selfId: "10000" },
-      scope: { type: "channel", channelId: "20000" },
+      scope: { type: "channel", channelId: "20000", channelType: "group" },
       sender: { id: "30000" },
       messageId: "40000",
       receivedAt: 1,
@@ -109,7 +109,7 @@ describe("Platform contracts", () => {
   it("removes legacy public type names", () => {
     const data = {
       source: { platform: "test", selfId: "bot" },
-      scope: { type: "channel" as const, channelId: "c" },
+      scope: { type: "channel" as const, channelId: "c", channelType: "group" as const },
       sender: { id: "u" },
       messageId: "m",
       receivedAt: 1,
