@@ -51,6 +51,28 @@ The Koishi core plugin MUST expose `ctx.yesimbot` as the main core service and M
 - **WHEN** external code uses `ctx.yesimbot`
 - **THEN** the service MUST NOT expose direct `getRuntime`, `createRuntime`, `send`, or `append` operations
 
+### Requirement: Channel Runtime Ownership
+
+Core MUST place channel message classification, preparation order, Agent creation and caching, append/join/run submission, turn stream consumption, output projection, reset, and stop behind one channel runtime module. The module MUST expose message handling, channel reset, and runtime stop operations without exposing Agent handles, turn streams, or individual orchestration steps to `YesImBotService` or external plugins.
+
+#### Scenario: Core service handles an admitted message
+
+- **WHEN** `YesImBotService` receives a Session with a collected platform message
+- **THEN** it MUST delegate the message and original Session to the channel runtime
+- **AND** it MUST NOT manually compose classification, preparation, Agent submission, stream consumption, or delivery
+
+#### Scenario: Session is an operational dependency
+
+- **WHEN** the channel runtime handles a platform message
+- **THEN** it MAY pass the original Session to platform preparation and passive delivery
+- **AND** it MUST NOT read routing facts from the Session, serialize it, cache it beyond the active handle, or pass it into `agent-runtime`
+
+#### Scenario: One run owns one stream
+
+- **WHEN** an idle channel starts a turn with `Agent.run()`
+- **THEN** the channel runtime MUST own exactly one consumer for the returned stream
+- **AND** messages joined to that active turn MUST NOT create another stream consumer
+
 ### Requirement: Channel Runtime Identity
 
 Core MUST create and cache one agent runtime per `ChannelScopeId` derived from the current `ChannelScope`.
@@ -77,7 +99,7 @@ Core MUST create and cache one agent runtime per `ChannelScopeId` derived from t
 
 ### Requirement: Core Configuration
 
-Core MUST keep first-version configuration limited to `basePath`, `chatModel`, and `logLevel`.
+Core MUST keep first-version configuration limited to `basePath`, `chatModel`, `logLevel`, platform profiles, and deterministic message routing. Routing configuration MUST map direct messages, group mentions, and ordinary group messages independently to `append` or `reply`. Defaults MUST preserve direct reply, group-mention reply, and ordinary-group append. Self-message ignore MUST NOT be configurable.
 
 #### Scenario: Resolve unified base path
 - **WHEN** `basePath` is relative
@@ -91,6 +113,17 @@ Core MUST keep first-version configuration limited to `basePath`, `chatModel`, a
 - **WHEN** core needs prompt files, model configuration, channel metadata, or sessions
 - **THEN** it MUST resolve `AGENTS.md`, `PERSONA.md`, and `models.json` under the unified base path
 - **AND** it MUST resolve channel metadata and session files under `channels/<ChannelScopeId>/`
+
+#### Scenario: Use default routing
+
+- **WHEN** the user does not override message routing
+- **THEN** direct and mentioned messages MUST map to `reply`
+- **AND** ordinary group messages MUST map to `append`
+
+#### Scenario: Override one routing scenario
+
+- **WHEN** the user configures one scenario as `append` or `reply`
+- **THEN** core MUST apply that action to the scenario without changing FIFO, preparation, busy-read, or submission ordering
 
 ### Requirement: Model Resolution Boundary
 
@@ -164,36 +197,37 @@ Core MUST expose public `Platform.Event` types with source, primary scope, type,
 
 ### Requirement: Message Routing
 
-Core MUST append ordinary group messages and process direct or mentioned messages through the channel runtime.
+Core MUST classify each admitted message from canonical `Platform.Message` data and the deterministic routing configuration. Core MUST derive self-message status from normalized sender and source identities, mention status from normalized elements, and directness from the canonical channel type. It MUST produce only `ignore`, `append`, or `reply` and MUST NOT consult runtime busy state during classification.
 
-#### Scenario: Ordinary group message
+#### Scenario: Self message
 
-- **WHEN** core receives a non-self group message that does not mention the bot
-- **THEN** it MUST call `agent.append()` with the platform message
+- **WHEN** the canonical sender ID equals the canonical source self ID
+- **THEN** core MUST classify the message as `ignore`
+- **AND** it MUST NOT prepare, persist, or submit that message
+
+#### Scenario: Scenario configured as append
+
+- **WHEN** a non-self message belongs to a scenario configured as `append`
+- **THEN** core MUST prepare the platform message and call `Agent.append()`
 - **AND** it MUST NOT trigger a reply by itself
 
-#### Scenario: Direct message
+#### Scenario: Scenario configured as reply while idle
 
-- **WHEN** core receives a non-self direct message
-- **THEN** it MUST process the platform message through `agent.run()`
-- **AND** it MUST consume the returned turn-scoped stream before rendering replies
+- **WHEN** a non-self message belongs to a scenario configured as `reply` and the channel has no active turn after preparation
+- **THEN** core MUST process the platform message through `Agent.run()`
+- **AND** the channel runtime MUST consume the returned turn stream
 
-#### Scenario: Group mention
+#### Scenario: Scenario configured as reply while busy
 
-- **WHEN** core receives a non-self group message that mentions the bot
-- **THEN** it MUST process the platform message through `agent.run()`
-- **AND** it MUST consume the returned turn-scoped stream before rendering replies
+- **WHEN** a non-self message belongs to a scenario configured as `reply` and the channel has an active turn after preparation
+- **THEN** core MUST call `Agent.send(message, { ifBusy: "join" })`
+- **AND** the joined input MUST use the existing turn's stream owner
 
-#### Scenario: Busy direct or mentioned message
+#### Scenario: Adapter refines canonical message facts
 
-- **WHEN** a direct or mentioned message arrives while the channel runtime has an active turn
-- **THEN** core MUST send it with join behavior so it enters the active turn as explicit joined input
-
-#### Scenario: Run stream consumption shape
-
-- **WHEN** core starts a direct or mentioned turn
-- **THEN** it MAY assign the `run()` result to a local stream variable and consume it with `for await`
-- **AND** it MUST NOT depend on a public `waitTurn(turnId)` API
+- **WHEN** the selected adapter returns a refined platform message during collection
+- **THEN** runtime identity, Agent context, sender checks, mention checks, and persistence MUST use the refined message
+- **AND** core MUST NOT restore conflicting values from the raw Session
 
 ### Requirement: Platform Message Model Projection
 
@@ -258,14 +292,19 @@ Core MUST expose the plugin-facing platform service only through `ctx.yesimbot.p
 
 ### Requirement: FIFO Channel Message Lifecycle
 
-For each admitted channel input, core MUST serialize static classification, message preparation, channel Agent resolution, the final runtime busy read, and the initial append/send/run submission in the per-channel FIFO. Static classification MUST produce `ignore`, `append`, or `reply` without consulting busy state. Core MUST return immediately for `ignore`. For `reply`, core MUST read `Agent.getActiveTurnId()` after preparation and immediately before submission, with no await between that read and `send(message, { ifBusy: "join" })` or `run(message)`. Model stream consumption, outbound response delivery, and terminal stream handling MUST occur outside the FIFO.
+For each admitted channel input, the channel runtime MUST serialize static classification, message preparation, channel Agent resolution, the final runtime busy read, and the initial append/send/run submission in the per-channel FIFO. Static classification MUST produce `ignore`, `append`, or `reply` without consulting busy state. The runtime MUST return immediately for `ignore`. For `reply`, it MUST read `Agent.getActiveTurnId()` after preparation and immediately before submission, with no await between that read and `send(message, { ifBusy: "join" })` or `run(message)`. Model stream consumption, output projection, delivery, and terminal stream handling MUST occur outside the FIFO.
 
 #### Scenario: Two messages arrive in one channel
 
 - **WHEN** two eligible messages arrive for the same channel
 - **THEN** core MUST complete the first message's preparation and initial submission before starting the second message's preparation
 - **AND** core MUST make each reply's busy decision only after its preparation completes
-- **AND** core MUST allow model turn stream consumption to proceed outside the lifecycle lock
+- **AND** core MUST allow model turn stream consumption and delivery to proceed outside the lifecycle lock
+
+#### Scenario: Messages arrive in different channels
+
+- **WHEN** eligible messages arrive for different channel scope IDs
+- **THEN** one channel's lifecycle FIFO MUST NOT serialize the other channel's preparation or initial submission
 
 ### Requirement: Reset Is Ordered With Preparation
 
@@ -328,23 +367,24 @@ Core MUST inject built-in runtime plugins before externally registered runtime p
 
 ### Requirement: Assistant Reply Rendering
 
-Core MUST send all non-empty assistant text messages produced by a direct or mentioned message turn.
+Core MUST collect all non-empty assistant text messages produced by a reply turn, project them into ordered Koishi fragments, and submit them to DeliveryService through the original Session. The channel runtime MUST own stream consumption and MUST NOT call `session.send()` directly.
 
 #### Scenario: Multiple assistant texts from run stream
 
-- **WHEN** a direct or mentioned turn emits one or more turn-scoped `message.appended` events whose message role is `assistant` and text is non-empty
-- **THEN** core MUST send each corresponding text message to the Koishi channel in generation order
+- **WHEN** a reply turn emits one or more turn-scoped `message.appended` events whose message role is `assistant` and text is non-empty
+- **THEN** core MUST preserve generation order when projecting those messages
+- **AND** it MUST submit the ordered outputs to passive delivery exactly once for that turn
 
 #### Scenario: Empty or non-assistant output
 
 - **WHEN** the turn stream contains empty assistant text, tool messages, or non-text content only
-- **THEN** core MUST NOT send those outputs as channel replies
+- **THEN** core MUST NOT submit those outputs as channel replies
 
 #### Scenario: Failed turn during stream consumption
 
 - **WHEN** the turn stream yields `turn.failed`
-- **THEN** core MUST treat the direct or mentioned processing as failed
-- **AND** it MUST follow the existing error-handling requirement for direct or mentioned turns
+- **THEN** the channel runtime MUST treat the reply processing as failed
+- **AND** it MUST follow the error-handling requirement for reply turns
 
 ### Requirement: Channel Reset
 
@@ -373,30 +413,41 @@ Core MUST support current-channel reset through the `ctx.yesimbot.resetChannel(s
 
 ### Requirement: Error Handling
 
-Core MUST keep first-version user-visible errors minimal and log session processing failures.
+Core MUST keep first-version user-visible errors minimal, log channel processing failures, and route any user-visible error output through DeliveryService. Delivery failure MUST NOT roll back an Agent or storage operation that already completed.
 
-#### Scenario: Direct or mentioned turn failure
+#### Scenario: Reply turn failure
 
-- **WHEN** direct or mentioned message processing fails
+- **WHEN** a message classified as `reply` fails during preparation, Agent submission, or stream consumption
 - **THEN** core MUST log the failure
-- **AND** it MAY send a generic development-time error message to the current channel
+- **AND** it MAY ask DeliveryService to send one generic development-time error message through the original Session
 
 #### Scenario: Ordinary append failure
 
-- **WHEN** ordinary group message append fails
+- **WHEN** a message classified as `append` fails
 - **THEN** core MUST log the failure
 - **AND** it MUST NOT send a proactive channel reply
 
+#### Scenario: Error reply delivery fails
+
+- **WHEN** delivery of the generic error output fails
+- **THEN** core MUST log the delivery failure
+- **AND** it MUST NOT attempt another user-visible error delivery
+
 ### Requirement: Runtime Disposal
 
-Core MUST interrupt and stop known channel runtimes during Koishi disposal.
+Core MUST stop accepting new channel runtime operations, interrupt and stop known channel Agents, wait for owned turn stream consumers to terminate, and clear the runtime cache during Koishi disposal. Disposal MUST NOT clear persisted channel history or assets.
 
 #### Scenario: Koishi dispose
 
 - **WHEN** Koishi disposes the core plugin
-- **THEN** core MUST iterate over cached channel runtimes
-- **AND** it MUST attempt to interrupt and stop each runtime
-- **AND** it MUST clear the runtime cache
+- **THEN** the channel runtime MUST reject new handle and reset operations
+- **AND** it MUST attempt to interrupt and stop each cached Agent
+- **AND** it MUST wait for owned stream consumers to terminate and clear the runtime cache
+
+#### Scenario: Persisted data during disposal
+
+- **WHEN** runtime disposal completes
+- **THEN** core MUST preserve channel JSONL history and channel assets
 
 ### Requirement: Default Runtime Terminal Tool Enablement
 
