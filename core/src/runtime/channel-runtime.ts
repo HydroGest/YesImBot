@@ -7,10 +7,10 @@ import type {
   AgentStorage,
 } from "@yesimbot/agent-runtime";
 import { createAgent } from "@yesimbot/agent-runtime";
-import type { Context, Logger, Session } from "koishi";
+import { merge, type Context, type Logger, type Session } from "koishi";
 
 import { ensureChannelScopeRecord, type ChannelScope, type ChannelScopeId } from "../channel.js";
-import { DEFAULT_MESSAGE_ROUTING, type Config, type MessageRoutingConfig } from "../config.js";
+import { type Config, type MessageRoutingConfig } from "../config.js";
 import type { DeliveryService } from "../delivery/service.js";
 import type { PlatformService } from "../platform/service.js";
 import type { Platform } from "../platform/types.js";
@@ -46,7 +46,11 @@ export class ChannelRuntime {
   private stopTask: Promise<void> | undefined;
 
   constructor(private readonly options: ChannelRuntimeOptions) {
-    this.routing = { ...DEFAULT_MESSAGE_ROUTING, ...options.config.routing };
+    this.routing = merge(options.config.routing ?? {}, {
+      direct: "reply",
+      group: "append",
+      mention: "reply",
+    }) as MessageRoutingConfig;
   }
 
   async handle(message: Platform.Message, session: Session): Promise<void> {

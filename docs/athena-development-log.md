@@ -11,9 +11,9 @@ Athena 已经重写过不止一次。
 
 每次重写都很容易产生一种错觉：新目录好像从来如此，旧架构只是“历史包袱”，当时的动机已经不重要。当前 `dev` 分支又经过了压缩，单看主线提交无法恢复全部过程。如果只看今天的代码，就会看不见为什么 willingness 曾经那么重要，为什么又被删掉；为什么曾经做了完整的 Session Runtime，最后却抽出了更小的 `agent-runtime`；为什么平台系统先走向 Reader、View 和 Snapshot，随后又把这些抽象全部撤回。
 
-这份日志用于保存这些转折。
+这份日志用于保存影响产品方向和系统边界的转折。
 
-它不是发布说明，也不是对过去代码的辩护。我要记录的是：当时试图解决什么，为什么选择那条路，实践暴露了什么，哪些偏好一直没有变，哪些结论已经被推翻。
+它不是发布说明、任务流水或对过去代码的辩护。我要记录的是：哪个长期问题促成了变化，为什么接受或放弃某项设计，这项变化如何影响后续演进。普通修复和机械活动由 CHANGELOG、commit、PR 或 OpenSpec artifacts 保存。
 
 ## 2. 证据标记
 
@@ -201,46 +201,26 @@ Session
 
 这次重构还明确拒绝旧数据兼容。当前分支是全新实现，未发布的历史 JSONL 不足以成为长期负担。
 
-### 2026-07-20：最终复审暴露“规格通过不等于集成完整”
-
-证据：`.superpowers/sdd/final-review-report.md`、repair reports 和归档 `review-fix-verify.md` `[D]`。
-
-全部 Phase 和测试通过后，最终 reviewer 仍发现十项问题，其中包括：
-
-- Memos 仍读取旧 `MessageRecord` 形状；
-- `Readonly<Message>` 只是浅只读，Adapter 能修改权威消息；
-- OneBot 的前四张限制只统计远程图片；
-- PNG 签名只验证了前四个字节；
-- forward 丢弃 string-valued `message`；
-- 类型契约测试没有真正进入 TypeScript 检查；
-- 并发、临时文件清理和公开构造器边界仍有缺口。
-
-这些问题随后全部修复。这里的教训比“多写测试”更具体：
-
-- 变更生产者协议时，必须搜索所有跨包消费者和测试 fixture。
-- `readonly` 不是信任边界，外部 hook 输入需要隔离。
-- 数量限制要先定义“统计什么”，再过滤可执行项。
-- 类型测试只有被 `tsc` 执行时才存在。
-- 最终审查应该在所有实现 Phase 之后进行，因为跨模块错误经常只有在全局视角下出现。
-
-### 2026-07-20：归档简化 change，重基线未来平台设计
-
-证据：归档目录 `openspec/changes/archive/2026-07-20-simplify-platform-adapter-model/` 和主 specs `[D]`。
-
-五份 delta specs 被同步为主规范。自动归档最初因为 `MODIFIED` scenario 处理方式拒绝同步，最终采用 agent-driven sync 后以 `--skip-specs` 完成归档。
-
 旧 `design-platform-adapter-system` 没有立即继续 Slice 02。它必须先按新基线重写：事件消费者、新平台和模型媒体能力应成为独立 change，不能恢复 Reader/View/Snapshot 或把 world state 当成既定需求。
 
-### 2026-07-21：拆分愿景与开发日志
+### 2026-07-21：重设计 core 消息运行时，明确四个 owner
 
-证据：本次文档调整 `[D]`。
+证据：`f1a607d` `[C]`；`core-runtime-integration`、`message-delivery` 和 `platform-message-ingestion` 主规范 `[D]`。
 
-原文同时承担愿景、架构说明、路线图和开发日记，导致旧设想与当前事实混在一起。现在拆成两份：
+平台模型收敛后，core 仍把分类、FIFO、Agent cache、stream、reset、stop 和输出编排集中在 `YesImBotService`。Session 和 `Platform.Message` 同时参与路由，频道生命周期与 Koishi composition 也没有清晰 owner。
 
-- 愿景文档只保留稳定方向、当前基线、延后事项和维护规则。
-- 本日志按时间记录实现、失败、偏好和证据。
+新的边界把 `channelType` 纳入 `Platform.Message.scope` 和持久化 record。Core 只在 draft 阶段从真实 Session 读取一次 directness，后续 self、mention、direct/group 和 channel key 全部从 canonical message 推导。原始 Session 只作为平台准备和被动回复的操作依赖，不能参与路由、持久化、Agent context 或跨 `handle()` 缓存。
 
-这次调整也确定了历史取证规则：当前分支不是唯一来源。旧版本要同时查看 tags、远程或临时分支、`references/YesImBot-*` 和 `references/#legacy`。
+Core 的消息路径变成四个明确 owner：
+
+```text
+PlatformService
+  -> ChannelRuntime（分类、FIFO、Agent、stream、reset/stop）
+  -> DeliveryService（reply/send、顺序、receipt、状态事件）
+  -> Koishi Session / Bot
+```
+
+`YesImBotService` 只负责 Koishi middleware、reset command、AgentPlugin factory 和 delegation。`ChannelRuntime.handle/reset/stop` 隐藏 Agent cache、JSONL storage、busy join、stream owner 和 teardown 顺序；`DeliveryService` 复用 `Session.send()` 与 `Bot.sendMessage()`，保留包括空数组在内的 `string[]` message IDs，并以 `sent`、`partial`、`failed` 表达保守结果。
 
 ## 4. 决策索引
 
@@ -267,7 +247,9 @@ Session
 | P-17 | 未发布旧格式不提供兼容层 | 当前分支明确偏好 |
 | P-18 | Prompt 使用固定 core prompt 加 `AGENTS.md`、`PERSONA.md` | 已实施 |
 | P-19 | 公共 API 只为现有用例服务 | KISS / YAGNI 原则 |
-| P-20 | 最终审查放在串行实现 Phase 之后 | 2026-07 修复周期验证有效 |
+| P-21 | `Platform.Message` 是路由事实的唯一来源 | Session 只保留为准备和被动回复的操作依赖 |
+| P-22 | `ChannelRuntime` 独占频道 Agent 生命周期 | `YesImBotService` 只做 Koishi composition 与 delegation |
+| P-23 | `DeliveryService` 独占出站顺序、receipt 和状态观察 | 复用 Koishi Session/Bot，不增加平台 delivery adapter |
 
 ### 明确延后
 
@@ -316,18 +298,6 @@ Session
 - 跨包协议变更必须检查消费者和 fixture。
 - 不为了通过检查修改无关文件或做样式 churn。
 
-### 2026-07 平台修复周期的执行偏好
-
-以下偏好属于该周期的协作方式，不自动升级为永久项目规则：
-
-- 不使用 worktree；
-- 文件修改 Phase 串行，禁止多个代理同时写同一工作区；
-- worker 作为 general 实现代理；
-- 每个 Phase 自测并写 `.superpowers/sdd` 报告；
-- 全部 Phase 后只做一次总复审；
-- `.superpowers` 不进入提交；
-- 格式问题交给 formatter，不做人工风格争论。
-
 ## 6. 反复出现的教训
 
 ### 6.1 产品概念不等于核心模块
@@ -348,11 +318,7 @@ v3、v4 beta、Session Runtime 和当前 agent-runtime 都有删除前一版的�
 
 ### 6.5 规格也必须接受代码反馈
 
-OpenSpec 能防止实现漂移，但设计文档不是权威到不可推翻。平台第一版规格在实现后暴露过度抽象，随后通过新的 change 修正并归档，这是正常流程。
-
-### 6.6 通过测试不代表完成跨包迁移
-
-Memos 的旧 fixture、未被 `tsc` 执行的类型测试和浅 `Readonly` 都曾在绿灯下存在。完成标准必须包含跨包搜索、类型边界和最终全局审查。
+OpenSpec 能防止实现漂移，但设计文档不是权威到不可推翻。平台第一版规格在实现后暴露过度抽象，当前规范因此收窄了公开协议和 owner 边界。
 
 ## 7. 尚未回答的问题
 
@@ -371,24 +337,33 @@ Memos 的旧 fixture、未被 `tsc` 执行的类型测试和浅 `Readonly` 都�
 
 新的重大变化按日期追加。旧判断被推翻时，在旧条目旁保留原意，再新增“取代”条目。除非事实证据错误，不为了让故事更顺而删除尴尬阶段。
 
+追加原则只保护产品判断和系统演进。误写进日志的执行流水、普通修复和机械活动应删除或移到对应载体，不能因为“已经记录”而永久保留。
+
 ### 8.2 每次重大变更记录五件事
 
 1. 日期和证据。
-2. 当时的问题。
-3. 选择了什么。
-4. 放弃了什么。
-5. 后来证明了什么。
+2. 哪个产品判断、系统边界或长期方向发生了变化。
+3. 接受了什么。
+4. 放弃或取代了什么。
+5. 这项变化如何影响后续演进。
 
 ### 8.3 何时算重大变化
 
 - 新的 runtime、消息真相或持久化模型；
 - 公共 API 的破坏性调整；
 - 产品方向正式接受、延后或否决；
-- 一次完整 OpenSpec change 归档；
-- 一轮实现暴露了可复用的工程教训；
+- 改变系统架构、数据完整性或安全边界认知的重大专项 bug 修复；
 - 新版本备份或历史证据被发现，足以纠正现有叙述。
 
-普通 bug、依赖升级和格式变更留在 CHANGELOG 或 commit 中，不进入这里。
+以下内容不进入开发日志：
+
+- 普通 bug 修复、review finding 和测试补强；
+- task/Phase 进度、代理调度、工具故障和人工例外；
+- build、type check、format、validation 和测试数量；
+- spec sync、commit、PR、archive 和发布操作；
+- 依赖升级、文件移动和格式变更。
+
+这些内容分别留在 commit/PR、CHANGELOG、OpenSpec artifacts 或 archived retrospective 中。
 
 ### 8.4 更新决策索引
 
@@ -403,12 +378,13 @@ Memos 的旧 fixture、未被 `tsc` 执行的类型测试和浅 `Readonly` 都�
 
 | 文档 | 负责内容 |
 | --- | --- |
-| 本日志 | 时间线、动机、失败、偏好、证据 |
+| 本日志 | 产品判断、系统演进、长期偏好及其证据 |
 | 愿景文档 | 稳定产品方向和当前边界 |
 | `AGENTS.md` | 当前仓库事实与工作规则 |
-| `CHANGELOG.md` | 面向版本的用户可见变化 |
+| `CHANGELOG.md` | 面向版本的功能变化和普通 bug 修复 |
 | `openspec/specs/` | 当前规范要求 |
-| archived change retrospective | 单次变更的量化复盘 |
+| OpenSpec change / retrospective | 单次变更的任务、验证、review、同步和归档记录 |
+| commit / PR | 具体实现、机械操作和低层证据 |
 
 ### 8.6 取证顺序
 

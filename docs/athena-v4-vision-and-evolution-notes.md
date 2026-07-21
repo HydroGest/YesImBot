@@ -82,12 +82,14 @@ Athena 需要可持续的人格，但人格不应依赖难以追踪的模板变�
 
 ```text
 Platform Session
-  -> core 平台采集与净化
-  -> 每频道 FIFO 生命周期
-  -> @yesimbot/agent-runtime
-  -> AgentPlugin / tools / model providers
-  -> Koishi 输出
+  -> PlatformService（采集、refine、资源准备）
+  -> ChannelRuntime（分类、FIFO、Agent、stream、reset/stop）
+      -> @yesimbot/agent-runtime + AgentPlugin / tools / providers
+  -> DeliveryService（reply/send、receipt、状态事件）
+  -> Koishi Session / Bot
 ```
+
+`YesImBotService` 只组合这些 owner，注册 middleware、reset command 和 AgentPlugin factory，再把消息、reset 与 stop 委托给 `ChannelRuntime`。它不再持有第二套 Agent cache、FIFO、stream consumer 或出站发送流程。
 
 ### 4.1 `@yesimbot/agent-runtime`
 
@@ -106,8 +108,10 @@ Platform Session
 Koishi core 是集成层，负责：
 
 - 模型注册和配置；
-- 平台消息收集；
-- 每频道 runtime 缓存与 FIFO；
+- 通过 `PlatformService` 收集、细化和准备平台消息；
+- 通过 `ChannelRuntime` 管理每频道 runtime cache、FIFO、Agent lifecycle 和 stream ownership；
+- 通过 `DeliveryService` 管理被动回复、目标发送、顺序与保守 receipt；
+- 通过 `YesImBotService` 组合 Koishi middleware、command 和插件注册；
 - prompt 文件加载；
 - JSONL channel history；
 - 模型输出渲染；
@@ -156,9 +160,25 @@ Session 收集阶段按确定顺序匹配 Adapter。`accepts() === false` 可以
 
 分类、准备、Agent 解析、最终 busy 读取和首次 `append`、`send(join)` 或 `run` 提交在同一频道 FIFO 内完成。模型流消费在 FIFO 外继续，避免长 turn 阻塞后续消息。
 
-Reset 进入同一 FIFO，按 interrupt、stop、消息存储清理、资产清理、runtime cache 删除的顺序执行。
+最终 busy read 与 `send(join)` / `run` 之间没有 `await`。一个 `run()` 只有一个 stream owner；后来 join 的消息不创建第二个 consumer。`handle()` 在 FIFO 外等待自己拥有的 stream，因此原始 Session 不会在 active handle 结束后继续被后台任务持有。
 
-### 5.5 消息格式由 core 固定
+Reset 进入同一 FIFO，按 interrupt、stop、消息存储清理、资产清理、runtime cache 删除的顺序执行。全局 stop 等待 owned streams，并隔离单个 Agent teardown 或 diagnostic 失败，避免一处错误跳过其他频道清理。
+
+### 5.5 Canonical message 是路由事实的唯一来源
+
+`Platform.Message.scope.channelType` 必须是 `private` 或 `group`。Core 在 draft 阶段从真实 Koishi Session 读取一次 directness；后续 self、mention、direct/group、channel key、context 和 storage 都只读取 canonical message。
+
+原始 Session 只服务两个当前用例：平台准备和被动回复。Core 不展开或重建 Session，不把它传给 `agent-runtime`，也不在 `ChannelRuntime.handle()` 结束后缓存它。
+
+Direct、group mention 和普通 group 的 `append` / `reply` 策略可以独立配置。Self-message ignore 固定存在，不开放配置。
+
+### 5.6 出站消息由 DeliveryService 统一编排
+
+被动回复使用原始 `Session.send()`，目标发送先按 platform/selfId 解析一个 Bot，再使用 `Bot.sendMessage()`。一个逻辑输出按 fragment 顺序提交，失败后停止后续 fragment，并返回 `sent`、`partial` 或 `failed` receipt。
+
+Receipt 保留 Koishi 返回的全部 `string[]` message IDs，包括合法的空数组。Process-local listener 可以观察 started 和 terminal 状态，但 listener 或 diagnostic 失败不能中断 delivery。Core 不增加 per-platform delivery adapter，也不重写 Satori/Koishi encoder。
+
+### 5.7 消息格式由 core 固定
 
 模型看到的头部格式是：
 
@@ -169,7 +189,7 @@ Reset 进入同一 FIFO，按 interrupt、stop、消息存储清理、资产清�
 
 `time` 和 `sender` 始终存在，`id` 只在活动插件声明需要消息 ID 时存在。Adapter 不能提供自定义 prompt header 或模板。
 
-### 5.6 二进制资源采用固定预算
+### 5.8 二进制资源采用固定预算
 
 首版图片规则是：
 
@@ -183,7 +203,7 @@ Reset 进入同一 FIFO，按 interrupt、stop、消息存储清理、资产清�
 
 预算属于 core policy，不是公开可配置的 Adapter 协议。
 
-### 5.7 公开协议宁可小，也不为未来留空壳
+### 5.9 公开协议宁可小，也不为未来留空壳
 
 当前明确拒绝在平台层重新引入：
 
