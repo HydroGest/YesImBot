@@ -169,7 +169,7 @@ it("seals image, quote, and forward elements without changing literals", () => {
   expect(elements.map((element) => element.toString())).toEqual([
     '<img unavailable="true"/>',
     '<quote id="q-1"/>',
-    '<forward id="f-1"/>',
+    '<forward id="f-1" summary="[合并转发] 使用 onebot_get_forward_message 查看详情"/>',
   ]);
 });
 ```

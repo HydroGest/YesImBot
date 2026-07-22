@@ -1,8 +1,8 @@
 ## 1. Establish Channel And Shared Foundations
 
-- [ ] 1.1 Introduce `ChannelScope` key/path operations and migrate focused channel tests.
-- [ ] 1.2 Move `AssetStore` into `core/src/shared/asset.ts` without changing scoped persistence semantics.
-- [ ] 1.3 Define the shared sealed-element protocol and migrate asset/element limit tests.
+- [x] 1.1 Introduce `ChannelScope` key/path operations and migrate focused channel tests.
+- [x] 1.2 Move `AssetStore` into `core/src/shared/asset.ts` without changing scoped persistence semantics.
+- [x] 1.3 Define the shared sealed-element protocol and migrate asset/element limit tests.
 
 ## 2. Define The Event Contract
 
