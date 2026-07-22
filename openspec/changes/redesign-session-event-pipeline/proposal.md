@@ -6,7 +6,7 @@ Athena's current platform path duplicates parts of Koishi, keeps Session-linked 
 
 **Session and platform handling**
 - From: `PlatformService` selects flat adapters, caches Session state, refines messages, prepares resources, publishes events, projects model messages, and owns channel assets.
-- To: `SessionGateway` owns one per-platform `SessionResolver`, Satori fallback, resource freezing, passive Session delivery, and delivery-failure reinjection.
+- To: `Gateway` owns one per-platform `SessionResolver`, Satori fallback, resource freezing, passive Session delivery, and delivery-failure reinjection.
 - Reason: Session-specific work must stay at the Koishi edge and complete before persistence.
 - Impact: Breaking. `ctx.yesimbot.platform`, `Platform.*` message abstractions, and the old adapter contract are removed.
 
@@ -18,13 +18,13 @@ Athena's current platform path duplicates parts of Koishi, keeps Session-linked 
 
 **Output and delivery feedback**
 - From: core waits for a turn to finish, sends accumulated outputs through `DeliveryService`, and only logs failed passive delivery.
-- To: complete assistant messages become message-level outbound events as soon as they are appended; `SessionGateway` sends each one through `Session.send()` and persists `delivery.failed` when a send rejects.
+- To: complete assistant messages become message-level outbound events as soon as they are appended; `Gateway` sends each one through `Session.send()` and persists `delivery.failed` when a send rejects.
 - Reason: users should receive complete responses promptly, and future model context must reflect platform delivery failures.
 - Impact: Breaking. `ctx.yesimbot.delivery` and delivery listeners are removed.
 
 **Public extension surface**
-- Add `ctx.yesimbot.registerSessionResolver()` for one resolver per Koishi platform.
-- Add `ctx.yesimbot.registerWillFactory()` for one replaceable per-channel Will implementation.
+- Add `ctx.yesimbot.registerResolver()` for one resolver per Koishi platform.
+- Add `ctx.yesimbot.registerWill()` for one replaceable per-channel Will implementation.
 - Keep Agent plugin registration and the reset facade without exposing Gateway, RuntimeManager, ChannelRuntime, AssetStore, or submit internals.
 
 ## Capabilities
@@ -33,7 +33,7 @@ Athena's current platform path duplicates parts of Koishi, keeps Session-linked 
 - `channel-will-evaluation`: Defines per-channel Will instances, read-only channel state, `wait | trigger` decisions, and the default routing implementation.
 
 ### Modified Capabilities
-- `platform-message-ingestion`: Replaces flat adapter refinement and Session caching with `SessionGateway`, one `SessionResolver` per platform, Satori fallback, and atomic resource freezing.
+- `platform-message-ingestion`: Replaces flat adapter refinement and Session caching with `Gateway`, one `SessionResolver` per platform, Satori fallback, and atomic resource freezing.
 - `platform-event-contract`: Replaces publish-only platform events with accepted Satori-shaped runtime events persisted as channel EventRecords and observed through typed Koishi events.
 - `platform-message-formatting`: Projects all persisted EventRecords from local structured facts plus optional frozen content while preserving the fixed core envelope.
 - `core-runtime-integration`: Replaces the cross-channel ChannelRuntime with RuntimeManager plus one ChannelRuntime per channel and defines persistence, Will, busy-turn, output, reset, and stop ordering.
