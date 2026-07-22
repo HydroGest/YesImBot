@@ -2,82 +2,64 @@
 
 ## Purpose
 
-Define the deterministic core-owned projection of sealed platform messages into model input.
+Define the deterministic core-owned projection of persisted Event custom messages into model input, using stored Satori event resources and optional frozen content.
 
 ## Requirements
 
-### Requirement: Fixed Core Message Envelope
+### Requirement: Event Model Projection
+Core MUST project persisted `yesimbot.event` custom messages through one local Event projection path. Projection MUST read structured Satori resources and optional frozen content from `Event.data`. It MUST NOT invoke SessionResolver, Session, a platform API, or a replay-time platform formatter.
 
-Core MUST project an inbound platform message through one core-owned projection path that emits a fixed escaped key/value header, one newline, and text derived from sealed elements. Core MUST own field order, omission, escaping, element reading, local image projection, and the user model role. Header values MUST use `JSON.stringify()` encoding. Element reading MUST use Koishi element APIs (`h` parse/transform/stringify as needed). Adapters MUST NOT provide prompt headers, templates, `toModelMessages()` hooks, or AI SDK ModelMessages for ordinary inbound messages. Transform/projection helpers MUST NOT be required public plugin exports.
+#### Scenario: Persisted message event is projected
+- **WHEN** model projection receives an Event for `message`
+- **THEN** core MUST derive its header from stored event resources
+- **AND** it MUST derive its body only from the stored frozen content
 
-#### Scenario: Projection handles a message
+#### Scenario: Event has no frozen content
+- **WHEN** model projection receives an Event whose EventRecord has no content
+- **THEN** default projection MUST emit no model message for that record
 
-- **WHEN** model projection handles a persisted inbound platform message
-- **THEN** core MUST produce one user model message beginning with the fixed key/value header
-- **AND** it MUST place content text after exactly one header/content newline
-- **AND** it MUST NOT invoke a user-configurable template engine or adapter model-projection hook
+### Requirement: Fixed Core Event Envelope
+Core MUST project a message event as one user model message with a fixed escaped key/value header, one newline, and the frozen content body. Resolver and platform plugins MUST NOT provide prompt headers, templates, AI SDK ModelMessages, or replay-time projection hooks.
 
-### Requirement: Initial Header Fields
+#### Scenario: Message event is projected
+- **WHEN** a persisted message event has frozen content
+- **THEN** the resulting user message MUST begin with the fixed header
+- **AND** exactly one newline MUST separate header and body
 
-The envelope MUST emit `time` and `sender` in that order and MAY emit `id` between them only when an active channel plugin statically declares `requiresMessageId` because it exposes a message-operation tool. Core MUST derive this capability before creating the projection plugin; an adapter MUST NOT choose header fields. It MUST omit sender role in the first version. Header values MUST use one quoted escaping rule that prevents a value from creating a field, delimiter, or newline outside its own value.
+### Requirement: Deterministic Event Header Fields
+The message-event header MUST include `time` and `sender`. It MUST include raw platform message `id` only when an active channel plugin declares the static `requiresMessageId` capability. Header values MUST use `JSON.stringify()` escaping.
 
-#### Scenario: Message without a message-operation tool
+#### Scenario: Sender resources are available
+- **WHEN** an Event contains user and optional member display data
+- **THEN** `sender` MUST use `displayName (userID)` when a display name exists
+- **AND** it MUST use the raw user ID otherwise
 
+#### Scenario: Message operation tools are unavailable
 - **WHEN** no active channel plugin declares `requiresMessageId`
-- **THEN** the envelope MUST emit `time` followed by `sender`
-- **AND** it MUST omit `id`
+- **THEN** the header MUST omit `id`
 
-#### Scenario: Message with a message-operation tool
+### Requirement: Deterministic Event Time
+Core MUST format the header time from the stored runtime event timestamp with the `zh-CN` locale, the `Asia/Shanghai` time zone, and minute precision.
 
-- **WHEN** an active channel plugin declares `requiresMessageId` for a message-operation tool
-- **THEN** the envelope MUST emit raw platform message ID as quoted `id` between `time` and `sender`
+#### Scenario: Event timestamp is projected
+- **WHEN** core formats a persisted Event
+- **THEN** the same stored timestamp MUST produce the same displayed time after restart
 
-#### Scenario: Sender has a display name
+### Requirement: Local-Only Frozen Content Projection
+Core MUST parse and transform only the stored frozen Koishi literal. Private image references MUST resolve only through the matching channel scope in AssetStore. Missing assets MUST produce diagnostics and MUST NOT trigger remote retrieval.
 
-- **WHEN** the sender has display name and raw user ID
-- **THEN** the envelope MUST emit `sender` as `display name (raw user ID)` in one escaped quoted value
+#### Scenario: Frozen private image is projected
+- **WHEN** frozen content references an existing scoped image asset
+- **THEN** core MUST produce a local model image part from AssetStore bytes
 
-#### Scenario: Header value contains control syntax
+#### Scenario: Private asset is missing
+- **WHEN** frozen content references a missing private asset
+- **THEN** core MUST emit a diagnostic
+- **AND** it MUST continue projection without a platform API call
 
-- **WHEN** a header value contains quotes, newlines, brackets, or equals signs
-- **THEN** the envelope MUST escape it so it cannot create another header field or header/content boundary
+### Requirement: No Initial Frozen Content Cap
+Core MUST preserve the full frozen content for an accepted event except for explicit resource limits and event-specific resolver limits. It MUST NOT add a generic first-version content truncation step.
 
-### Requirement: Deterministic Message Time
-
-The envelope MUST use valid platform timestamp when present, otherwise core receipt time. It MUST render the instant in `Asia/Shanghai` using `zh-CN` locale conventions with minute precision.
-
-#### Scenario: Platform timestamp is unavailable
-
-- **WHEN** a persisted message has no valid platform timestamp
-- **THEN** the envelope MUST render receipt time as the `time` value with Asia/Shanghai minute precision
-
-### Requirement: No Initial Formatter Length Cap
-
-The initial projection MUST NOT truncate header values, element-derived text, or visible element attributes and MUST NOT expose a formatter length configuration.
-
-#### Scenario: Long formatted message
-
-- **WHEN** a persisted message contains long allowed text or allowed visible attributes
-- **THEN** projection MUST encode the complete sealed value without adding a truncation marker
-
-### Requirement: Core Local-Only Element Projection
-
-Core MUST project sealed elements recursively and in document order without a platform API, network access, forward/quote lookup, or persisted-content mutation. Text and local image parts MUST preserve their source document order. For a multimodal model path, core MAY read a validated channel-local image asset identified by a sealed `<img>` asset reference and append its bytes to the same user model message. Core MUST NOT append bytes for audio, video, file, forward-tool media, or unavailable images.
-
-#### Scenario: History is rebuilt
-
-- **WHEN** agent-runtime rebuilds model history
-- **THEN** core MUST use only persisted message data and local image assets
-- **AND** it MUST NOT retry external image, forward, or quote access
-
-#### Scenario: Nested content is projected
-
-- **WHEN** a sealed element tree contains nested text and validated local image references
-- **THEN** core MUST recursively project those nodes in document order
-- **AND** it MUST preserve that order in the resulting text and image model parts
-
-#### Scenario: Asset image is projected
-
-- **WHEN** sealed elements reference a validated local image asset and the selected model path supports image input
-- **THEN** core MAY append that local image to the same user model message
-- **AND** it MUST NOT expose the original external image URL
+#### Scenario: Long ordinary message is projected
+- **WHEN** a valid message event contains long text and remains within platform and model limits
+- **THEN** core MUST retain the full frozen text in model projection

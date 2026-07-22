@@ -2,62 +2,62 @@
 
 ## Purpose
 
-Define the typed, publish-only contract for platform adapters to distribute non-message events to platform subscribers.
+Define the Satori-shaped extensible EventMap, EventRecord types, accepted channel event persistence, typed committed event observation, and the separation between structured runtime event data and frozen model content.
 
 ## Requirements
 
-### Requirement: Publish-Only Structured Event
+### Requirement: Satori-Shaped Runtime Event Variants
+Core MUST define an extensible `EventMap` and MUST derive each EventRecord from the Satori Event shape plus variant-specific required resources and optional frozen content. Message, user, member, guild, and channel resources MUST follow Satori resource lifting.
 
-`Platform.Event` MUST contain source, scope, type, optional platform timestamp, typed structured data, and adapter-created frozen sanitized content. It MUST NOT contain core receipt time or a `receivedAt` field. `platform.publish(event)` MUST synchronously invoke event subscribers with the same semantic event. Core MUST NOT runtime-schema-validate the event or scan its data for JSON safety. Core MUST NOT create an agent custom message, write event data/content to channel JSONL, admit the event to LLM input, create an event archive, replay it, or route it to world state/willingness in this capability.
+#### Scenario: Message event is narrowed
+- **WHEN** core creates a `message` runtime event
+- **THEN** `event.message`, `event.user`, and `event.channel` MUST be available as top-level resources
+- **AND** consumers MUST NOT parse a parallel Source, Scope, or Sender model
 
-#### Scenario: Adapter creates event
+#### Scenario: Plugin adds an event variant
+- **WHEN** a plugin augments `EventMap`
+- **THEN** TypeScript MUST infer the structured data for that event discriminant
 
-- **WHEN** a platform adapter admits a supported non-message event
-- **THEN** it MUST provide a complete semantic event with type, source, primary scope, optional platform timestamp, typed data, and frozen sanitized content
-- **AND** the event MUST NOT include a core receipt timestamp
-- **AND** core MUST distribute that event only to platform subscribers
+### Requirement: Structured Event and Frozen Content Separation
+A resolved event MUST contain one structured runtime event and MAY contain one separately frozen Koishi literal for model projection. The structured runtime event MUST NOT use the frozen literal as its semantic data model.
 
-#### Scenario: Subscriber receives event
+#### Scenario: Plugin consumes an event
+- **WHEN** a plugin receives an Event
+- **THEN** it MUST be able to read structured event resources and typed variant data without parsing frozen content
 
-- **WHEN** a platform subscriber receives a standardized event
-- **THEN** it MUST be able to consume structured data without parsing frozen content
-- **AND** no event custom message or JSONL entry MUST be created
+#### Scenario: Event has no model content
+- **WHEN** a resolver accepts a structured event without model-facing content
+- **THEN** the event MUST remain persistable and available to Will
+- **AND** default model projection MUST emit no content body for it
 
-#### Scenario: Ordinary message is collected
+### Requirement: Accepted Channel Event Persistence
+Every EventRecord with a concrete channel MUST become one `yesimbot.event` Agent custom Event before Will evaluation. Core MUST NOT create a separate global event journal.
 
-- **WHEN** core collects or persists a `Platform.Message`
-- **THEN** it MUST NOT deliver that message to event subscribers
+#### Scenario: Non-message event is accepted
+- **WHEN** a SessionResolver returns a channel-scoped EventRecord
+- **THEN** ChannelRuntime MUST wrap and append its Event to the channel JSONL history
+- **AND** the record MUST preserve both structured event data and optional frozen content
 
-### Requirement: Extensible Typed Event Variants
+#### Scenario: Event is skipped
+- **WHEN** Gateway receives `null` from SessionResolver
+- **THEN** no Event MUST be created
 
-The public event type surface MUST support declaration merging through `PlatformEventVariants`-style variants so plugins receive compile-time types for their own event data while core retains a JSON-safe runtime boundary.
+### Requirement: Initial Channel Scope Restriction
+The first runtime version MUST route only events with a concrete `channel.id`. Channel-less guild or account events MUST be skipped without implicit fan-out or synthetic channel creation.
 
-#### Scenario: Plugin declares event variant
+#### Scenario: Event has no channel
+- **WHEN** a resolved candidate lacks `channel.id`
+- **THEN** RuntimeManager MUST NOT create a ChannelRuntime or persist the event
 
-- **WHEN** a platform plugin augments the event variant map
-- **THEN** code handling that type MUST receive the declared structured data type
-- **AND** core MUST treat the declaration as the trusted event-data contract without runtime validation
+### Requirement: Typed Committed Event Observation
+Core MUST publish `yesimbot/event` through Koishi after an Event is durably appended and before Will decides. The event argument MUST be the committed Event discriminated union.
 
-### Requirement: Event-Only Public Publication
+#### Scenario: Event record is committed
+- **WHEN** ChannelRuntime successfully appends an Event
+- **THEN** core MUST synchronously emit `yesimbot/event` with that record
+- **AND** it MUST invoke Will only after the observation attempt
 
-The public platform publication API MUST accept one complete `Platform.Event` and MUST NOT accept `Platform.Message` input. Core MUST synchronously publish the same semantic event without stamping, rewriting, or replacing it.
-
-#### Scenario: External plugin publishes event
-
-- **WHEN** an external plugin calls `platform.publish(event)` with a complete event
-- **THEN** core MUST synchronously distribute that same semantic event to subscribers
-- **AND** it MUST NOT add receipt metadata
-
-#### Scenario: Plugin attempts direct message publication
-
-- **WHEN** a plugin attempts to use public platform publication for an inbound message
-- **THEN** the public API MUST NOT provide a Message publication path
-
-### Requirement: Event Content Has No Generic Renderer
-
-The creating adapter MUST create event frozen content once. Core MUST NOT require Fact, EventView, semantic renderer nodes, event templates, template tokens, or generic rerendering to distribute the event.
-
-#### Scenario: Event is distributed
-
-- **WHEN** core publishes a standardized event
-- **THEN** it MUST distribute the adapter-frozen content unchanged by templates or Fact rendering
+#### Scenario: Event observer fails
+- **WHEN** a `yesimbot/event` listener throws
+- **THEN** core MUST record a diagnostic
+- **AND** it MUST continue to Will evaluation without undoing persistence
