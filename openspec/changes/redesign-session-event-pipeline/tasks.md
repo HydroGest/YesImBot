@@ -62,9 +62,9 @@
 
 ## 11. Migrate Plugins And Core Imports
 
-- [ ] 11.1 Change `AgentPluginFactory` context consumers from platform wrappers to `{ channel, bot }`.
-- [ ] 11.2 Migrate optional plugins while preserving message-id capabilities and existing tool behavior.
-- [ ] 11.3 Update providers and core imports to the confirmed root public contracts and internal module paths.
+- [x] 11.1 Change `AgentPluginFactory` context consumers from platform wrappers to `{ channel, bot }`.
+- [x] 11.2 Migrate optional plugins while preserving message-id capabilities and existing tool behavior.
+- [x] 11.3 Update providers and core imports to the confirmed root public contracts and internal module paths.
 
 ## 12. Remove Legacy Runtime Boundaries
 

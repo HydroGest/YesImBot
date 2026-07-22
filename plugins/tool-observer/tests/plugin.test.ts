@@ -1,4 +1,5 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
+import type { AgentPluginFactory } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -45,13 +46,13 @@ function createContext() {
     vi.fn<() => ReturnType<typeof createLogger>>(() => scopedLogger),
     createLogger(),
   );
-  const factories: Array<(context: never) => AgentPlugin> = [];
+  const factories: AgentPluginFactory[] = [];
   const dispose = vi.fn<() => void>();
   const ctx = {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      registerAgentPlugin: vi.fn<(factory: (context: never) => AgentPlugin) => () => void>(
+      registerAgentPlugin: vi.fn<(factory: AgentPluginFactory) => () => void>(
         (factory) => {
           factories.push(factory);
           return dispose;
@@ -69,12 +70,8 @@ function channelContext(sendMessage = vi.fn<() => Promise<void>>(async () => und
       platform: "onebot",
       selfId: "bot",
       channelId: "group",
-      type: "group",
     },
-    platform: {
-      name: "onebot",
-      unsafeBot: { sendMessage },
-    },
+    bot: { sendMessage },
   };
 }
 

@@ -38,6 +38,7 @@ vi.mock("../src/gateway/index.js", () => ({
 }));
 
 import type { Config } from "../src/config.js";
+import type { AgentPluginFactory } from "../src/index.js";
 import { YesImBotService } from "../src/service.js";
 
 const config: Config = { basePath: "data/yesimbot-service", chatModel: "mock:model" };
@@ -75,6 +76,15 @@ describe("YesImBotService facade", () => {
     expect(Object.keys(ctx.yesimbot)).not.toContain("config");
     expect("platform" in ctx.yesimbot).toBe(false);
     expect("delivery" in ctx.yesimbot).toBe(false);
+  });
+
+  it("accepts the public AgentPluginFactory context", () => {
+    const factory: AgentPluginFactory = async ({ channel, bot }) => ({
+      name: `plugin-${channel.platform}`,
+      tools: bot ? [] : [],
+    });
+
+    expect(factory).toBeTypeOf("function");
   });
 
   it("delegates resolver and reset registration to the composed boundaries", async () => {

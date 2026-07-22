@@ -1,4 +1,5 @@
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
+import type { AgentPluginFactory } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -38,13 +39,13 @@ function createContext() {
     vi.fn<() => ReturnType<typeof createLogger>>(() => scopedLogger),
     createLogger(),
   );
-  const factories: Array<(context: never) => AgentPlugin> = [];
+  const factories: AgentPluginFactory[] = [];
   const dispose = vi.fn<() => void>();
   const ctx = {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      registerAgentPlugin: vi.fn((factory: (context: never) => AgentPlugin) => {
+      registerAgentPlugin: vi.fn((factory: AgentPluginFactory) => {
         factories.push(factory);
         return dispose;
       }),
@@ -60,12 +61,8 @@ function createChannelContext(overrides: Record<string, unknown> = {}) {
       platform: "onebot",
       selfId: "bot",
       channelId: "group",
-      type: "group",
     },
-    platform: {
-      name: "onebot",
-      unsafeBot: undefined,
-    },
+    bot: {},
     ...overrides,
   };
 }
@@ -96,12 +93,9 @@ async function executeForward(
   const plugin = new OnebotUtilsPlugin(ctx as never, {});
   await plugin.start();
 
-  const runtimePlugin = factories[0]!({
+  const runtimePlugin = await factories[0]!({
     ...createChannelContext(),
-    platform: {
-      name: "onebot",
-      unsafeBot: { internal: { getForwardMsg } },
-    },
+    bot: { internal: { getForwardMsg } },
   } as never);
   const tools = await getTools(runtimePlugin);
   const tool = tools.find((item) => item.name === "onebot_get_forward_message");
@@ -132,19 +126,16 @@ describe("onebot-utils plugin", () => {
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!({
+    const runtimePlugin = await factories[0]!({
       channel: {
         platform: "discord",
         selfId: "bot",
         channelId: "channel",
-        type: "group",
       },
-      platform: {
-        name: "discord",
-      },
+      bot: {},
     } as never);
 
-    expect(await getTools(runtimePlugin)).toEqual([]);
+    expect(runtimePlugin).toBeNull();
   });
 
   it("exposes only the migrated OneBot tools", async () => {
@@ -153,7 +144,9 @@ describe("onebot-utils plugin", () => {
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!(createChannelContext() as never);
+    expect(factories[0]?.requiresMessageId).toBe(true);
+
+    const runtimePlugin = await factories[0]!(createChannelContext() as never);
     const tools = await getTools(runtimePlugin);
 
     expect(tools.map((tool) => tool.name)).toEqual([
@@ -169,7 +162,7 @@ describe("onebot-utils plugin", () => {
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!(createChannelContext() as never);
+    const runtimePlugin = await factories[0]!(createChannelContext() as never);
     const tools = await getTools(runtimePlugin);
     const tool = tools.find((item) => item.name === "onebot_get_forward_message");
 
@@ -187,14 +180,11 @@ describe("onebot-utils plugin", () => {
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!({
+    const runtimePlugin = await factories[0]!({
       ...createChannelContext(),
-      platform: {
-        name: "onebot",
-        unsafeBot: {
-          internal: {
-            getForwardMsg,
-          },
+      bot: {
+        internal: {
+          getForwardMsg,
         },
       },
     } as never);
@@ -322,13 +312,10 @@ describe("onebot-utils plugin", () => {
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!({
+    const runtimePlugin = await factories[0]!({
       ...createChannelContext(),
-      platform: {
-        name: "onebot",
-        unsafeBot: {
-          internal: {},
-        },
+      bot: {
+        internal: {},
       },
     } as never);
     const tools = await getTools(runtimePlugin);
@@ -346,14 +333,11 @@ describe("onebot-utils plugin", () => {
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!({
+    const runtimePlugin = await factories[0]!({
       ...createChannelContext(),
-      platform: {
-        name: "onebot",
-        unsafeBot: {
-          internal: {
-            _request: request,
-          },
+      bot: {
+        internal: {
+          _request: request,
         },
       },
     } as never);
@@ -375,7 +359,7 @@ describe("onebot-utils plugin", () => {
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!(createChannelContext() as never);
+    const runtimePlugin = await factories[0]!(createChannelContext() as never);
     const tools = await getTools(runtimePlugin);
     const tool = tools.find((item) => item.name === "onebot_set_essence");
 
@@ -391,14 +375,11 @@ describe("onebot-utils plugin", () => {
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!({
+    const runtimePlugin = await factories[0]!({
       ...createChannelContext(),
-      platform: {
-        name: "onebot",
-        unsafeBot: {
-          internal: {
-            setEssenceMsg,
-          },
+      bot: {
+        internal: {
+          setEssenceMsg,
         },
       },
     } as never);

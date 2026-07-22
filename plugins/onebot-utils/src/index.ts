@@ -1,6 +1,6 @@
 import { type AgentPlugin, type AgentTool, jsonSchema } from "@yesimbot/agent-runtime";
-import { Context, Logger, Schema } from "koishi";
-import type {} from "koishi-plugin-yesimbot";
+import { Context, Logger, Schema, type Bot } from "koishi";
+import type { AgentPluginFactory, ChannelScope } from "koishi-plugin-yesimbot";
 
 import type { OneBotCapableBot, OneBotInternal } from "./types.js";
 
@@ -242,6 +242,17 @@ function createOneBotTools(unsafeBot: unknown): AgentTool[] {
   return [getForwardMessageTool, createReactionTool, setEssenceTool];
 }
 
+const oneBotPluginFactory = Object.assign(
+  async ({ channel, bot }: { readonly channel: ChannelScope; readonly bot: Bot }) => {
+    if (channel.platform !== "onebot") return null;
+    return {
+      name: "onebot-utils",
+      tools: createOneBotTools(bot),
+    } satisfies AgentPlugin;
+  },
+  { requiresMessageId: true },
+) satisfies AgentPluginFactory;
+
 export default class OnebotUtilsPlugin {
   static name = "yesimbot-onebot-utils";
   static inject = ["yesimbot"];
@@ -264,20 +275,7 @@ export default class OnebotUtilsPlugin {
 
   async start(): Promise<void> {
     this.disposeAgentPlugin?.();
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((context) => {
-      if (context.channel.platform !== "onebot") {
-        return {
-          name: "onebot-utils",
-          tools: [],
-        } satisfies AgentPlugin;
-      }
-
-      return {
-        name: "onebot-utils",
-        requiresMessageId: true,
-        tools: createOneBotTools(context.platform.unsafeBot),
-      } satisfies AgentPlugin;
-    });
+    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin(oneBotPluginFactory);
   }
 
   async stop(): Promise<void> {

@@ -1,7 +1,7 @@
 import { encode } from "@toon-format/toon";
 import type { AgentPlugin, ToolCallContext, ToolResultContext } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
-import type {} from "koishi-plugin-yesimbot";
+import type { AgentPluginFactory } from "koishi-plugin-yesimbot";
 
 import { formatPreview, isJsonLike, redactJsonLike } from "./format.js";
 import { sendToolObserverMessage } from "./send.js";
@@ -67,7 +67,7 @@ export default class ToolObserverPlugin {
       return;
     }
 
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((channelContext) => {
+    const factory: AgentPluginFactory = ({ channel, bot }) => {
       const calls = new Map<string, number>();
 
       return {
@@ -96,8 +96,8 @@ export default class ToolObserverPlugin {
 
           try {
             await sendToolObserverMessage(
-              channelContext.platform.unsafeBot,
-              channelContext.channel.channelId,
+              bot,
+              channel.channelId,
               message,
               this.config.sendTimeoutMs,
             );
@@ -113,7 +113,8 @@ export default class ToolObserverPlugin {
           calls.clear();
         },
       } satisfies AgentPlugin;
-    });
+    };
+    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin(factory);
   }
 
   async stop(): Promise<void> {
