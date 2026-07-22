@@ -32,9 +32,9 @@
 
 ## 6. Build RuntimeManager
 
-- [ ] 6.1 Implement atomic get-or-create routing with one `ChannelRuntime` per channel key.
-- [ ] 6.2 Implement Will factory replacement, reset ordering, and global stop coordination.
-- [ ] 6.3 Verify same-channel concurrency, cross-channel isolation, failure isolation, and data preservation on stop.
+- [x] 6.1 Implement atomic get-or-create routing with one `ChannelRuntime` per channel key.
+- [x] 6.2 Implement Will factory replacement, reset ordering, and global stop coordination.
+- [x] 6.3 Verify same-channel concurrency, cross-channel isolation, failure isolation, and data preservation on stop.
 
 ## 7. Build Gateway Ingress And Resource Freezing
 
