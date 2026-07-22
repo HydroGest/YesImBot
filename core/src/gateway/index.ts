@@ -107,9 +107,40 @@ export class Gateway {
       return;
     }
     try {
-      await this.options.runtime.route(record);
+      const result = await this.options.runtime.route(record);
+      if (result.kind === "run") {
+        for await (const output of result.output) {
+          try {
+            await session.send(output.content);
+          } catch (cause) {
+            await this.recordDeliveryFailure(record, output, cause);
+          }
+        }
+      }
     } catch (cause) {
       this.warn("gateway.route_failed", cause, session.platform);
+    }
+  }
+
+  private async recordDeliveryFailure(
+    record: EventRecord,
+    output: { readonly turnId: string; readonly messageId: string },
+    cause: unknown,
+  ): Promise<void> {
+    const error = normalizeDeliveryError(cause);
+    const failure = {
+      type: "delivery.failed",
+      platform: record.platform,
+      selfId: record.selfId,
+      timestamp: Date.now(),
+      channel: record.channel,
+      delivery: { turnId: output.turnId, messageId: output.messageId, error },
+      content: `Delivery of assistant message ${output.messageId} failed: ${error.message}`,
+    } as EventRecord<"delivery.failed">;
+    try {
+      await this.options.runtime.route(failure);
+    } catch (feedbackCause) {
+      this.warn("delivery.failed", feedbackCause, record.platform);
     }
   }
 
@@ -203,6 +234,14 @@ function containsReference(value: unknown, target: object, seen = new WeakSet<ob
 
 function objectValue(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function normalizeDeliveryError(cause: unknown): { name: string; message: string; code?: string } {
+  const error = cause instanceof Error ? cause : new Error(String(cause));
+  const code = typeof (cause as { code?: unknown } | null)?.code === "string"
+    ? (cause as { code: string }).code
+    : undefined;
+  return { name: error.name, message: error.message, ...(code === undefined ? {} : { code }) };
 }
 
 function stringValue(value: unknown): string | undefined {

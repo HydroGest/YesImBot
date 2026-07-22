@@ -44,8 +44,8 @@
 
 ## 8. Build Gateway Delivery
 
-- [ ] 8.1 Consume `ChannelRuntime.Output` immediately and preserve Koishi `string[]` send receipts.
-- [ ] 8.2 Persist one `delivery.failed` EventRecord per rejected passive output and continue later outputs without recursion.
+- [x] 8.1 Consume `ChannelRuntime.Output` immediately and preserve Koishi `string[]` send receipts.
+- [x] 8.2 Persist one `delivery.failed` EventRecord per rejected passive output and continue later outputs without recursion.
 - [ ] 8.3 Keep all delivery operations internal and verify the public facade exposes no `DeliveryService`.
 
 ## 9. Switch Service Composition And Public API
