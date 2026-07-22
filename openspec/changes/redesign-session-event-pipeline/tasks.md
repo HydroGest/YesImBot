@@ -56,9 +56,9 @@
 
 ## 10. Migrate OneBot To SessionResolver
 
-- [ ] 10.1 Register `createResolver(ctx)` and preserve generic Satori message bases for supported message Sessions.
-- [ ] 10.2 Convert supported non-message events to typed `EventRecord` values and unsupported events to `null`.
-- [ ] 10.3 Move OneBot image acquisition behind `ResolveContext.freezeImage()` and pass focused tests and type checks.
+- [x] 10.1 Register `createResolver(ctx)` and preserve generic Satori message bases for supported message Sessions.
+- [x] 10.2 Convert supported non-message events to typed `EventRecord` values and unsupported events to `null`.
+- [x] 10.3 Move OneBot image acquisition behind `ResolveContext.freezeImage()` and pass focused tests and type checks.
 
 ## 11. Migrate Plugins And Core Imports
 
