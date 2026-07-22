@@ -1,24 +1,14 @@
 import { Schema } from "koishi";
 
-import { PlatformConfigSchema, type PlatformConfig } from "./platform/config.js";
+import type { DefaultWillConfig } from "./will/index.js";
 
-export type { PlatformConfig } from "./platform/config.js";
-export { DEFAULT_PLATFORM } from "./platform/config.js";
-
-export type MessageRoutingAction = "append" | "reply";
-
-export interface MessageRoutingConfig {
-  direct: MessageRoutingAction;
-  mention: MessageRoutingAction;
-  group: MessageRoutingAction;
-}
+export type { DefaultWillConfig } from "./will/index.js";
 
 export interface Config {
   basePath: string;
   chatModel: string;
   logLevel?: number;
-  platform?: PlatformConfig;
-  routing?: Partial<MessageRoutingConfig>;
+  will?: Partial<DefaultWillConfig>;
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -33,10 +23,10 @@ export const Config: Schema<Config> = Schema.intersect([
     ]).default(2) as Schema<number>,
   }).description("基础配置"),
   Schema.object({
-    routing: Schema.object({
-      direct: Schema.union(["append", "reply"]).default("reply"),
-      mention: Schema.union(["append", "reply"]).default("reply"),
-      group: Schema.union(["append", "reply"]).default("append"),
+    will: Schema.object({
+      direct: Schema.union(["wait", "trigger"]),
+      mention: Schema.union(["wait", "trigger"]),
+      group: Schema.union(["wait", "trigger"]),
     }),
   }).description("消息路由"),
 ]) as Schema<Config>;

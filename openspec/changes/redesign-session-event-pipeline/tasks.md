@@ -18,9 +18,9 @@
 
 ## 4. Implement Will Evaluation
 
-- [ ] 4.1 Define `Will.Decision`, `Will.State`, `Will.Factory`, and `DefaultWill` using namespace/interface merging.
-- [ ] 4.2 Test direct, mention, group, non-message, and delivery-failure routing decisions.
-- [ ] 4.3 Test typed `yesimbot/will` observations and optional Will shutdown behavior.
+- [x] 4.1 Define `Will.Decision`, `Will.State`, `Will.Factory`, and `DefaultWill` using namespace/interface merging.
+- [x] 4.2 Test direct, mention, group, non-message, and delivery-failure routing decisions.
+- [x] 4.3 Test typed `yesimbot/will` observations and optional Will shutdown behavior.
 
 ## 5. Build The One-Channel Runtime
 
