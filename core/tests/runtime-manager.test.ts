@@ -58,15 +58,15 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
   const resolveChatModel = vi.fn(() => ({ model }));
   Object.assign(ctx, { "yesimbot.model": { resolveChatModel } });
   const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
-  const getAgentPlugins = vi.fn(() => []);
+  const getAgentPluginFactories = vi.fn(() => []);
   const manager = new RuntimeManager({
     ctx,
     config: { basePath, chatModel: "test:model" },
     logger: { warn: vi.fn() } as never,
     assets: assets as never,
-    getAgentPlugins,
+    getAgentPluginFactories,
   });
-  return { manager, matchingBot, otherBot, model, resolveChatModel, assets, getAgentPlugins };
+  return { manager, matchingBot, otherBot, model, resolveChatModel, assets, getAgentPluginFactories };
 }
 
 function deferred<T>() {
@@ -110,14 +110,14 @@ describe("RuntimeManager", () => {
   });
 
   it("snapshots the model, agent plugins, and Will factory when creating a runtime", async () => {
-    const { manager, model, resolveChatModel, getAgentPlugins } = createManager();
+    const { manager, model, resolveChatModel, getAgentPluginFactories } = createManager();
     const firstWill = { decide: vi.fn(async () => "wait" as const) } satisfies Will;
     const secondWill = { decide: vi.fn(async () => "wait" as const) } satisfies Will;
     const firstPlugin = { name: "first" };
     const secondPlugin = { name: "second" };
     const firstFactory = vi.fn(async () => firstWill);
     const secondFactory = vi.fn(async () => secondWill);
-    getAgentPlugins.mockReturnValueOnce([firstPlugin]).mockReturnValueOnce([secondPlugin]);
+    getAgentPluginFactories.mockReturnValueOnce([async () => firstPlugin]).mockReturnValue([async () => secondPlugin]);
     manager.setWill(firstFactory);
 
     await manager.route(record("room-a"));
@@ -129,9 +129,22 @@ describe("RuntimeManager", () => {
     expect(firstFactory).toHaveBeenCalledOnce();
     expect(secondFactory).toHaveBeenCalledTimes(2);
     expect(state.runtimes[0]?.options).toMatchObject({ model, will: firstWill });
-    expect((state.runtimes[0]?.options.getAgentPlugins as Function)({})).toEqual([firstPlugin]);
+    expect(state.runtimes[0]?.options.agentPlugins).toEqual([firstPlugin]);
     expect(state.runtimes[1]?.options).toMatchObject({ model, will: secondWill });
     expect(state.runtimes[2]?.options).toMatchObject({ model, will: secondWill });
+  });
+
+  it("uses factory capabilities only for the runtime created from that factory snapshot", async () => {
+    const { manager, getAgentPluginFactories } = createManager();
+    const factory = Object.assign(vi.fn(async () => ({ name: "plain" })), { requiresMessageId: true });
+    getAgentPluginFactories.mockReturnValueOnce([factory]).mockReturnValueOnce([]);
+
+    await manager.route(record("room-a"));
+    await manager.route(record("room-b"));
+
+    expect(state.runtimes[0]?.options.includeMessageId).toBe(true);
+    expect(state.runtimes[1]?.options.includeMessageId).toBe(false);
+    expect(state.runtimes[0]?.options.agentPlugins).toEqual([{ name: "plain" }]);
   });
 
   it("removes a reset runtime from the cache only after its teardown completes", async () => {

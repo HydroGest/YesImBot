@@ -32,16 +32,6 @@
       "import": "./dist/model/index.js",
       "require": "./dist/model/index.cjs"
     },
-    "./platform": {
-      "types": "./dist/platform/index.d.ts",
-      "import": "./dist/platform/index.js",
-      "require": "./dist/platform/index.cjs"
-    },
-    "./shared": {
-      "types": "./dist/shared/index.d.ts",
-      "import": "./dist/shared/index.js",
-      "require": "./dist/shared/index.cjs"
-    },
     "./package.json": "./package.json"
   },
   "publishConfig": {

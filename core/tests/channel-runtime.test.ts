@@ -54,7 +54,11 @@ function record(overrides: Partial<EventRecord<"message">> = {}): EventRecord<"m
   } as EventRecord<"message">;
 }
 
-function createRuntime(will: Will, sendMessage = vi.fn(async () => ["sent-1"])) {
+function createRuntime(
+  will: Will,
+  sendMessage = vi.fn(async () => ["sent-1"]),
+  includeMessageId = false,
+) {
   const ctx = new Context();
   const logger = { warn: vi.fn() };
   const runtime = new ChannelRuntime({
@@ -66,7 +70,8 @@ function createRuntime(will: Will, sendMessage = vi.fn(async () => ["sent-1"])) 
     will,
     assets: { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() } as never,
     model: {} as never,
-    getAgentPlugins: () => [],
+    agentPlugins: [],
+    includeMessageId,
   });
   return { ctx, logger, runtime, sendMessage };
 }
@@ -196,6 +201,24 @@ describe("ChannelRuntime", () => {
       messageIds: ["sent-1"],
     });
     expect(sendMessage).toHaveBeenCalledWith("room-2", "hello");
+  });
+
+  it("uses the explicit factory capability when formatting a message event", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" }, undefined, true);
+    const formatter = (state.options?.plugins as Array<{ name: string; toModelMessages: Function }>).find(
+      (plugin) => plugin.name === "core.event-format",
+    );
+
+    await runtime.handle(record());
+    const messages = await formatter?.toModelMessages({
+      id: "event-1",
+      timestamp: 1,
+      role: "custom",
+      type: "yesimbot.event",
+      data: record(),
+    });
+
+    expect(messages[0].content).toContain('id="message-1"');
   });
 
   it("returns active-send errors without creating delivery events", async () => {

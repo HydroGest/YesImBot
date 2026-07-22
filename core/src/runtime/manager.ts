@@ -1,7 +1,7 @@
 import { isAbsolute, resolve } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
-import type { Bot, Context, Logger } from "koishi";
+import type { Awaitable, Bot, Context, Logger } from "koishi";
 
 import { channelKey, fromEvent, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
@@ -16,10 +16,15 @@ export interface RuntimeManagerOptions {
   readonly config: Config;
   readonly logger: Logger;
   readonly assets: Pick<AssetStore, "clear" | "readByAssetId">;
-  readonly getAgentPlugins: (context: {
+  readonly getAgentPluginFactories: () => readonly AgentPluginFactory[];
+}
+
+export interface AgentPluginFactory {
+  (context: {
     readonly channel: ChannelScope;
     readonly bot: Bot;
-  }) => readonly AgentPlugin[];
+  }): Awaitable<AgentPlugin | null>;
+  readonly requiresMessageId?: boolean;
 }
 
 interface RuntimeEntry {
@@ -117,7 +122,11 @@ export class RuntimeManager {
     );
     if (!bot) throw new Error(`No Bot is available for ${scope.platform}:${scope.selfId}`);
     const model = this.options.ctx["yesimbot.model"].resolveChatModel(this.options.config.chatModel).model;
-    const plugins = this.options.getAgentPlugins({ channel: scope, bot });
+    const factories = this.options.getAgentPluginFactories();
+    const plugins = (await Promise.all(factories.map((factory) => factory({ channel: scope, bot })))).filter(
+      (plugin): plugin is AgentPlugin => plugin !== null,
+    );
+    const includeMessageId = factories.some((factory) => factory.requiresMessageId === true);
     const will = await this.#willFactory(scope);
     return {
       generation,
@@ -130,7 +139,8 @@ export class RuntimeManager {
         will,
         assets: this.options.assets,
         model,
-        getAgentPlugins: () => plugins,
+        agentPlugins: plugins,
+        includeMessageId,
       }),
     };
   }

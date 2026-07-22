@@ -11,12 +11,6 @@ import { ChannelRuntime } from "./channel-runtime.js";
 
 export type AgentPluginFactory = (context: ChannelAgentContext) => AgentPlugin;
 
-declare module "koishi" {
-  interface Context {
-    yesimbot: YesImBotService;
-  }
-}
-
 export class YesImBotService extends Service<Config> {
   static readonly inject = ["yesimbot.model", "yesimbot.platform", "yesimbot.delivery"];
 

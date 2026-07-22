@@ -46,13 +46,13 @@
 
 - [x] 8.1 Consume `ChannelRuntime.Output` immediately and preserve Koishi `string[]` send receipts.
 - [x] 8.2 Persist one `delivery.failed` EventRecord per rejected passive output and continue later outputs without recursion.
-- [ ] 8.3 Keep all delivery operations internal and verify the public facade exposes no `DeliveryService`.
+- [x] 8.3 Keep all delivery operations internal and verify the public facade exposes no `DeliveryService`.
 
 ## 9. Switch Service Composition And Public API
 
-- [ ] 9.1 Compose one `AssetStore`, `RuntimeManager`, and `Gateway` in the top-level YesImBot service.
-- [ ] 9.2 Expose only model access, resolver/Will/Agent-plugin registration, reset, and stop with live disposers.
-- [ ] 9.3 Replace legacy routing configuration and package subpath exports with the confirmed Will/config surface.
+- [x] 9.1 Compose one `AssetStore`, `RuntimeManager`, and `Gateway` in the top-level YesImBot service.
+- [x] 9.2 Expose only model access, resolver/Will/Agent-plugin registration, reset, and stop with live disposers.
+- [x] 9.3 Replace legacy routing configuration and package subpath exports with the confirmed Will/config surface.
 
 ## 10. Migrate OneBot To SessionResolver
 

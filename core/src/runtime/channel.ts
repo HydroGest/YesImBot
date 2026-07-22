@@ -29,10 +29,8 @@ export interface ChannelRuntimeOptions {
   readonly will: Will;
   readonly assets: Pick<AssetStore, "clear" | "readByAssetId">;
   readonly model: LanguageModel;
-  readonly getAgentPlugins: (context: {
-    readonly channel: ChannelScope;
-    readonly bot: Bot;
-  }) => readonly AgentPlugin[];
+  readonly agentPlugins: readonly AgentPlugin[];
+  readonly includeMessageId: boolean;
 }
 
 class OutputQueue<T> implements AsyncIterable<T> {
@@ -132,8 +130,8 @@ export class ChannelRuntime {
 
   constructor(private readonly options: ChannelRuntimeOptions) {
     this.scope = Object.freeze({ ...options.scope });
-    const plugins = options.getAgentPlugins({ channel: this.scope, bot: options.bot });
-    const includeMessageId = plugins.some((plugin) => plugin.requiresMessageId === true);
+    const plugins = options.agentPlugins;
+    const includeMessageId = options.includeMessageId;
     const storage = createChannelStorage(resolveBasePath(options.config.basePath, options.ctx), this.scope);
     const tools: AgentToolSet = [
       {
