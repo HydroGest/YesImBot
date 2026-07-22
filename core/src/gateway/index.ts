@@ -1,4 +1,4 @@
-import { h, type Awaitable, type Element, type Session } from "koishi";
+import { Context, h, Logger, type Awaitable, type Element, type Session } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
 import type { EventRecord } from "../event/index.js";
@@ -22,69 +22,63 @@ export interface SessionResolver {
 }
 
 export interface GatewayOptions {
-  readonly ctx: {
-    middleware(
-      callback: (session: Session, next: () => Promise<unknown>) => Promise<void>,
-      prepend?: boolean,
-    ): unknown;
-    on(event: "internal/session", listener: (session: Session) => void): unknown;
-  };
-  readonly runtime: Pick<RuntimeManager, "route">;
-  readonly assets: Pick<AssetStore, "put">;
-  readonly logger: { warn(fields: Record<string, unknown>): void };
+  readonly ctx: Context;
+  readonly runtime: RuntimeManager;
+  readonly assets: AssetStore;
+  readonly logger: Logger;
 }
 
 export class Gateway {
-  #resolvers = new Map<string, SessionResolver>();
-  #handledSessions = new WeakSet<object>();
-  #handlers = new Set<Promise<void>>();
-  #disposers: Array<() => unknown> = [];
-  #closed = false;
+  private resolvers = new Map<string, SessionResolver>();
+  private sessions = new WeakSet<object>();
+  private tasks = new Set<Promise<void>>();
+  private disposers: Array<() => unknown> = [];
+  private closed = false;
 
-  constructor(private readonly options: GatewayOptions) {
-    const middleware = options.ctx.middleware(async (session, next) => {
+  constructor(private readonly opts: GatewayOptions) {
+    const middleware = opts.ctx.middleware(async (session, next) => {
       try {
         await this.handle(session);
       } finally {
         await next();
       }
     }, true);
-    if (typeof middleware === "function") this.#disposers.push(middleware as () => unknown);
+    if (typeof middleware === "function") this.disposers.push(middleware as () => unknown);
 
-    const internal = options.ctx.on("internal/session", (session) => {
+    const internal = opts.ctx.on("internal/session", (session) => {
       if (!isMessageSession(session)) void this.handle(session);
     });
-    if (typeof internal === "function") this.#disposers.push(internal as () => unknown);
+    if (typeof internal === "function") this.disposers.push(internal as () => unknown);
   }
 
   register(resolver: SessionResolver): () => void {
-    if (this.#resolvers.has(resolver.platform)) {
+    if (this.resolvers.has(resolver.platform)) {
       throw new Error(`Resolver for platform "${resolver.platform}" is already registered`);
     }
-    this.#resolvers.set(resolver.platform, resolver);
+    this.resolvers.set(resolver.platform, resolver);
     return () => {
-      if (this.#resolvers.get(resolver.platform) === resolver) {
-        this.#resolvers.delete(resolver.platform);
+      if (this.resolvers.get(resolver.platform) === resolver) {
+        this.resolvers.delete(resolver.platform);
       }
     };
   }
 
   async handle(session: Session): Promise<void> {
-    if (this.#closed || this.#handledSessions.has(session)) return;
-    this.#handledSessions.add(session);
-    const task = this.handleSession(session);
-    this.#handlers.add(task);
+    if (this.closed || this.sessions.has(session)) return;
+    this.sessions.add(session);
+    const task = this.route(session);
+    this.tasks.add(task);
     try {
       await task;
     } finally {
-      this.#handlers.delete(task);
+      this.tasks.delete(task);
     }
   }
 
   close(): void {
-    if (this.#closed) return;
-    this.#closed = true;
-    for (const dispose of this.#disposers.splice(0)) {
+    if (this.closed) return;
+    this.closed = true;
+    for (const dispose of this.disposers.splice(0)) {
       try {
         dispose();
       } catch {}
@@ -92,10 +86,10 @@ export class Gateway {
   }
 
   async drain(): Promise<void> {
-    await Promise.allSettled([...this.#handlers]);
+    await Promise.allSettled([...this.tasks]);
   }
 
-  private async handleSession(session: Session): Promise<void> {
+  private async route(session: Session): Promise<void> {
     let record: EventRecord | null;
     try {
       record = await this.resolve(session);
@@ -119,13 +113,13 @@ export class Gateway {
       return;
     }
     try {
-      const result = await this.options.runtime.route(record);
+      const result = await this.opts.runtime.route(record);
       if (result.kind === "run") {
         for await (const output of result.output) {
           try {
             await session.send(output.content);
           } catch (cause) {
-            await this.recordDeliveryFailure(record, output, cause);
+            await this.failDelivery(record, output, cause);
           }
         }
       }
@@ -134,7 +128,7 @@ export class Gateway {
     }
   }
 
-  private async recordDeliveryFailure(
+  private async failDelivery(
     record: EventRecord,
     output: { readonly turnId: string; readonly messageId: string },
     cause: unknown,
@@ -150,7 +144,7 @@ export class Gateway {
       content: `Delivery of assistant message ${output.messageId} failed: ${error.message}`,
     } as EventRecord<"delivery.failed">;
     try {
-      await this.options.runtime.route(failure);
+      await this.opts.runtime.route(failure);
     } catch (feedbackCause) {
       this.warn("delivery.failed", feedbackCause, record.platform);
     }
@@ -158,18 +152,18 @@ export class Gateway {
 
   private async resolve(session: Session): Promise<EventRecord | null> {
     const base = draftMessageEventBase(session);
-    const resolver = this.#resolvers.get(session.platform);
+    const resolver = this.resolvers.get(session.platform);
     if (!resolver) return base ? resolveFallbackMessage(base) : null;
     const scope = scopeFromSession(session);
     const freezeImage = scope
-      ? createImageFreezer({ scope, assets: this.options.assets }).freezeImage
+      ? createImageFreezer({ scope, assets: this.opts.assets }).freezeImage
       : async () => unavailableImage();
     return resolver.resolve({ session, ...(base ? { base } : {}), freezeImage });
   }
 
   private warn(code: string, cause: unknown, platform: string): void {
     try {
-      this.options.logger.warn({
+      this.opts.logger.warn({
         code,
         platform,
         cause: cause instanceof Error ? cause.message : String(cause),
@@ -179,7 +173,7 @@ export class Gateway {
 }
 
 function isMessageSession(session: Session): boolean {
-  return (session.event as { type?: unknown } | undefined)?.type === "message";
+  return session.type === "message-created";
 }
 
 function scopeFromSession(session: Session): ChannelScope | null {

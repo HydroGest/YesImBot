@@ -23,42 +23,37 @@ export class YesImBotService extends Service<Config> {
   static readonly inject = ["yesimbot.model"];
 
   readonly model: ModelService;
-  readonly #assets: AssetStore;
-  readonly #runtime: RuntimeManager;
-  readonly #gateway: Gateway;
-  readonly #agentPluginRegistrations = new Set<{ readonly factory: AgentPluginFactory }>();
-  readonly #defaultWill: Will.Factory;
-  readonly #willRegistrations = new Set<{ readonly factory: Will.Factory }>();
-  #disposeCommand: (() => unknown) | undefined;
-  #stopTask: Promise<void> | undefined;
+  private readonly asset: AssetStore;
+  private readonly rt: RuntimeManager;
+  private readonly gate: Gateway;
+  private readonly plugins = new Set<{ readonly factory: AgentPluginFactory }>();
+  private readonly defaultWill: Will.Factory;
+  private readonly wills = new Set<{ readonly factory: Will.Factory }>();
+  private dispose: (() => unknown) | undefined;
+  private stopTask: Promise<void> | undefined;
 
   constructor(ctx: Context, config: Config) {
     super(ctx, "yesimbot", true);
-    Object.defineProperty(this, "config", {
-      value: config,
-      writable: true,
-      configurable: true,
-      enumerable: false,
-    });
+    this.config = config;
     this.logger.level = config.logLevel ?? 2;
     this.model = ctx["yesimbot.model"];
-    this.#defaultWill = () => new DefaultWill(config.will);
-    this.#assets = new AssetStore({
+    this.defaultWill = () => new DefaultWill(config.will);
+    this.asset = new AssetStore({
       basePath: resolveBasePath(config.basePath, ctx.baseDir),
       maxFileBytes: IMAGE_BUDGET.maxBytesPerImage,
     });
-    this.#runtime = new RuntimeManager({
+    this.rt = new RuntimeManager({
       ctx,
       config,
       logger: this.logger,
-      assets: this.#assets,
+      assets: this.asset,
       getAgentPluginFactories: () =>
-        [...this.#agentPluginRegistrations].map(({ factory }) => factory),
+        [...this.plugins].map(({ factory }) => factory),
     });
-    this.#gateway = new Gateway({
+    this.gate = new Gateway({
       ctx,
-      assets: this.#assets,
-      runtime: this.#runtime,
+      assets: this.asset,
+      runtime: this.rt,
       logger: this.logger,
     });
 
@@ -71,67 +66,67 @@ export class YesImBotService extends Service<Config> {
         channelId: session.channelId,
       });
     });
-    if (typeof command.dispose === "function") this.#disposeCommand = () => command.dispose();
+    if (typeof command.dispose === "function") this.dispose = () => command.dispose();
   }
 
   registerResolver(resolver: SessionResolver): () => void {
-    return this.#gateway.register(resolver);
+    return this.gate.register(resolver);
   }
 
   registerWill(factory: Will.Factory): () => void {
     const registration = { factory };
-    this.#willRegistrations.add(registration);
-    this.#runtime.setWill(factory);
+    this.wills.add(registration);
+    this.rt.setWill(factory);
     return () => {
       const active = this.activeWill();
-      this.#willRegistrations.delete(registration);
+      this.wills.delete(registration);
       const replacement = this.activeWill();
       if (active === replacement) return;
-      this.#runtime.setWill(replacement ?? this.#defaultWill);
+      this.rt.setWill(replacement ?? this.defaultWill);
     };
   }
 
   registerAgentPlugin(factory: AgentPluginFactory): () => void {
     const registration = { factory };
-    this.#agentPluginRegistrations.add(registration);
-    return () => this.#agentPluginRegistrations.delete(registration);
+    this.plugins.add(registration);
+    return () => this.plugins.delete(registration);
   }
 
   reset(scope: ChannelScope): Promise<void> {
-    return this.#runtime.reset(scope);
+    return this.rt.reset(scope);
   }
 
   override stop(): Promise<void> {
-    if (!this.#stopTask) this.#stopTask = this.stopInternal();
-    return this.#stopTask;
+    if (!this.stopTask) this.stopTask = this.stopInternal();
+    return this.stopTask;
   }
 
   private async stopInternal(): Promise<void> {
     this.disposeCommand();
     try {
-      this.#gateway.close();
+      this.gate.close();
     } catch (cause) {
       this.warn("gateway.close_failed", cause);
     }
     try {
-      await this.#runtime.stop();
+      await this.rt.stop();
     } catch (cause) {
       this.warn("runtime.stop_failed", cause);
     }
     try {
-      await this.#gateway.drain();
+      await this.gate.drain();
     } catch (cause) {
       this.warn("gateway.drain_failed", cause);
     }
   }
 
   private activeWill(): Will.Factory | undefined {
-    return [...this.#willRegistrations].at(-1)?.factory;
+    return [...this.wills].at(-1)?.factory;
   }
 
   private disposeCommand(): void {
-    const dispose = this.#disposeCommand;
-    this.#disposeCommand = undefined;
+    const dispose = this.dispose;
+    this.dispose = undefined;
     try {
       dispose?.();
     } catch (cause) {

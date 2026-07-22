@@ -36,30 +36,30 @@ export interface ChannelRuntimeOptions {
 export const MAX_RECENT_EVENTS = 32;
 
 class OutputQueue<T> implements AsyncIterable<T> {
-  #items: T[] = [];
-  #waiter:
+  private items: T[] = [];
+  private waiter:
     | {
         resolve: (result: IteratorResult<T>) => void;
         reject: (cause: unknown) => void;
       }
     | undefined;
-  #error: unknown;
-  #done = false;
+  private error: unknown;
+  private done = false;
 
   push(item: T): void {
-    if (this.#done) return;
-    const waiter = this.#waiter;
-    this.#waiter = undefined;
+    if (this.done) return;
+    const waiter = this.waiter;
+    this.waiter = undefined;
     if (waiter) waiter.resolve({ done: false, value: item });
-    else this.#items.push(item);
+    else this.items.push(item);
   }
 
   close(error?: unknown): void {
-    if (this.#done) return;
-    this.#done = true;
-    this.#error = error;
-    const waiter = this.#waiter;
-    this.#waiter = undefined;
+    if (this.done) return;
+    this.done = true;
+    this.error = error;
+    const waiter = this.waiter;
+    this.waiter = undefined;
     if (waiter) {
       if (error) waiter.reject(error);
       else waiter.resolve({ done: true, value: undefined });
@@ -69,12 +69,12 @@ class OutputQueue<T> implements AsyncIterable<T> {
   [Symbol.asyncIterator](): AsyncIterator<T> {
     return {
       next: async () => {
-        const item = this.#items.shift();
+        const item = this.items.shift();
         if (item !== undefined) return { done: false, value: item };
-        if (this.#error) throw this.#error;
-        if (this.#done) return { done: true, value: undefined };
+        if (this.error) throw this.error;
+        if (this.done) return { done: true, value: undefined };
         return await new Promise<IteratorResult<T>>((resolve, reject) => {
-          this.#waiter = { resolve, reject };
+          this.waiter = { resolve, reject };
         });
       },
     };
@@ -121,21 +121,21 @@ function renderAssistantContent(content: unknown): Fragment | undefined {
 export class ChannelRuntime {
   readonly scope: ChannelScope;
 
-  #tail = Promise.resolve();
-  #stopped = false;
-  #stopTask: Promise<void> | undefined;
-  #streamTasks = new Set<Promise<void>>();
-  #pending: Event[] = [];
-  #recent: Event[] = [];
-  #lastActivityAt: number | null = null;
-  readonly #agent: Agent;
+  private tail = Promise.resolve();
+  private stopped = false;
+  private stopTask: Promise<void> | undefined;
+  private streams = new Set<Promise<void>>();
+  private pending: Event[] = [];
+  private recent: Event[] = [];
+  private lastAt: number | null = null;
+  private readonly agent: Agent;
 
-  constructor(private readonly options: ChannelRuntimeOptions) {
-    this.scope = Object.freeze({ ...options.scope });
-    const plugins = options.agentPlugins;
-    const includeMessageId = options.includeMessageId;
+  constructor(private readonly opts: ChannelRuntimeOptions) {
+    this.scope = Object.freeze({ ...opts.scope });
+    const plugins = opts.agentPlugins;
+    const includeMessageId = opts.includeMessageId;
     const storage = createChannelStorage(
-      resolveBasePath(options.config.basePath, options.ctx),
+      resolveBasePath(opts.config.basePath, opts.ctx),
       this.scope,
     );
     const tools: AgentToolSet = [
@@ -145,7 +145,7 @@ export class ChannelRuntime {
         inputSchema: z.object({ channelId: z.string().min(1), content: z.string() }),
         execute: async ({ channelId, content }: { channelId: string; content: string }) => {
           try {
-            const messageIds = await options.bot.sendMessage(channelId, content);
+            const messageIds = await opts.bot.sendMessage(channelId, content);
             return { ok: true as const, messageIds };
           } catch (cause) {
             return {
@@ -160,9 +160,9 @@ export class ChannelRuntime {
       } as never,
     ];
 
-    this.#agent = createAgent({
+    this.agent = createAgent({
       id: channelKey(this.scope),
-      model: options.model,
+      model: opts.model,
       storage,
       systemPrompt: buildCoreSystemPrompt({ channel: this.scope }),
       tools,
@@ -173,7 +173,7 @@ export class ChannelRuntime {
             if (message.role !== "custom" || message.type !== "yesimbot.event") return [];
             const formatted = await formatEvent(message as Event, {
               scope: this.scope,
-              assetStore: options.assets,
+              assetStore: opts.assets,
               includeMessageId,
               onAssetMissing: (assetId, cause) => this.warn("asset_missing", { assetId, cause }),
             });
@@ -181,8 +181,8 @@ export class ChannelRuntime {
           },
         },
         createPromptFilePlugin({
-          basePath: resolveBasePath(options.config.basePath, options.ctx),
-          logger: options.logger,
+          basePath: resolveBasePath(opts.config.basePath, opts.ctx),
+          logger: opts.logger,
         }),
         ...plugins,
       ],
@@ -191,22 +191,22 @@ export class ChannelRuntime {
   }
 
   handle(record: EventRecord): Promise<ChannelRuntime.Result> {
-    if (this.#stopped) {
+    if (this.stopped) {
       return Promise.reject(new Error("Channel runtime is stopped"));
     }
     return this.enqueue(async () => {
       this.assertOpen();
       const event = createEvent(record);
-      await this.#agent.append(event);
+      await this.agent.append(event);
       this.remember(event);
       this.emit("yesimbot/event", event);
-      const decision = await this.options.will.decide(event, this.readState());
+      const decision = await this.opts.will.decide(event, this.readState());
       this.emit("yesimbot/will", { event, decision } satisfies WillObservation);
       if (decision === "wait") return { kind: "wait", eventId: event.id };
 
-      const activeTurnId = this.#agent.getActiveTurnId();
+      const activeTurnId = this.agent.getActiveTurnId();
       if (activeTurnId !== null) {
-        this.#agent.send(event, { ifBusy: "join" });
+        this.agent.send(event, { ifBusy: "join" });
         this.consumePending();
         return { kind: "join", eventId: event.id, turnId: activeTurnId };
       }
@@ -219,63 +219,63 @@ export class ChannelRuntime {
       await this.teardown("reset");
       let failure: unknown;
       try {
-        await this.#agent.clear();
+        await this.agent.clear();
       } catch (cause) {
         failure = cause;
         this.warn("storage_clear_failed", { cause });
       }
       try {
-        await this.options.assets.clear(this.scope);
+        await this.opts.assets.clear(this.scope);
       } catch (cause) {
         failure ??= cause;
         this.warn("asset_clear_failed", { cause });
       }
-      this.#pending = [];
-      this.#recent = [];
-      this.#lastActivityAt = null;
+      this.pending = [];
+      this.recent = [];
+      this.lastAt = null;
       if (failure) throw failure;
     });
   }
 
   stop(): Promise<void> {
-    if (this.#stopTask) return this.#stopTask;
-    this.#stopped = true;
-    this.#stopTask = this.enqueue(async () => {
+    if (this.stopTask) return this.stopTask;
+    this.stopped = true;
+    this.stopTask = this.enqueue(async () => {
       await this.teardown("stop");
     });
-    return this.#stopTask;
+    return this.stopTask;
   }
 
   private async teardown(reason: "reset" | "stop"): Promise<void> {
     try {
-      await this.#agent.interrupt(reason);
+      await this.agent.interrupt(reason);
     } catch (cause) {
       this.warn("agent_interrupt_failed", { cause, reason });
     }
     try {
-      await this.#agent.stop();
+      await this.agent.stop();
     } catch (cause) {
       this.warn("agent_stop_failed", { cause, reason });
     }
     try {
-      await this.options.will.stop?.();
+      await this.opts.will.stop?.();
     } catch (cause) {
       this.warn("will_stop_failed", { cause, reason });
     }
-    await Promise.allSettled([...this.#streamTasks]);
+    await Promise.allSettled([...this.streams]);
   }
 
   private startRun(event: Event): ChannelRuntime.Result {
     const output = new OutputQueue<ChannelRuntime.Output>();
-    const stream = this.#agent.run(event);
-    const turnId = this.#agent.getActiveTurnId();
+    const stream = this.agent.run(event);
+    const turnId = this.agent.getActiveTurnId();
     if (turnId === null) {
       throw new Error("Agent did not expose an active turn after run");
     }
     this.consumePending();
     const task = this.consumeStream(stream, output);
-    this.#streamTasks.add(task);
-    void task.finally(() => this.#streamTasks.delete(task));
+    this.streams.add(task);
+    void task.finally(() => this.streams.delete(task));
     return { kind: "run", eventId: event.id, turnId, output };
   }
 
@@ -302,27 +302,27 @@ export class ChannelRuntime {
 
   private readState(): Will.State {
     return Object.freeze({
-      activeTurnId: this.#agent.getActiveTurnId(),
-      pending: Object.freeze([...this.#pending]),
-      recent: Object.freeze([...this.#recent]),
-      lastActivityAt: this.#lastActivityAt,
+      activeTurnId: this.agent.getActiveTurnId(),
+      pending: Object.freeze([...this.pending]),
+      recent: Object.freeze([...this.recent]),
+      lastActivityAt: this.lastAt,
     });
   }
 
   private remember(event: Event): void {
-    this.#pending.push(event);
-    this.#recent.push(event);
-    if (this.#recent.length > MAX_RECENT_EVENTS) this.#recent.shift();
-    this.#lastActivityAt = event.timestamp;
+    this.pending.push(event);
+    this.recent.push(event);
+    if (this.recent.length > MAX_RECENT_EVENTS) this.recent.shift();
+    this.lastAt = event.timestamp;
   }
 
   private consumePending(): void {
-    this.#pending = [];
+    this.pending = [];
   }
 
   private emit(channel: "yesimbot/event" | "yesimbot/will", value: unknown): void {
     try {
-      this.options.ctx.emit(channel, value as never);
+      this.opts.ctx.emit(channel, value as never);
     } catch (cause) {
       this.warn("listener_failed", { channel, cause });
     }
@@ -330,17 +330,17 @@ export class ChannelRuntime {
 
   private warn(event: string, fields: Record<string, unknown>): void {
     try {
-      this.options.logger.warn({ event, ...fields });
+      this.opts.logger.warn({ event, ...fields });
     } catch {}
   }
 
   private assertOpen(): void {
-    if (this.#stopped) throw new Error("Channel runtime is stopped");
+    if (this.stopped) throw new Error("Channel runtime is stopped");
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const next = this.#tail.then(operation, operation);
-    this.#tail = next.then(
+    const next = this.tail.then(operation, operation);
+    this.tail = next.then(
       () => undefined,
       () => undefined,
     );

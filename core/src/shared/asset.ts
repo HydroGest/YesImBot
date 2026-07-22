@@ -50,12 +50,12 @@ export interface AssetStoreOptions {
 }
 
 export class AssetStore {
-  #basePath: string;
-  #maxFileBytes: number;
+  private basePath: string;
+  private maxBytes: number;
 
   constructor(options: AssetStoreOptions) {
-    this.#basePath = options.basePath;
-    this.#maxFileBytes = options.maxFileBytes;
+    this.basePath = options.basePath;
+    this.maxBytes = options.maxFileBytes;
   }
 
   async put(scope: ChannelScope, data: Uint8Array): Promise<{ assetId: string; mime: string }> {
@@ -67,8 +67,8 @@ export class AssetStore {
     if (!mime) {
       throw new Error("Unsupported image MIME type");
     }
-    if (data.byteLength > this.#maxFileBytes) {
-      throw new Error(`Image exceeds ${this.#maxFileBytes} bytes`);
+    if (data.byteLength > this.maxBytes) {
+      throw new Error(`Image exceeds ${this.maxBytes} bytes`);
     }
 
     const copied = data.slice();
@@ -105,7 +105,7 @@ export class AssetStore {
   }
 
   private assetPath(scope: ChannelScope, hash?: string): string {
-    const root = join(this.#basePath, "assets", channelFileName(scope));
+    const root = join(this.basePath, "assets", channelFileName(scope));
     return hash ? join(root, hash) : root;
   }
 }
