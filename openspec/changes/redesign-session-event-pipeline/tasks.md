@@ -38,9 +38,9 @@
 
 ## 7. Build Gateway Ingress And Resource Freezing
 
-- [ ] 7.1 Implement one `SessionResolver` per platform with middleware and `internal/session` entry points.
-- [ ] 7.2 Implement atomic resolver selection, Satori message fallback, null admission, and authoritative failure handling.
-- [ ] 7.3 Implement bounded `freezeImage()` with MIME, byte, count, timeout, concurrency, asset, unavailable, quote, and forward rules.
+- [x] 7.1 Implement one `SessionResolver` per platform with middleware and `internal/session` entry points.
+- [x] 7.2 Implement atomic resolver selection, Satori message fallback, null admission, and authoritative failure handling.
+- [x] 7.3 Implement bounded `freezeImage()` with MIME, byte, count, timeout, concurrency, asset, unavailable, quote, and forward rules.
 
 ## 8. Build Gateway Delivery
 
