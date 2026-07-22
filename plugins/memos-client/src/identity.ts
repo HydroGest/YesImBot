@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { createChannelScopeId } from "koishi-plugin-yesimbot";
-
 import type {
   MemosChannelType,
   MemosImportChunkIdentityInput,
@@ -39,6 +37,15 @@ function deriveAgentHash(platform: string, selfId: string): string {
   return hashMemosIdParts(["memos-agent-v1", platform, selfId]);
 }
 
+function deriveChannelHash(input: { channelScope: { platform: string; selfId: string; channelId: string } }): string {
+  return hashMemosIdParts([
+    "memos-channel-v2",
+    input.channelScope.platform,
+    input.channelScope.selfId,
+    input.channelScope.channelId,
+  ]);
+}
+
 function deriveRuntimeConversationHash(input: MemosIdentityInput, subjectRawId: string): string {
   return hashMemosIdParts([
     "memos-conversation-v1",
@@ -67,7 +74,7 @@ function deriveImportChunkConversationHash(input: MemosImportChunkIdentityInput)
 }
 
 export function deriveMemosIdentity(input: MemosIdentityInput): MemosIdentity {
-  const channelScopeId = createChannelScopeId(input.channelScope);
+  const channelScopeId = deriveChannelHash(input);
   const subjectRawId = input.channelScope.channelId;
   const subjectHash = deriveSubjectHash(
     input.channelScope.platform,
@@ -118,7 +125,7 @@ export function deriveMemosIdentity(input: MemosIdentityInput): MemosIdentity {
 export function deriveMemosImportChunkIdentity(
   input: MemosImportChunkIdentityInput,
 ): MemosIdentity {
-  const channelScopeId = createChannelScopeId(input.channelScope);
+  const channelScopeId = deriveChannelHash(input);
   const subjectRawId = input.channelScope.channelId;
   const subjectHash = deriveSubjectHash(
     input.channelScope.platform,

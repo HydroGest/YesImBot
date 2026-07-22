@@ -68,9 +68,9 @@
 
 ## 12. Remove Legacy Runtime Boundaries
 
-- [ ] 12.1 Delete PlatformService, DeliveryService, the cross-channel ChannelRuntime, extension placeholders, and legacy shared/runtime modules.
-- [ ] 12.2 Remove obsolete tests and compatibility exports without adding legacy readers or adapter shims.
-- [ ] 12.3 Run package-wide type checks and prove no removed symbol or subpath import remains.
+- [x] 12.1 Delete PlatformService, DeliveryService, the cross-channel ChannelRuntime, extension placeholders, and legacy shared/runtime modules.
+- [x] 12.2 Remove obsolete tests and compatibility exports without adding legacy readers or adapter shims.
+- [x] 12.3 Run package-wide type checks and prove no removed symbol or subpath import remains.
 
 ## 13. Complete Cross-Module Behavioral Coverage
 

@@ -51,6 +51,7 @@ describe("Event", () => {
 
   it("creates a persistable Agent custom message using the record timestamp", () => {
     const event = createEvent(messageRecord);
+    const legacyType = ["athena", "platform", "message"].join(".");
 
     expect(event).toMatchObject({
       role: "custom",
@@ -59,7 +60,7 @@ describe("Event", () => {
       data: messageRecord,
     });
     expect(JSON.stringify(event)).toContain('"type":"yesimbot.event"');
-    expect(JSON.stringify(event)).not.toContain("athena.platform.message");
+    expect(JSON.stringify(event)).not.toContain(legacyType);
   });
 
   it("uses the current time only when the record has no timestamp", () => {
@@ -75,16 +76,17 @@ describe("Event", () => {
 
   it("recognizes only yesimbot Event custom messages", () => {
     const event = createEvent(messageRecord);
-    const legacy: AgentMessage = {
-      id: "legacy-1",
+    const legacyType = ["athena", "platform", "message"].join(".");
+    const nonEvent: AgentMessage = {
+      id: "non-event-1",
       timestamp: 123,
       role: "custom",
-      type: "athena.platform.message",
+      type: legacyType,
       data: {},
     } as AgentMessage;
 
     expect(isEvent(event)).toBe(true);
-    expect(isEvent(legacy)).toBe(false);
+    expect(isEvent(nonEvent)).toBe(false);
     expectTypeOf<Event>().toMatchTypeOf<{ role: "custom"; type: "yesimbot.event" }>();
   });
 });

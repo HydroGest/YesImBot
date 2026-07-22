@@ -1,12 +1,11 @@
 import { constants } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import { access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
-import { createChannelScopeId } from "koishi-plugin-yesimbot";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", () => ({
@@ -54,13 +53,13 @@ vi.mock("koishi", () => ({
   },
 }));
 
-const mockCreateChannelScopeId = vi.hoisted(() => {
+const mockChannelKey = vi.hoisted(() => {
   return (scope: { platform: string; selfId: string; channelId: string }) =>
-    `ch_v1_mock_${scope.platform}_${scope.selfId}_${scope.channelId}` as const;
+    `${scope.platform}:${scope.selfId}:${scope.channelId}`;
 });
 
 vi.mock("koishi-plugin-yesimbot", () => ({
-  createChannelScopeId: mockCreateChannelScopeId,
+  channelKey: mockChannelKey,
 }));
 
 import WorkspacePlugin from "../src";
@@ -161,32 +160,40 @@ describe("WorkspacePlugin", () => {
 
     await writeA!.execute!({ path: "note.txt", content: "channel-a" }, {} as never);
     await expect(readB!.execute!({ path: "note.txt" }, {} as never)).rejects.toThrow();
-    await expect(
-      access(
-        join(
-          baseDir,
-          "workspace",
-          "channels",
-          createChannelScopeId(channelA),
-          "workspace",
-          "note.txt",
-        ),
-        constants.F_OK,
-      ),
-    ).resolves.toBeUndefined();
-    await expect(
-      access(
-        join(
-          baseDir,
-          "workspace",
-          "channels",
-          createChannelScopeId(channelB),
-          "workspace",
-          "note.txt",
-        ),
-        constants.F_OK,
-      ),
-    ).rejects.toThrow();
+    const directories = await readdir(join(baseDir, "workspace", "channels"));
+    expect(directories).toHaveLength(2);
+    expect(directories).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^workspace_v2_[A-Za-z0-9_-]{22}$/),
+      ]),
+    );
+    const notePaths = directories.map((directory) =>
+      access(join(baseDir, "workspace", "channels", directory, "workspace", "note.txt"), constants.F_OK),
+    );
+    const noteResults = await Promise.allSettled(notePaths);
+    expect(noteResults.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(noteResults.filter((result) => result.status === "rejected")).toHaveLength(1);
+  });
+
+  it("hashes hostile channel ids before constructing workspace paths", async () => {
+    const mocks = createMockCtx(baseDir);
+    new WorkspacePlugin(mocks.ctx as never, {
+      root: "workspace",
+      cwd: "/home/workspace",
+      timeoutMs: 1000,
+      enableNetwork: false,
+    });
+
+    await mocks.readyHandlers[0]?.();
+    const plugin = mocks.factories[0]?.({
+      channel: { platform: "onebot", selfId: "bot", channelId: "../../outside" },
+    } as never);
+
+    await getTools(plugin!);
+
+    const directories = await readdir(join(baseDir, "workspace", "channels"));
+    expect(directories).toEqual([expect.stringMatching(/^workspace_v2_[A-Za-z0-9_-]{22}$/)]);
+    await expect(access(join(baseDir, "workspace", "outside"), constants.F_OK)).rejects.toThrow();
   });
 
   it("extends prompt with sandbox and mount policy", async () => {

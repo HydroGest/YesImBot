@@ -1,6 +1,6 @@
-import type { AgentCustomMessage, AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
-import { Schema, type Context, type Logger } from "koishi";
-import type {} from "koishi-plugin-yesimbot";
+import type { AgentMessage, AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
+import { Schema, Universal, type Context, type Logger } from "koishi";
+import { isEvent, type Event } from "koishi-plugin-yesimbot";
 
 import { MemosCloudClient } from "./client.js";
 import { memosConfigSchema } from "./config.js";
@@ -13,25 +13,24 @@ import {
 } from "./tools/core/search-message.js";
 import type { MemosChannelType, MemosClientConfig } from "./types.js";
 
-type CapturedPlatformMessage = AgentCustomMessage<"athena.platform.message">;
-
-function isCapturedPlatformMessage(message: unknown): message is CapturedPlatformMessage {
-  const candidate = message as Partial<CapturedPlatformMessage>;
-  return candidate.role === "custom" && candidate.type === "athena.platform.message";
-}
-
-function capturePlatformMessage(
-  message: unknown,
-  assign: (snapshot: { authorId: string; messageId?: string }) => void,
+function captureMessageEvent(
+  message: AgentMessage,
+  assign: (snapshot: { authorId: string; messageId: string; channelType: MemosChannelType }) => void,
 ): void {
-  if (!isCapturedPlatformMessage(message)) {
+  if (!isEvent(message) || !isMessageEvent(message)) {
     return;
   }
 
   assign({
-    authorId: message.data.sender.id,
-    messageId: message.data.messageId,
+    authorId: message.data.user.id!,
+    messageId: message.data.message.id!,
+    channelType:
+      message.data.channel.type === Universal.Channel.Type.DIRECT ? "private" : "group",
   });
+}
+
+function isMessageEvent(event: Event): event is Event<"message"> {
+  return event.data.type === "message";
 }
 
 export default class MemosClientPlugin {
@@ -73,6 +72,7 @@ export default class MemosClientPlugin {
     this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((channelContext) => {
       let latestAuthorId = "";
       let latestMessageId: string | undefined;
+      let latestChannelType: MemosChannelType = "group";
 
       const resolveIdentity = (
         turnId: string,
@@ -84,7 +84,7 @@ export default class MemosClientPlugin {
             selfId: channelContext.channel.selfId,
             channelId: target?.channelId ?? channelContext.channel.channelId,
           },
-          channelType: target?.channelType ?? (channelContext.channel.type as MemosChannelType),
+          channelType: target?.channelType ?? latestChannelType,
           authorId: latestAuthorId,
           messageId: latestMessageId,
           turnId,
@@ -128,18 +128,20 @@ export default class MemosClientPlugin {
               continue;
             }
 
-            capturePlatformMessage(entry.data, ({ authorId, messageId }) => {
+            captureMessageEvent(entry.data, ({ authorId, messageId, channelType }) => {
               latestAuthorId = authorId;
               latestMessageId = messageId;
+              latestChannelType = channelType;
             });
           }
 
           return entries;
         },
         toModelMessages(message) {
-          capturePlatformMessage(message, ({ authorId, messageId }) => {
+          captureMessageEvent(message, ({ authorId, messageId, channelType }) => {
             latestAuthorId = authorId;
             latestMessageId = messageId;
+            latestChannelType = channelType;
           });
           return undefined;
         },

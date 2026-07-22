@@ -1,5 +1,4 @@
 import type { AgentPlugin, AgentToolExecuteContext } from "@yesimbot/agent-runtime";
-import { createChannelScopeId } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MemosClientConfig } from "../src/types.js";
@@ -30,8 +29,20 @@ vi.mock("koishi", () => {
     Context: class Context {},
     Logger: class Logger {},
     Schema: mocks.schema,
+    Universal: { Channel: { Type: { DIRECT: 1 } } },
   };
 });
+
+vi.mock("koishi-plugin-yesimbot", () => ({
+  isEvent(message: unknown) {
+    return (
+      typeof message === "object" &&
+      message !== null &&
+      (message as { role?: unknown }).role === "custom" &&
+      (message as { type?: unknown }).type === "yesimbot.event"
+    );
+  },
+}));
 
 import { deriveMemosIdentity } from "../src/identity.js";
 import MemosClientPlugin from "../src/index.js";
@@ -98,10 +109,6 @@ function channelContext() {
       selfId: "bot-raw",
       channelId: "group-raw",
       type: "group",
-    },
-    platform: {
-      name: "onebot",
-      unsafeBot: undefined,
     },
   };
 }
@@ -205,46 +212,35 @@ describe("MemosClientPlugin", () => {
     expect(body).not.toHaveProperty("conversation_id");
   });
 
-  it("captures latest platform message from onAppend after an earlier plugin converts it", async () => {
+  it("updates identity from message Events appended before model projection", async () => {
     const { ctx, factories, post } = createContext();
     const plugin = new MemosClientPlugin(ctx as never, config);
 
     await plugin.start();
 
     const runtimePlugin = factories[0]!(channelContext() as never);
-    const platformMessage = {
+    const messageEvent = {
       role: "custom",
-      type: "athena.platform.message",
-      id: "platform-message",
+      type: "yesimbot.event",
+      id: "event-message",
       timestamp: Date.now(),
       data: {
-        source: { platform: "onebot", selfId: "bot-raw" },
-        scope: { type: "channel", channelId: "group-raw" },
-        sender: { id: "author-raw", name: "Ada" },
-        messageId: "message-raw",
-        receivedAt: Date.now(),
+        type: "message",
+        platform: "onebot",
+        selfId: "bot-raw",
+        channel: { id: "group-raw", type: "group" },
+        user: { id: "author-raw", name: "Ada" },
+        message: { id: "message-raw" },
         content: "hello",
       },
     };
-    const earlierPlugin = {
-      toModelMessages(message: typeof platformMessage) {
-        if (message.role !== "custom" || message.type !== "athena.platform.message") {
-          return undefined;
-        }
-        return [{ role: "user" as const, content: "[Ada]: hello" }];
-      },
-    };
-
-    expect(await earlierPlugin.toModelMessages(platformMessage)).toEqual([
-      { role: "user", content: "[Ada]: hello" },
-    ]);
     await runtimePlugin.onAppend?.(
       [
         {
-          id: "entry-platform-message",
+          id: "entry-message-event",
           type: "message",
-          timestamp: platformMessage.timestamp,
-          data: platformMessage,
+          timestamp: messageEvent.timestamp,
+          data: messageEvent,
         },
       ],
       {} as never,
@@ -258,29 +254,114 @@ describe("MemosClientPlugin", () => {
       conversation_id: string;
       info: Record<string, unknown>;
     };
-    expect(body.user_id).toMatch(/^yb_subject_[A-Za-z0-9_-]{22}$/);
-    expect(body.conversation_id).toMatch(/^yb_conv_[A-Za-z0-9_-]{22}$/);
-    expect(body.conversation_id).not.toBe(
-      `yb_conv_${createChannelScopeId({
-        platform: "onebot",
-        selfId: "bot-raw",
-        channelId: "group-raw",
-      })}`,
-    );
+    const groupIdentity = deriveMemosIdentity({
+      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw" },
+      channelType: "group",
+      authorId: "author-raw",
+      messageId: "message-raw",
+      turnId: "turn-real",
+      memoryScope: "auto",
+      includeRawIdentityInfo: false,
+    });
+    expect(body.user_id).toBe(groupIdentity.userId);
+    expect(body.conversation_id).toBe(groupIdentity.conversationId);
     expect(body.info.turn_id).toBe("turn-real");
-    expect(body.info.subject_hash).toEqual(expect.any(String));
-    expect(body.info.channel_hash).toBe(
-      createChannelScopeId({
-        platform: "onebot",
-        selfId: "bot-raw",
-        channelId: "group-raw",
-      }),
-    );
-    expect(body.info.author_hash).toEqual(expect.any(String));
-    expect(body.info.message_hash).toEqual(expect.any(String));
+    expect(body.info.subject_hash).toBe(groupIdentity.info.subject_hash);
+    expect(body.info.channel_hash).toBe(groupIdentity.info.channel_hash);
+    expect(body.info.author_hash).toBe(groupIdentity.info.author_hash);
+    expect(body.info.message_hash).toBe(groupIdentity.info.message_hash);
     expect(JSON.stringify(body.info)).not.toContain("author-raw");
     expect(JSON.stringify(body.info)).not.toContain("group-raw");
     expect(JSON.stringify(body.info)).not.toContain("bot-raw");
     expect(JSON.stringify(body.info)).not.toContain("message-raw");
+
+    const directMessageEvent = {
+      ...messageEvent,
+      data: {
+        ...messageEvent.data,
+        channel: { id: "direct-raw", type: 1 },
+        user: { id: "direct-author" },
+        message: { id: "direct-message" },
+      },
+    };
+    await runtimePlugin.toModelMessages?.(directMessageEvent as never, {} as never);
+    await addTool?.execute?.({ content: "私聊偏好" }, toolContext("turn-direct"));
+
+    const directIdentity = deriveMemosIdentity({
+      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw" },
+      channelType: "private",
+      authorId: "direct-author",
+      messageId: "direct-message",
+      turnId: "turn-direct",
+      memoryScope: "auto",
+      includeRawIdentityInfo: false,
+    });
+    const directBody = post.mock.calls[1]?.[1] as { user_id: string; conversation_id: string };
+    expect(directBody).toMatchObject({
+      user_id: directIdentity.userId,
+      conversation_id: directIdentity.conversationId,
+    });
+  });
+
+  it("does not update identity for delivery failures or non-Events", async () => {
+    const { ctx, factories, post } = createContext();
+    const plugin = new MemosClientPlugin(ctx as never, config);
+
+    await plugin.start();
+
+    const runtimePlugin = factories[0]!(channelContext() as never);
+    const messageEvent = {
+      role: "custom",
+      type: "yesimbot.event",
+      id: "event-message",
+      timestamp: Date.now(),
+      data: {
+        type: "message",
+        platform: "onebot",
+        selfId: "bot-raw",
+        channel: { id: "group-raw", type: "group" },
+        user: { id: "author-raw" },
+        message: { id: "message-raw" },
+      },
+    };
+    await runtimePlugin.onAppend?.(
+      [{ id: "entry-message-event", type: "message", timestamp: messageEvent.timestamp, data: messageEvent }],
+      {} as never,
+    );
+    await runtimePlugin.toModelMessages?.(
+      {
+        ...messageEvent,
+        data: {
+          type: "delivery.failed",
+          platform: "onebot",
+          selfId: "bot-raw",
+          channel: { id: "group-raw", type: "group" },
+          delivery: { turnId: "turn-failed", messageId: "assistant-message", error: { name: "Error", message: "offline" } },
+        },
+      } as never,
+      {} as never,
+    );
+    await runtimePlugin.toModelMessages?.({ role: "user", id: "user-message", timestamp: Date.now(), content: "ignored" } as never, {} as never);
+
+    const addTool = (await getTools(runtimePlugin)).find((tool) => tool.name === "add_message");
+    await addTool?.execute?.({ content: "仍归属原作者" }, toolContext("turn-real"));
+
+    const expected = deriveMemosIdentity({
+      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw" },
+      channelType: "group",
+      authorId: "author-raw",
+      messageId: "message-raw",
+      turnId: "turn-real",
+      memoryScope: "auto",
+      includeRawIdentityInfo: false,
+    });
+    const body = post.mock.calls[0]?.[1] as {
+      user_id: string;
+      conversation_id: string;
+      info: Record<string, unknown>;
+    };
+    expect(body).toMatchObject({ user_id: expected.userId, conversation_id: expected.conversationId });
+    expect(body.info.author_hash).toBe(expected.info.author_hash);
+    expect(body.info.message_hash).toBe(expected.info.message_hash);
   });
 });

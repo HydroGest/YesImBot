@@ -1,8 +1,7 @@
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { Context, Schema, Service } from "koishi";
 
-import { resolveBasePath } from "../runtime/key.js";
 import { loadModelsConfig, type ModelsConfigData } from "./config.js";
 import {
   ChatModelConfig,
@@ -17,6 +16,10 @@ import {
 export interface ModelServiceConfig {
   basePath: string;
   logLevel?: number;
+}
+
+function resolveBasePath(basePath: string, ctxBaseDir: string): string {
+  return isAbsolute(basePath) ? basePath : resolve(ctxBaseDir, basePath);
 }
 
 function cloneChatModelConfig(config: ChatModelConfig): ChatModelConfig {

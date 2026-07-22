@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
-import { createChannelScopeId, type ChannelScope } from "koishi-plugin-yesimbot";
+import { channelKey, type ChannelScope } from "koishi-plugin-yesimbot";
 
 import { createBashToolSet } from "./bash-tool";
 import { assertValidMountConfig } from "./mounts";
@@ -153,8 +154,8 @@ export default class WorkspacePlugin {
   }
 
   private async getOrCreateWorkspace(channel: ChannelScope): Promise<Workspace> {
-    const channelKey = createChannelScopeId(channel);
-    const existing = this.workspaces.get(channelKey);
+    const key = channelKey(channel);
+    const existing = this.workspaces.get(key);
     if (existing) {
       return existing;
     }
@@ -163,13 +164,13 @@ export default class WorkspacePlugin {
       throw new Error("Workspace plugin has not been started");
     }
 
-    const workspaceRoot = join(this.rootPath, "channels", channelKey, "workspace");
+    const workspaceRoot = join(this.rootPath, "channels", workspaceDirectoryId(channel), "workspace");
 
     await mkdir(workspaceRoot, { recursive: true });
 
     const workspace = new Workspace(this.createWorkspaceConfig(workspaceRoot));
     await workspace.init();
-    this.workspaces.set(channelKey, workspace);
+    this.workspaces.set(key, workspace);
     return workspace;
   }
 
@@ -190,4 +191,9 @@ export default class WorkspacePlugin {
       },
     };
   }
+}
+
+function workspaceDirectoryId(channel: ChannelScope): string {
+  const digest = createHash("sha256").update(channelKey(channel)).digest("base64url").slice(0, 22);
+  return `workspace_v2_${digest}`;
 }

@@ -1,7 +1,6 @@
-import { createChannelScopeId } from "koishi-plugin-yesimbot";
 import { describe, expect, it } from "vitest";
 
-import { deriveMemosIdentity } from "../src/identity.js";
+import { deriveMemosIdentity, deriveMemosImportChunkIdentity } from "../src/identity.js";
 
 describe("MemOS identity", () => {
   const channelScope = {
@@ -41,8 +40,8 @@ describe("MemOS identity", () => {
     expect(JSON.stringify(identity.info)).not.toContain('"raw_author_id"');
     expect(JSON.stringify(identity.info)).not.toContain('"raw_self_id"');
     expect(JSON.stringify(identity.info)).not.toContain('"raw_message_id"');
-    expect(identity.info.channel_hash).toBe(createChannelScopeId(channelScope));
-    expect(identity.info.channel_hash).toMatch(/^ch_v1_[a-z2-7]{16}$/);
+    expect(identity.info.channel_hash).toBe("Wsiq3VbsqVxfqXnprnyydy");
+    expect(identity.info.channel_hash).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(identity.info.subject_hash).toHaveLength(22);
     expect(identity.info.author_hash).toHaveLength(22);
     expect(identity.info.message_hash).toHaveLength(22);
@@ -64,7 +63,7 @@ describe("MemOS identity", () => {
 
     expect(firstTurn.userId).toBe(secondTurn.userId);
     expect(firstTurn.conversationId).not.toBe(secondTurn.conversationId);
-    expect(firstTurn.conversationId).not.toBe(`yb_conv_${createChannelScopeId(channelScope)}`);
+    expect(firstTurn.conversationId).not.toBe(`yb_conv_${firstTurn.info.channel_hash}`);
   });
 
   it("uses subject-scoped user ids for private chats", () => {
@@ -143,5 +142,19 @@ describe("MemOS identity", () => {
       raw_self_id: "bot",
       raw_message_id: "msg",
     });
+  });
+
+  it("uses the v2 channel hash for imported history", () => {
+    const identity = deriveMemosImportChunkIdentity({
+      channelScope,
+      channelType: "group",
+      chunkStartIso: "2026-07-22T00:00:00.000Z",
+      chunkEndIso: "2026-07-22T00:01:00.000Z",
+      firstMessageId: "first",
+      lastMessageId: "last",
+      chunkIndex: 0,
+    });
+
+    expect(identity.info.channel_hash).toBe("Wsiq3VbsqVxfqXnprnyydy");
   });
 });
