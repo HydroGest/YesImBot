@@ -12,9 +12,9 @@
 
 ## 3. Implement Deterministic Event Formatting
 
-- [ ] 3.1 Specify and test fixed time, sender, conditional message-id, and content envelope rules.
-- [ ] 3.2 Implement local frozen-element projection through one async `formatEvent()` function.
-- [ ] 3.3 Prove replay formatting performs no platform or network access and reports missing assets diagnostically.
+- [x] 3.1 Specify and test fixed time, sender, conditional message-id, and content envelope rules.
+- [x] 3.2 Implement local frozen-element projection through one async `formatEvent()` function.
+- [x] 3.3 Prove replay formatting performs no platform or network access and reports missing assets diagnostically.
 
 ## 4. Implement Will Evaluation
 

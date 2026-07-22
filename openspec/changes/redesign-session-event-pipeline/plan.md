@@ -301,7 +301,7 @@ Commit: `git add core/src/event core/src/index.ts core/tests/event.test.ts && gi
 - Test: `core/tests/formatter.test.ts`
 
 **Interfaces:**
-- Consumes: `Event<"message">`, `ChannelScope`, `AssetStore.readByAssetId()`, and the `requiresMessageId` capability.
+- Consumes: `Event`, `ChannelScope`, `AssetStore.readByAssetId()`, and the `requiresMessageId` capability.
 - Produces: `formatEvent(event, options): Promise<UserModelMessage | undefined>`; a local-only model projection used by ChannelRuntime.
 
 - [ ] **Step 1: Write failing formatter tests for fixed headers and no-content behavior.**
@@ -340,17 +340,19 @@ export interface FormatEventOptions {
 }
 
 export async function formatEvent(
-  event: Event<"message">,
+  event: Event,
   options: FormatEventOptions,
 ): Promise<UserModelMessage | undefined> {
   if (!event.data.content) return undefined;
-  const header = formatHeader(event.data, options.includeMessageId);
   const content = await projectFrozenElements(event.data.content, options);
+  if (event.data.type !== "message") return { role: "user", content };
+  const header = formatHeader(event.data, options.includeMessageId);
   return { role: "user", content: `${header}\n${content}` };
 }
 ```
 
 Use `zh-CN`, `Asia/Shanghai`, minute precision, `displayName (userID)` sender formatting, and uniform JSON quoting. Preserve the complete valid ordinary text; do not introduce a new formatter length cap.
+For a non-message Event with frozen content, return one user model message containing only that frozen body; do not invent a second event header. A non-message Event without content still returns `undefined`.
 
 - [ ] **Step 4: Add image, missing-asset, non-message, and replay-isolation tests.**
 
