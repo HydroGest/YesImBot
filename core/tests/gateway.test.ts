@@ -75,6 +75,15 @@ describe("Gateway", () => {
     expect(() => gateway.register(first)).not.toThrow();
   });
 
+  it("does not admit or route a Session after close", async () => {
+    const { gateway, runtime } = createGateway();
+
+    gateway.close();
+    await expect(gateway.handle(session() as never)).resolves.toBeUndefined();
+
+    expect(runtime.route).not.toHaveBeenCalled();
+  });
+
   it("calls the registered resolver once with the optional Satori message base", async () => {
     const { gateway, runtime } = createGateway();
     const resolve = vi.fn(async (context: Parameters<SessionResolver["resolve"]>[0]) => {

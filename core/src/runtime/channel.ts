@@ -205,10 +205,7 @@ export class ChannelRuntime {
 
   async reset(): Promise<void> {
     await this.enqueue(async () => {
-      await this.#agent.interrupt("reset");
-      await this.#agent.stop();
-      await this.options.will.stop?.();
-      await Promise.allSettled([...this.#streamTasks]);
+      await this.teardown("reset");
       await this.#agent.clear();
       await this.options.assets.clear(this.scope);
       this.#pending = [];
@@ -221,12 +218,28 @@ export class ChannelRuntime {
     if (this.#stopTask) return this.#stopTask;
     this.#stopped = true;
     this.#stopTask = this.enqueue(async () => {
-      await this.#agent.interrupt("stop");
-      await this.#agent.stop();
-      await this.options.will.stop?.();
-      await Promise.allSettled([...this.#streamTasks]);
+      await this.teardown("stop");
     });
     return this.#stopTask;
+  }
+
+  private async teardown(reason: "reset" | "stop"): Promise<void> {
+    try {
+      await this.#agent.interrupt(reason);
+    } catch (cause) {
+      this.warn("agent_interrupt_failed", { cause, reason });
+    }
+    try {
+      await this.#agent.stop();
+    } catch (cause) {
+      this.warn("agent_stop_failed", { cause, reason });
+    }
+    try {
+      await this.options.will.stop?.();
+    } catch (cause) {
+      this.warn("will_stop_failed", { cause, reason });
+    }
+    await Promise.allSettled([...this.#streamTasks]);
   }
 
   private startRun(event: Event): ChannelRuntime.Result {

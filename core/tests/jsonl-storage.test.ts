@@ -67,4 +67,19 @@ describe("jsonl storage", () => {
 
     await expect(createJsonlStorage(eventPath).read()).resolves.toEqual([]);
   });
+
+  it("rejects the exact legacy type when it appears in the current Event JSONL path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const scope = { platform: "test", selfId: "bot", channelId: "room" };
+    const eventPath = channelPath(dir, scope);
+    const legacyEntry = {
+      type: "message",
+      data: { type: ["athena", "platform", "message"].join("."), role: "custom" },
+    };
+
+    await mkdir(dirname(eventPath), { recursive: true });
+    await writeFile(eventPath, `${JSON.stringify(legacyEntry)}\n`, "utf8");
+
+    await expect(createJsonlStorage(eventPath).read()).resolves.toEqual([]);
+  });
 });

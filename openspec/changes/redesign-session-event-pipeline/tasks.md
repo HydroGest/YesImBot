@@ -74,9 +74,9 @@
 
 ## 13. Complete Cross-Module Behavioral Coverage
 
-- [ ] 13.1 Cover reset/stop races, admission closure, active-send isolation, Will/Agent failure isolation, and output termination.
-- [ ] 13.2 Cover passive failure reinjection, ordered continuation, JSONL reload, and local-only replay.
-- [ ] 13.3 Cover the clean break from legacy Platform.Message records and run the focused core/OneBot suites.
+- [x] 13.1 Cover reset/stop races, admission closure, active-send isolation, Will/Agent failure isolation, and output termination.
+- [x] 13.2 Cover passive failure reinjection, ordered continuation, JSONL reload, and local-only replay.
+- [x] 13.3 Cover the clean break from legacy Platform.Message records and run the focused core/OneBot suites.
 
 ## 14. Run Final Verification
 

@@ -61,6 +61,7 @@ function createRuntime(
 ) {
   const ctx = new Context();
   const logger = { warn: vi.fn() };
+  const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
   const runtime = new ChannelRuntime({
     ctx,
     config: { basePath: "/tmp/yesimbot-channel-runtime", chatModel: "test:model" },
@@ -68,12 +69,12 @@ function createRuntime(
     scope: { platform: "test", selfId: "bot-1", channelId: "room-1" },
     bot: { sendMessage } as never,
     will,
-    assets: { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() } as never,
+    assets: assets as never,
     model: {} as never,
     agentPlugins: [],
     includeMessageId,
   });
-  return { ctx, logger, runtime, sendMessage };
+  return { ctx, logger, runtime, sendMessage, assets };
 }
 
 function streamFrom(events: readonly unknown[]): AsyncIterable<unknown> {
@@ -136,6 +137,24 @@ describe("ChannelRuntime", () => {
     expect(result).toMatchObject({ kind: "join", turnId: "turn-active" });
     expect(state.agent?.send).toHaveBeenCalledWith(expect.any(Object), { ifBusy: "join" });
     expect(state.agent?.run).not.toHaveBeenCalled();
+  });
+
+  it("keeps one stream owner when a second trigger joins an in-flight run", async () => {
+    const release = deferred();
+    state.stream = (async function* () {
+      await release.promise;
+    })();
+    const { runtime } = createRuntime({ decide: async () => "trigger" });
+
+    const first = await runtime.handle(record());
+    const second = await runtime.handle(record({ message: { id: "message-2", content: "next" } }));
+
+    expect(first).toMatchObject({ kind: "run", turnId: "turn-1" });
+    expect(second).toMatchObject({ kind: "join", turnId: "turn-1" });
+    expect(state.agent?.run).toHaveBeenCalledOnce();
+    expect(state.agent?.send).toHaveBeenCalledOnce();
+    release.resolve();
+    if (first.kind === "run") await Array.fromAsync(first.output);
   });
 
   it("yields complete assistant messages in order and filters internal events", async () => {
@@ -273,6 +292,47 @@ describe("ChannelRuntime", () => {
     release.resolve();
     await Promise.all([handling, first, second]);
     expect(order).toEqual(["will", "interrupt", "agent.stop", "will.stop"]);
+  });
+
+  it("isolates Agent and Will stop failures while waiting for an active stream", async () => {
+    const release = deferred();
+    state.stream = (async function* () {
+      await release.promise;
+    })();
+    const will: Will = {
+      decide: async () => "trigger",
+      stop: vi.fn(async () => {
+        throw new Error("will stop failed");
+      }),
+    };
+    const { logger, runtime } = createRuntime(will);
+    state.agent?.stop.mockRejectedValueOnce(new Error("agent stop failed"));
+
+    await runtime.handle(record());
+    const stopping = runtime.stop();
+    release.resolve();
+
+    await expect(stopping).resolves.toBeUndefined();
+    expect(state.agent?.stop).toHaveBeenCalledOnce();
+    expect(will.stop).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+  });
+
+  it("resets in teardown order before clearing persisted channel state", async () => {
+    const order: string[] = [];
+    const will: Will = {
+      decide: async () => "wait",
+      stop: async () => order.push("will.stop"),
+    };
+    const { runtime, assets } = createRuntime(will);
+    state.agent?.interrupt.mockImplementation(async () => order.push("interrupt"));
+    state.agent?.stop.mockImplementation(async () => order.push("agent.stop"));
+    state.agent?.clear.mockImplementation(async () => order.push("storage.clear"));
+    assets.clear.mockImplementation(async () => order.push("assets.clear"));
+
+    await runtime.reset();
+
+    expect(order).toEqual(["interrupt", "agent.stop", "will.stop", "storage.clear", "assets.clear"]);
   });
 
   it("keeps every recent event visible to Will state", async () => {
