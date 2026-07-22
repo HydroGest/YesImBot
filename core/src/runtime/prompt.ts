@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Logger } from "koishi";
 
-import type { ChannelAgentContext } from "../shared/types.js";
+import type { ChannelScope } from "../channel/index.js";
 
 async function readPromptFile(
   basePath: string,
@@ -49,11 +49,11 @@ export function createPromptFilePlugin(options: {
   };
 }
 
-export function buildCoreSystemPrompt(context: ChannelAgentContext): string {
+export function buildCoreSystemPrompt(context: { readonly channel: ChannelScope }): string {
   const { channel } = context;
   return [
     "You are Athena, a Koishi-based chat agent running in a channel.",
-    `Channel context: platform=${channel.platform}, selfId=${channel.selfId}, channelId=${channel.channelId}, type=${channel.type}.`,
+    `Channel context: platform=${channel.platform}, selfId=${channel.selfId}, channelId=${channel.channelId}.`,
     "Channel messages are presented as [sender]: content and may include Koishi message element strings.",
     "Reply in plain text unless the user explicitly asks for another format.",
   ].join("\n");

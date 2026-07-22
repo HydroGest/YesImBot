@@ -714,13 +714,17 @@ export function createAgent(config: AgentConfig): Agent {
     },
     async append(message) {
       await this.init();
-      await appendEntries([createMessageEntry(message)]);
+      const entries = await appendEntries([createMessageEntry(message)]);
+      const messageEntries = entries.filter(
+        (entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message",
+      );
+      rememberSubmittedEntries([message], messageEntries);
     },
     send(message, options = {}) {
       const activeTurnId = turnQueue.activeTurnId;
       let persistence: Promise<void> | undefined;
 
-      if (options.ifBusy === "join" && activeTurnId) {
+      if (options.ifBusy === "join" && activeTurnId && !submittedMessageEntries.has(message)) {
         persistence = appendEntries([createMessageEntry(message)], { turnId: activeTurnId }).then(
           (entries) => {
             const messageEntries = entries.filter(

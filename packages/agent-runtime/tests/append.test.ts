@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { createAgent } from "../src/agent.js";
-import { createUserMessage } from "../src/message.js";
+import { createCustomMessage, createUserMessage } from "../src/message.js";
 import { createMemoryStorage } from "../src/storage.js";
 import { AgentEntry } from "../src/types/entry.js";
 import { AgentPlugin } from "../src/types/plugin.js";
@@ -214,6 +214,62 @@ function createTextModel(modelRequests: LanguageModelV3Message[][]) {
 }
 
 describe("append", () => {
+  it("does not persist the same message again when append is followed by run", async () => {
+    const storage = createMemoryStorage();
+    const agent = createAgent({ model: createTextModel([]), storage });
+    const message = createCustomMessage("test.event", { value: "committed" });
+
+    await agent.append(message);
+    await Array.fromAsync(agent.run(message));
+
+    const entries = await storage.read();
+    expect(
+      entries.filter((entry) => entry.type === "message" && entry.data.id === message.id),
+    ).toHaveLength(1);
+  });
+
+  it("does not persist the same message again when append is followed by busy join", async () => {
+    const modelRequests: LanguageModelV3Message[][] = [];
+    let releaseTool: (() => void) | undefined;
+    const toolReady = new Promise<void>((resolve) => {
+      releaseTool = resolve;
+    });
+    const agent = createAgent({
+      model: createToolLoopModel(modelRequests),
+      tools: [
+        {
+          name: "lookup",
+          inputSchema: z.object({ value: z.string() }),
+          execute: async () => {
+            await toolReady;
+            return { ok: true };
+          },
+        } as never,
+      ],
+    });
+    const started = new Promise<void>((resolve) => {
+      const unsubscribe = agent.channel.subscribe("internal", (event) => {
+        if (event.type === "tool.start") {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    const message = createCustomMessage("test.event", { value: "committed" });
+
+    agent.send(createUserMessage("trigger"));
+    await started;
+    await agent.append(message);
+    agent.send(message, { ifBusy: "join" });
+    releaseTool?.();
+    await agent.wait();
+
+    const entries = await agent.storage.read();
+    expect(
+      entries.filter((entry) => entry.type === "message" && entry.data.id === message.id),
+    ).toHaveLength(1);
+  });
+
   it("persists messages through append hooks without triggering non-append hooks", async () => {
     const storage = createMemoryStorage();
     const transformMessages = vi.fn<NonNullable<AgentPlugin["transformMessages"]>>();

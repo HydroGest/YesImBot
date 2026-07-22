@@ -3,6 +3,8 @@ import { dirname } from "node:path";
 
 import type { AgentEntry, AgentStorage } from "@yesimbot/agent-runtime";
 
+import { channelPath, type ChannelScope } from "../channel/index.js";
+
 export function createJsonlStorage<T extends AgentEntry = AgentEntry>(
   filePath: string,
 ): AgentStorage<T> {
@@ -34,4 +36,11 @@ export function createJsonlStorage<T extends AgentEntry = AgentEntry>(
       await rm(filePath, { force: true });
     },
   };
+}
+
+export function createChannelStorage<T extends AgentEntry = AgentEntry>(
+  basePath: string,
+  scope: ChannelScope,
+): AgentStorage<T> {
+  return createJsonlStorage(channelPath(basePath, scope));
 }

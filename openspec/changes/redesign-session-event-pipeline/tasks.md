@@ -24,10 +24,10 @@
 
 ## 5. Build The One-Channel Runtime
 
-- [ ] 5.1 Make `Agent.append()` register submitted message entries so the same committed Event can start or join a turn without duplicate persistence.
-- [ ] 5.2 Create one-channel storage, prompt, Agent construction, and committed Event append flow.
-- [ ] 5.3 Implement persist-before-event-before-Will ordering with `wait`, `join`, and `run` results.
-- [ ] 5.4 Consume Agent internal events into ordered complete assistant outputs without exposing Agent internals.
+- [x] 5.1 Make `Agent.append()` register submitted message entries so the same committed Event can start or join a turn without duplicate persistence.
+- [x] 5.2 Create one-channel storage, prompt, Agent construction, and committed Event append flow.
+- [x] 5.3 Implement persist-before-event-before-Will ordering with `wait`, `join`, and `run` results.
+- [x] 5.4 Consume Agent internal events into ordered complete assistant outputs without exposing Agent internals.
 - [ ] 5.5 Add the current-bot active send tool with explicit channel targeting and normalized receipts.
 
 ## 6. Build RuntimeManager
