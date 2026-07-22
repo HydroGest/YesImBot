@@ -33,7 +33,7 @@ Gateway MUST call the selected resolver once with ResolveContext containing the 
 - **AND** it MUST NOT invoke a separate refine, prepare, or model-projector stage
 
 #### Scenario: Resolver skips a Session
-- **WHEN** a resolver returns `skip`
+- **WHEN** a resolver returns `null`
 - **THEN** core MUST NOT persist, route, or broadcast an Event for that Session
 
 ### Requirement: Authoritative Resolver Failure
