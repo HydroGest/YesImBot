@@ -64,8 +64,11 @@ export class RuntimeManager {
       if (pending) await pending;
       const entry = this.#runtimes.get(key);
       if (entry) {
-        await entry.runtime.reset();
-        this.#runtimes.delete(key);
+        try {
+          await entry.runtime.reset();
+        } finally {
+          if (this.#runtimes.get(key) === entry) this.#runtimes.delete(key);
+        }
         return;
       }
       await this.clearPersisted(scope);
@@ -170,8 +173,20 @@ export class RuntimeManager {
     const basePath = isAbsolute(this.options.config.basePath)
       ? this.options.config.basePath
       : resolve(this.options.ctx.baseDir, this.options.config.basePath);
-    await createChannelStorage(basePath, scope).clear();
-    await this.options.assets.clear(scope);
+    let failure: unknown;
+    try {
+      await createChannelStorage(basePath, scope).clear();
+    } catch (cause) {
+      failure = cause;
+      this.warn("storage_clear_failed", { scope, cause });
+    }
+    try {
+      await this.options.assets.clear(scope);
+    } catch (cause) {
+      failure ??= cause;
+      this.warn("asset_clear_failed", { scope, cause });
+    }
+    if (failure) throw failure;
   }
 
   private enqueueLifecycle<T>(key: string, operation: () => Promise<T>): Promise<T> {

@@ -234,7 +234,7 @@ Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调�
 
 出站能力不再有公共 DeliveryService。被动回复失败会写入一个 `delivery.failed` Event，后续输出继续发送；主动发送是 Agent 内部的 current-bot tool，只接受显式 channelId。公开 facade 收敛到 model、resolver/Will/Agent plugin 注册、reset 和 stop。
 
-这次重构删除了 PlatformService、DeliveryService、旧跨频道 runtime 和相关 subpath。旧 JSONL 不读取。实现期间也明确接受 MemOS `channel_hash` 与 workspace 频道目录进入 v2 clean break，不保留 `ch_v1_*` helper 或兼容 alias。
+这次重构删除了 PlatformService、DeliveryService、旧跨频道 runtime 和相关 subpath。旧 JSONL 不读取。实现期间也明确接受 MemOS `channel_hash`、频道 JSONL/assets 路径与 workspace 目录进入 v2 clean break，不保留 `ch_v1_*` helper 或兼容 alias。新路径以无歧义 tuple 的 SHA-256 摘要隔离频道，不暴露平台原始 ID。图片 loader 同时接收 AbortSignal 和 core 剩余字节预算；OneBot 在 HTTP stream、本地文件读取和 data URL 解码阶段执行硬限制。
 
 ## 4. 决策索引
 

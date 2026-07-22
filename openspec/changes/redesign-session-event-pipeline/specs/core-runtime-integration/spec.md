@@ -23,7 +23,7 @@ RuntimeManager MUST own the map from canonical ChannelScope to ChannelRuntime, c
 - **THEN** RuntimeManager MUST create one ChannelRuntime and route every event to it
 
 ### Requirement: Single Channel Runtime Ownership
-Each ChannelRuntime MUST represent exactly one channel and MUST own that channel's FIFO, Agent, JSONL storage, Will instance, local state, model projection, and Agent-internal stream consumption.
+Each ChannelRuntime MUST represent exactly one channel and MUST own that channel's FIFO, Agent, JSONL storage, Will instance, local state, model projection, and Agent-internal stream consumption. Its canonical identity MUST be an injective scope tuple; its JSONL and scoped-asset paths MUST be domain-separated SHA-256/base64url v2 names that disclose no raw scope component.
 
 #### Scenario: Channel runtime is inspected
 - **WHEN** a ChannelRuntime handles an event
@@ -67,7 +67,7 @@ First-version routing configuration MUST map direct messages, group mentions, an
 - **AND** it MUST wait for ordinary group messages
 
 ### Requirement: Channel Runtime Reset
-RuntimeManager MUST reset one channel in this order: interrupt Agent, stop Agent, stop Will, wait channel work, clear JSONL, clear scoped assets, and remove the ChannelRuntime. Reset MUST also clear persisted channel data when no runtime is cached.
+RuntimeManager MUST reset one channel in this order: interrupt Agent, stop Agent, stop Will, wait channel work, clear JSONL, clear scoped assets, and remove the ChannelRuntime. JSONL and asset cleanup MUST be independently attempted in that order; a cleanup error MUST be reported only after later mandatory cleanup and cache deletion complete. Reset MUST also independently clear persisted channel data when no runtime is cached.
 
 #### Scenario: Cached channel is reset
 - **WHEN** reset targets an active channel

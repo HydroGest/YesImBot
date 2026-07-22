@@ -121,4 +121,17 @@ ls docs/superpowers/specs/*.md 2>/dev/null
 - [x] ⚠️ PASS WITH WARNINGS - delta specs 尚待 sync，分支尚未 push
 - [ ] ❌ FAIL - 返回失败的 artifact 修正后重跑 verify
 
-**下一步**：执行一次 whole-change engineering review。复审通过后，由用户决定是否 sync specs、archive、push 或创建 PR。
+**下一步**：由用户决定是否 sync specs、archive、push 或创建 PR。
+
+---
+
+## 8. Final Review Hardening (2026-07-22)
+
+| Finding | RED evidence | GREEN evidence |
+| --- | --- | --- |
+| Injective channel identity and opaque paths | adversarial channel and AssetStore tests failed on delimiter and filename collisions | core focused suite: 45 tests passed; core full suite: 88 tests passed |
+| Bounded image transport | OneBot streaming transport test failed because `ctx.http.file()` had no signal-aware stream API | OneBot image suite: 8 tests passed; full OneBot suite: 17 tests passed |
+| Reset failure isolation | cached reset retained the torn-down runtime; storage failure skipped asset clear | core focused suite covers both failure paths and passed |
+| Bounded Will recent | 33 committed events remained visible | boundary test retains only ordered events 2 through 33 and passed |
+
+Controller follow-up used the repository root toolchain after the fix worker's workspace commands could not resolve `tsc`: core, OneBot, and workspace direct type checks passed. `openspec validate redesign-session-event-pipeline --strict` also passed. The completion gate below is rerun after final formatting and recorded before the review-fix commit.

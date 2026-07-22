@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 export interface ChannelScope {
@@ -13,7 +14,7 @@ interface ChannelEvent {
 }
 
 export function channelKey(scope: ChannelScope): string {
-  return `${scope.platform}:${scope.selfId}:${scope.channelId}`;
+  return JSON.stringify([scope.platform, scope.selfId, scope.channelId]);
 }
 
 export function channelPath(basePath: string, scope: ChannelScope): string {
@@ -34,5 +35,9 @@ export function fromEvent(record: ChannelEvent): ChannelScope | null {
 }
 
 export function channelFileName(scope: ChannelScope): string {
-  return `${scope.platform}-${scope.selfId}-${scope.channelId}`.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const digest = createHash("sha256")
+    .update("yesimbot:channel-path:v2:\0")
+    .update(channelKey(scope))
+    .digest("base64url");
+  return `channel_v2_${digest}`;
 }

@@ -17,16 +17,19 @@ function freezer() {
 describe("resolver image freezing", () => {
   it("stores a supported bounded image as a private asset reference", async () => {
     const { freezeImage, assets } = freezer();
+    const load = vi.fn(async (_signal: AbortSignal, maxBytes: number) => ({
+      data: PNG,
+      mime: "image/png",
+      maxBytes,
+    }));
     await expect(
-      freezeImage(h("img", { src: "https://example.test/a.png" }), async () => ({
-        data: PNG,
-        mime: "image/png",
-      })),
+      freezeImage(h("img", { src: "https://example.test/a.png" }), load),
     ).resolves.toEqual(h("img", { id: "asset_image", mime: "image/png" }));
     expect(assets.put).toHaveBeenCalledWith(scope, PNG);
+    expect(load).toHaveBeenCalledWith(expect.any(AbortSignal), 5 * 1024 * 1024);
   });
 
-  it("seals images unavailable for count, per-image, total-size, MIME, and SVG limits", async () => {
+  it("seals images unavailable for count and byte limits while treating loader MIME as a hint", async () => {
     const { freezeImage } = freezer();
     const image = (index: number) => h("img", { src: `https://example.test/${index}.png` });
     for (let index = 0; index < 4; index += 1) {
@@ -56,7 +59,7 @@ describe("resolver image freezing", () => {
     ).resolves.toEqual(h("img", { unavailable: "true" }));
     await expect(
       freezer().freezeImage(image(1), async () => ({ data: PNG, mime: "image/svg+xml" })),
-    ).resolves.toEqual(h("img", { unavailable: "true" }));
+    ).resolves.toEqual(h("img", { id: "asset_image", mime: "image/png" }));
   });
 
   it("limits loaders to two concurrent operations and seals timeout or loader failures", async () => {
@@ -111,10 +114,89 @@ describe("resolver image freezing", () => {
     expect(result[4]).toEqual(h("img", { unavailable: "true" }));
 
     vi.useFakeTimers();
-    const timeout = freezer().freezeImage(h("img", { src: "slow" }), () => new Promise(() => {}));
+    const timeout = freezer().freezeImage(
+      h("img", { src: "slow" }),
+      (signal) =>
+        new Promise((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(signal.reason)),
+        ),
+    );
     await vi.advanceTimersByTimeAsync(10_000);
     await expect(timeout).resolves.toEqual(h("img", { unavailable: "true" }));
     vi.useRealTimers();
+  });
+
+  it("returns unavailable at the deadline when a loader ignores abort", async () => {
+    vi.useFakeTimers();
+    try {
+      const result = freezer().freezeImage(
+        h("img", { src: "ignored-signal" }),
+        () => new Promise(() => {}),
+      );
+
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await expect(result).resolves.toEqual(h("img", { unavailable: "true" }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("times out queued calls without starting a third ignored-signal loader", async () => {
+    vi.useFakeTimers();
+    try {
+      const { freezeImage } = freezer();
+      let active = 0;
+      let maximum = 0;
+      const load = vi.fn(() => {
+        active += 1;
+        maximum = Math.max(maximum, active);
+        return new Promise<{ data: Uint8Array; mime?: string }>(() => {});
+      });
+      const first = freezeImage(h("img", { src: "first" }), load);
+      const second = freezeImage(h("img", { src: "second" }), load);
+      const third = freezeImage(h("img", { src: "third" }), load);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await expect(first).resolves.toEqual(h("img", { unavailable: "true" }));
+      await expect(second).resolves.toEqual(h("img", { unavailable: "true" }));
+      await expect(third).resolves.toEqual(h("img", { unavailable: "true" }));
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(maximum).toBe(2);
+      expect(active).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts a queued loader after aborted signal-aware loaders settle", async () => {
+    vi.useFakeTimers();
+    try {
+      const { freezeImage } = freezer();
+      const resolvers: Array<() => void> = [];
+      const load = vi.fn(
+        (signal: AbortSignal) =>
+          new Promise<{ data: Uint8Array; mime?: string }>((resolve, reject) => {
+            resolvers.push(() => resolve({ data: PNG, mime: "image/png" }));
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          }),
+      );
+      const first = freezeImage(h("img", { src: "first" }), load);
+      const second = freezeImage(h("img", { src: "second" }), load);
+
+      await vi.advanceTimersByTimeAsync(9_000);
+      const third = freezeImage(h("img", { src: "third" }), load);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(3));
+      resolvers[2]?.();
+
+      await expect(first).resolves.toEqual(h("img", { unavailable: "true" }));
+      await expect(second).resolves.toEqual(h("img", { unavailable: "true" }));
+      await expect(third).resolves.toEqual(h("img", { id: "asset_image", mime: "image/png" }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("normalizes and seals quote and forward forms without invoking a loader", async () => {

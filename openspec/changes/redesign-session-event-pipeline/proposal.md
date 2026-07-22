@@ -16,6 +16,10 @@ Athena's current platform path duplicates parts of Koishi, keeps Session-linked 
 - Reason: fact retention and turn triggering need separate, replaceable decisions.
 - Impact: Breaking. Channel storage records and runtime ownership change.
 
+**Identity and resource-bound hardening**
+- Canonical channel identity is an injective tuple; persistent JSONL, asset, and workspace names are domain-separated v2 hashes that do not disclose raw IDs.
+- Resolver image loaders receive both `AbortSignal` and core-owned byte cap, so platform transports can cancel and bound resource acquisition before persistence.
+
 **Output and delivery feedback**
 - From: core waits for a turn to finish, sends accumulated outputs through `DeliveryService`, and only logs failed passive delivery.
 - To: complete assistant messages become message-level outbound events as soon as they are appended; `Gateway` sends each one through `Session.send()` and persists `delivery.failed` when a send rejects.

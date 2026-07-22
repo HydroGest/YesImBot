@@ -13,7 +13,7 @@ The YesImBot facade MUST allow one custom `Will.Factory` to replace the core def
 - **THEN** it MUST use `DefaultWill`
 
 ### Requirement: Read-Only Will Evaluation
-ChannelRuntime MUST call `Will.decide()` with the committed Event and read-only `Will.State`. Will MUST return the string `wait` or `trigger` and MUST NOT receive Session, Agent, storage, AssetStore, or platform-send capabilities.
+ChannelRuntime MUST call `Will.decide()` with the committed Event and read-only `Will.State`. Will MUST return the string `wait` or `trigger` and MUST NOT receive Session, Agent, storage, AssetStore, or platform-send capabilities. `recent` MUST be an ordered bounded window of the latest 32 committed Events, evicting only its oldest entry; `pending` semantics remain unchanged.
 
 #### Scenario: Will evaluates a committed record
 - **WHEN** an Event has been persisted and observed through `yesimbot/event`

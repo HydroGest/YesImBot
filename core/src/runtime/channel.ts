@@ -11,7 +11,7 @@ import type { LanguageModel } from "ai";
 import type { Bot, Context, Fragment, Logger } from "koishi";
 import { z } from "zod";
 
-import type { ChannelScope } from "../channel/index.js";
+import { channelKey, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
 import { formatEvent } from "../event/formatter.js";
 import { createEvent, type Event, type EventRecord } from "../event/index.js";
@@ -32,6 +32,8 @@ export interface ChannelRuntimeOptions {
   readonly agentPlugins: readonly AgentPlugin[];
   readonly includeMessageId: boolean;
 }
+
+export const MAX_RECENT_EVENTS = 32;
 
 class OutputQueue<T> implements AsyncIterable<T> {
   #items: T[] = [];
@@ -159,7 +161,7 @@ export class ChannelRuntime {
     ];
 
     this.#agent = createAgent({
-      id: `${this.scope.platform}:${this.scope.selfId}:${this.scope.channelId}`,
+      id: channelKey(this.scope),
       model: options.model,
       storage,
       systemPrompt: buildCoreSystemPrompt({ channel: this.scope }),
@@ -215,11 +217,23 @@ export class ChannelRuntime {
   async reset(): Promise<void> {
     await this.enqueue(async () => {
       await this.teardown("reset");
-      await this.#agent.clear();
-      await this.options.assets.clear(this.scope);
+      let failure: unknown;
+      try {
+        await this.#agent.clear();
+      } catch (cause) {
+        failure = cause;
+        this.warn("storage_clear_failed", { cause });
+      }
+      try {
+        await this.options.assets.clear(this.scope);
+      } catch (cause) {
+        failure ??= cause;
+        this.warn("asset_clear_failed", { cause });
+      }
       this.#pending = [];
       this.#recent = [];
       this.#lastActivityAt = null;
+      if (failure) throw failure;
     });
   }
 
@@ -298,6 +312,7 @@ export class ChannelRuntime {
   private remember(event: Event): void {
     this.#pending.push(event);
     this.#recent.push(event);
+    if (this.#recent.length > MAX_RECENT_EVENTS) this.#recent.shift();
     this.#lastActivityAt = event.timestamp;
   }
 

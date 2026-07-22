@@ -23,11 +23,11 @@ export function createImageFreezer(options: ImageFreezerOptions) {
   let imageCount = 0;
   let totalBytes = 0;
   let active = 0;
-  const waiting: Array<() => void> = [];
+  const waiting: Array<{ grant(): boolean }> = [];
 
   async function storeImage(
     data: Uint8Array,
-    mime: string | undefined,
+    _mime: string | undefined,
     reserved: boolean,
   ): Promise<Element> {
     if (!reserved) imageCount += 1;
@@ -35,9 +35,7 @@ export function createImageFreezer(options: ImageFreezerOptions) {
       imageCount > IMAGE_BUDGET.maxImages ||
       !(data instanceof Uint8Array) ||
       data.byteLength > IMAGE_BUDGET.maxBytesPerImage ||
-      totalBytes + data.byteLength > IMAGE_BUDGET.maxTotalBytes ||
-      !mime ||
-      !IMAGE_BUDGET.allowedMime.has(mime as never)
+      totalBytes + data.byteLength > IMAGE_BUDGET.maxTotalBytes
     ) {
       return unavailableImage();
     }
@@ -58,7 +56,7 @@ export function createImageFreezer(options: ImageFreezerOptions) {
 
   async function freezeImage(
     element: Element,
-    load: (signal: AbortSignal) => Promise<{ data: Uint8Array; mime?: string }>,
+    load: (signal: AbortSignal, maxBytes: number) => Promise<{ data: Uint8Array; mime?: string }>,
   ): Promise<Element> {
     const normalized = normalizeElements([element])[0];
     if (!normalized) return unavailableImage();
@@ -67,41 +65,81 @@ export function createImageFreezer(options: ImageFreezerOptions) {
     if (imageCount >= IMAGE_BUDGET.maxImages) return unavailableImage();
     imageCount += 1;
 
-    await acquire();
+    const controller = new AbortController();
+    let permit: ReturnType<typeof acquire> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => {
+        controller.abort(new DOMException("Image download timed out", "TimeoutError"));
+        permit?.cancel();
+        resolve("timeout");
+      }, IMAGE_BUDGET.timeoutMs);
+    });
+    permit = acquire();
+    let releaseWhenSettled = true;
+    let holdsPermit = false;
     try {
-      const controller = new AbortController();
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      const acquired = await Promise.race([permit.promise, deadline]);
+      if (acquired !== true) return unavailableImage();
+      holdsPermit = true;
+      const maxBytes = Math.min(
+        IMAGE_BUDGET.maxBytesPerImage,
+        IMAGE_BUDGET.maxTotalBytes - totalBytes,
+      );
+      const loaded = Promise.resolve().then(() => load(controller.signal, maxBytes));
       try {
-        const timeout = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => {
-            controller.abort(new DOMException("Image download timed out", "TimeoutError"));
-            reject(controller.signal.reason);
-          }, IMAGE_BUDGET.timeoutMs);
-        });
-        const { data, mime } = await Promise.race([load(controller.signal), timeout]);
+        const result = await Promise.race([loaded, deadline]);
+        if (result === "timeout") {
+          releaseWhenSettled = false;
+          void loaded.then(release, release);
+          return unavailableImage();
+        }
+        const { data, mime } = result;
         return await storeImage(data, mime, true);
       } catch {
         return unavailableImage();
-      } finally {
-        if (timer) clearTimeout(timer);
       }
     } finally {
-      release();
+      if (timer) clearTimeout(timer);
+      if (holdsPermit && releaseWhenSettled) release();
     }
   }
 
-  async function acquire(): Promise<void> {
+  function acquire(): { promise: Promise<boolean>; cancel(): void } {
     if (active < IMAGE_BUDGET.concurrency) {
       active += 1;
-      return;
+      return { promise: Promise.resolve(true), cancel() {} };
     }
-    await new Promise<void>((resolve) => waiting.push(resolve));
-    active += 1;
+    let settled = false;
+    let resolve!: (granted: boolean) => void;
+    const waiter = {
+      grant: () => {
+        if (settled) return false;
+        settled = true;
+        active += 1;
+        resolve(true);
+        return true;
+      },
+    };
+    const promise = new Promise<boolean>((next) => {
+      resolve = next;
+    });
+    waiting.push(waiter);
+    return {
+      promise,
+      cancel() {
+        if (settled) return;
+        settled = true;
+        const index = waiting.indexOf(waiter);
+        if (index >= 0) waiting.splice(index, 1);
+        resolve(false);
+      },
+    };
   }
 
   function release(): void {
     active -= 1;
-    waiting.shift()?.();
+    while (waiting.shift()?.grant() !== true && waiting.length > 0) {}
   }
 
   return { putImage, freezeImage };

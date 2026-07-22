@@ -12,7 +12,7 @@ export interface ResolveContext {
   readonly base?: Omit<EventRecord<"message">, "content">;
   readonly freezeImage: (
     element: Element,
-    load: (signal: AbortSignal) => Promise<{ data: Uint8Array; mime?: string }>,
+    load: (signal: AbortSignal, maxBytes: number) => Promise<{ data: Uint8Array; mime?: string }>,
   ) => Promise<Element>;
 }
 

@@ -8,7 +8,8 @@ import { type ChannelScope } from "../src/channel/index.js";
 import { AssetStore } from "../src/shared/asset.js";
 
 const scope: ChannelScope = { platform: "onebot", selfId: "bot-1", channelId: "room-42" };
-const otherScope: ChannelScope = { ...scope, channelId: "other" };
+const otherScope: ChannelScope = { ...scope, channelId: "room?a" };
+const collidingScope: ChannelScope = { ...scope, channelId: "room/a" };
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 describe("AssetStore", () => {
@@ -34,12 +35,12 @@ describe("AssetStore", () => {
   });
 
   it("clears only assets from the requested channel", async () => {
-    const stored = await assets.put(scope, PNG_BYTES);
+    const stored = await assets.put(collidingScope, PNG_BYTES);
     const other = await assets.put(otherScope, PNG_BYTES);
 
-    await assets.clear(scope);
+    await assets.clear(collidingScope);
 
-    await expect(assets.readByAssetId(scope, stored.assetId)).rejects.toThrow();
+    await expect(assets.readByAssetId(collidingScope, stored.assetId)).rejects.toThrow();
     await expect(assets.readByAssetId(otherScope, other.assetId)).resolves.toEqual(PNG_BYTES);
   });
 });

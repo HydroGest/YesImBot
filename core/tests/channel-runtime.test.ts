@@ -341,11 +341,19 @@ describe("ChannelRuntime", () => {
     ]);
   });
 
-  it("keeps every recent event visible to Will state", async () => {
-    const lengths: number[] = [];
+  it("attempts scoped asset clearing and clears in-memory state after storage clearing fails", async () => {
+    const { assets, runtime } = createRuntime({ decide: async () => "wait" });
+    state.agent?.clear.mockRejectedValueOnce(new Error("storage failed"));
+
+    await expect(runtime.reset()).rejects.toThrow("storage failed");
+    expect(assets.clear).toHaveBeenCalledOnce();
+  });
+
+  it("keeps only the most recent bounded ordered events visible to Will state", async () => {
+    const recent: string[][] = [];
     const { runtime } = createRuntime({
       decide: async (_event, state) => {
-        lengths.push(state.recent.length);
+        recent.push(state.recent.map((event) => event.data.message?.id ?? ""));
         return "wait";
       },
     });
@@ -354,6 +362,6 @@ describe("ChannelRuntime", () => {
       await runtime.handle(record({ message: { id: `message-${index}`, content: "hello" } }));
     }
 
-    expect(lengths.at(-1)).toBe(33);
+    expect(recent.at(-1)).toEqual(Array.from({ length: 32 }, (_, index) => `message-${index + 1}`));
   });
 });

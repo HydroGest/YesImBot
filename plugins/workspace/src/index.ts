@@ -199,6 +199,10 @@ export default class WorkspacePlugin {
 }
 
 function workspaceDirectoryId(channel: ChannelScope): string {
-  const digest = createHash("sha256").update(channelKey(channel)).digest("base64url").slice(0, 22);
+  const digest = createHash("sha256")
+    .update("yesimbot:workspace-path:v2:\0")
+    .update(channelKey(channel))
+    .digest("base64url")
+    .slice(0, 22);
   return `workspace_v2_${digest}`;
 }

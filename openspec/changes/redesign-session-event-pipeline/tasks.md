@@ -83,3 +83,7 @@
 - [x] 14.1 Validate OpenSpec strictly and run formatting checks.
 - [x] 14.2 Run lint, type checks, build, and tests in repository CI order.
 - [x] 14.3 Inspect exports, source-tree boundaries, generated-output handling, and `git diff --check` before marking the change complete.
+
+## Final Review Follow-up
+
+The completed tasks retain their original status. Final-review hardening is recorded in `verify.md` and the final-review fix report without adding a second implementation task list.

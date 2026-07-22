@@ -193,6 +193,12 @@ Changing or unregistering `Will.Factory` evicts existing channel runtimes withou
 - **Rationale:** The system must stop new work before destroying channel state while allowing active Session handlers to finish or terminate cleanly.
 - **Alternatives considered:** Letting each ChannelRuntime subscribe to Koishi disposal was rejected because it decentralizes global coordination. Clearing all persisted data during stop was rejected because stop is operational, while reset is destructive.
 
+### D14: Use opaque v2 channel paths and transport-owned image bounds
+
+- **Choice:** `channelKey()` serializes the scope as a JSON tuple. JSONL and asset paths use a `yesimbot:channel-path:v2` SHA-256/base64url digest, while workspace uses its own `yesimbot:workspace-path:v2` digest. Image loaders receive flat `(signal, maxBytes)` arguments; OneBot streams bytes through signal-aware HTTP, stops at the cap, and validates stored MIME from bytes.
+- **Rationale:** Tuple serialization preserves component boundaries. Domain-separated opaque paths prevent collisions, traversal, and raw-ID disclosure. Passing the cap to the transport bounds allocation rather than merely rejecting an already-buffered result.
+- **Failure handling:** Timeout aborts the loader and returns unavailable promptly, but its concurrency permit remains held until the loader settles. Reset always attempts JSONL then asset cleanup, clears in-memory state, removes its cached runtime, and reports the first cleanup error. `recent` is a fixed ordered 32-event window; `pending` remains unbounded only until its active turn consumes it.
+
 ## Target Code Organization
 
 The source tree is organized around three deep modules: the Koishi Session edge, persisted event semantics, and channel execution. Shared operations remain single internal files rather than public services.
@@ -382,7 +388,7 @@ export interface ResolveContext {
 
   readonly freezeImage: (
     element: Element,
-    load: (signal: AbortSignal) => Promise<{
+    load: (signal: AbortSignal, maxBytes: number) => Promise<{
       data: Uint8Array
       mime?: string
     }>,

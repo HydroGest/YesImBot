@@ -176,6 +176,20 @@ describe("RuntimeManager", () => {
     expect(state.runtimes).toHaveLength(2);
   });
 
+  it("evicts a torn-down runtime when its persisted cleanup reports a failure", async () => {
+    const { manager } = createManager();
+
+    await manager.route(record("room"));
+    state.runtimes[0]?.reset.mockRejectedValueOnce(new Error("storage clear failed"));
+
+    await expect(
+      manager.reset({ platform: "test", selfId: "bot-1", channelId: "room" }),
+    ).rejects.toThrow("storage clear failed");
+    await manager.route(record("room"));
+
+    expect(state.runtimes).toHaveLength(2);
+  });
+
   it("clears uncached channel storage and assets without creating a runtime", async () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
     const { manager, assets } = createManager(basePath);

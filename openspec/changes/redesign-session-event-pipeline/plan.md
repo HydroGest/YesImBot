@@ -4,7 +4,7 @@
 
 **Goal:** Replace the current platform-adapter, delivery-service, and cross-channel runtime pipeline with the approved `Gateway`, `Event`, `Will`, `RuntimeManager`, and one-channel `ChannelRuntime` architecture.
 
-**Architecture:** `Gateway` is the only Session-aware boundary: it resolves Sessions into frozen, Session-free `EventRecord` values and sends passive outputs. `RuntimeManager` owns one `ChannelRuntime` per `platform:selfId:channelId`; each channel persists an `Event`, publishes observations, evaluates one replaceable `Will`, and returns complete assistant-message outputs. `AssetStore` and sealed Koishi elements are shared through composition, while public plugins see only resolver, Will, Agent-plugin, model, reset, and stop APIs.
+**Architecture:** `Gateway` is the only Session-aware boundary: it resolves Sessions into frozen, Session-free `EventRecord` values and sends passive outputs. `RuntimeManager` owns one `ChannelRuntime` per injective `[platform, selfId, channelId]` identity; each channel persists an `Event`, publishes observations, evaluates one replaceable `Will`, and returns complete assistant-message outputs. `AssetStore` and sealed Koishi elements are shared through composition, while public plugins see only resolver, Will, Agent-plugin, model, reset, and stop APIs.
 
 **Tech Stack:** TypeScript, Koishi 4, Satori 4.6, `@yesimbot/agent-runtime`, AI SDK `ModelMessage`, Vitest, Yarn 4, Turbo, OpenSpec.
 
@@ -21,10 +21,13 @@
 - Passive sends use the originating `Session.send(fragment)` and preserve its returned `string[]`; active sends use the current `Bot.sendMessage(channelId, fragment)`.
 - Passive send failures create one same-channel `delivery.failed` EventRecord per failed output, continue later outputs, and never recursively create another failure record.
 - Image freezing is bounded at 4 images/message, 5 MiB/image, 10 MiB total, 10 seconds/image, 2 concurrent downloads, and MIME types `image/jpeg`, `image/png`, `image/webp`, and `image/gif`; SVG is unavailable.
+- `channelKey(scope)` is the injective JSON tuple `[platform, selfId, channelId]`. JSONL and asset storage use one opaque `v2` channel path ID; workspace uses its own `v2` SHA-256/base64url digest. No raw identifier appears in a path and no legacy path is read.
+- `freezeImage(element, load)` calls `load(signal, maxBytes)` with the remaining core-controlled byte budget. Loaders must honor the signal and byte cap; timeout returns unavailable near the deadline but a download slot is released only after its loader settles. AssetStore validates MIME from bytes, treating a loader MIME as a hint.
 - Quote persists as `h("quote", { id })`; forward persists only its ID and fixed inline summary. Neither enters `AssetStore` or performs replay-time lookup.
 - Event formatting is local-only. It uses stored timestamp and sender data, formats the fixed `[time="..." sender="..." id="..."]` header with conditional `id`, and never calls a platform API during replay.
 - `requiresMessageId: true` is a static Agent-plugin capability used by the active channel to decide whether the fixed header includes the raw platform message ID.
-- Reset interrupts/stops Agent and Will, waits channel work, clears JSONL and scoped assets, then removes the runtime. Global stop closes admission, tears down runtimes, drains Gateway work, and preserves JSONL/assets.
+- Reset interrupts/stops Agent and Will, waits channel work, independently attempts JSONL then scoped-asset cleanup, clears local state, and removes the runtime even when cleanup reports an error. Global stop closes admission, tears down runtimes, drains Gateway work, and preserves JSONL/assets.
+- `Will.State.recent` is an ordered 32-event window; new entries evict only its oldest entry and do not change `pending` semantics.
 - Package exports expose only `.`, `./model`, and `./package.json`; runtime and shared implementations remain internal.
 
 ## File Map
@@ -99,15 +102,16 @@ Delete these only after all replacement consumers pass:
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { channelKey, channelPath, sameChannel, type ChannelScope } from "../src/channel/index.js";
+import { channelFileName, channelKey, channelPath, sameChannel, type ChannelScope } from "../src/channel/index.js";
 
 const scope: ChannelScope = { platform: "onebot", selfId: "bot-1", channelId: "room/42" };
 
 describe("ChannelScope", () => {
-  it("keeps the canonical runtime key and deterministic session path", () => {
-    expect(channelKey(scope)).toBe("onebot:bot-1:room/42");
+  it("uses an injective canonical key and opaque v2 session path", () => {
+    expect(channelKey(scope)).toBe(JSON.stringify(["onebot", "bot-1", "room/42"]));
+    expect(channelFileName(scope)).toMatch(/^channel_v2_[A-Za-z0-9_-]{43}$/);
     expect(channelPath("/tmp/athena", scope)).toBe(
-      "/tmp/athena/sessions/onebot-bot-1-room_42.jsonl",
+      `/tmp/athena/sessions/${channelFileName(scope)}.jsonl`,
     );
   });
 
@@ -737,7 +741,7 @@ export interface ResolveContext {
   readonly base?: Omit<EventRecord<"message">, "content">;
   readonly freezeImage: (
     element: Element,
-    load: (signal: AbortSignal) => Promise<{ data: Uint8Array; mime?: string }>,
+    load: (signal: AbortSignal, maxBytes: number) => Promise<{ data: Uint8Array; mime?: string }>,
   ) => Promise<Element>;
 }
 

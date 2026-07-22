@@ -1,3 +1,8 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -11,46 +16,60 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
 function freezer(): ResolveContext["freezeImage"] & { mock: ReturnType<typeof vi.fn>["mock"] } {
   return vi.fn(async (element, load) => {
-    const loaded = await load(new AbortController().signal);
+    const loaded = await load(new AbortController().signal, 16);
     return h("img", { id: "asset_abc", mime: loaded.mime });
   }) as never;
 }
 
+function boundedFreezer(maxBytes: number): ResolveContext["freezeImage"] {
+  return vi.fn(async (_element, load) => {
+    await load(new AbortController().signal, maxBytes);
+    return h("img", { unavailable: "true" });
+  }) as never;
+}
+
 describe("freezeOneBotImages", () => {
-  it("loads a remote Lagrange image through Koishi HTTP and delegates storage to freezeImage", async () => {
-    const file = vi.fn(async () => ({
-      data: PNG.buffer,
-      type: "image/png",
-      filename: "image.png",
+  it("passes the AbortSignal into streaming Koishi HTTP transport", async () => {
+    const http = vi.fn(async () => ({
+      data: new ReadableStream({
+        start(controller) {
+          controller.enqueue(PNG);
+          controller.close();
+        },
+      }),
+      headers: new Headers({ "content-type": "image/png" }),
     }));
     const freezeImage = freezer();
 
     const result = await freezeOneBotImages(
-      { http: { file } } as never,
+      { http } as never,
       [h("p", {}, [h.text("before"), h("img", { src: "https://lagrange.example/image" })])],
       freezeImage,
     );
 
-    expect(file).toHaveBeenCalledWith("https://lagrange.example/image");
+    expect(http).toHaveBeenCalledWith(
+      "https://lagrange.example/image",
+      expect.objectContaining({ responseType: "stream", signal: expect.any(AbortSignal) }),
+    );
     expect(freezeImage).toHaveBeenCalledOnce();
     expect(result[0].children[1].attrs).toEqual({ id: "asset_abc", mime: "image/png" });
   });
 
-  it("loads a NapCat file URL through the same signal-aware file API", async () => {
-    const file = vi.fn(async () => ({
-      data: PNG.buffer,
-      type: "image/png",
-      filename: "image.png",
-    }));
+  it("loads a NapCat file URL after its size is checked before reading", async () => {
+    const path = await mkdtemp(join(tmpdir(), "yesimbot-onebot-image-"));
+    const imagePath = join(path, "napcat.png");
+    await writeFile(imagePath, PNG);
     const freezeImage = freezer();
 
-    await freezeOneBotImages(
-      { http: { file } } as never,
-      [h("img", { src: "file:///tmp/napcat.png" })],
-      freezeImage,
-    );
-
-    expect(file).toHaveBeenCalledWith("file:///tmp/napcat.png");
+    try {
+      await freezeOneBotImages(
+        { http: vi.fn() } as never,
+        [h("img", { src: pathToFileURL(imagePath).href })],
+        freezeImage,
+      );
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
   });
 
   it("decodes a data image without a network request", async () => {
@@ -68,12 +87,54 @@ describe("freezeOneBotImages", () => {
     expect(result[0].attrs).toEqual({ id: "asset_abc", mime: "image/png" });
   });
 
-  it("rejects an aborted image load without waiting for the OneBot file API", async () => {
-    const file = vi.fn(async () => ({
-      data: PNG.buffer,
-      type: "image/png",
-      filename: "image.png",
+  it("cancels an oversized remote stream before buffering its complete body", async () => {
+    const cancel = vi.fn();
+    const http = vi.fn(async () => ({
+      data: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(5));
+        },
+        cancel,
+      }),
+      headers: new Headers(),
     }));
+
+    await expect(
+      freezeOneBotImages(
+        { http } as never,
+        [h("img", { src: "https://lagrange.example/oversized" })],
+        boundedFreezer(4),
+      ),
+    ).rejects.toThrow("Image exceeds byte limit");
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("rejects oversized data URLs before decoding and oversized files before reading", async () => {
+    const http = vi.fn();
+    const dataSrc = `data:image/png;base64,${"a".repeat(24)}`;
+    await expect(
+      freezeOneBotImages({ http } as never, [h("img", { src: dataSrc })], boundedFreezer(4)),
+    ).rejects.toThrow("Image exceeds byte limit");
+
+    const path = await mkdtemp(join(tmpdir(), "yesimbot-onebot-large-"));
+    const imagePath = join(path, "large.png");
+    await writeFile(imagePath, new Uint8Array(5));
+    try {
+      await expect(
+        freezeOneBotImages(
+          { http } as never,
+          [h("img", { src: pathToFileURL(imagePath).href })],
+          boundedFreezer(4),
+        ),
+      ).rejects.toThrow("Image exceeds byte limit");
+    } finally {
+      await rm(path, { recursive: true, force: true });
+    }
+    expect(http).not.toHaveBeenCalled();
+  });
+
+  it("rejects an aborted image load without waiting for the OneBot file API", async () => {
+    const http = vi.fn();
     const controller = new AbortController();
     controller.abort(new Error("stopped"));
     const freezeImage = vi.fn(async (element, load) => {
@@ -83,12 +144,12 @@ describe("freezeOneBotImages", () => {
 
     await expect(
       freezeOneBotImages(
-        { http: { file } } as never,
+        { http } as never,
         [h("img", { src: "https://lagrange.example/image" })],
         freezeImage,
       ),
     ).rejects.toThrow("stopped");
-    expect(file).not.toHaveBeenCalled();
+    expect(http).not.toHaveBeenCalled();
   });
 
   it("seals an image without a source or frozen asset as unavailable", async () => {
