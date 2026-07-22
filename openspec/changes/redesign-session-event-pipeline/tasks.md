@@ -6,9 +6,9 @@
 
 ## 2. Define The Event Contract
 
-- [ ] 2.1 Implement declaration-mergeable `EventMap`, mapped `EventRecord`, and `Event` custom-message helpers.
-- [ ] 2.2 Add Koishi and agent-runtime type augmentations plus OneBot event-variant extension points.
-- [ ] 2.3 Cover narrowing, creation, detection, persistence shape, and rejected legacy event types.
+- [x] 2.1 Implement declaration-mergeable `EventMap`, mapped `EventRecord`, and `Event` custom-message helpers.
+- [x] 2.2 Add Koishi and agent-runtime type augmentations plus OneBot event-variant extension points.
+- [x] 2.3 Cover narrowing, creation, detection, persistence shape, and rejected legacy event types.
 
 ## 3. Implement Deterministic Event Formatting
 

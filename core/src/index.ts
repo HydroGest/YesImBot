@@ -13,6 +13,7 @@ export { Config } from "./config.js";
 
 export * from "./channel.js";
 export * from "./delivery/index.js";
+export * from "./event/index.js";
 export { ModelService } from "./model/service.js";
 export { PlatformService } from "./platform/service.js";
 export { YesImBotService } from "./runtime/service.js";
