@@ -806,9 +806,11 @@ it.each([
   expect(result.at(-1)?.attrs?.unavailable).toBe("true");
 });
 
-it("preserves quote and forward as id-only elements", async () => {
+it("preserves quote by ID and forward by ID plus fixed summary", async () => {
   await expect(freezeImage(h("quote", { id: "q-1" }), neverLoad)).resolves.toEqual(h("quote", { id: "q-1" }));
-  await expect(freezeImage(h("forward", { id: "f-1" }), neverLoad)).resolves.toEqual(h("forward", { id: "f-1" }));
+  await expect(freezeImage(h("forward", { id: "f-1" }), neverLoad)).resolves.toEqual(
+    h("forward", { id: "f-1", summary: "[合并转发] 使用 onebot_get_forward_message 查看详情" }),
+  );
 });
 ```
 
