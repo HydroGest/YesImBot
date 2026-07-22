@@ -119,9 +119,9 @@ describe("DefaultWill", () => {
     await expect(new DefaultWill().decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe(
       defaultConfig.group,
     );
-    await expect(new DefaultWill(config.will).decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe(
-      "trigger",
-    );
+    await expect(
+      new DefaultWill(config.will).decide(ordinaryGroupMessageEvent(), EMPTY_STATE),
+    ).resolves.toBe("trigger");
   });
 });
 

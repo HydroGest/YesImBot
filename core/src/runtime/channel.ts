@@ -12,11 +12,11 @@ import type { Bot, Context, Fragment, Logger } from "koishi";
 import { z } from "zod";
 
 import type { ChannelScope } from "../channel/index.js";
-import { createEvent, type Event, type EventRecord } from "../event/index.js";
+import type { Config } from "../config.js";
 import { formatEvent } from "../event/formatter.js";
+import { createEvent, type Event, type EventRecord } from "../event/index.js";
 import type { AssetStore } from "../shared/asset.js";
 import type { Will, WillObservation } from "../will/index.js";
-import type { Config } from "../config.js";
 import { buildCoreSystemPrompt, createPromptFilePlugin } from "./prompt.js";
 import { createChannelStorage } from "./storage.js";
 
@@ -132,7 +132,10 @@ export class ChannelRuntime {
     this.scope = Object.freeze({ ...options.scope });
     const plugins = options.agentPlugins;
     const includeMessageId = options.includeMessageId;
-    const storage = createChannelStorage(resolveBasePath(options.config.basePath, options.ctx), this.scope);
+    const storage = createChannelStorage(
+      resolveBasePath(options.config.basePath, options.ctx),
+      this.scope,
+    );
     const tools: AgentToolSet = [
       {
         name: "sendMessage",
@@ -143,7 +146,13 @@ export class ChannelRuntime {
             const messageIds = await options.bot.sendMessage(channelId, content);
             return { ok: true as const, messageIds };
           } catch (cause) {
-            return { ok: false as const, error: { name: cause instanceof Error ? cause.name : "Error", message: errorMessage(cause) } };
+            return {
+              ok: false as const,
+              error: {
+                name: cause instanceof Error ? cause.name : "Error",
+                message: errorMessage(cause),
+              },
+            };
           }
         },
       } as never,

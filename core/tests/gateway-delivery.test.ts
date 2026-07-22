@@ -130,7 +130,9 @@ describe("Gateway passive delivery", () => {
 
     expect(send).toHaveBeenCalledTimes(1);
     expect(route).toHaveBeenCalledTimes(2);
-    await expect(feedbackOutput.next()).resolves.toMatchObject({ value: expect.objectContaining({ content: "must-not-send" }) });
+    await expect(feedbackOutput.next()).resolves.toMatchObject({
+      value: expect.objectContaining({ content: "must-not-send" }),
+    });
   });
 
   it("keeps consuming later outputs when failure feedback diagnostics and routing fail", async () => {
@@ -144,7 +146,11 @@ describe("Gateway passive delivery", () => {
       })
       .mockRejectedValueOnce(new Error("history unavailable"));
     const send = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([]);
-    const { gateway } = createGateway(route, { warn: vi.fn(() => { throw new Error("logger unavailable"); }) });
+    const { gateway } = createGateway(route, {
+      warn: vi.fn(() => {
+        throw new Error("logger unavailable");
+      }),
+    });
 
     await expect(gateway.handle(session(send) as never)).resolves.toBeUndefined();
 
@@ -155,7 +161,9 @@ describe("Gateway passive delivery", () => {
 
   it("retains the originating Session only while consuming its active output", async () => {
     let release!: () => void;
-    const finished = new Promise<void>((resolve) => { release = resolve; });
+    const finished = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const route = vi.fn(async () => ({
       kind: "run" as const,
       eventId: "event-1",
@@ -170,7 +178,9 @@ describe("Gateway passive delivery", () => {
     const handling = gateway.handle(session(send) as never);
     await vi.waitFor(() => expect(send).toHaveBeenCalledWith("first"));
     let drained = false;
-    const draining = gateway.drain().then(() => { drained = true; });
+    const draining = gateway.drain().then(() => {
+      drained = true;
+    });
 
     await Promise.resolve();
     expect(drained).toBe(false);

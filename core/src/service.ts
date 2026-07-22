@@ -1,10 +1,11 @@
 import { isAbsolute, resolve } from "node:path";
+
 import { Service, type Context } from "koishi";
 
 import type { ChannelScope } from "./channel/index.js";
 import type { Config } from "./config.js";
-import { Gateway, type SessionResolver } from "./gateway/index.js";
 import { IMAGE_BUDGET } from "./gateway/image.js";
+import { Gateway, type SessionResolver } from "./gateway/index.js";
 import type { ModelService } from "./model/service.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/manager.js";
 import { AssetStore } from "./shared/asset.js";
@@ -51,14 +52,24 @@ export class YesImBotService extends Service<Config> {
       config,
       logger: this.logger,
       assets: this.#assets,
-      getAgentPluginFactories: () => [...this.#agentPluginRegistrations].map(({ factory }) => factory),
+      getAgentPluginFactories: () =>
+        [...this.#agentPluginRegistrations].map(({ factory }) => factory),
     });
-    this.#gateway = new Gateway({ ctx, assets: this.#assets, runtime: this.#runtime, logger: this.logger });
+    this.#gateway = new Gateway({
+      ctx,
+      assets: this.#assets,
+      runtime: this.#runtime,
+      logger: this.logger,
+    });
 
     const command = ctx.command("yesimbot.reset", { authority: 4 });
     command.action(async ({ session }) => {
       if (!session?.platform || !session.selfId || !session.channelId) return;
-      await this.reset({ platform: session.platform, selfId: session.selfId, channelId: session.channelId });
+      await this.reset({
+        platform: session.platform,
+        selfId: session.selfId,
+        channelId: session.channelId,
+      });
     });
     if (typeof command.dispose === "function") this.#disposeCommand = () => command.dispose();
   }

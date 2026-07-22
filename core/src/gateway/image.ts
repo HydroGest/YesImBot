@@ -25,7 +25,11 @@ export function createImageFreezer(options: ImageFreezerOptions) {
   let active = 0;
   const waiting: Array<() => void> = [];
 
-  async function storeImage(data: Uint8Array, mime: string | undefined, reserved: boolean): Promise<Element> {
+  async function storeImage(
+    data: Uint8Array,
+    mime: string | undefined,
+    reserved: boolean,
+  ): Promise<Element> {
     if (!reserved) imageCount += 1;
     if (
       imageCount > IMAGE_BUDGET.maxImages ||

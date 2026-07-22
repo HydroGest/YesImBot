@@ -24,11 +24,7 @@ export function createJsonlStorage<T extends AgentEntry = AgentEntry>(
         return content
           .split("\n")
           .filter(Boolean)
-          .map((line) => JSON.parse(line) as T)
-          .filter(
-            (entry) =>
-              (entry as { data?: { type?: unknown } }).data?.type !== "athena.platform.message",
-          );
+          .map((line) => JSON.parse(line) as T);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           return [];

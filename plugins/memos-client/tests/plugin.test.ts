@@ -325,7 +325,14 @@ describe("MemosClientPlugin", () => {
       },
     };
     await runtimePlugin.onAppend?.(
-      [{ id: "entry-message-event", type: "message", timestamp: messageEvent.timestamp, data: messageEvent }],
+      [
+        {
+          id: "entry-message-event",
+          type: "message",
+          timestamp: messageEvent.timestamp,
+          data: messageEvent,
+        },
+      ],
       {} as never,
     );
     await runtimePlugin.toModelMessages?.(
@@ -336,12 +343,19 @@ describe("MemosClientPlugin", () => {
           platform: "onebot",
           selfId: "bot-raw",
           channel: { id: "group-raw", type: "group" },
-          delivery: { turnId: "turn-failed", messageId: "assistant-message", error: { name: "Error", message: "offline" } },
+          delivery: {
+            turnId: "turn-failed",
+            messageId: "assistant-message",
+            error: { name: "Error", message: "offline" },
+          },
         },
       } as never,
       {} as never,
     );
-    await runtimePlugin.toModelMessages?.({ role: "user", id: "user-message", timestamp: Date.now(), content: "ignored" } as never, {} as never);
+    await runtimePlugin.toModelMessages?.(
+      { role: "user", id: "user-message", timestamp: Date.now(), content: "ignored" } as never,
+      {} as never,
+    );
 
     const addTool = (await getTools(runtimePlugin)).find((tool) => tool.name === "add_message");
     await addTool?.execute?.({ content: "仍归属原作者" }, toolContext("turn-real"));
@@ -360,7 +374,10 @@ describe("MemosClientPlugin", () => {
       conversation_id: string;
       info: Record<string, unknown>;
     };
-    expect(body).toMatchObject({ user_id: expected.userId, conversation_id: expected.conversationId });
+    expect(body).toMatchObject({
+      user_id: expected.userId,
+      conversation_id: expected.conversationId,
+    });
     expect(body.info.author_hash).toBe(expected.info.author_hash);
     expect(body.info.message_hash).toBe(expected.info.message_hash);
   });

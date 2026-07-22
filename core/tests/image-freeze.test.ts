@@ -17,7 +17,12 @@ function freezer() {
 describe("resolver image freezing", () => {
   it("stores a supported bounded image as a private asset reference", async () => {
     const { freezeImage, assets } = freezer();
-    await expect(freezeImage(h("img", { src: "https://example.test/a.png" }), async () => ({ data: PNG, mime: "image/png" }))).resolves.toEqual(h("img", { id: "asset_image", mime: "image/png" }));
+    await expect(
+      freezeImage(h("img", { src: "https://example.test/a.png" }), async () => ({
+        data: PNG,
+        mime: "image/png",
+      })),
+    ).resolves.toEqual(h("img", { id: "asset_image", mime: "image/png" }));
     expect(assets.put).toHaveBeenCalledWith(scope, PNG);
   });
 
@@ -27,14 +32,31 @@ describe("resolver image freezing", () => {
     for (let index = 0; index < 4; index += 1) {
       await freezeImage(image(index), async () => ({ data: PNG, mime: "image/png" }));
     }
-    await expect(freezeImage(image(4), async () => ({ data: PNG, mime: "image/png" }))).resolves.toEqual(h("img", { unavailable: "true" }));
+    await expect(
+      freezeImage(image(4), async () => ({ data: PNG, mime: "image/png" })),
+    ).resolves.toEqual(h("img", { unavailable: "true" }));
 
-    await expect(freezer().freezeImage(image(1), async () => ({ data: new Uint8Array(5 * 1024 * 1024 + 1), mime: "image/png" }))).resolves.toEqual(h("img", { unavailable: "true" }));
+    await expect(
+      freezer().freezeImage(image(1), async () => ({
+        data: new Uint8Array(5 * 1024 * 1024 + 1),
+        mime: "image/png",
+      })),
+    ).resolves.toEqual(h("img", { unavailable: "true" }));
     const total = freezer();
-    await total.freezeImage(image(1), async () => ({ data: new Uint8Array(5 * 1024 * 1024), mime: "image/png" }));
-    await total.freezeImage(image(2), async () => ({ data: new Uint8Array(5 * 1024 * 1024), mime: "image/png" }));
-    await expect(total.freezeImage(image(3), async () => ({ data: PNG, mime: "image/png" }))).resolves.toEqual(h("img", { unavailable: "true" }));
-    await expect(freezer().freezeImage(image(1), async () => ({ data: PNG, mime: "image/svg+xml" }))).resolves.toEqual(h("img", { unavailable: "true" }));
+    await total.freezeImage(image(1), async () => ({
+      data: new Uint8Array(5 * 1024 * 1024),
+      mime: "image/png",
+    }));
+    await total.freezeImage(image(2), async () => ({
+      data: new Uint8Array(5 * 1024 * 1024),
+      mime: "image/png",
+    }));
+    await expect(
+      total.freezeImage(image(3), async () => ({ data: PNG, mime: "image/png" })),
+    ).resolves.toEqual(h("img", { unavailable: "true" }));
+    await expect(
+      freezer().freezeImage(image(1), async () => ({ data: PNG, mime: "image/svg+xml" })),
+    ).resolves.toEqual(h("img", { unavailable: "true" }));
   });
 
   it("limits loaders to two concurrent operations and seals timeout or loader failures", async () => {
@@ -49,7 +71,9 @@ describe("resolver image freezing", () => {
       active -= 1;
       return { data: PNG, mime: "image/png" };
     });
-    const jobs = Array.from({ length: 3 }, (_, index) => freezeImage(h("img", { src: String(index) }), load));
+    const jobs = Array.from({ length: 3 }, (_, index) =>
+      freezeImage(h("img", { src: String(index) }), load),
+    );
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
     pending.shift()?.();
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(3));
@@ -58,7 +82,11 @@ describe("resolver image freezing", () => {
     await Promise.all(jobs);
     expect(maximum).toBe(2);
 
-    await expect(freezer().freezeImage(h("img", { src: "bad" }), async () => { throw new Error("offline"); })).resolves.toEqual(h("img", { unavailable: "true" }));
+    await expect(
+      freezer().freezeImage(h("img", { src: "bad" }), async () => {
+        throw new Error("offline");
+      }),
+    ).resolves.toEqual(h("img", { unavailable: "true" }));
   });
 
   it("reserves all four image slots before loading and aborts a timed-out loader", async () => {
@@ -68,7 +96,9 @@ describe("resolver image freezing", () => {
       await new Promise<void>((resolve) => pending.push(resolve));
       return { data: PNG, mime: "image/png" };
     });
-    const jobs = Array.from({ length: 5 }, (_, index) => freezeImage(h("img", { src: String(index) }), load));
+    const jobs = Array.from({ length: 5 }, (_, index) =>
+      freezeImage(h("img", { src: String(index) }), load),
+    );
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
     pending.shift()?.();
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(3));
@@ -90,8 +120,12 @@ describe("resolver image freezing", () => {
   it("normalizes and seals quote and forward forms without invoking a loader", async () => {
     const { freezeImage } = freezer();
     const never = vi.fn(async () => ({ data: PNG, mime: "image/png" }));
-    await expect(freezeImage(h("quote", { id: "q-1" }), never)).resolves.toEqual(h("quote", { id: "q-1" }));
-    await expect(freezeImage(h("forward", { id: "f-1" }), never)).resolves.toEqual(h("forward", { id: "f-1", summary: "[合并转发] 使用 onebot_get_forward_message 查看详情" }));
+    await expect(freezeImage(h("quote", { id: "q-1" }), never)).resolves.toEqual(
+      h("quote", { id: "q-1" }),
+    );
+    await expect(freezeImage(h("forward", { id: "f-1" }), never)).resolves.toEqual(
+      h("forward", { id: "f-1", summary: "[合并转发] 使用 onebot_get_forward_message 查看详情" }),
+    );
     expect(never).not.toHaveBeenCalled();
   });
 });

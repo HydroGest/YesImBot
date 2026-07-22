@@ -3,8 +3,8 @@ import { h, type Awaitable, type Element, type Session } from "koishi";
 import type { ChannelScope } from "../channel/index.js";
 import type { EventRecord } from "../event/index.js";
 import type { RuntimeManager } from "../runtime/manager.js";
-import { normalizeElements, sealElements, unavailableImage } from "../shared/element.js";
 import type { AssetStore } from "../shared/asset.js";
+import { normalizeElements, sealElements, unavailableImage } from "../shared/element.js";
 import { createImageFreezer } from "./image.js";
 
 export interface ResolveContext {
@@ -23,7 +23,10 @@ export interface SessionResolver {
 
 export interface GatewayOptions {
   readonly ctx: {
-    middleware(callback: (session: Session, next: () => Promise<unknown>) => Promise<void>, prepend?: boolean): unknown;
+    middleware(
+      callback: (session: Session, next: () => Promise<unknown>) => Promise<void>,
+      prepend?: boolean,
+    ): unknown;
     on(event: "internal/session", listener: (session: Session) => void): unknown;
   };
   readonly runtime: Pick<RuntimeManager, "route">;
@@ -102,8 +105,17 @@ export class Gateway {
     }
     if (!record) return;
     const scope = scopeFromSession(session);
-    if (!isRecord(record) || !scope || !hasScope(record, scope) || containsReference(record, session)) {
-      this.warn("gateway.invalid_record", new Error("Resolved record is invalid or retains its Session"), session.platform);
+    if (
+      !isRecord(record) ||
+      !scope ||
+      !hasScope(record, scope) ||
+      containsReference(record, session)
+    ) {
+      this.warn(
+        "gateway.invalid_record",
+        new Error("Resolved record is invalid or retains its Session"),
+        session.platform,
+      );
       return;
     }
     try {
@@ -157,7 +169,11 @@ export class Gateway {
 
   private warn(code: string, cause: unknown, platform: string): void {
     try {
-      this.options.logger.warn({ code, platform, cause: cause instanceof Error ? cause.message : String(cause) });
+      this.options.logger.warn({
+        code,
+        platform,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      });
     } catch {}
   }
 }
@@ -180,7 +196,8 @@ function draftMessageEventBase(session: Session): Omit<EventRecord<"message">, "
   const channel = objectValue(resources.channel);
   const user = objectValue(resources.user);
   const message = objectValue(resources.message);
-  const timestamp = numberValue(session.timestamp) ?? numberValue(resources.timestamp) ?? Date.now();
+  const timestamp =
+    numberValue(session.timestamp) ?? numberValue(resources.timestamp) ?? Date.now();
   return {
     ...resources,
     type: "message",
@@ -206,7 +223,12 @@ function resolveFallbackMessage(
   base: Omit<EventRecord<"message">, "content">,
 ): EventRecord<"message"> {
   const elements = (base.message as { elements?: readonly Element[] }).elements ?? [];
-  return { ...base, content: sealElements(elements).map((element) => element.toString()).join("") };
+  return {
+    ...base,
+    content: sealElements(elements)
+      .map((element) => element.toString())
+      .join(""),
+  };
 }
 
 function isRecord(record: EventRecord): boolean {
@@ -238,9 +260,10 @@ function objectValue(value: unknown): Record<string, unknown> {
 
 function normalizeDeliveryError(cause: unknown): { name: string; message: string; code?: string } {
   const error = cause instanceof Error ? cause : new Error(String(cause));
-  const code = typeof (cause as { code?: unknown } | null)?.code === "string"
-    ? (cause as { code: string }).code
-    : undefined;
+  const code =
+    typeof (cause as { code?: unknown } | null)?.code === "string"
+      ? (cause as { code: string }).code
+      : undefined;
   return { name: error.name, message: error.message, ...(code === undefined ? {} : { code }) };
 }
 

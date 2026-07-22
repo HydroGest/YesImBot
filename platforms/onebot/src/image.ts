@@ -18,13 +18,20 @@ async function freezeOneBotElement(
 ): Promise<Element> {
   if (element.type === "img") {
     if (typeof element.attrs.src === "string") {
-      return freezeImage(element, (signal) => loadOneBotImage(ctx, element.attrs.src as string, signal));
+      return freezeImage(element, (signal) =>
+        loadOneBotImage(ctx, element.attrs.src as string, signal),
+      );
     }
-    if (typeof element.attrs.id === "string" && typeof element.attrs.mime === "string") return element;
+    if (typeof element.attrs.id === "string" && typeof element.attrs.mime === "string")
+      return element;
     return h("img", { unavailable: "true" });
   }
   if (!element.children.length) return element;
-  return h(element.type, element.attrs, await freezeOneBotImages(ctx, element.children, freezeImage));
+  return h(
+    element.type,
+    element.attrs,
+    await freezeOneBotImages(ctx, element.children, freezeImage),
+  );
 }
 
 async function loadOneBotImage(
@@ -57,7 +64,9 @@ function decodeDataImage(src: string): { data: Uint8Array; mime?: string } | nul
   if (!match) return null;
   const [, mime, base64, payload] = match;
   return {
-    data: base64 ? new Uint8Array(Buffer.from(payload, "base64")) : new TextEncoder().encode(decodeURIComponent(payload)),
+    data: base64
+      ? new Uint8Array(Buffer.from(payload, "base64"))
+      : new TextEncoder().encode(decodeURIComponent(payload)),
     mime,
   };
 }

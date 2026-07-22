@@ -222,6 +222,20 @@ PlatformService
 
 `YesImBotService` 只负责 Koishi middleware、reset command、AgentPlugin factory 和 delegation。`ChannelRuntime.handle/reset/stop` 隐藏 Agent cache、JSONL storage、busy join、stream owner 和 teardown 顺序；`DeliveryService` 复用 `Session.send()` 与 `Bot.sendMessage()`，保留包括空数组在内的 `string[]` message IDs，并以 `sent`、`partial`、`failed` 表达保守结果。
 
+### 2026-07-22：Session 事件管线取代 Platform 与 Delivery 服务
+
+证据：OpenSpec change `redesign-session-event-pipeline` 的 proposal、design 和六份 delta spec `[D]`。
+
+前一轮拆出四个 owner 后，`Platform.Message` 仍是一套位于 Satori 与 Agent 之间的平行消息模型。Event 只能进程内发布，无法参与历史和 Will 判断；`DeliveryService` 又把被动回复、主动发送和观察状态合并成公共服务。插件因此需要 `platform.scope`、`unsafeBot` 和多个 core subpath 才能工作。
+
+新管线以 Satori `Universal.Event` 为结构基础。平台插件为每个平台注册一个 `SessionResolver`，返回可声明合并的 `EventRecord`；core 把它包装成唯一的 `yesimbot.event` custom message并写入 JSONL。消息、reaction 和 `delivery.failed` 从此使用同一持久事件代数。冻结后的 `content` 负责模型投影，结构化 Satori resources 负责路由和插件判断。
+
+Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调用、图片冻结和被动 `Session.send()`，然后把无 Session 引用的 EventRecord 交给 RuntimeManager。每频道 ChannelRuntime 按 FIFO 执行 persist、event observation、Will decision 和 wait/join/run；RuntimeManager 只管理频道实例与生命周期。Will 的首版契约只有 `wait | trigger`，默认策略处理 direct、mention 和普通群消息。
+
+出站能力不再有公共 DeliveryService。被动回复失败会写入一个 `delivery.failed` Event，后续输出继续发送；主动发送是 Agent 内部的 current-bot tool，只接受显式 channelId。公开 facade 收敛到 model、resolver/Will/Agent plugin 注册、reset 和 stop。
+
+这次重构删除了 PlatformService、DeliveryService、旧跨频道 runtime 和相关 subpath。旧 JSONL 不读取。实现期间也明确接受 MemOS `channel_hash` 与 workspace 频道目录进入 v2 clean break，不保留 `ch_v1_*` helper 或兼容 alias。
+
 ## 4. 决策索引
 
 ### 当前有效
@@ -229,33 +243,33 @@ PlatformService
 | ID | 决策 | 状态与理由 |
 | --- | --- | --- |
 | P-01 | 群聊按“场”理解，而不是独立请求 | 产品原则，持续有效 |
-| P-02 | 不回复是一等行为 | 产品原则；当前尚无内置 willingness 模块 |
+| P-02 | 不回复是一等行为 | `Will.Decision` 以 `wait | trigger` 表达首版参与判断 |
 | P-03 | `@yesimbot/agent-runtime` 保持框架无关 | 当前核心边界 |
 | P-04 | Koishi core 是集成层，不拥有全部业务能力 | 当前核心边界 |
 | P-05 | 可选能力进入 `plugins/*`，模型进入 `providers/*` | 已实施 |
 | P-06 | 平台输入进入 `platforms/*` | 已实施 |
-| P-07 | 频道消息使用 JSONL，长期记忆由插件负责 | 已实施 |
-| P-08 | Adapter 只选择一次；异常不 fallback | 已实施 |
-| P-09 | `Platform.Message` 与 `MessageRecord` 分离 | 已实施 |
-| P-10 | Event publish-only，不进入 Agent 历史 | 已实施 |
+| P-07 | 频道 Event 使用 JSONL，长期记忆由插件负责 | 已实施 |
 | P-11 | 资源在首次持久化前冻结，历史投影不得请求平台 | 已实施 |
 | P-12 | Forward 和 quote 不自动展开 | 已实施 |
-| P-13 | 每频道 FIFO 管理分类、准备和首次提交 | 已实施 |
+| P-13 | 每频道 FIFO 管理持久化、观察、Will 判断和首次提交 | 已实施 |
 | P-14 | 模型流消费在 FIFO 外 | 已实施 |
 | P-15 | 消息 formatter 由 core 固定 | 已实施 |
-| P-16 | 插件侧唯一平台入口是 `ctx.yesimbot.platform` | 已实施 |
 | P-17 | 未发布旧格式不提供兼容层 | 当前分支明确偏好 |
 | P-18 | Prompt 使用固定 core prompt 加 `AGENTS.md`、`PERSONA.md` | 已实施 |
 | P-19 | 公共 API 只为现有用例服务 | KISS / YAGNI 原则 |
-| P-21 | `Platform.Message` 是路由事实的唯一来源 | Session 只保留为准备和被动回复的操作依赖 |
 | P-22 | `ChannelRuntime` 独占频道 Agent 生命周期 | `YesImBotService` 只做 Koishi composition 与 delegation |
-| P-23 | `DeliveryService` 独占出站顺序、receipt 和状态观察 | 复用 Koishi Session/Bot，不增加平台 delivery adapter |
+| P-24 | `EventRecord` 是路由、持久化和 Will 判断的唯一事实 | 结构复用 Satori `Universal.Event`，不再维护 Platform 消息代数 |
+| P-25 | 每个平台最多注册一个 `SessionResolver` | resolver 返回 null 或抛错时不 fallback；无 resolver 的标准消息由 core 构造 fallback Event |
+| P-26 | Gateway 是 Session 和被动回复的唯一 owner | 资源冻结与 `Session.send()` 在活动 handle 内完成，Session 不进入 runtime 或 JSONL |
+| P-27 | Will 是每频道的最小参与判断 seam | 首版只公开 `wait | trigger`、只读状态和可替换 factory |
+| P-28 | 出站能力保持内部拆分 | Gateway 处理被动回复与失败 Event；Agent tool 使用 current Bot 主动发送 |
+| P-29 | `ctx.yesimbot` 只公开已确认 facade | model、resolver/Will/Agent plugin 注册、reset 和 stop |
 
 ### 明确延后
 
 | ID | 方向 | 启动条件 |
 | --- | --- | --- |
-| D-01 | 新 willingness 实现 | 有可解释输入、离线样本和插件 seam |
+| D-01 | 学习型或评分型 Will | 有可解释输入、离线样本和评估方法 |
 | D-02 | 标准事件消费者 | 明确路由、持久化和幂等 |
 | D-03 | World state | 出现聊天历史无法回答的具体状态需求 |
 | D-04 | 主动计划与投递 | 权限、预算、审计、停止机制齐备 |
@@ -277,6 +291,12 @@ PlatformService
 | R-08 | 平台 Fact / View / Reader / Snapshot / template 系统 | 没有足够消费者，职责侵入 core |
 | R-09 | 自动递归展开 forward/quote | 不稳定、昂贵且污染历史 |
 | R-10 | 旧 JSONL 与旧平台消息兼容 | 当前是全新实现，没有现实消费者 |
+| R-11 | Adapter 选择与 refine 作为平台入口 | 单一 SessionResolver 直接产生 EventRecord，减少中间协议 |
+| R-12 | `Platform.Message` 与 `MessageRecord` 平行模型 | Satori Event resources 与 `yesimbot.event` 已覆盖结构和持久化 |
+| R-13 | Event publish-only | Event 需要进入 JSONL、Will 和模型历史 |
+| R-14 | `ctx.yesimbot.platform` 公共服务 | 插件改用 `registerResolver()` 与 Agent plugin factory context |
+| R-15 | `Platform.Message` 作为路由真相 | EventRecord 成为唯一 canonical input |
+| R-16 | 公共 `DeliveryService` | Gateway 被动回复和 current-bot Agent tool 已覆盖当前用例 |
 
 ## 5. 明确表达过的偏好
 

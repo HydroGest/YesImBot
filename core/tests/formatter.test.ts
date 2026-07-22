@@ -138,7 +138,10 @@ describe("formatEvent", () => {
   it("diagnoses a missing AssetStore image after JSONL reload without remote access", async () => {
     const sourcePath = await mkdtemp(join(tmpdir(), "yesimbot-replay-source-"));
     const filePath = join(sourcePath, "events.jsonl");
-    const sourceAssets = new AssetStore({ basePath: sourcePath, maxFileBytes: pngBytes.byteLength });
+    const sourceAssets = new AssetStore({
+      basePath: sourcePath,
+      maxFileBytes: pngBytes.byteLength,
+    });
     const frozen = await sourceAssets.put(scope, pngBytes);
     const stored = messageEvent(`stored text <img id="${frozen.assetId}" mime="${frozen.mime}"/>`);
     await createJsonlStorage(filePath).append(createEntry("message", stored));
@@ -161,11 +164,14 @@ describe("formatEvent", () => {
         }),
       ).resolves.toEqual({
         role: "user",
-        content: '[time="2026/7/18 20:34" sender="Alice (10001)"]\nstored text <img unavailable="true"/>',
+        content:
+          '[time="2026/7/18 20:34" sender="Alice (10001)"]\nstored text <img unavailable="true"/>',
       });
       expect(onAssetMissing).toHaveBeenCalledOnce();
       expect(onAssetMissing.mock.calls[0]?.[0]).toBe(frozen.assetId);
-      expect(onAssetMissing.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ code: "ENOENT" }));
+      expect(onAssetMissing.mock.calls[0]?.[1]).toEqual(
+        expect.objectContaining({ code: "ENOENT" }),
+      );
       expect(platformApi).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();

@@ -52,12 +52,10 @@ function createContext() {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      registerAgentPlugin: vi.fn<(factory: AgentPluginFactory) => () => void>(
-        (factory) => {
-          factories.push(factory);
-          return dispose;
-        },
-      ),
+      registerAgentPlugin: vi.fn<(factory: AgentPluginFactory) => () => void>((factory) => {
+        factories.push(factory);
+        return dispose;
+      }),
     },
   };
 

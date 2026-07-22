@@ -18,7 +18,11 @@ function freezer(): ResolveContext["freezeImage"] & { mock: ReturnType<typeof vi
 
 describe("freezeOneBotImages", () => {
   it("loads a remote Lagrange image through Koishi HTTP and delegates storage to freezeImage", async () => {
-    const file = vi.fn(async () => ({ data: PNG.buffer, type: "image/png", filename: "image.png" }));
+    const file = vi.fn(async () => ({
+      data: PNG.buffer,
+      type: "image/png",
+      filename: "image.png",
+    }));
     const freezeImage = freezer();
 
     const result = await freezeOneBotImages(
@@ -33,10 +37,18 @@ describe("freezeOneBotImages", () => {
   });
 
   it("loads a NapCat file URL through the same signal-aware file API", async () => {
-    const file = vi.fn(async () => ({ data: PNG.buffer, type: "image/png", filename: "image.png" }));
+    const file = vi.fn(async () => ({
+      data: PNG.buffer,
+      type: "image/png",
+      filename: "image.png",
+    }));
     const freezeImage = freezer();
 
-    await freezeOneBotImages({ http: { file } } as never, [h("img", { src: "file:///tmp/napcat.png" })], freezeImage);
+    await freezeOneBotImages(
+      { http: { file } } as never,
+      [h("img", { src: "file:///tmp/napcat.png" })],
+      freezeImage,
+    );
 
     expect(file).toHaveBeenCalledWith("file:///tmp/napcat.png");
   });
@@ -46,14 +58,22 @@ describe("freezeOneBotImages", () => {
     const freezeImage = freezer();
     const src = `data:image/png;base64,${Buffer.from(PNG).toString("base64")}`;
 
-    const result = await freezeOneBotImages({ http: { file } } as never, [h("img", { src })], freezeImage);
+    const result = await freezeOneBotImages(
+      { http: { file } } as never,
+      [h("img", { src })],
+      freezeImage,
+    );
 
     expect(file).not.toHaveBeenCalled();
     expect(result[0].attrs).toEqual({ id: "asset_abc", mime: "image/png" });
   });
 
   it("rejects an aborted image load without waiting for the OneBot file API", async () => {
-    const file = vi.fn(async () => ({ data: PNG.buffer, type: "image/png", filename: "image.png" }));
+    const file = vi.fn(async () => ({
+      data: PNG.buffer,
+      type: "image/png",
+      filename: "image.png",
+    }));
     const controller = new AbortController();
     controller.abort(new Error("stopped"));
     const freezeImage = vi.fn(async (element, load) => {
@@ -91,7 +111,9 @@ describe("freezeOneBotImages", () => {
       h("forward", { id: "forward", summary: "fixed" }),
     ];
 
-    await expect(freezeOneBotImages({ http: { file } } as never, elements, freezeImage)).resolves.toEqual(elements);
+    await expect(
+      freezeOneBotImages({ http: { file } } as never, elements, freezeImage),
+    ).resolves.toEqual(elements);
     expect(file).not.toHaveBeenCalled();
     expect(freezeImage).not.toHaveBeenCalled();
   });

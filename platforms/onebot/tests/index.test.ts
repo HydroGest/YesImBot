@@ -67,13 +67,21 @@ describe("createResolver", () => {
       }),
     );
 
-    expect(result).toMatchObject({ type: "onebot.message-reactions-updated", channel: { id: "room" } });
+    expect(result).toMatchObject({
+      type: "onebot.message-reactions-updated",
+      channel: { id: "room" },
+    });
   });
 
   it("returns null for an unsupported non-message session", async () => {
     const resolver = createResolver({ http: { file: vi.fn() } } as never);
     await expect(
-      resolver.resolve(context({ session: { platform: "onebot", selfId: "bot", event: {} } as Session, base: undefined })),
+      resolver.resolve(
+        context({
+          session: { platform: "onebot", selfId: "bot", event: {} } as Session,
+          base: undefined,
+        }),
+      ),
     ).resolves.toBeNull();
   });
 });
@@ -88,7 +96,10 @@ describe("apply", () => {
     apply(ctx as never);
 
     expect(registerResolver).toHaveBeenCalledOnce();
-    expect(registerResolver.mock.calls[0][0]).toMatchObject({ platform: "onebot" } satisfies Pick<SessionResolver, "platform">);
+    expect(registerResolver.mock.calls[0][0]).toMatchObject({ platform: "onebot" } satisfies Pick<
+      SessionResolver,
+      "platform"
+    >);
     expect(on).toHaveBeenCalledWith("dispose", dispose);
   });
 });

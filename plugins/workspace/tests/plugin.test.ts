@@ -163,12 +163,13 @@ describe("WorkspacePlugin", () => {
     const directories = await readdir(join(baseDir, "workspace", "channels"));
     expect(directories).toHaveLength(2);
     expect(directories).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/^workspace_v2_[A-Za-z0-9_-]{22}$/),
-      ]),
+      expect.arrayContaining([expect.stringMatching(/^workspace_v2_[A-Za-z0-9_-]{22}$/)]),
     );
     const notePaths = directories.map((directory) =>
-      access(join(baseDir, "workspace", "channels", directory, "workspace", "note.txt"), constants.F_OK),
+      access(
+        join(baseDir, "workspace", "channels", directory, "workspace", "note.txt"),
+        constants.F_OK,
+      ),
     );
     const noteResults = await Promise.allSettled(notePaths);
     expect(noteResults.filter((result) => result.status === "fulfilled")).toHaveLength(1);

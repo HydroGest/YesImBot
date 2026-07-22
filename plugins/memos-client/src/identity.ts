@@ -37,7 +37,9 @@ function deriveAgentHash(platform: string, selfId: string): string {
   return hashMemosIdParts(["memos-agent-v1", platform, selfId]);
 }
 
-function deriveChannelHash(input: { channelScope: { platform: string; selfId: string; channelId: string } }): string {
+function deriveChannelHash(input: {
+  channelScope: { platform: string; selfId: string; channelId: string };
+}): string {
   return hashMemosIdParts([
     "memos-channel-v2",
     input.channelScope.platform,

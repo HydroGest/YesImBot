@@ -4,13 +4,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 const state = vi.hoisted(() => ({
-  gateway: undefined as { register: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; drain: ReturnType<typeof vi.fn> } | undefined,
-  runtime: undefined as {
-    setWill: ReturnType<typeof vi.fn>;
-    reset: ReturnType<typeof vi.fn>;
-    stop: ReturnType<typeof vi.fn>;
-    options: { getAgentPluginFactories(): readonly unknown[] };
-  } | undefined,
+  gateway: undefined as
+    | {
+        register: ReturnType<typeof vi.fn>;
+        close: ReturnType<typeof vi.fn>;
+        drain: ReturnType<typeof vi.fn>;
+      }
+    | undefined,
+  runtime: undefined as
+    | {
+        setWill: ReturnType<typeof vi.fn>;
+        reset: ReturnType<typeof vi.fn>;
+        stop: ReturnType<typeof vi.fn>;
+        options: { getAgentPluginFactories(): readonly AgentPluginFactory[] };
+      }
+    | undefined,
 }));
 
 vi.mock("../src/runtime/manager.js", () => ({
@@ -19,7 +27,7 @@ vi.mock("../src/runtime/manager.js", () => ({
     reset = vi.fn(async () => undefined);
     stop = vi.fn(async () => undefined);
 
-    constructor(readonly options: { getAgentPluginFactories(): readonly unknown[] }) {
+    constructor(readonly options: { getAgentPluginFactories(): readonly AgentPluginFactory[] }) {
       state.runtime = this;
     }
   },
@@ -132,7 +140,11 @@ describe("YesImBotService facade", () => {
     service.registerAgentPlugin(factory);
 
     disposeFirst();
-    const plugins = await Promise.all(state.runtime?.options.getAgentPluginFactories().map((factory: any) => factory({})) ?? []);
+    const plugins = await Promise.all(
+      state.runtime?.options
+        .getAgentPluginFactories()
+        .map((factory) => factory({} as Parameters<AgentPluginFactory>[0])) ?? [],
+    );
 
     expect(plugins).toEqual([{ name: "plugin" }]);
   });

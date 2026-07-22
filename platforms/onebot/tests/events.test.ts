@@ -64,6 +64,9 @@ describe("resolveOneBotEvent", () => {
         reactions: [{ emoji_id: 100, emoji_type: 1, count: 0 }],
       }),
     );
-    expect(result?.reaction).toMatchObject({ messageId: "40000", reactions: [{ id: "100", count: 0 }] });
+    expect(result?.reaction).toMatchObject({
+      messageId: "40000",
+      reactions: [{ id: "100", count: 0 }],
+    });
   });
 });

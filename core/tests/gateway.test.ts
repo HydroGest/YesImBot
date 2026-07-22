@@ -62,15 +62,25 @@ function createGateway() {
 describe("Gateway", () => {
   it("allows one resolver per platform and returns an exact disposer", () => {
     const { gateway } = createGateway();
-    const first = { platform: "test", resolve: vi.fn(async () => record()) } satisfies SessionResolver;
-    const second = { platform: "test", resolve: vi.fn(async () => record()) } satisfies SessionResolver;
+    const first = {
+      platform: "test",
+      resolve: vi.fn(async () => record()),
+    } satisfies SessionResolver;
+    const second = {
+      platform: "test",
+      resolve: vi.fn(async () => record()),
+    } satisfies SessionResolver;
     const disposeFirst = gateway.register(first);
 
-    expect(() => gateway.register(second)).toThrow('Resolver for platform "test" is already registered');
+    expect(() => gateway.register(second)).toThrow(
+      'Resolver for platform "test" is already registered',
+    );
     disposeFirst();
     const disposeSecond = gateway.register(second);
     disposeFirst();
-    expect(() => gateway.register(first)).toThrow('Resolver for platform "test" is already registered');
+    expect(() => gateway.register(first)).toThrow(
+      'Resolver for platform "test" is already registered',
+    );
     disposeSecond();
     expect(() => gateway.register(first)).not.toThrow();
   });
@@ -104,7 +114,9 @@ describe("Gateway", () => {
   it("creates a normalized and sealed fallback EventRecord for an unregistered message platform", async () => {
     const { gateway, runtime } = createGateway();
 
-    await gateway.handle(session({ elements: h.parse('hello <img src="https://example.test/a.png"/>') }) as never);
+    await gateway.handle(
+      session({ elements: h.parse('hello <img src="https://example.test/a.png"/>') }) as never,
+    );
 
     expect(runtime.route).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -146,7 +158,9 @@ describe("Gateway", () => {
       user: { id: "user-1", name: "Event user" },
       message: { id: "message-1", content: 'hello <at id="bot-1"/>' },
     });
-    expect((routed.message as { elements?: unknown }).elements).toEqual(h.parse('hello <at id="bot-1"/>'));
+    expect((routed.message as { elements?: unknown }).elements).toEqual(
+      h.parse('hello <at id="bot-1"/>'),
+    );
     expect(routed).not.toBe(input);
   });
 
@@ -171,7 +185,10 @@ describe("Gateway", () => {
   it.each([
     ["platform", (value: EventRecord<"message">) => ({ ...value, platform: "other" })],
     ["selfId", (value: EventRecord<"message">) => ({ ...value, selfId: "other" })],
-    ["channel.id", (value: EventRecord<"message">) => ({ ...value, channel: { ...value.channel, id: "other" } })],
+    [
+      "channel.id",
+      (value: EventRecord<"message">) => ({ ...value, channel: { ...value.channel, id: "other" } }),
+    ],
   ])("rejects a resolver record with a mismatched %s", async (_field, change) => {
     const { gateway, runtime, logger } = createGateway();
     gateway.register({ platform: "test", resolve: async () => change(record()) });
@@ -179,7 +196,9 @@ describe("Gateway", () => {
     await gateway.handle(session() as never);
 
     expect(runtime.route).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ code: "gateway.invalid_record" }));
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "gateway.invalid_record" }),
+    );
   });
 
   it("skips an unregistered non-message Session", async () => {
@@ -197,15 +216,35 @@ describe("Gateway", () => {
     expect(skipped.runtime.route).not.toHaveBeenCalled();
 
     const failed = createGateway();
-    failed.gateway.register({ platform: "test", resolve: async () => { throw new Error("broken resolver"); } });
+    failed.gateway.register({
+      platform: "test",
+      resolve: async () => {
+        throw new Error("broken resolver");
+      },
+    });
     await failed.gateway.handle(session() as never);
     expect(failed.runtime.route).not.toHaveBeenCalled();
-    expect(failed.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ code: "gateway.resolver_failed" }));
+    expect(failed.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "gateway.resolver_failed" }),
+    );
   });
 
   it("handles message middleware and non-message internal sessions exactly once", async () => {
     const { gateway, runtime, middleware, internal } = createGateway();
-    gateway.register({ platform: "notice", resolve: async () => ({ ...record(), platform: "notice", type: "delivery.failed", delivery: { turnId: "turn-1", messageId: "message-1", error: { name: "Error", message: "notice" } } }) as EventRecord });
+    gateway.register({
+      platform: "notice",
+      resolve: async () =>
+        ({
+          ...record(),
+          platform: "notice",
+          type: "delivery.failed",
+          delivery: {
+            turnId: "turn-1",
+            messageId: "message-1",
+            error: { name: "Error", message: "notice" },
+          },
+        }) as EventRecord,
+    });
     const message = session();
     await middleware()(message as never, async () => undefined);
     internal()(message as never);

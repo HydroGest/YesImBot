@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  channelKey,
-  channelPath,
-  sameChannel,
-  type ChannelScope,
-} from "../src/channel/index.js";
+import { channelKey, channelPath, sameChannel, type ChannelScope } from "../src/channel/index.js";
 
 const scope: ChannelScope = { platform: "onebot", selfId: "bot-1", channelId: "room/42" };
 

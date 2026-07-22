@@ -15,7 +15,11 @@ import type { MemosChannelType, MemosClientConfig } from "./types.js";
 
 function captureMessageEvent(
   message: AgentMessage,
-  assign: (snapshot: { authorId: string; messageId: string; channelType: MemosChannelType }) => void,
+  assign: (snapshot: {
+    authorId: string;
+    messageId: string;
+    channelType: MemosChannelType;
+  }) => void,
 ): void {
   if (!isEvent(message) || !isMessageEvent(message)) {
     return;
@@ -24,8 +28,7 @@ function captureMessageEvent(
   assign({
     authorId: message.data.user.id!,
     messageId: message.data.message.id!,
-    channelType:
-      message.data.channel.type === Universal.Channel.Type.DIRECT ? "private" : "group",
+    channelType: message.data.channel.type === Universal.Channel.Type.DIRECT ? "private" : "group",
   });
 }
 

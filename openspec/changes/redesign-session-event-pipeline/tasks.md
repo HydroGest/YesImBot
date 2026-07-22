@@ -28,7 +28,7 @@
 - [x] 5.2 Create one-channel storage, prompt, Agent construction, and committed Event append flow.
 - [x] 5.3 Implement persist-before-event-before-Will ordering with `wait`, `join`, and `run` results.
 - [x] 5.4 Consume Agent internal events into ordered complete assistant outputs without exposing Agent internals.
-- [ ] 5.5 Add the current-bot active send tool with explicit channel targeting and normalized receipts.
+- [x] 5.5 Add the current-bot active send tool with explicit channel targeting and normalized receipts.
 
 ## 6. Build RuntimeManager
 
@@ -80,6 +80,6 @@
 
 ## 14. Run Final Verification
 
-- [ ] 14.1 Validate OpenSpec strictly and run formatting checks.
-- [ ] 14.2 Run lint, type checks, build, and tests in repository CI order.
-- [ ] 14.3 Inspect exports, source-tree boundaries, generated-output handling, and `git diff --check` before marking the change complete.
+- [x] 14.1 Validate OpenSpec strictly and run formatting checks.
+- [x] 14.2 Run lint, type checks, build, and tests in repository CI order.
+- [x] 14.3 Inspect exports, source-tree boundaries, generated-output handling, and `git diff --check` before marking the change complete.

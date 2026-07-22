@@ -1,7 +1,8 @@
-import { Context } from "@koishijs/core";
 import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { Context } from "@koishijs/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -27,8 +28,8 @@ vi.mock("../src/runtime/channel.js", () => ({
   },
 }));
 
-import type { EventRecord } from "../src/event/index.js";
 import { channelPath, type ChannelScope } from "../src/channel/index.js";
+import type { EventRecord } from "../src/event/index.js";
 import { RuntimeManager } from "../src/runtime/manager.js";
 import type { Will } from "../src/will/index.js";
 
@@ -66,7 +67,15 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
     assets: assets as never,
     getAgentPluginFactories,
   });
-  return { manager, matchingBot, otherBot, model, resolveChatModel, assets, getAgentPluginFactories };
+  return {
+    manager,
+    matchingBot,
+    otherBot,
+    model,
+    resolveChatModel,
+    assets,
+    getAgentPluginFactories,
+  };
 }
 
 function deferred<T>() {
@@ -85,7 +94,10 @@ describe("RuntimeManager", () => {
   it("creates one runtime for concurrent first events with the same canonical key", async () => {
     const { manager } = createManager();
 
-    await Promise.all([manager.route(record("room", { guild: { id: "guild-a" } })), manager.route(record("room", { guild: { id: "guild-b" } }))]);
+    await Promise.all([
+      manager.route(record("room", { guild: { id: "guild-a" } })),
+      manager.route(record("room", { guild: { id: "guild-b" } })),
+    ]);
 
     expect(state.runtimes).toHaveLength(1);
     expect(state.runtimes[0]?.handle).toHaveBeenCalledTimes(2);
@@ -117,7 +129,9 @@ describe("RuntimeManager", () => {
     const secondPlugin = { name: "second" };
     const firstFactory = vi.fn(async () => firstWill);
     const secondFactory = vi.fn(async () => secondWill);
-    getAgentPluginFactories.mockReturnValueOnce([async () => firstPlugin]).mockReturnValue([async () => secondPlugin]);
+    getAgentPluginFactories
+      .mockReturnValueOnce([async () => firstPlugin])
+      .mockReturnValue([async () => secondPlugin]);
     manager.setWill(firstFactory);
 
     await manager.route(record("room-a"));
@@ -136,7 +150,10 @@ describe("RuntimeManager", () => {
 
   it("uses factory capabilities only for the runtime created from that factory snapshot", async () => {
     const { manager, getAgentPluginFactories } = createManager();
-    const factory = Object.assign(vi.fn(async () => ({ name: "plain" })), { requiresMessageId: true });
+    const factory = Object.assign(
+      vi.fn(async () => ({ name: "plain" })),
+      { requiresMessageId: true },
+    );
     getAgentPluginFactories.mockReturnValueOnce([factory]).mockReturnValueOnce([]);
 
     await manager.route(record("room-a"));

@@ -224,9 +224,9 @@ describe("ChannelRuntime", () => {
 
   it("uses the explicit factory capability when formatting a message event", async () => {
     const { runtime } = createRuntime({ decide: async () => "wait" }, undefined, true);
-    const formatter = (state.options?.plugins as Array<{ name: string; toModelMessages: Function }>).find(
-      (plugin) => plugin.name === "core.event-format",
-    );
+    const formatter = (
+      state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
+    ).find((plugin) => plugin.name === "core.event-format");
 
     await runtime.handle(record());
     const messages = await formatter?.toModelMessages({
@@ -332,7 +332,13 @@ describe("ChannelRuntime", () => {
 
     await runtime.reset();
 
-    expect(order).toEqual(["interrupt", "agent.stop", "will.stop", "storage.clear", "assets.clear"]);
+    expect(order).toEqual([
+      "interrupt",
+      "agent.stop",
+      "will.stop",
+      "storage.clear",
+      "assets.clear",
+    ]);
   });
 
   it("keeps every recent event visible to Will state", async () => {

@@ -164,7 +164,12 @@ export default class WorkspacePlugin {
       throw new Error("Workspace plugin has not been started");
     }
 
-    const workspaceRoot = join(this.rootPath, "channels", workspaceDirectoryId(channel), "workspace");
+    const workspaceRoot = join(
+      this.rootPath,
+      "channels",
+      workspaceDirectoryId(channel),
+      "workspace",
+    );
 
     await mkdir(workspaceRoot, { recursive: true });
 
