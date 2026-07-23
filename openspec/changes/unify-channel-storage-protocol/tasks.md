@@ -44,7 +44,7 @@
 
 ## 8. Documentation And Verification
 
-- [ ] 8.1 Update public exports, configuration documentation, and operator documentation for the new Key, Catalog, unified root, Database requirement, and no-migration boundary.
-- [ ] 8.2 Run targeted Core, Workspace, and memos-client tests after each package change.
-- [ ] 8.3 Run `yarn lint`, `yarn fmt:check`, `yarn check-types`, `yarn build`, and `yarn test`, then record any environment-only failures.
-- [ ] 8.4 Run strict OpenSpec validation and confirm no implementation retains legacy channel path or plugin-local channel hash derivation.
+- [x] 8.1 Update public exports, configuration documentation, and operator documentation for the new Key, Catalog, unified root, Database requirement, and no-migration boundary.
+- [x] 8.2 Run targeted Core, Workspace, and memos-client tests after each package change.
+- [x] 8.3 Run `yarn lint`, `yarn fmt:check`, `yarn check-types`, `yarn build`, and `yarn test`, then record any environment-only failures.
+- [x] 8.4 Run strict OpenSpec validation and confirm no implementation retains legacy channel path or plugin-local channel hash derivation.
