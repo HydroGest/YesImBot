@@ -33,9 +33,9 @@
 
 ## 6. Workspace Integration
 
-- [ ] 6.1 Remove the plugin-owned channel workspace root and legacy `workspace_v2_*` path derivation.
-- [ ] 6.2 Register `workspace`, resolve the root through `ensureStorage`, and cache Workspace objects by Core Channel Key.
-- [ ] 6.3 Add tests for shared-assignee reuse, direct bot isolation, namespace disposal, and preservation of existing Workspace data.
+- [x] 6.1 Remove the plugin-owned channel workspace root and legacy `workspace_v2_*` path derivation.
+- [x] 6.2 Register `workspace`, resolve the root through `ensureStorage`, and cache Workspace objects by Core Channel Key.
+- [x] 6.3 Add tests for shared-assignee reuse, direct bot isolation, namespace disposal, and preservation of existing Workspace data.
 
 ## 7. MemOS Integration
 
