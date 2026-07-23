@@ -8,14 +8,14 @@
 
 - [x] 2.1 Add the private Core storage manager for Manifest validation, atomic channel creation, Catalog rebuild, and collision detection.
 - [x] 2.2 Add namespace registration and safe path resolution with slug, reserved-name, segment, and containment validation.
-- [ ] 2.3 Expose `channelKey`, `registerStorage`, `ensureStorage`, and `listChannels` directly on `YesImBotService`, and initialize storage before admission.
+- [x] 2.3 Expose `channelKey`, `registerStorage`, `ensureStorage`, and `listChannels` directly on `YesImBotService`, and initialize storage before admission.
 - [x] 2.4 Add crash-recovery, malformed-data, Catalog ordering, duplicate namespace, and path traversal tests.
 
 ## 3. Core Storage Consumers
 
-- [ ] 3.1 Move Agent JSONL storage to `channels/<key>/sessions/messages.jsonl` through Core storage resolution.
-- [ ] 3.2 Move AssetStore paths to `channels/<key>/assets/` while preserving content hashing, integrity checks, and reset cleanup.
-- [ ] 3.3 Keep reset limited to Session and Asset data while preserving Manifest, Catalog, Workspace, and other namespaces.
+- [x] 3.1 Move Agent JSONL storage to `channels/<key>/sessions/messages.jsonl` through Core storage resolution.
+- [x] 3.2 Move AssetStore paths to `channels/<key>/assets/` while preserving content hashing, integrity checks, and reset cleanup.
+- [x] 3.3 Keep reset limited to Session and Asset data while preserving Manifest, Catalog, Workspace, and other namespaces.
 
 ## 4. Database Assignee Admission
 
