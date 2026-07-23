@@ -58,7 +58,8 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
   ctx.bots.push(otherBot as never, matchingBot as never);
   const model = { modelId: "test-model" };
   const resolveChatModel = vi.fn(() => ({ model }));
-  Object.assign(ctx, { "yesimbot.model": { resolveChatModel } });
+  const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
+  Object.assign(ctx, { "yesimbot.model": { resolveChatModel }, database });
   const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
   const getAgentPluginFactories = vi.fn(() => []);
   const storage = new ChannelStorage(basePath);
@@ -77,6 +78,7 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
     model,
     resolveChatModel,
     assets,
+    database,
     getAgentPluginFactories,
     storage,
   };
@@ -105,6 +107,16 @@ describe("RuntimeManager", () => {
 
     expect(state.runtimes).toHaveLength(1);
     expect(state.runtimes[0]?.handle).toHaveBeenCalledTimes(2);
+  });
+
+  it("revalidates shared assignment inside the lifecycle before creating a runtime", async () => {
+    const { manager, database, resolveChatModel } = createManager();
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+
+    await expect(manager.route(record("room"))).rejects.toMatchObject({ reason: "mismatch" });
+
+    expect(resolveChatModel).not.toHaveBeenCalled();
+    expect(state.runtimes).toHaveLength(0);
   });
 
   it("keeps different canonical channel keys isolated", async () => {

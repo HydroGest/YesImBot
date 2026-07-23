@@ -40,6 +40,7 @@ function record(): EventRecord<"message"> {
 function createGateway() {
   const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
   const logger = { warn: vi.fn() };
+  const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
   let middleware: ((input: never, next: () => Promise<unknown>) => Promise<void>) | undefined;
   let internal: ((input: never) => void) | undefined;
   const ctx = {
@@ -51,6 +52,7 @@ function createGateway() {
       internal = listener;
       return vi.fn();
     }),
+    database,
   };
   const assets = { put: vi.fn(async () => ({ assetId: "asset_image", mime: "image/png" })) };
   const storage = new ChannelStorage("/tmp/yesimbot-gateway-test");
@@ -64,6 +66,9 @@ function createGateway() {
       logger,
     }),
     runtime,
+    assets,
+    database,
+    storage,
     logger,
     middleware: () => middleware!,
     internal: () => internal!,
@@ -71,6 +76,81 @@ function createGateway() {
 }
 
 describe("Gateway", () => {
+  it.each([
+    [[], "missing"],
+    [[{ assignee: "" }], "empty"],
+    [[{ assignee: "other" }], "mismatch"],
+  ])("rejects shared admission before resolver %#", async (rows) => {
+    const { gateway, runtime, assets, database } = createGateway();
+    const resolve = vi.fn(async () => record());
+    gateway.register({ platform: "test", resolve });
+    database.get.mockResolvedValue(rows);
+
+    await gateway.handle(session() as never);
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(assets.put).not.toHaveBeenCalled();
+    expect(runtime.route).not.toHaveBeenCalled();
+  });
+
+  it("rejects a shared database failure before resolver work", async () => {
+    const { gateway, runtime, assets, database } = createGateway();
+    const resolve = vi.fn(async () => record());
+    gateway.register({ platform: "test", resolve });
+    database.get.mockRejectedValue(new Error("database unavailable"));
+
+    await gateway.handle(session() as never);
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(assets.put).not.toHaveBeenCalled();
+    expect(runtime.route).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ atSelf: true }],
+    [{ content: "yesimbot.reset", prefix: "yesimbot" }],
+  ])("does not let shared routing hints bypass non-assignee admission", async (overrides) => {
+    const { gateway, runtime, database } = createGateway();
+    const resolve = vi.fn(async () => record());
+    gateway.register({ platform: "test", resolve });
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+
+    await gateway.handle(session(overrides) as never);
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(runtime.route).not.toHaveBeenCalled();
+  });
+
+  it("routes direct Sessions without a Database assignee lookup", async () => {
+    const { gateway, runtime, database } = createGateway();
+    gateway.register({
+      platform: "test",
+      resolve: async () => ({ ...record(), channel: { ...record().channel, type: 1 } }),
+    });
+
+    await gateway.handle(session({ isDirect: true }) as never);
+
+    expect(database.get).not.toHaveBeenCalled();
+    expect(runtime.route).toHaveBeenCalledOnce();
+  });
+
+  it("updates a resolved non-empty channel name before runtime submission", async () => {
+    const { gateway, runtime, storage } = createGateway();
+    const updateName = vi.spyOn(storage, "updateName");
+    gateway.register({
+      platform: "test",
+      resolve: async () => ({ ...record(), channel: { ...record().channel, name: "Room" } }),
+    });
+
+    await gateway.handle(session() as never);
+
+    expect(updateName).toHaveBeenCalledWith(
+      { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
+      "Room",
+    );
+    expect(runtime.route).toHaveBeenCalledOnce();
+  });
+
   it("allows one resolver per platform and returns an exact disposer", () => {
     const { gateway } = createGateway();
     const first = {

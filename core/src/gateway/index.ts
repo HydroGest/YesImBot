@@ -1,5 +1,6 @@
 import { Context, h, Logger, type Awaitable, type Element, type Session, Universal } from "koishi";
 
+import { assertAssignee } from "../assignee.js";
 import type { ChannelScope } from "../channel/index.js";
 import type { EventRecord } from "../event/index.js";
 import type { RuntimeManager } from "../runtime/manager.js";
@@ -93,6 +94,14 @@ export class Gateway {
   }
 
   private async route(session: Session): Promise<void> {
+    const scope = scopeFromSession(session);
+    if (!scope) return;
+    try {
+      await assertAssignee(this.opts.ctx, scope);
+    } catch (cause) {
+      this.warn("gateway.assignee_rejected", cause, session.platform);
+      return;
+    }
     await this.opts.ready();
     let record: EventRecord | null;
     try {
@@ -102,7 +111,6 @@ export class Gateway {
       return;
     }
     if (!record) return;
-    const scope = scopeFromSession(session);
     if (
       !isRecord(record) ||
       !scope ||
@@ -117,6 +125,7 @@ export class Gateway {
       return;
     }
     try {
+      await this.opts.storage.updateName(scope, record.channel.name);
       const result = await this.opts.runtime.route(record);
       if (result.kind === "run") {
         for await (const output of result.output) {

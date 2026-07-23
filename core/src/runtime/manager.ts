@@ -1,6 +1,7 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 
+import { assertAssignee } from "../assignee.js";
 import { channelKey, fromEvent, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
 import type { EventRecord } from "../event/index.js";
@@ -31,7 +32,6 @@ interface RuntimeEntry {
 
 export class RuntimeManager {
   private runtimes = new Map<string, RuntimeEntry>();
-  private creating = new Map<string, Promise<RuntimeEntry>>();
   private tails = new Map<string, Promise<void>>();
   private gen = 0;
   private makeWill: Will.Factory;
@@ -60,8 +60,13 @@ export class RuntimeManager {
     this.assertOpen();
     const key = channelKey(scope);
     await this.enqueueLifecycle(key, async () => {
-      const pending = this.creating.get(key);
-      if (pending) await pending;
+      this.assertOpen();
+      try {
+        await assertAssignee(this.opts.ctx, scope);
+      } catch (cause) {
+        this.warn("runtime.assignee_rejected", { scope, cause });
+        throw cause;
+      }
       const entry = this.runtimes.get(key);
       if (entry) {
         try {
@@ -84,17 +89,14 @@ export class RuntimeManager {
 
   private async getOrCreate(scope: ChannelScope): Promise<ChannelRuntime> {
     const key = channelKey(scope);
-    const existing = this.runtimes.get(key);
-    if (existing?.generation === this.gen) return existing.runtime;
-
-    const pending = this.creating.get(key);
-    if (pending) {
-      const entry = await pending;
-      if (entry.generation === this.gen) return entry.runtime;
-      return this.getOrCreate(scope);
-    }
-
-    const creation = this.enqueueLifecycle(key, async () => {
+    const entry = await this.enqueueLifecycle(key, async () => {
+      this.assertOpen();
+      try {
+        await assertAssignee(this.opts.ctx, scope);
+      } catch (cause) {
+        this.warn("runtime.assignee_rejected", { scope, cause });
+        throw cause;
+      }
       const current = this.runtimes.get(key);
       if (current?.generation === this.gen) return current;
       if (current) {
@@ -105,14 +107,8 @@ export class RuntimeManager {
       this.runtimes.set(key, entry);
       return entry;
     });
-    this.creating.set(key, creation);
-    try {
-      const entry = await creation;
-      if (entry.generation === this.gen) return entry.runtime;
-      return this.getOrCreate(scope);
-    } finally {
-      if (this.creating.get(key) === creation) this.creating.delete(key);
-    }
+    if (entry.generation === this.gen) return entry.runtime;
+    return this.getOrCreate(scope);
   }
 
   private async createRuntime(scope: ChannelScope, generation: number): Promise<RuntimeEntry> {
@@ -150,7 +146,7 @@ export class RuntimeManager {
   }
 
   private async stopInternal(): Promise<void> {
-    await Promise.allSettled([...this.creating.values()]);
+    await Promise.allSettled([...this.tails.values()]);
     const entries = [...this.runtimes.entries()];
     await Promise.all(
       entries.map(([key, entry]) =>

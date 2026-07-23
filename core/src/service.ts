@@ -2,6 +2,7 @@ import { isAbsolute, resolve } from "node:path";
 
 import { Service, type Context } from "koishi";
 
+import { assertAssignee } from "./assignee.js";
 import { channelKey, type ChannelScope } from "./channel/index.js";
 import type { Config } from "./config.js";
 import { IMAGE_BUDGET } from "./gateway/image.js";
@@ -21,7 +22,7 @@ declare module "koishi" {
 }
 
 export class YesImBotService extends Service<Config> {
-  static readonly inject = ["yesimbot.model"];
+  static readonly inject = ["yesimbot.model", "database"];
 
   readonly model: ModelService;
   private readonly storage: ChannelStorage;
@@ -121,7 +122,8 @@ export class YesImBotService extends Service<Config> {
     return () => this.plugins.delete(registration);
   }
 
-  reset(scope: ChannelScope): Promise<void> {
+  async reset(scope: ChannelScope): Promise<void> {
+    await assertAssignee(this.ctx, scope);
     return this.rt.reset(scope);
   }
 

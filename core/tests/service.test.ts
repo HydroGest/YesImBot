@@ -37,12 +37,14 @@ function createService() {
   const ctx = new Context();
   ctx.baseDir = "/tmp/yesimbot-service";
   Object.assign(ctx, { "yesimbot.model": {} });
+  const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
+  Object.assign(ctx, { database });
   vi.spyOn(ctx, "middleware").mockReturnValue(vi.fn() as never);
   vi.spyOn(ctx, "on").mockReturnValue(vi.fn() as never);
   vi.spyOn(ctx, "command").mockReturnValue({ action: vi.fn(), dispose: vi.fn() } as never);
   const service = new YesImBotService(ctx as never, config);
   Object.assign(ctx, { yesimbot: service });
-  return { ctx, service };
+  return { ctx, service, database };
 }
 
 describe("YesImBotService facade", () => {
@@ -88,6 +90,16 @@ describe("YesImBotService facade", () => {
     expect(state.runtime?.reset).toHaveBeenCalledWith(scope);
   });
 
+  it("rejects shared resets before the Runtime manager for a non-assignee", async () => {
+    const { service, database } = createService();
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+
+    await expect(service.reset(scope)).rejects.toMatchObject({ reason: "mismatch" });
+
+    expect(state.runtime?.reset).not.toHaveBeenCalled();
+  });
+
   it("exposes Core channel storage methods", async () => {
     const { service } = createService();
     const scope = { platform: "onebot", selfId: "10000", channelId: "123456", isDirect: false };
@@ -122,7 +134,7 @@ describe("YesImBotService facade", () => {
     const assets = { readByAssetId: vi.fn(), clear: vi.fn() };
     const gateway = new Gateway({
       ctx: ctx as never, runtime: runtime as never, assets: assets as never,
-      storage: {} as never, ready: () => ready, logger: { warn: vi.fn() } as never,
+      storage: { updateName: vi.fn() } as never, ready: () => ready, logger: { warn: vi.fn() } as never,
     });
     gateway.register(resolver);
     const handling = gateway.handle({

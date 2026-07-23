@@ -6,7 +6,7 @@ import { YesImBotService } from "./service.js";
 
 export const name = "yesimbot";
 export const usage = ``;
-export const inject = [];
+export const inject = ["database"];
 export { Config } from "./config.js";
 
 export type { ChannelScope } from "./channel/index.js";

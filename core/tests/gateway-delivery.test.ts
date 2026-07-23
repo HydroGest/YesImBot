@@ -47,6 +47,7 @@ function createGateway(route: ReturnType<typeof vi.fn>, logger = { warn: vi.fn()
   const ctx = {
     middleware: vi.fn(() => vi.fn()),
     on: vi.fn(() => vi.fn()),
+    database: { get: vi.fn(async () => [{ assignee: "bot-1" }]) },
   };
   const storage = new ChannelStorage("/tmp/yesimbot-gateway-delivery-test");
   return {
