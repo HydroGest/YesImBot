@@ -51,8 +51,6 @@
 - Modify: `platforms/onebot/tests/events.test.ts`
 - Modify: `plugins/onebot-utils/src/index.ts`
 - Modify: `plugins/onebot-utils/tests/onebot-utils.test.ts`
-- Modify: `plugins/tool-observer/src/send.ts`
-- Modify: `plugins/tool-observer/tests/plugin.test.ts`
 - Modify: `plugins/memos-client/src/index.ts`
 - Modify: `plugins/memos-client/scripts/qq-memos-import.ts`
 - Modify: `plugins/memos-client/tests/identity.test.ts`
@@ -278,8 +276,6 @@ rtk git add \
   platforms/onebot/tests/events.test.ts \
   plugins/onebot-utils/src/index.ts \
   plugins/onebot-utils/tests/onebot-utils.test.ts \
-  plugins/tool-observer/src/send.ts \
-  plugins/tool-observer/tests/plugin.test.ts \
   plugins/memos-client/src/index.ts \
   plugins/memos-client/scripts/qq-memos-import.ts \
   plugins/memos-client/tests/identity.test.ts \

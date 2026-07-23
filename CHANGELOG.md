@@ -13,7 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **agent-runtime**: New `@yesimbot/agent-runtime` package — standalone agent runtime with createAgent, turn queue, message storage, plugin hooks, tool registry, channel events, and state management
 - **workspace**: bash-tool sandbox integration with virtual filesystem mounts, channel-scoped workspace, and AbortSignal timeout bridge
 - **memos-client**: New `koishi-plugin-yesimbot-memos-client` plugin — MemOS Cloud memory integration with CRUD operations, identity generation, QQ chat memory import script, and debug channel memory search
-- **tool-observer**: New `koishi-plugin-yesimbot-tool-observer` plugin — per-call tool execution notifications with payload formatting and configurable compression
 - **onebot-utils**: Channel platform context extraction and platform-aware message handling
 - **sticker**: New `koishi-plugin-yesimbot-sticker` plugin for sticker message handling
 - **core**: Added canonical 26-character Channel Keys, authoritative channel Manifests, a rebuildable Catalog, and registered per-channel storage namespaces
