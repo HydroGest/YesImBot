@@ -16,6 +16,22 @@ MemOS Cloud long-term memory plugin for yesimbot. It adds `search_message` and `
 - `includeRawIdentityInfo`: defaults to `false`, so raw platform ids are not sent to MemOS unless you opt in explicitly.
 - `enableDebugTools`: defaults to `false`. When enabled, registers development-only debug tools.
 
+## Channel identity
+
+The plugin uses the Core Channel Key as the MemOS `channel_hash` metadata
+field. The Core Key is a 26-character lowercase Base32 string derived from
+deterministic canonical tuples:
+
+- Shared channels: `platform + channelId` — the Key and `channel_hash` remain
+  stable when Koishi changes the bot assignee.
+- Direct channels: `platform + selfId + channelId` — the Key and
+  `channel_hash` change when the bot identity differs, providing bot-level
+  isolation.
+
+MemOS `user_id`, `conversation_id`, and `agent_id` remain plugin-owned
+identities derived through the plugin's `deriveMemosIdentity` helper. The
+Core Channel Key does not replace those field semantics.
+
 ## Development Debug Tools
 
 When `enableDebugTools` is `true`, the plugin also registers `debug_search_channel_memory`. It accepts `query`, `channelId`, and optional `channelType` so developers can search another channel's MemOS subject without exposing raw `user_id`, `conversation_id`, filters, credentials, or MemOS request parameters to the model.

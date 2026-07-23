@@ -236,6 +236,30 @@ Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调�
 
 这次重构删除了 PlatformService、DeliveryService、旧跨频道 runtime 和相关 subpath。旧 JSONL 不读取。实现期间也明确接受 MemOS `channel_hash`、频道 JSONL/assets 路径与 workspace 目录进入 v2 clean break，不保留 `ch_v1_*` helper 或兼容 alias。新路径以无歧义 tuple 的 SHA-256 摘要隔离频道，不暴露平台原始 ID。图片 loader 同时接收 AbortSignal 和 core 剩余字节预算；OneBot 在 HTTP stream、本地文件读取和 data URL 解码阶段执行硬限制。
 
+### 2026-07-23：统一频道存储协议，确立 Core 持久化所有权
+
+证据：`change/unify-channel-storage-protocol` 的 design、delta specs 和 OpenSpec artifacts `[D]`；Tasks 1-8 实现 `[C]`；`core/src/channel/index.ts`、`core/src/storage/index.ts`、`plugins/workspace/src/index.ts`、`plugins/memos-client/src/index.ts` `[S]`。
+
+此前 Core、Session storage、Asset storage、Workspace 和 MemOS 使用不同的频道路径和 ID 计算方法。一个频道的数据分散在无关根目录下，需要三个不同的 hash/sanitize 实现，operator 无法从一个源定位频道本地资源。
+
+新协议建立在一组紧凑设计决定上：
+
+- `ChannelScope` 增加 `isDirect` 判定 shared/direct 身份边界。shared 身份 = `platform + channelId`，direct 再附加 `selfId`。改变了频道持久化身份构造方式。
+- 规范二元组 `["yesimbot.channel", 1, "shared"/"direct", ...]` 经 SHA-256 / 前 16 字节 / unpadded lowercase Base32 产生 26 字符 Key。Key 不可逆向解析。
+- 布局从模块分离改为一频道一目录：`<basePath>/channels/<key>/channel.json`（权威清单）、`sessions/`、`assets/`、`workspace/` 和已注册的模块 namespace 全在同一目录下。`channels.json` 是可重建索引，非第二事实源。
+- Workspace 去掉独立 `root` 配置和本地频道路径 hash，通过 `YesImBotService.ensureStorage(channel, "workspace")` 获取 Core namespace 解析路径。
+- MemOS `channel_hash` 改用 Core Channel Key；`user_id`、`conversation_id` 和 `agent_id` 仍是插件自有标识。
+- Database 成为必需注入，shared 频道每次 admission 检查 Koishi Channel 行的 `assignee`，不匹配则直接拒绝。direct 频道跳过检查。assignee 变更时触发 online handover：drain 旧 Runtime、保留 Key/JSONL/workspace、为新 assignee 创建 Runtime，不会有两个 Runtime 实例同时写入同一频道历史。
+- 旧 `channel_v2_*`、`workspace_v2_*`、`ch_v1_*` 格式不读取、不迁移、不删除。
+
+这次改变的持久影响：
+
+- 跨包频道身份统一到 Core 的 `channelKey()`，三个模块不再各自维护 hash 算法。
+- Workspace 的 `root` 配置被移除，配置向 Core 路径收敛。
+- Operator 可以通过 `channels.json` 或 `channelKey()` 输出定位任意频道资源，无需理解三个模块的 ID 格式。
+- Database assignee 成为操作中共享频道 Runtime 所有权的事实来源，不再依赖 middleware 注册顺序或本地缓存。
+- 当旧规范中提到 `ChannelScopeId` 或 `ch_v1_*` 前缀时，实际代码已改用无前缀 26 字符 Key——新协议发布时这些名称未出现在公共 API 中。
+
 ## 4. 决策索引
 
 ### 当前有效
@@ -264,6 +288,11 @@ Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调�
 | P-27 | Will 是每频道的最小参与判断 seam | 首版只公开 `wait | trigger`、只读状态和可替换 factory |
 | P-28 | 出站能力保持内部拆分 | Gateway 处理被动回复与失败 Event；Agent tool 使用 current Bot 主动发送 |
 | P-29 | `ctx.yesimbot` 只公开已确认 facade | model、resolver/Will/Agent plugin 注册、reset 和 stop |
+| P-30 | 频道身份使用 26 字符 lowercase Base32 Key，非 `ch_v1_` 前缀或原始坐标 | 确定性不可逆向 Key，验证 Manifest 身份后打开目录 |
+| P-31 | Core 频道存储为 channel-first 布局 | `<basePath>/channels/<key>/` 统管 channel.json、sessions、assets、workspace、已注册 namespace |
+| P-32 | Database 是必需依赖，shared 频道 assignee admission fail closed | Koishi 拥有分配权；Core 不重复存储 assignee |
+| P-33 | Online handover 在生命周期协调器外 drain，保留历史数据 | 避免死锁，不打断正常 turn 输出 |
+| P-34 | Channel Key 在 consumer 中复用 | Workspace、MemOS 不再自定义频道 hash，但它不替代 MemOS 自有身份字段 |
 
 ### 明确延后
 
@@ -297,6 +326,7 @@ Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调�
 | R-14 | `ctx.yesimbot.platform` 公共服务 | 插件改用 `registerResolver()` 与 Agent plugin factory context |
 | R-15 | `Platform.Message` 作为路由真相 | EventRecord 成为唯一 canonical input |
 | R-16 | 公共 `DeliveryService` | Gateway 被动回复和 current-bot Agent tool 已覆盖当前用例 |
+| R-17 | `ChannelScopeId` 及 `ch_v1_` 前缀格式 | 被无前缀 26 字符 lowercase Base32 Key 取代，`ChannelScopeId` 名称不在公共 API 中出现 |
 
 ## 5. 明确表达过的偏好
 

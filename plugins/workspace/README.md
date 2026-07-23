@@ -9,9 +9,11 @@ Workspace tools for YesImBot agents, backed by `just-bash` and `bash-tool`.
 - `writeFile`: write a complete file into the virtual workspace.
 
 The default writable workspace is channel-isolated. Core derives a canonical
-`ChannelScopeId` from `platform`, `selfId`, and `channelId`; the workspace
-plugin uses that ID as the channel directory segment and does not expose raw
-platform IDs in workspace paths.
+Channel Key from `platform + channelId` (shared) or
+`platform + selfId + channelId` (direct); the workspace plugin uses
+`YesImBotService.ensureStorage(channel, "workspace")` to resolve a channel
+directory beneath `<basePath>/channels/<key>/workspace/` and does not expose
+raw platform IDs in workspace paths.
 
 This plugin no longer exposes the previous default tool names
 `grep`, `glob`, `edit_file`, `read_file`, `write_file`, or `execute_command`.
@@ -22,7 +24,6 @@ tool-name-specific prompts to use `bash`, `readFile`, and `writeFile`.
 
 | Option          | Meaning                                                                                                 |
 | --------------- | ------------------------------------------------------------------------------------------------------- |
-| `root`          | Host directory where channel workspaces are stored. Default: `data/yesimbot/workspace`.                 |
 | `cwd`           | Virtual working directory used by `bash-tool`. Default: `/home/workspace`.                              |
 | `persistPaths`  | Extra writable host-backed mounts. Changes persist on the host.                                         |
 | `readOnlyPaths` | Read-only host-backed mounts. Reads succeed, writes fail.                                               |
@@ -30,18 +31,22 @@ tool-name-specific prompts to use `bash`, `readFile`, and `writeFile`.
 | `timeoutMs`     | Bash command timeout in milliseconds. Default: `30000`.                                                 |
 | `enableNetwork` | Enables `just-bash` network support. Default: `false`.                                                  |
 
+The default
+writable workspace root is resolved through the Core storage namespace at
+`<basePath>/channels/<26-char-key>/workspace/`. The plugin no longer accepts a
+plugin-local `root` option.
+
 ## Examples
 
 ### Private or group channel workspace
 
 ```yaml
-root: data/yesimbot/workspace
 cwd: /home/workspace
 enableNetwork: false
 ```
 
 Every Koishi channel gets its own writable `/home/workspace`. Recreating the
-runtime for the same channel scope reuses that channel's files.
+runtime for the same channel Key reuses that channel's files.
 
 ### Group project assistant
 
@@ -54,7 +59,9 @@ persistPaths:
 ```
 
 Use `/knowledge` for shared reference material and `/shared` only when the
-channel is trusted to write back into the host-backed directory.
+channel is trusted to write back into the host-backed directory. The default
+workspace resolves through the Core channel namespace and does not need a
+separate root.
 
 ### Safe codebase inspection
 
