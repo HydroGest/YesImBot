@@ -6,10 +6,10 @@
 
 ## 2. Core Channel Storage
 
-- [ ] 2.1 Add the private Core storage manager for Manifest validation, atomic channel creation, Catalog rebuild, and collision detection.
-- [ ] 2.2 Add namespace registration and safe path resolution with slug, reserved-name, segment, and containment validation.
+- [x] 2.1 Add the private Core storage manager for Manifest validation, atomic channel creation, Catalog rebuild, and collision detection.
+- [x] 2.2 Add namespace registration and safe path resolution with slug, reserved-name, segment, and containment validation.
 - [ ] 2.3 Expose `channelKey`, `registerStorage`, `ensureStorage`, and `listChannels` directly on `YesImBotService`, and initialize storage before admission.
-- [ ] 2.4 Add crash-recovery, malformed-data, Catalog ordering, duplicate namespace, and path traversal tests.
+- [x] 2.4 Add crash-recovery, malformed-data, Catalog ordering, duplicate namespace, and path traversal tests.
 
 ## 3. Core Storage Consumers
 
