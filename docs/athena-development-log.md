@@ -238,7 +238,7 @@ Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调�
 
 ### 2026-07-23：统一频道存储协议，确立 Core 持久化所有权
 
-证据：`change/unify-channel-storage-protocol` 的 design、delta specs 和 OpenSpec artifacts `[D]`；Tasks 1-8 实现 `[C]`；`core/src/channel/index.ts`、`core/src/storage/index.ts`、`plugins/workspace/src/index.ts`、`plugins/memos-client/src/index.ts` `[S]`。
+证据：归档 change `openspec/changes/archive/2026-07-23-unify-channel-storage-protocol/` 的 design、delta specs、verify 与 OpenSpec artifacts `[D]`；Tasks 1-9 实现及最终 review fixes `[C]`；`core/src/channel/index.ts`、`core/src/storage/index.ts`、`core/src/runtime/manager.ts`、`plugins/workspace/src/index.ts`、`plugins/memos-client/src/index.ts` `[S]`。
 
 此前 Core、Session storage、Asset storage、Workspace 和 MemOS 使用不同的频道路径和 ID 计算方法。一个频道的数据分散在无关根目录下，需要三个不同的 hash/sanitize 实现，operator 无法从一个源定位频道本地资源。
 
@@ -250,6 +250,7 @@ Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调�
 - Workspace 去掉独立 `root` 配置和本地频道路径 hash，通过 `YesImBotService.ensureStorage(channel, "workspace")` 获取 Core namespace 解析路径。
 - MemOS `channel_hash` 改用 Core Channel Key；`user_id`、`conversation_id` 和 `agent_id` 仍是插件自有标识。
 - Database 成为必需注入，shared 频道每次 admission 检查 Koishi Channel 行的 `assignee`，不匹配则直接拒绝。direct 频道跳过检查。assignee 变更时触发 online handover：drain 旧 Runtime、保留 Key/JSONL/workspace、为新 assignee 创建 Runtime，不会有两个 Runtime 实例同时写入同一频道历史。
+- Handover 在进入 lifecycle tail 前预留最多五个等待槽；generation 变化或 stop 期间创建的 provisional Runtime 会先完整清理再重试或拒绝。ChannelStorage 在创建 namespace 前拒绝 channel、namespace 和路径组件 symlink，避免把目录写到频道根之外。
 - 旧 `channel_v2_*`、`workspace_v2_*`、`ch_v1_*` 格式不读取、不迁移、不删除。
 
 这次改变的持久影响：
@@ -258,7 +259,7 @@ Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调�
 - Workspace 的 `root` 配置被移除，配置向 Core 路径收敛。
 - Operator 可以通过 `channels.json` 或 `channelKey()` 输出定位任意频道资源，无需理解三个模块的 ID 格式。
 - Database assignee 成为操作中共享频道 Runtime 所有权的事实来源，不再依赖 middleware 注册顺序或本地缓存。
-- 当旧规范中提到 `ChannelScopeId` 或 `ch_v1_*` 前缀时，实际代码已改用无前缀 26 字符 Key——新协议发布时这些名称未出现在公共 API 中。
+- 主 specs 已同步到无前缀 26 字符 Channel Key、channel-first storage、Database admission 和 online handover；`ChannelScopeId` 与 `ch_v1_*` 只保留在 no-migration 边界说明中。
 
 ## 4. 决策索引
 
@@ -287,11 +288,11 @@ Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调�
 | P-26 | Gateway 是 Session 和被动回复的唯一 owner | 资源冻结与 `Session.send()` 在活动 handle 内完成，Session 不进入 runtime 或 JSONL |
 | P-27 | Will 是每频道的最小参与判断 seam | 首版只公开 `wait | trigger`、只读状态和可替换 factory |
 | P-28 | 出站能力保持内部拆分 | Gateway 处理被动回复与失败 Event；Agent tool 使用 current Bot 主动发送 |
-| P-29 | `ctx.yesimbot` 只公开已确认 facade | model、resolver/Will/Agent plugin 注册、reset 和 stop |
+| P-29 | `ctx.yesimbot` 只公开已确认 facade | model、resolver/Will/Agent plugin 注册、Channel Key/storage 查询、reset 和 stop |
 | P-30 | 频道身份使用 26 字符 lowercase Base32 Key，非 `ch_v1_` 前缀或原始坐标 | 确定性不可逆向 Key，验证 Manifest 身份后打开目录 |
 | P-31 | Core 频道存储为 channel-first 布局 | `<basePath>/channels/<key>/` 统管 channel.json、sessions、assets、workspace、已注册 namespace |
 | P-32 | Database 是必需依赖，shared 频道 assignee admission fail closed | Koishi 拥有分配权；Core 不重复存储 assignee |
-| P-33 | Online handover 在生命周期协调器外 drain，保留历史数据 | 避免死锁，不打断正常 turn 输出 |
+| P-33 | Online handover 在生命周期协调器外 drain，保留历史数据 | 最多保留五个等待事件；避免死锁，不打断正常 turn 输出 |
 | P-34 | Channel Key 在 consumer 中复用 | Workspace、MemOS 不再自定义频道 hash，但它不替代 MemOS 自有身份字段 |
 
 ### 明确延后

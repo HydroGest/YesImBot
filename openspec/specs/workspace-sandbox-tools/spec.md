@@ -6,26 +6,41 @@ Define the workspace plugin's default sandbox tools, channel-scoped workspace is
 ## Requirements
 ### Requirement: Channel-Scoped Workspace Isolation
 
-The workspace plugin SHALL create or resolve the default writable workspace per core-provided `ChannelScopeId`.
+The Workspace plugin SHALL register the `workspace` storage namespace and SHALL use the directory resolved by `YesImBotService.ensureStorage` as the default writable Workspace root.
 
-#### Scenario: Distinct channels use distinct workspace roots
-- **WHEN** two agent runtimes are created for different channel scopes
-- **THEN** each runtime receives a workspace whose default writable files are isolated from the other runtime
-- **AND** each workspace root MUST include that channel's `ChannelScopeId`
+#### Scenario: Distinct persistent channel identities use distinct workspace roots
+- **WHEN** two Agent runtimes use different Core Channel Keys
+- **THEN** each Runtime MUST receive a Workspace whose default writable files are isolated from the other Runtime
+- **AND** each Workspace root MUST resolve beneath its Channel Key directory
 
 #### Scenario: Same channel reuses persisted workspace
-- **WHEN** an agent runtime is recreated for the same channel scope
-- **THEN** the workspace plugin MUST derive the same `ChannelScopeId`
-- **AND** files written to the default writable workspace in a previous runtime remain available
+- **WHEN** an Agent runtime is recreated for the same Channel Key
+- **THEN** the Workspace plugin MUST resolve the same `workspace` namespace root
+- **AND** files written by a previous Runtime MUST remain available
+
+#### Scenario: Shared channel changes assignee
+
+- **WHEN** RuntimeManager rebuilds a shared-channel Runtime for a new Koishi assignee
+- **THEN** the Workspace plugin MUST reuse the same Workspace root and cached persistent data
+
+#### Scenario: Direct channels use bot isolation
+
+- **WHEN** two direct scopes differ by `selfId`
+- **THEN** they MUST resolve different Workspace roots
 
 #### Scenario: Workspace root hides raw channel ids
-- **WHEN** the workspace plugin creates a channel workspace directory
+- **WHEN** the Workspace plugin resolves a channel workspace directory
 - **THEN** the directory name MUST NOT include raw `platform`, `selfId`, or `channelId`
 
-#### Scenario: Workspace plugin does not implement channel id derivation
-- **WHEN** the workspace plugin needs a channel workspace directory
-- **THEN** it MUST call core channel scope APIs for id generation
-- **AND** it MUST NOT use plugin-local channel target types, channel sanitization, or channel hash helpers
+#### Scenario: Workspace plugin does not implement channel paths
+- **WHEN** the Workspace plugin needs a channel Workspace root
+- **THEN** it MUST call `YesImBotService.ensureStorage` with the registered `workspace` namespace
+- **AND** it MUST NOT use plugin-local target types, root configuration, channel sanitization, hash helpers, or path concatenation
+
+#### Scenario: Workspace plugin unloads
+
+- **WHEN** the Workspace plugin invokes its namespace disposer
+- **THEN** Core and the plugin MUST preserve persisted Workspace data
 
 ### Requirement: Bash Tool Backed Default Tool Set
 
@@ -114,7 +129,7 @@ The workspace plugin SHALL extend the agent system prompt with channel-aware wor
 
 ### Requirement: Workspace Documentation
 
-The workspace plugin SHALL document default tools, `ChannelScopeId`-based channel isolation, mount configuration, network behavior, and security considerations for operators.
+The workspace plugin SHALL document default tools, Channel Key-based channel isolation, mount configuration, network behavior, and security considerations for operators.
 
 #### Scenario: Documentation includes safe codebase inspection example
 - **WHEN** an operator reads the workspace plugin documentation
@@ -126,6 +141,6 @@ The workspace plugin SHALL document default tools, `ChannelScopeId`-based channe
 
 #### Scenario: Documentation avoids raw channel path promises
 - **WHEN** an operator reads channel isolation documentation
-- **THEN** it MUST describe isolation by canonical `ChannelScopeId`
+- **THEN** it MUST describe isolation by canonical Channel Key
 - **AND** it MUST NOT document raw `platform:selfId:channelId` or sanitized raw IDs as directory names
 

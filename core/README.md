@@ -1,43 +1,37 @@
 # koishi-plugin-yesimbot
 
-The core package provides YesImBot's Koishi services, canonical message
-routing, model registry, channel runtime ownership, platform input, and
-Koishi-first output delivery.
+The core package provides YesImBot's Koishi facade, Session Gateway, model
+registry, canonical EventRecord routing, channel storage, and Runtime ownership.
 
-## Platform API
+## Public API
 
-Import contracts from `koishi-plugin-yesimbot/platform`. Core exports the
-`Platform.Message`, `Platform.MessageRecord`, `Platform.Event`,
-`Platform.Scope`, `Platform.Adapter`, `Platform.RefineResult`, and
-`Platform.ImagePrepareSink` contracts. Adapters register through
-`ctx.yesimbot.platform.register()` and publish semantic events through
-`ctx.yesimbot.platform.publish()`.
+Platform plugins register one `SessionResolver` per Koishi platform through
+`ctx.yesimbot.registerResolver()`. The resolver receives the live Session only
+inside Gateway handling and returns a Session-free `EventRecord`.
 
-Core owns fixed message formatting, literal channel history, private
-channel-local image assets, and Agent lifecycle routing. Platform adapters do
-not render model messages, access stored assets, persist history, or deliver
-outbound replies.
+The public facade exposes:
 
-## Runtime and delivery
+- `model`
+- `registerResolver()`, `registerWill()`, and `registerAgentPlugin()`
+- `channelKey()`, `registerStorage()`, `ensureStorage()`, and `listChannels()`
+- `reset()` and `stop()`
 
-`ChannelRuntime` is an internal deep module with three operations: handle a
-canonical message, reset one channel, and stop all owned runtimes. It hides
-classification, per-channel FIFO submission, Agent cache and storage, stream
-ownership, delivery calls, and lifecycle cleanup. `YesImBotService` is the
-public Koishi facade and does not expose Agent handles or turn streams.
+The package root exports `ChannelScope`, `channelKey`, Event contracts,
+`SessionResolver`, `ChannelFilter`, `ChannelRecord`, and Will contracts. Gateway,
+RuntimeManager, ChannelRuntime, ChannelStorage, AssetStore, and assignee helpers
+remain internal. The only supported code subpath is `./model`.
 
-Core exports `DeliveryService` and the `Delivery` contracts from the package
-root. The same service is available as `ctx.yesimbot.delivery`.
+## Gateway and runtime
 
-- `reply(session, fragments)` uses the original `Session.send()`.
-- `send(source, scope, fragments)` resolves one matching Bot and uses
-  `Bot.sendMessage()`.
-- `subscribe(listener)` observes process-local started and terminal events.
+Gateway owns the live Session, Resolver invocation, bounded image freezing, and
+passive `Session.send()`. A failed passive delivery appends one same-channel
+`delivery.failed` Event and does not stop later outputs.
 
-Delivery preserves ordered fragments and every returned `string[]` message ID.
-Receipts report `sent`, `partial`, or `failed`; listener and diagnostic failures
-cannot interrupt the send operation. Core does not define a platform delivery
-adapter or replace Koishi/Satori encoders.
+RuntimeManager owns one Runtime entry per Channel Key and coordinates reset,
+global stop, Will generations, and shared-channel assignee handover.
+ChannelRuntime owns one channel FIFO, Agent, Will, JSONL storage, model stream,
+delivery leases, and delivery-failure completion lane. Runtime modules and
+persisted data never retain a Koishi Session.
 
 ## Channel Key
 

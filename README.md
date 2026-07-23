@@ -21,11 +21,11 @@ _让 AI 更像人类，让聊天更有温度_
 
 ## Features
 
-- **消息优先的运行时** — `@yesimbot/agent-runtime` 将"观察"与"发言"分离：普通消息仅追加上下文，私聊或 @提及 才触发模型回合。支持 `defer` / `join` / `reject` 三种忙时策略。
-- **多模型即插即用** — 通过 provider 插件接入 OpenAI、Anthropic、DeepSeek、Google 等模型，运行时支持模型热切换与 `models.json` 配置。
+- **消息优先的运行时** — `@yesimbot/agent-runtime` 将"观察"与"发言"分离：普通消息进入频道历史，Will 决定等待或触发模型回合；忙时事件加入当前 turn，不创建第二个流消费者。
+- **多模型即插即用** — 通过 provider 插件接入 OpenAI、Anthropic、DeepSeek、Google 等模型，并通过 `models.json` 管理模型注册与默认值。
 - **强大的插件体系** — 工具、提示词、消息转换、生命周期钩子，每个维度都可扩展。插件按 `pre` / normal / `post` 顺序编排，互不干扰。
-- **上下文持久化** — 每频道独立 JSONL 会话文件，支持恢复与调试。运行时可加载 `AGENTS.md` 与 `PERSONA.md` 文件定制行为。
-- **平台输入边界** — 平台适配器通过 `ctx.yesimbot.platform` 细化消息或发布事件；核心按频道顺序准备、持久化并投递消息。图片在入库前按固定数量、字节、并发和超时限制冻结为频道私有资源。
+- **上下文持久化** — Core 为每个频道生成 26 字符 Channel Key，并把 Manifest、JSONL、assets、workspace 和插件 namespace 统一放在 `<basePath>/channels/<key>/`。运行时可加载 `AGENTS.md` 与 `PERSONA.md`。
+- **平台输入边界** — 平台插件注册 `SessionResolver`，Gateway 在 Session 生命周期内完成解析、图片冻结和被动回复，再把 Session-free EventRecord 交给频道 Runtime。
 - **丰富的能力插件** — 虚拟文件系统与 Bash 沙箱、MCP 客户端、Skill 加载、Web 搜索、MemOS Cloud 记忆、OneBot 工具、贴纸处理等。
 - **Koishi 原生集成** — 作为 `koishi-plugin-yesimbot` 运行，复用 Koishi 生态的适配器、中间件和插件体系。
 
@@ -74,7 +74,7 @@ YesImBot 的能力通过插件系统按需加载。
 
 ```text
 Athena/
-├── core/                     Koishi 主插件：消息路由、模型服务、频道运行时
+├── core/                     Koishi 主插件：Gateway、模型、频道存储与运行时
 ├── packages/agent-runtime/   通用消息运行时：回合队列、工具调用、插件钩子、状态与存储
 ├── platforms/                平台适配器：OneBot 入站消息与事件边界
 ├── providers/                模型 Provider 插件：OpenAI / Anthropic / DeepSeek / Google
