@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 
+import { channelKey } from "koishi-plugin-yesimbot";
 import { deriveMemosImportChunkIdentity } from "../src/identity.js";
 import type { MemosAddMessageRequest, MemosMessage } from "../src/types.js";
 
@@ -515,12 +516,15 @@ function createChunk(
   const endChatTime = formatChatTime(last.timestampMs);
   const startTime = new Date(first.timestampMs).toISOString();
   const endTime = new Date(last.timestampMs).toISOString();
+  const channelScope = {
+    platform: PLATFORM,
+    selfId: config.botSelfId,
+    channelId: first.channelId,
+    isDirect: first.conversationType === "private",
+  };
   const identity = deriveMemosImportChunkIdentity({
-    channelScope: {
-      platform: PLATFORM,
-      selfId: config.botSelfId,
-      channelId: first.channelId,
-    },
+    channelScope,
+    channelHash: channelKey(channelScope),
     channelType: first.conversationType,
     chunkStartIso: startTime,
     chunkEndIso: endTime,

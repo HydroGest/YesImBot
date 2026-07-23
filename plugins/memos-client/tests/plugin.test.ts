@@ -1,7 +1,36 @@
+import { createHash } from "node:crypto";
+
 import type { AgentPlugin, AgentToolExecuteContext } from "@yesimbot/agent-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MemosClientConfig } from "../src/types.js";
+
+const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
+
+function mockChannelKey(scope: {
+  platform: string;
+  selfId: string;
+  channelId: string;
+  isDirect: boolean;
+}): string {
+  const canonical = scope.isDirect
+    ? ["yesimbot.channel", 1, "direct", scope.platform, scope.selfId, scope.channelId]
+    : ["yesimbot.channel", 1, "shared", scope.platform, null, scope.channelId];
+  const digest = createHash("sha256").update(JSON.stringify(canonical), "utf8").digest();
+  let buffer = 0;
+  let bits = 0;
+  let output = "";
+  for (const byte of digest.subarray(0, 16)) {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      output += BASE32[(buffer >>> bits) & 31];
+    }
+  }
+  if (bits > 0) output += BASE32[(buffer << (5 - bits)) & 31];
+  return output;
+}
 
 const mocks = vi.hoisted(() => ({
   schema: {
@@ -96,6 +125,14 @@ function createContext() {
           return dispose;
         },
       ),
+      channelKey: vi.fn<
+        (scope: {
+          platform: string;
+          selfId: string;
+          channelId: string;
+          isDirect: boolean;
+        }) => string
+      >(mockChannelKey),
     },
   };
 
@@ -108,7 +145,7 @@ function channelContext() {
       platform: "onebot",
       selfId: "bot-raw",
       channelId: "group-raw",
-      type: "group",
+      isDirect: false,
     },
   };
 }
@@ -199,7 +236,9 @@ describe("MemosClientPlugin", () => {
         platform: "onebot",
         selfId: "bot-raw",
         channelId: "other-group",
+        isDirect: false,
       },
+      channelHash: "63up33lwnwsbbvzkgalypu3dvq",
       channelType: "group",
       authorId: "",
       turnId: "turn-real",
@@ -255,7 +294,13 @@ describe("MemosClientPlugin", () => {
       info: Record<string, unknown>;
     };
     const groupIdentity = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw" },
+      channelScope: {
+        platform: "onebot",
+        selfId: "bot-raw",
+        channelId: "group-raw",
+        isDirect: false,
+      },
+      channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
       channelType: "group",
       authorId: "author-raw",
       messageId: "message-raw",
@@ -288,7 +333,13 @@ describe("MemosClientPlugin", () => {
     await addTool?.execute?.({ content: "私聊偏好" }, toolContext("turn-direct"));
 
     const directIdentity = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw" },
+      channelScope: {
+        platform: "onebot",
+        selfId: "bot-raw",
+        channelId: "group-raw",
+        isDirect: false,
+      },
+      channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
       channelType: "private",
       authorId: "direct-author",
       messageId: "direct-message",
@@ -361,7 +412,13 @@ describe("MemosClientPlugin", () => {
     await addTool?.execute?.({ content: "仍归属原作者" }, toolContext("turn-real"));
 
     const expected = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw" },
+      channelScope: {
+        platform: "onebot",
+        selfId: "bot-raw",
+        channelId: "group-raw",
+        isDirect: false,
+      },
+      channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
       channelType: "group",
       authorId: "author-raw",
       messageId: "message-raw",

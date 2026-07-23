@@ -31,6 +31,7 @@ export interface MemosClientConfig {
 
 export interface MemosIdentityInput {
   channelScope: ChannelScope;
+  channelHash: string;
   channelType: MemosChannelType;
   authorId: string;
   messageId?: string;
@@ -41,6 +42,7 @@ export interface MemosIdentityInput {
 
 export interface MemosImportChunkIdentityInput {
   channelScope: ChannelScope;
+  channelHash: string;
   channelType: MemosChannelType;
   chunkStartIso: string;
   chunkEndIso: string;

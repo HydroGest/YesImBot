@@ -80,23 +80,27 @@ export default class MemosClientPlugin {
       const resolveIdentity = (
         turnId: string,
         target?: { channelId?: string; channelType?: MemosChannelType },
-      ) =>
-        deriveMemosIdentity({
-          channelScope: {
-            platform: channelContext.channel.platform,
-            selfId: channelContext.channel.selfId,
-            channelId: target?.channelId ?? channelContext.channel.channelId,
-            isDirect: target
-              ? target.channelType === "private"
-              : channelContext.channel.isDirect,
-          },
-          channelType: target?.channelType ?? latestChannelType,
+      ) => {
+        const channelType = target?.channelType ?? latestChannelType;
+        const channelScope = {
+          platform: channelContext.channel.platform,
+          selfId: channelContext.channel.selfId,
+          channelId: target?.channelId ?? channelContext.channel.channelId,
+          isDirect: target
+            ? target.channelType === "private"
+            : channelContext.channel.isDirect,
+        };
+        return deriveMemosIdentity({
+          channelScope,
+          channelHash: this.ctx.yesimbot.channelKey(channelScope),
+          channelType,
           authorId: latestAuthorId,
           messageId: latestMessageId,
           turnId,
           memoryScope: this.config.memoryScope,
           includeRawIdentityInfo: this.config.includeRawIdentityInfo,
         });
+      };
 
       const tools: AgentTool[] = [
         createSearchMessageTool({

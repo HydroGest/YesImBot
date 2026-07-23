@@ -7,11 +7,97 @@ describe("MemOS identity", () => {
     platform: "onebot",
     selfId: "bot",
     channelId: "group",
+    isDirect: false,
   } as const;
+
+  it("uses the caller-provided Core Channel Key as channel_hash", () => {
+    const identity = deriveMemosIdentity({
+      channelScope: {
+        platform: "onebot",
+        selfId: "10000",
+        channelId: "123456",
+        isDirect: false,
+      },
+      channelHash: "a5vnf2ijd75c2ibyo2s5czdir4",
+      channelType: "group",
+      authorId: "user-1",
+      turnId: "turn-1",
+    });
+    expect(identity.info.channel_hash).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
+    expect(identity.agentId).toMatch(/^yb_agent_/);
+    expect(identity.userId).toMatch(/^yb_subject_/);
+    expect(identity.conversationId).toMatch(/^yb_conv_/);
+  });
+
+  it("produces same channel_hash across shared scope with different selfId", () => {
+    const botA = deriveMemosIdentity({
+      channelScope: {
+        platform: "onebot",
+        selfId: "10000",
+        channelId: "123456",
+        isDirect: false,
+      },
+      channelHash: "a5vnf2ijd75c2ibyo2s5czdir4",
+      channelType: "group",
+      authorId: "user-1",
+      turnId: "turn-1",
+    });
+    const botB = deriveMemosIdentity({
+      channelScope: {
+        platform: "onebot",
+        selfId: "20000",
+        channelId: "123456",
+        isDirect: false,
+      },
+      channelHash: "a5vnf2ijd75c2ibyo2s5czdir4",
+      channelType: "group",
+      authorId: "user-1",
+      turnId: "turn-1",
+    });
+
+    expect(botA.info.channel_hash).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
+    expect(botB.info.channel_hash).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
+    expect(botA.agentId).not.toBe(botB.agentId);
+    expect(botA.userId).toBe(botB.userId);
+    expect(botA.conversationId).toBe(botB.conversationId);
+  });
+
+  it("isolates direct scope channel_hash per selfId", () => {
+    const botA = deriveMemosIdentity({
+      channelScope: {
+        platform: "onebot",
+        selfId: "10000",
+        channelId: "123456",
+        isDirect: true,
+      },
+      channelHash: "ymdz53gzamgvzjzrtf6vesoal4",
+      channelType: "private",
+      authorId: "user-1",
+      turnId: "turn-1",
+    });
+    const botB = deriveMemosIdentity({
+      channelScope: {
+        platform: "onebot",
+        selfId: "other-bot",
+        channelId: "123456",
+        isDirect: true,
+      },
+      channelHash: "de52upe373ixjr6dmt54sadbxu",
+      channelType: "private",
+      authorId: "user-1",
+      turnId: "turn-1",
+    });
+
+    expect(botA.info.channel_hash).toBe("ymdz53gzamgvzjzrtf6vesoal4");
+    expect(botB.info.channel_hash).toBe("de52upe373ixjr6dmt54sadbxu");
+    expect(botA.agentId).not.toBe(botB.agentId);
+    expect(botA.userId).toBe(botB.userId);
+  });
 
   it("uses subject-scoped user ids for group chats without bot self id", () => {
     const identity = deriveMemosIdentity({
       channelScope,
+      channelHash: "76rnoqazbgqomsofkjtqxbwi4a",
       channelType: "group",
       authorId: "user",
       messageId: "msg",
@@ -19,6 +105,7 @@ describe("MemOS identity", () => {
     });
     const otherBotIdentity = deriveMemosIdentity({
       channelScope: { ...channelScope, selfId: "other-bot" },
+      channelHash: "76rnoqazbgqomsofkjtqxbwi4a",
       channelType: "group",
       authorId: "user",
       messageId: "msg",
@@ -40,8 +127,8 @@ describe("MemOS identity", () => {
     expect(JSON.stringify(identity.info)).not.toContain('"raw_author_id"');
     expect(JSON.stringify(identity.info)).not.toContain('"raw_self_id"');
     expect(JSON.stringify(identity.info)).not.toContain('"raw_message_id"');
-    expect(identity.info.channel_hash).toBe("Wsiq3VbsqVxfqXnprnyydy");
-    expect(identity.info.channel_hash).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(identity.info.channel_hash).toBe("76rnoqazbgqomsofkjtqxbwi4a");
+    expect(identity.info.channel_hash).toMatch(/^[a-z2-7]{25}[aeimquy4]$/);
     expect(identity.info.subject_hash).toHaveLength(22);
     expect(identity.info.author_hash).toHaveLength(22);
     expect(identity.info.message_hash).toHaveLength(22);
@@ -50,12 +137,14 @@ describe("MemOS identity", () => {
   it("uses turn-scoped conversation ids for runtime writes", () => {
     const firstTurn = deriveMemosIdentity({
       channelScope,
+      channelHash: "76rnoqazbgqomsofkjtqxbwi4a",
       channelType: "group",
       authorId: "user",
       turnId: "turn-a",
     });
     const secondTurn = deriveMemosIdentity({
       channelScope,
+      channelHash: "76rnoqazbgqomsofkjtqxbwi4a",
       channelType: "group",
       authorId: "user",
       turnId: "turn-b",
@@ -72,7 +161,9 @@ describe("MemOS identity", () => {
         platform: "onebot",
         selfId: "bot",
         channelId: "private",
+        isDirect: true,
       },
+      channelHash: "avh4rqo2rempfq2gs2ehxe7bnm",
       channelType: "private",
       authorId: "user",
       messageId: "msg",
@@ -83,7 +174,9 @@ describe("MemOS identity", () => {
         platform: "onebot",
         selfId: "other-bot",
         channelId: "private",
+        isDirect: true,
       },
+      channelHash: "g5lqg6ysfyc5vovopasee2uzle",
       channelType: "private",
       authorId: "user",
       messageId: "msg",
@@ -99,6 +192,7 @@ describe("MemOS identity", () => {
   it("allows forcing user scoped memory in group chats", () => {
     const identity = deriveMemosIdentity({
       channelScope,
+      channelHash: "76rnoqazbgqomsofkjtqxbwi4a",
       channelType: "group",
       authorId: "user",
       turnId: "turn",
@@ -115,7 +209,9 @@ describe("MemOS identity", () => {
         platform: "onebot",
         selfId: "bot",
         channelId: "private",
+        isDirect: true,
       },
+      channelHash: "avh4rqo2rempfq2gs2ehxe7bnm",
       channelType: "private",
       authorId: "user",
       turnId: "turn",
@@ -129,6 +225,7 @@ describe("MemOS identity", () => {
   it("includes raw ids only when explicitly opted in", () => {
     const identity = deriveMemosIdentity({
       channelScope,
+      channelHash: "76rnoqazbgqomsofkjtqxbwi4a",
       channelType: "group",
       authorId: "user",
       messageId: "msg",
@@ -144,9 +241,10 @@ describe("MemOS identity", () => {
     });
   });
 
-  it("uses the v2 channel hash for imported history", () => {
+  it("uses the Core Channel Key for imported history", () => {
     const identity = deriveMemosImportChunkIdentity({
       channelScope,
+      channelHash: "76rnoqazbgqomsofkjtqxbwi4a",
       channelType: "group",
       chunkStartIso: "2026-07-22T00:00:00.000Z",
       chunkEndIso: "2026-07-22T00:01:00.000Z",
@@ -155,6 +253,7 @@ describe("MemOS identity", () => {
       chunkIndex: 0,
     });
 
-    expect(identity.info.channel_hash).toBe("Wsiq3VbsqVxfqXnprnyydy");
+    expect(identity.info.channel_hash).toBe("76rnoqazbgqomsofkjtqxbwi4a");
+    expect(identity.info.channel_hash).toMatch(/^[a-z2-7]{25}[aeimquy4]$/);
   });
 });

@@ -2,7 +2,38 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { createHash } from "node:crypto";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("koishi-plugin-yesimbot", () => {
+  const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
+  const channelKey = (scope: {
+    platform: string;
+    selfId: string;
+    channelId: string;
+    isDirect: boolean;
+  }): string => {
+    const canonical = scope.isDirect
+      ? ["yesimbot.channel", 1, "direct", scope.platform, scope.selfId, scope.channelId]
+      : ["yesimbot.channel", 1, "shared", scope.platform, null, scope.channelId];
+    const digest = createHash("sha256").update(JSON.stringify(canonical), "utf8").digest();
+    let buffer = 0;
+    let bits = 0;
+    let output = "";
+    for (const byte of digest.subarray(0, 16)) {
+      buffer = (buffer << 8) | byte;
+      bits += 8;
+      while (bits >= 5) {
+        bits -= 5;
+        output += BASE32[(buffer >>> bits) & 31];
+      }
+    }
+    if (bits > 0) output += BASE32[(buffer << (5 - bits)) & 31];
+    return output;
+  };
+  return { channelKey, isEvent: () => false };
+});
 
 import { buildQqMemosImportPlan, runQqMemosImportCli } from "../scripts/qq-memos-import.js";
 import { deriveMemosIdentity } from "../src/identity.js";
@@ -246,7 +277,9 @@ describe("qq-memos-import script", () => {
         platform: "onebot",
         selfId: "another-synthetic-bot",
         channelId: GROUP_ID,
+        isDirect: false,
       },
+      channelHash: "y4hqcmhpojcbee72vfgt22mflq",
       channelType: "group",
       authorId: USER_ID,
       turnId: "runtime-turn",

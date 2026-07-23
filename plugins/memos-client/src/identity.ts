@@ -37,15 +37,13 @@ function deriveAgentHash(platform: string, selfId: string): string {
   return hashMemosIdParts(["memos-agent-v1", platform, selfId]);
 }
 
-function deriveChannelHash(input: {
-  channelScope: { platform: string; selfId: string; channelId: string };
-}): string {
-  return hashMemosIdParts([
-    "memos-channel-v2",
-    input.channelScope.platform,
-    input.channelScope.selfId,
-    input.channelScope.channelId,
-  ]);
+const CHANNEL_KEY_PATTERN = /^[a-z2-7]{25}[aeimquy4]$/;
+
+function readChannelHash(input: { readonly channelHash: string }): string {
+  if (!CHANNEL_KEY_PATTERN.test(input.channelHash)) {
+    throw new TypeError("channelHash must be a canonical Core Channel Key");
+  }
+  return input.channelHash;
 }
 
 function deriveRuntimeConversationHash(input: MemosIdentityInput, subjectRawId: string): string {
@@ -76,7 +74,7 @@ function deriveImportChunkConversationHash(input: MemosImportChunkIdentityInput)
 }
 
 export function deriveMemosIdentity(input: MemosIdentityInput): MemosIdentity {
-  const channelScopeId = deriveChannelHash(input);
+  const channelScopeId = readChannelHash(input);
   const subjectRawId = input.channelScope.channelId;
   const subjectHash = deriveSubjectHash(
     input.channelScope.platform,
@@ -127,7 +125,7 @@ export function deriveMemosIdentity(input: MemosIdentityInput): MemosIdentity {
 export function deriveMemosImportChunkIdentity(
   input: MemosImportChunkIdentityInput,
 ): MemosIdentity {
-  const channelScopeId = deriveChannelHash(input);
+  const channelScopeId = readChannelHash(input);
   const subjectRawId = input.channelScope.channelId;
   const subjectHash = deriveSubjectHash(
     input.channelScope.platform,
