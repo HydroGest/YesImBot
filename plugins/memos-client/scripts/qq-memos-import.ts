@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import { channelKey } from "koishi-plugin-yesimbot";
+
 import { deriveMemosImportChunkIdentity } from "../src/identity.js";
 import type { MemosAddMessageRequest, MemosMessage } from "../src/types.js";
 

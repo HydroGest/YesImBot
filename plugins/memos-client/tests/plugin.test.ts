@@ -125,14 +125,15 @@ function createContext() {
           return dispose;
         },
       ),
-      channelKey: vi.fn<
-        (scope: {
-          platform: string;
-          selfId: string;
-          channelId: string;
-          isDirect: boolean;
-        }) => string
-      >(mockChannelKey),
+      channelKey:
+        vi.fn<
+          (scope: {
+            platform: string;
+            selfId: string;
+            channelId: string;
+            isDirect: boolean;
+          }) => string
+        >(mockChannelKey),
     },
   };
 

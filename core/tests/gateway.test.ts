@@ -129,20 +129,20 @@ describe("Gateway", () => {
     expect(runtime.route).not.toHaveBeenCalled();
   });
 
-  it.each([
-    [{ atSelf: true }],
-    [{ content: "yesimbot.reset", prefix: "yesimbot" }],
-  ])("does not let shared routing hints bypass non-assignee admission", async (overrides) => {
-    const { gateway, runtime, database } = createGateway();
-    const resolve = vi.fn(async () => record());
-    gateway.register({ platform: "test", resolve });
-    database.get.mockResolvedValue([{ assignee: "other" }]);
+  it.each([[{ atSelf: true }], [{ content: "yesimbot.reset", prefix: "yesimbot" }]])(
+    "does not let shared routing hints bypass non-assignee admission",
+    async (overrides) => {
+      const { gateway, runtime, database } = createGateway();
+      const resolve = vi.fn(async () => record());
+      gateway.register({ platform: "test", resolve });
+      database.get.mockResolvedValue([{ assignee: "other" }]);
 
-    await gateway.handle(session(overrides) as never);
+      await gateway.handle(session(overrides) as never);
 
-    expect(resolve).not.toHaveBeenCalled();
-    expect(runtime.route).not.toHaveBeenCalled();
-  });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(runtime.route).not.toHaveBeenCalled();
+    },
+  );
 
   it("routes direct Sessions without a Database assignee lookup", async () => {
     const { gateway, runtime, database } = createGateway();
@@ -386,9 +386,7 @@ describe("Gateway", () => {
     const message = session();
     await middleware()(message as never, async () => undefined);
     internal()(message as never);
-    internal()(
-      session({ platform: "notice", event: { type: "notice" }, type: "notice" }) as never,
-    );
+    internal()(session({ platform: "notice", event: { type: "notice" }, type: "notice" }) as never);
     await gateway.drain();
 
     expect(runtime.route).toHaveBeenCalledTimes(2);

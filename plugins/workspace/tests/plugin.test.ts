@@ -62,11 +62,13 @@ function createMockCtx(baseDir: string) {
     (scope: { platform: string; selfId: string; channelId: string }) =>
       `${scope.platform}:${scope.selfId}:${scope.channelId}`,
   );
-  const ensureStorage = vi.fn(async (scope: { platform: string; selfId: string; channelId: string }) => {
-    const path = join(baseDir, "channels", channelKey(scope), "workspace");
-    await mkdir(path, { recursive: true });
-    return path;
-  });
+  const ensureStorage = vi.fn(
+    async (scope: { platform: string; selfId: string; channelId: string }) => {
+      const path = join(baseDir, "channels", channelKey(scope), "workspace");
+      await mkdir(path, { recursive: true });
+      return path;
+    },
+  );
   const registerStorage = vi.fn(() => vi.fn());
 
   return {
@@ -141,9 +143,9 @@ describe("WorkspacePlugin", () => {
 
     expect(mocks.yesimbot.registerStorage).toHaveBeenCalledWith("workspace");
     expect(mocks.yesimbot.ensureStorage).toHaveBeenCalledWith(sharedScope, "workspace");
-    expect((workspacePlugin as never).workspaces.get("a5vnf2ijd75c2ibyo2s5czdir4").config.root).toBe(
-      "/data/yesimbot/channels/a5vnf2ijd75c2ibyo2s5czdir4/workspace",
-    );
+    expect(
+      (workspacePlugin as never).workspaces.get("a5vnf2ijd75c2ibyo2s5czdir4").config.root,
+    ).toBe("/data/yesimbot/channels/a5vnf2ijd75c2ibyo2s5czdir4/workspace");
     expect(tools.map((tool) => tool.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
 
     await mocks.disposeHandlers[0]?.();
@@ -196,7 +198,10 @@ describe("WorkspacePlugin", () => {
     const firstFactoryPlugin = firstMocks.factories[0]?.({ channel: scope } as never);
     await getTools(firstFactoryPlugin!);
     const firstKey = firstMocks.yesimbot.channelKey(scope);
-    const firstWorkspaces = (firstPlugin_ as never).workspaces as Map<string, { config: { root: string } }>;
+    const firstWorkspaces = (firstPlugin_ as never).workspaces as Map<
+      string,
+      { config: { root: string } }
+    >;
     const firstRoot = firstWorkspaces.get(firstKey)!.config.root;
 
     // stop first instance — clears cache but leaves disk data
@@ -213,7 +218,10 @@ describe("WorkspacePlugin", () => {
     const secondFactoryPlugin = secondMocks.factories[0]?.({ channel: scope } as never);
     await getTools(secondFactoryPlugin!);
     const secondKey = secondMocks.yesimbot.channelKey(scope);
-    const secondWorkspaces = (secondPlugin_ as never).workspaces as Map<string, { config: { root: string } }>;
+    const secondWorkspaces = (secondPlugin_ as never).workspaces as Map<
+      string,
+      { config: { root: string } }
+    >;
     const secondRoot = secondWorkspaces.get(secondKey)!.config.root;
 
     // same root resolved; second instance did not crash on existing directory

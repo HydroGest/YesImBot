@@ -86,9 +86,7 @@ export default class MemosClientPlugin {
           platform: channelContext.channel.platform,
           selfId: channelContext.channel.selfId,
           channelId: target?.channelId ?? channelContext.channel.channelId,
-          isDirect: target
-            ? target.channelType === "private"
-            : channelContext.channel.isDirect,
+          isDirect: target ? target.channelType === "private" : channelContext.channel.isDirect,
         };
         return deriveMemosIdentity({
           channelScope,

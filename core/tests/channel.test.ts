@@ -2,11 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import {
-  channelKey,
-  sameChannel,
-  type ChannelScope,
-} from "../src/channel/index.js";
+import { channelKey, sameChannel, type ChannelScope } from "../src/channel/index.js";
 
 const shared = (selfId: string): ChannelScope => ({
   platform: "onebot",

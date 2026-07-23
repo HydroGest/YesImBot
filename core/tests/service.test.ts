@@ -27,8 +27,8 @@ vi.mock("../src/runtime/manager.js", () => ({
 }));
 
 import type { Config } from "../src/config.js";
-import type { AgentPluginFactory } from "../src/index.js";
 import { Gateway } from "../src/gateway/index.js";
+import type { AgentPluginFactory } from "../src/index.js";
 import { YesImBotService } from "../src/service.js";
 
 const config: Config = { basePath: "data/yesimbot-service", chatModel: "mock:model" };
@@ -125,21 +125,37 @@ describe("YesImBotService facade", () => {
     const resolver = {
       platform: "test",
       resolve: vi.fn(async () => ({
-        type: "message", platform: "test", selfId: "bot-1", timestamp: 1,
-        channel: { id: "room-1", type: 0 }, user: { id: "user-1" },
-        message: { id: "message-1", content: "hello" }, content: "hello",
+        type: "message",
+        platform: "test",
+        selfId: "bot-1",
+        timestamp: 1,
+        channel: { id: "room-1", type: 0 },
+        user: { id: "user-1" },
+        message: { id: "message-1", content: "hello" },
+        content: "hello",
       })),
     };
     const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
     const assets = { readByAssetId: vi.fn(), clear: vi.fn() };
     const gateway = new Gateway({
-      ctx: ctx as never, runtime: runtime as never, assets: assets as never,
-      storage: { updateName: vi.fn() } as never, ready: () => ready, logger: { warn: vi.fn() } as never,
+      ctx: ctx as never,
+      runtime: runtime as never,
+      assets: assets as never,
+      storage: { updateName: vi.fn() } as never,
+      ready: () => ready,
+      logger: { warn: vi.fn() } as never,
     });
     gateway.register(resolver);
     const handling = gateway.handle({
-      type: "message-created", platform: "test", selfId: "bot-1", channelId: "room-1",
-      isDirect: false, content: "hello", elements: [], event: {}, send: vi.fn(),
+      type: "message-created",
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room-1",
+      isDirect: false,
+      content: "hello",
+      elements: [],
+      event: {},
+      send: vi.fn(),
     } as never);
 
     await Promise.resolve();

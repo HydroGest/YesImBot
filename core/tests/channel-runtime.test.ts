@@ -104,12 +104,17 @@ describe("ChannelRuntime", () => {
   it("uses the prepared Agent storage", () => {
     const storage = { append: vi.fn(), read: vi.fn(), clear: vi.fn() };
     new ChannelRuntime({
-      ctx: new Context(), config: { basePath: "/tmp/unused", chatModel: "test:model" },
+      ctx: new Context(),
+      config: { basePath: "/tmp/unused", chatModel: "test:model" },
       logger: { warn: vi.fn() } as never,
       scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
-      bot: { sendMessage: vi.fn() } as never, will: { decide: async () => "wait" },
-      assets: { clear: vi.fn(), readByAssetId: vi.fn() } as never, model: {} as never,
-      agentPlugins: [], includeMessageId: false, storage: storage as never,
+      bot: { sendMessage: vi.fn() } as never,
+      will: { decide: async () => "wait" },
+      assets: { clear: vi.fn(), readByAssetId: vi.fn() } as never,
+      model: {} as never,
+      agentPlugins: [],
+      includeMessageId: false,
+      storage: storage as never,
     });
 
     expect(state.options?.storage).toBe(storage);

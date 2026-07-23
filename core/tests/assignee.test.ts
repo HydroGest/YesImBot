@@ -11,11 +11,9 @@ describe("assertAssignee", () => {
 
     await expect(assertAssignee(ctx as never, shared)).resolves.toBeUndefined();
 
-    expect(ctx.database.get).toHaveBeenCalledWith(
-      "channel",
-      { platform: "onebot", id: "123" },
-      ["assignee"],
-    );
+    expect(ctx.database.get).toHaveBeenCalledWith("channel", { platform: "onebot", id: "123" }, [
+      "assignee",
+    ]);
   });
 
   it.each([

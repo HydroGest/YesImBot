@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+
 import { Universal } from "koishi";
 
 export interface ChannelScope {

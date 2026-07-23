@@ -90,15 +90,9 @@ export default class WorkspacePlugin {
 
     this.normalizedMounts = normalizedMounts;
 
-    this.logger.info(
-      `Persist paths: ${JSON.stringify(normalizedMounts.persistPaths, null, 2)}`,
-    );
-    this.logger.info(
-      `Read-only paths: ${JSON.stringify(normalizedMounts.readOnlyPaths, null, 2)}`,
-    );
-    this.logger.info(
-      `Overlay paths: ${JSON.stringify(normalizedMounts.overlayPaths, null, 2)}`,
-    );
+    this.logger.info(`Persist paths: ${JSON.stringify(normalizedMounts.persistPaths, null, 2)}`);
+    this.logger.info(`Read-only paths: ${JSON.stringify(normalizedMounts.readOnlyPaths, null, 2)}`);
+    this.logger.info(`Overlay paths: ${JSON.stringify(normalizedMounts.overlayPaths, null, 2)}`);
 
     this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((context) => {
       return {
@@ -191,5 +185,3 @@ export default class WorkspacePlugin {
     };
   }
 }
-
-

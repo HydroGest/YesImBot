@@ -38,9 +38,9 @@ describe("AssetStore", () => {
     const hash = stored.assetId.slice("asset_".length);
 
     await expect(assets.readByAssetId(scope, stored.assetId)).resolves.toEqual(PNG_BYTES);
-    await expect(readFile(join(
-      basePath, "channels", "j4bccwhe5a72utwrwgtk4gvf5e", "assets", hash,
-    ))).resolves.toEqual(Buffer.from(PNG_BYTES));
+    await expect(
+      readFile(join(basePath, "channels", "j4bccwhe5a72utwrwgtk4gvf5e", "assets", hash)),
+    ).resolves.toEqual(Buffer.from(PNG_BYTES));
     await expect(assets.readByAssetId(scope, "asset_invalid")).rejects.toThrow(
       "Invalid platform asset id",
     );

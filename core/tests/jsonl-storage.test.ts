@@ -54,7 +54,10 @@ describe("jsonl storage", () => {
   it("does not load a legacy platform message entry", async () => {
     const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
     const scope: ChannelScope = {
-      platform: "onebot", selfId: "10000", channelId: "123456", isDirect: false,
+      platform: "onebot",
+      selfId: "10000",
+      channelId: "123456",
+      isDirect: false,
     };
     const legacyPath = join(
       dir,
@@ -72,9 +75,9 @@ describe("jsonl storage", () => {
       },
     };
 
-    expect(eventPath).toBe(join(
-      dir, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "sessions", "messages.jsonl",
-    ));
+    expect(eventPath).toBe(
+      join(dir, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "sessions", "messages.jsonl"),
+    );
     await mkdir(dirname(legacyPath), { recursive: true });
     await writeFile(legacyPath, `${JSON.stringify(legacyEntry)}\n`, "utf8");
 

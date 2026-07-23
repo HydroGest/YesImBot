@@ -44,7 +44,10 @@ function outputs(...content: string[]) {
 }
 
 function delivery() {
-  return { fail: vi.fn(async () => ({ kind: "wait" as const, eventId: "failure-1" })), release: vi.fn() };
+  return {
+    fail: vi.fn(async () => ({ kind: "wait" as const, eventId: "failure-1" })),
+    release: vi.fn(),
+  };
 }
 
 function createGateway(route: ReturnType<typeof vi.fn>, logger = { warn: vi.fn() }) {

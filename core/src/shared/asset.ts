@@ -106,8 +106,6 @@ export class AssetStore {
   }
 
   private async assetPath(scope: ChannelScope, hash?: string): Promise<string> {
-    return hash
-      ? this.storage.ensure(scope, "assets", hash)
-      : this.storage.ensure(scope, "assets");
+    return hash ? this.storage.ensure(scope, "assets", hash) : this.storage.ensure(scope, "assets");
   }
 }

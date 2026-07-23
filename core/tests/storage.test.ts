@@ -35,12 +35,12 @@ describe("ChannelStorage", () => {
     const path = await storage.ensure(shared, "workspace");
     expect(path).toBe(join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "workspace"));
 
-    const manifest = JSON.parse(await readFile(join(
-      basePath,
-      "channels",
-      "a5vnf2ijd75c2ibyo2s5czdir4",
-      "channel.json",
-    ), "utf8"));
+    const manifest = JSON.parse(
+      await readFile(
+        join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "channel.json"),
+        "utf8",
+      ),
+    );
     expect(manifest).toEqual({
       formatVersion: 1,
       keyVersion: 1,
@@ -106,12 +106,7 @@ describe("ChannelStorage", () => {
   it("rejects an identity mismatch in an existing Key directory", async () => {
     storage.register("workspace");
     await storage.ensure(shared, "workspace");
-    const path = join(
-      basePath,
-      "channels",
-      "a5vnf2ijd75c2ibyo2s5czdir4",
-      "channel.json",
-    );
+    const path = join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "channel.json");
     const manifest = JSON.parse(await readFile(path, "utf8"));
     await writeFile(path, `${JSON.stringify({ ...manifest, channelId: "other" }, null, 2)}\n`);
 
@@ -168,7 +163,8 @@ describe("ChannelStorage", () => {
     const records = storage.list({ platform: "onebot", name: "Room 123456" });
     expect(records).toEqual([expect.objectContaining({ key: "a5vnf2ijd75c2ibyo2s5czdir4" })]);
     expect(Object.isFrozen(records[0])).toBe(true);
-    expect(JSON.parse(await readFile(join(basePath, "channels.json"), "utf8")).channels[0])
-      .toEqual(expect.objectContaining({ name: "Room 123456" }));
+    expect(JSON.parse(await readFile(join(basePath, "channels.json"), "utf8")).channels[0]).toEqual(
+      expect.objectContaining({ name: "Room 123456" }),
+    );
   });
 });

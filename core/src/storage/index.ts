@@ -53,7 +53,11 @@ function parseManifest(value: unknown): ChannelManifest {
   if (typeof manifest.channelId !== "string" || manifest.channelId.length === 0) {
     throw new TypeError("Invalid channel id");
   }
-  if (manifest.isDirect ? typeof manifest.selfId !== "string" || !manifest.selfId : manifest.selfId !== null) {
+  if (
+    manifest.isDirect
+      ? typeof manifest.selfId !== "string" || !manifest.selfId
+      : manifest.selfId !== null
+  ) {
     throw new TypeError("Invalid self id");
   }
   if (manifest.name !== undefined && (typeof manifest.name !== "string" || !manifest.name)) {
@@ -62,7 +66,7 @@ function parseManifest(value: unknown): ChannelManifest {
 
   const scope: ChannelScope = {
     platform: manifest.platform,
-    selfId: manifest.isDirect ? manifest.selfId as string : "shared",
+    selfId: manifest.isDirect ? (manifest.selfId as string) : "shared",
     channelId: manifest.channelId,
     isDirect: manifest.isDirect,
   };
@@ -146,7 +150,7 @@ export class ChannelStorage {
   list(filter: ChannelFilter = {}): readonly ChannelRecord[] {
     return [...this.records.values()]
       .filter((record) => matchesFilter(record, filter))
-      .sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
+      .sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0))
       .map((record) => Object.freeze({ ...record }));
   }
 
@@ -176,10 +180,9 @@ export class ChannelStorage {
         continue;
       }
       try {
-        const manifest = parseManifest(JSON.parse(await readFile(
-          join(this.channelsPath, entry.name, "channel.json"),
-          "utf8",
-        )));
+        const manifest = parseManifest(
+          JSON.parse(await readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")),
+        );
         if (manifest.key !== entry.name) throw new Error("Manifest Key does not match directory");
         this.records.set(manifest.key, this.toRecord(manifest));
         const namespaceEntries = await readdir(join(this.channelsPath, entry.name), {
@@ -187,9 +190,9 @@ export class ChannelStorage {
         });
         for (const namespace of namespaceEntries) {
           if (
-            namespace.isDirectory()
-            && namespace.name !== "channel.json"
-            && !this.namespaces.has(namespace.name)
+            namespace.isDirectory() &&
+            namespace.name !== "channel.json" &&
+            !this.namespaces.has(namespace.name)
           ) {
             this.warn("storage.namespace_unregistered", {
               key: entry.name,
@@ -215,9 +218,13 @@ export class ChannelStorage {
     const destination = join(this.channelsPath, expected.key);
     try {
       const existing = await stat(destination);
-      if (!existing.isDirectory()) throw new Error("Channel storage destination is not a directory");
-      const manifest = parseManifest(JSON.parse(await readFile(join(destination, "channel.json"), "utf8")));
-      if (!this.sameIdentity(manifest, expected)) throw new Error("Channel storage integrity mismatch");
+      if (!existing.isDirectory())
+        throw new Error("Channel storage destination is not a directory");
+      const manifest = parseManifest(
+        JSON.parse(await readFile(join(destination, "channel.json"), "utf8")),
+      );
+      if (!this.sameIdentity(manifest, expected))
+        throw new Error("Channel storage integrity mismatch");
       const record = this.toRecord(manifest);
       this.records.set(record.key, record);
       await this.writeCatalogOrReport();
@@ -270,7 +277,10 @@ export class ChannelStorage {
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.tail.then(operation);
-    this.tail = result.then(() => undefined, () => undefined);
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
   }
 
@@ -280,20 +290,29 @@ export class ChannelStorage {
   }
 
   private sameIdentity(left: ChannelRecord, right: ChannelRecord): boolean {
-    return left.key === right.key
-      && left.isDirect === right.isDirect
-      && left.platform === right.platform
-      && left.selfId === right.selfId
-      && left.channelId === right.channelId;
+    return (
+      left.key === right.key &&
+      left.isDirect === right.isDirect &&
+      left.platform === right.platform &&
+      left.selfId === right.selfId &&
+      left.channelId === right.channelId
+    );
   }
 
   private assertSegment(segment: string): void {
     const windowsStem = segment.split(".", 1)[0];
     if (
-      !segment || segment === "." || segment === ".." || isAbsolute(segment)
-      || segment.includes("/") || segment.includes("\\") || segment.includes("\0")
-      || WINDOWS_RESERVED.test(windowsStem) || /[<>:"|?*]/.test(segment)
-    ) throw new TypeError(`Invalid storage path segment: ${JSON.stringify(segment)}`);
+      !segment ||
+      segment === "." ||
+      segment === ".." ||
+      isAbsolute(segment) ||
+      segment.includes("/") ||
+      segment.includes("\\") ||
+      segment.includes("\0") ||
+      WINDOWS_RESERVED.test(windowsStem) ||
+      /[<>:"|?*]/.test(segment)
+    )
+      throw new TypeError(`Invalid storage path segment: ${JSON.stringify(segment)}`);
   }
 
   private assertContained(root: string, path: string): void {

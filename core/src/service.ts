@@ -41,9 +41,12 @@ export class YesImBotService extends Service<Config> {
     this.logger.level = config.logLevel ?? 2;
     this.model = ctx["yesimbot.model"];
     this.defaultWill = () => new DefaultWill(config.will);
-    this.storage = new ChannelStorage(resolveBasePath(config.basePath, ctx.baseDir), (code, fields) => {
-      this.logger.warn({ code, ...fields });
-    });
+    this.storage = new ChannelStorage(
+      resolveBasePath(config.basePath, ctx.baseDir),
+      (code, fields) => {
+        this.logger.warn({ code, ...fields });
+      },
+    );
     this.asset = new AssetStore({
       storage: this.storage,
       maxFileBytes: IMAGE_BUDGET.maxBytesPerImage,
@@ -54,8 +57,7 @@ export class YesImBotService extends Service<Config> {
       logger: this.logger,
       assets: this.asset,
       storage: this.storage,
-      getAgentPluginFactories: () =>
-        [...this.plugins].map(({ factory }) => factory),
+      getAgentPluginFactories: () => [...this.plugins].map(({ factory }) => factory),
     });
     this.gate = new Gateway({
       ctx,
