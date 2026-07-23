@@ -103,35 +103,99 @@ export class RuntimeManager {
 
   private async getOrCreate(scope: ChannelScope): Promise<ChannelRuntime> {
     const key = channelKey(scope);
-    const result: { readonly runtime: ChannelRuntime } | { readonly handover: RuntimeEntry } =
-      await this.enqueueLifecycle(key, async () => {
-        this.assertOpen();
-        await this.assertCurrentAssignee(scope);
-        const current = this.runtimes.get(key);
-        if (current?.state === "failed")
-          throw new Error("Channel handover failed; restart required");
-        if (current) {
-          if (
-            current.state === "draining" ||
-            current.selfId !== scope.selfId ||
-            current.generation !== this.gen
-          ) {
-            return { handover: current };
+
+    // Fast path: an existing active Runtime with the current identity.
+    // Call assertCurrentAssignee directly without entering the lifecycle queue.
+    // The Database query provides a natural yield point; after it resolves,
+    // re-check the Runtime state synchronously. A generation or assignee change
+    // during the await is detected by this re-check, preventing the event from
+    // joining the lifecycle tail as an unbounded unreserved waiter.
+    const current = this.runtimes.get(key);
+    if (
+      current &&
+      current.state === "active" &&
+      current.selfId === scope.selfId &&
+      current.generation === this.gen
+    ) {
+      await this.assertCurrentAssignee(scope);
+      const after = this.runtimes.get(key);
+      if (
+        after === current &&
+        after.state === "active" &&
+        after.selfId === scope.selfId &&
+        after.generation === this.gen &&
+        !this.handovers.has(key)
+      ) {
+        return current.runtime;
+      }
+    }
+
+    // Reserve a handover slot before entering the lifecycle queue to prevent
+    // unbounded queue growth from events that trigger or join a handover.
+    const needsHandover = this.wouldNeedHandover(key, scope);
+    if (needsHandover) {
+      const waiting = this.handoverWaiters.get(key) ?? 0;
+      if (waiting >= 5) throw new Error("Channel handover queue is full");
+      this.handoverWaiters.set(key, waiting + 1);
+    }
+
+    try {
+      const result: { readonly runtime: ChannelRuntime } | { readonly handover: RuntimeEntry } =
+        await this.enqueueLifecycle(key, async () => {
+          this.assertOpen();
+          await this.assertCurrentAssignee(scope);
+          const current = this.runtimes.get(key);
+          if (current?.state === "failed")
+            throw new Error("Channel handover failed; restart required");
+          if (current) {
+            if (
+              current.state === "draining" ||
+              current.selfId !== scope.selfId ||
+              current.generation !== this.gen
+            ) {
+              return { handover: current };
+            }
+            return { runtime: current.runtime };
           }
-          if (current.generation === this.gen) return { runtime: current.runtime };
-          await this.stopRuntime(key, current.runtime);
-          if (this.runtimes.get(key) === current) this.runtimes.delete(key);
-        }
-        await this.assertCurrentAssignee(scope);
-        const entry = await this.createRuntime(scope, this.gen);
-        this.assertOpen();
-        this.runtimes.set(key, entry);
-        return { runtime: entry.runtime };
-      });
-    if ("runtime" in result) return result.runtime;
-    await this.awaitHandover(key, result.handover);
-    await this.assertCurrentAssignee(scope);
-    return this.getOrCreate(scope);
+          await this.assertCurrentAssignee(scope);
+          let entry: RuntimeEntry;
+          for (;;) {
+            const capturedGen = this.gen;
+            entry = await this.createRuntime(scope, capturedGen);
+            if (entry.generation === this.gen) break;
+            await this.stopRuntime(key, entry.runtime);
+          }
+          // Manager may have stopped during async construction
+          try {
+            this.assertOpen();
+          } catch (cause) {
+            await this.stopRuntime(key, entry.runtime);
+            throw cause;
+          }
+          this.runtimes.set(key, entry);
+          return { runtime: entry.runtime };
+        });
+      if ("runtime" in result) return result.runtime;
+      await this.awaitHandover(key, result.handover);
+      await this.assertCurrentAssignee(scope);
+      return this.getOrCreate(scope);
+    } finally {
+      if (needsHandover) {
+        const remaining = (this.handoverWaiters.get(key) ?? 1) - 1;
+        if (remaining === 0) this.handoverWaiters.delete(key);
+        else this.handoverWaiters.set(key, remaining);
+      }
+    }
+  }
+
+  private wouldNeedHandover(key: string, scope: ChannelScope): boolean {
+    const current = this.runtimes.get(key);
+    return (
+      current !== undefined &&
+      (current.state === "draining" ||
+        current.selfId !== scope.selfId ||
+        current.generation !== this.gen)
+    );
   }
 
   private async createRuntime(scope: ChannelScope, generation: number): Promise<RuntimeEntry> {
@@ -182,26 +246,17 @@ export class RuntimeManager {
   }
 
   private async awaitHandover(key: string, entry: RuntimeEntry): Promise<void> {
-    const waiting = this.handoverWaiters.get(key) ?? 0;
-    if (waiting >= 5) throw new Error("Channel handover queue is full");
-    this.handoverWaiters.set(key, waiting + 1);
-    try {
-      let task = this.handovers.get(key);
-      if (!task) {
-        task = this.runHandover(key, entry);
-        this.handovers.set(key, task);
-        void task
-          .finally(() => {
-            if (this.handovers.get(key) === task) this.handovers.delete(key);
-          })
-          .catch(() => undefined);
-      }
-      await task;
-    } finally {
-      const remaining = (this.handoverWaiters.get(key) ?? 1) - 1;
-      if (remaining === 0) this.handoverWaiters.delete(key);
-      else this.handoverWaiters.set(key, remaining);
+    let task = this.handovers.get(key);
+    if (!task) {
+      task = this.runHandover(key, entry);
+      this.handovers.set(key, task);
+      void task
+        .finally(() => {
+          if (this.handovers.get(key) === task) this.handovers.delete(key);
+        })
+        .catch(() => undefined);
     }
+    await task;
   }
 
   private async runHandover(key: string, entry: RuntimeEntry): Promise<void> {

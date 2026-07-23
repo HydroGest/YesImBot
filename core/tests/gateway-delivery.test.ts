@@ -167,6 +167,22 @@ describe("Gateway passive delivery", () => {
     expect(binding.release).toHaveBeenCalledOnce();
   });
 
+  it("releases the Session when a handover queue is full and logs the rejection", async () => {
+    const route = vi.fn(async () => {
+      throw new Error("Channel handover queue is full");
+    });
+    const logger = { warn: vi.fn() };
+    const send = vi.fn(async () => []);
+    const { gateway } = createGateway(route, logger);
+
+    await gateway.handle(session(send) as never);
+
+    expect(send).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "gateway.route_failed" }),
+    );
+  });
+
   it("retains the originating Session only while consuming its active output", async () => {
     let release!: () => void;
     const finished = new Promise<void>((resolve) => {

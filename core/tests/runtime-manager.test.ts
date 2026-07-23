@@ -528,6 +528,36 @@ describe("RuntimeManager", () => {
     expect(database.get).not.toHaveBeenCalled();
   });
 
+  it("rejects excess handover events after a generation change without unbounded lifecycle tails", async () => {
+    const { manager, database } = createManager();
+    const oldDrain = deferred<void>();
+
+    // Create Runtime at gen 0
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+
+    // Change the generation: all subsequent routes see the mismatch,
+    // enter the handover path, reserve a slot before the lifecycle queue.
+    manager.setWill(() => ({ decide: async () => "wait" as const }));
+
+    // This route enters the handover path via wouldNeedHandover (gen mismatch).
+    // It reserves slot 0 and triggers the drain.
+    const routing = manager.route(record("room"));
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+
+    // Send 4 more routes — they reserve slots 1-4 (total 5: routing + 4 = 5)
+    const waiters = Array.from({ length: 4 }, (_, i) =>
+      manager.route(record("room", { message: { id: `m-${i}`, content: "hello" } })),
+    );
+
+    // 6th event is excess and rejected before entering the lifecycle queue
+    await expect(manager.route(record("room"))).rejects.toThrow("Channel handover queue is full");
+
+    oldDrain.resolve();
+    await Promise.all([routing, ...waiters]);
+    expect(state.runtimes).toHaveLength(2);
+  });
+
   it("stops a draining Runtime without publishing a replacement", async () => {
     const { manager, database } = createManager();
     const oldDrain = deferred<void>();
@@ -545,5 +575,145 @@ describe("RuntimeManager", () => {
     await expect(routing).rejects.toThrow(/stopped|handover/i);
     expect(state.runtimes[0]?.stop).toHaveBeenCalledOnce();
     expect(state.runtimes).toHaveLength(1);
+  });
+
+  it("rejects excess handover events without entering the lifecycle queue", async () => {
+    const { manager, database } = createManager();
+    const oldDrain = deferred<void>();
+
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+
+    // Block the lifecycle at the assignee query for the first handover route
+    const blockDb = deferred<[{ assignee: string }]>();
+    const firstDbCall = database.get.mock.calls.length;
+    database.get.mockImplementation(() => blockDb.promise);
+
+    // The first handover route tries to enter the lifecycle but gets blocked
+    const route1 = manager.route(record("room", { selfId: "other" }));
+    await vi.waitFor(() => {
+      // Route entered lifecycle and is blocked in assertCurrentAssignee
+      expect(database.get).toHaveBeenCalledTimes(firstDbCall + 1);
+    });
+
+    // Lifecycle is blocked, so route1's lifecycle hasn't finished.
+    // route1 reserves the first handover slot. We send 4 additional waiters
+    // (5 total), and the 6th excess event is rejected by the pre-check.
+    const waiters = Array.from({ length: 4 }, (_, i) =>
+      manager.route(
+        record("room", { selfId: "other", message: { id: `m-${i}`, content: "hello" } }),
+      ),
+    );
+
+    // The 6th excess should be rejected by the pre-check (counter >= 5)
+    const excessCallsBefore = database.get.mock.calls.length;
+    await expect(manager.route(record("room", { selfId: "other" }))).rejects.toThrow(
+      "Channel handover queue is full",
+    );
+    // Assert no db.get call was made for the excess route (it didn't enter lifecycle)
+    expect(database.get).toHaveBeenCalledTimes(excessCallsBefore);
+
+    // Unblock the lifecycle and drain to let everything settle
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+    blockDb.resolve([{ assignee: "other" }]);
+    oldDrain.resolve();
+
+    await Promise.all([route1, ...waiters]);
+    expect(state.runtimes).toHaveLength(2);
+  });
+
+  it("stops a provisional Runtime created after the manager stops", async () => {
+    const { manager } = createManager();
+    const deferredWill = deferred<Will>();
+    const enteredFactory = deferred<void>();
+
+    manager.setWill(() => {
+      enteredFactory.resolve();
+      return deferredWill.promise;
+    });
+
+    const routing = manager.route(record("room"));
+    await enteredFactory.promise;
+
+    // Stop while Runtime creation is pending in the async Will factory
+    const stopping = manager.stop();
+    deferredWill.resolve({ decide: async () => "wait" });
+
+    // The route should reject because assertOpen() fails after creation
+    await expect(routing).rejects.toThrow("Runtime manager is stopped");
+    await stopping;
+
+    // The provisional Runtime should have been stopped exactly once
+    expect(state.runtimes[0]?.stop).toHaveBeenCalledOnce();
+  });
+
+  it("discards a stale-generation Runtime created while a Will replacement was pending", async () => {
+    const { manager } = createManager();
+    const deferredWill = deferred<Will>();
+    const enteredFactory = deferred<void>();
+
+    const firstWill = { decide: vi.fn(async () => "wait" as const) } satisfies Will;
+    const secondWill = { decide: vi.fn(async () => "wait" as const) } satisfies Will;
+
+    manager.setWill(() => {
+      enteredFactory.resolve();
+      return deferredWill.promise;
+    });
+
+    // First event starts creation during first Will factory
+    const routing = manager.route(record("room"));
+
+    // Wait for the factory to be entered, then replace the Will
+    await enteredFactory.promise;
+    manager.setWill(async () => secondWill);
+
+    // Resolve the original factory — the provisional Runtime has the old generation
+    deferredWill.resolve(firstWill);
+
+    // The Routing should complete and the event should reach only the current-generation Runtime
+    await routing;
+    await vi.waitFor(() => expect(state.runtimes).toHaveLength(2));
+
+    // The second (current-gen) Runtime uses the second Will
+    expect(state.runtimes[1]?.options.will).toBe(secondWill);
+
+    // The first (stale) Runtime was stopped and discarded
+    expect(state.runtimes[0]?.stop).toHaveBeenCalledOnce();
+  });
+
+  it("retries creation when generation changes during two consecutive async constructions", async () => {
+    const { manager } = createManager();
+    const deferreds = [deferred<Will>(), deferred<Will>()];
+    let factoryCallIdx = 0;
+    const makeFactory = () => async () => {
+      const idx = factoryCallIdx++;
+      const d = deferreds[idx];
+      return d ? d.promise : Promise.resolve({ decide: async () => "wait" as const });
+    };
+
+    // First factory — gen becomes 1, createRuntime blocks on deferreds[0]
+    manager.setWill(makeFactory());
+    const routing = manager.route(record("room"));
+    await vi.waitFor(() => expect(factoryCallIdx).toBe(1));
+
+    // Bump gen while first factory is pending (gen becomes 2)
+    manager.setWill(makeFactory());
+    deferreds[0]!.resolve({ decide: async () => "wait" as const });
+
+    // Loop retries. Second factory called, blocks on deferreds[1]
+    await vi.waitFor(() => expect(factoryCallIdx).toBe(2));
+
+    // Bump gen AGAIN while second factory is pending (gen becomes 3)
+    manager.setWill(() => ({ decide: async () => "wait" as const }));
+    deferreds[1]!.resolve({ decide: async () => "wait" as const });
+
+    // Route completes
+    await routing;
+
+    // Two stale Runtimes were discarded and the third (current gen) is active
+    expect(state.runtimes).toHaveLength(3);
+    expect(state.runtimes[0]?.stop).toHaveBeenCalledOnce();
+    expect(state.runtimes[1]?.stop).toHaveBeenCalledOnce();
+    expect(state.runtimes[2]?.stop).not.toHaveBeenCalled();
   });
 });

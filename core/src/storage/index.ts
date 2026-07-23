@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { channelKey, type ChannelScope } from "../channel/index.js";
@@ -139,10 +149,46 @@ export class ChannelStorage {
       throw new Error(`Storage namespace is not registered: ${namespace}`);
     }
     const record = await this.enqueue(() => this.ensureChannel(scope));
-    const root = resolve(this.channelsPath, record.key, namespace);
-    this.assertContained(resolve(this.channelsPath, record.key), root);
-    await mkdir(root, { recursive: true });
+    const channelRoot = resolve(this.channelsPath, record.key);
+    const root = resolve(channelRoot, namespace);
+    this.assertContained(channelRoot, root);
+    // Reject symlink escapes before creating the namespace directory.
+    // Check channel root immediately — ensureChannel may have created or
+    // verified it, but an external swap is possible at any point.
+    const channelStat = await lstat(channelRoot);
+    if (channelStat.isSymbolicLink()) throw new Error("Channel directory is a symbolic link");
+    // Check existing namespace root — a missing root is valid (first call).
+    let rootExists = false;
+    try {
+      const nsStat = await lstat(root);
+      if (nsStat.isSymbolicLink()) throw new Error("Namespace root is a symbolic link");
+      rootExists = true;
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException)?.code !== "ENOENT") throw cause;
+    }
+    if (!rootExists) await mkdir(root, { recursive: true });
+    // Post-creation re-check narrows the TOCTOU window.
+    // Note: a hostile post-check symlink swap cannot be fully prevented.
+    const channelStat2 = await lstat(channelRoot);
+    if (channelStat2.isSymbolicLink()) throw new Error("Channel directory is a symbolic link");
+    const nsStat2 = await lstat(root);
+    if (nsStat2.isSymbolicLink()) throw new Error("Namespace root is a symbolic link");
+    const realRoot = await realpath(root);
+    this.assertContained(channelRoot, realRoot);
+    // Reject symlinks in existing segment path components.
+    // Components that do not exist yet will be created by the caller and are not checked.
     const path = resolve(root, ...segments);
+    let check = root;
+    for (const segment of segments) {
+      check = resolve(check, segment);
+      try {
+        const st = await lstat(check);
+        if (st.isSymbolicLink()) throw new Error("Storage path segment is a symbolic link");
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException)?.code !== "ENOENT") throw cause;
+        break;
+      }
+    }
     this.assertContained(root, path);
     return path;
   }
@@ -220,6 +266,8 @@ export class ChannelStorage {
       const existing = await stat(destination);
       if (!existing.isDirectory())
         throw new Error("Channel storage destination is not a directory");
+      const linkStat = await lstat(destination);
+      if (linkStat.isSymbolicLink()) throw new Error("Channel directory is a symbolic link");
       const manifest = parseManifest(
         JSON.parse(await readFile(join(destination, "channel.json"), "utf8")),
       );

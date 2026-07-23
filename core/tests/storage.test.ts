@@ -1,4 +1,13 @@
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -166,5 +175,78 @@ describe("ChannelStorage", () => {
     expect(JSON.parse(await readFile(join(basePath, "channels.json"), "utf8")).channels[0]).toEqual(
       expect.objectContaining({ name: "Room 123456" }),
     );
+  });
+
+  it("rejects a pre-existing symlink as a key directory", async () => {
+    const key = "a5vnf2ijd75c2ibyo2s5czdir4";
+    const keyPath = join(basePath, "channels", key);
+    const fakePath = join(basePath, "external-target");
+    await mkdir(fakePath, { recursive: true });
+    // Remove the real directory (created by start()) and replace with symlink
+    await rm(keyPath, { recursive: true, force: true });
+    await symlink(fakePath, keyPath);
+
+    const warn = vi.fn();
+    const symStorage = new ChannelStorage(basePath, warn);
+    await symStorage.start();
+    symStorage.register("workspace");
+    await expect(symStorage.ensure(shared, "workspace")).rejects.toThrow(/symbolic link/i);
+  });
+
+  it("rejects a symlink as a registered namespace root", async () => {
+    storage.register("workspace");
+    await storage.ensure(shared, "workspace");
+    // Replace the namespace directory with a symlink
+    const nsPath = join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "workspace");
+    const external = join(basePath, "external-target");
+    await mkdir(external, { recursive: true });
+    await rm(nsPath, { recursive: true, force: true });
+    await symlink(external, nsPath);
+
+    await expect(storage.ensure(shared, "workspace", "test.txt")).rejects.toThrow(/symbolic link/i);
+  });
+
+  it("rejects an existing symlink as an intermediate path segment", async () => {
+    storage.register("workspace");
+    const basePath = await storage.ensure(shared, "workspace");
+    const nested = join(basePath, "nested");
+    const external = join(basePath, "..", "external-target");
+    await mkdir(external, { recursive: true });
+    await symlink(external, nested);
+
+    await expect(storage.ensure(shared, "workspace", "nested", "file.txt")).rejects.toThrow(
+      /symbolic link/i,
+    );
+  });
+
+  it("rejects an existing symlink as the final path segment", async () => {
+    storage.register("workspace");
+    const basePath = await storage.ensure(shared, "workspace");
+    const leaf = join(basePath, "leaf.txt");
+    const external = join(basePath, "..", "external-file");
+    await writeFile(external, "data");
+    await symlink(external, leaf);
+
+    await expect(storage.ensure(shared, "workspace", "leaf.txt")).rejects.toThrow(/symbolic link/i);
+  });
+
+  it("rejects a key-directory symlink before creating the namespace root externally", async () => {
+    // Create a valid channel and a workspace namespace within it
+    storage.register("workspace");
+    await storage.ensure(shared, "workspace");
+
+    // Replace the key directory with a symlink to an empty external path
+    const keyDir = join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4");
+    const external = join(basePath, "external-storage");
+    await mkdir(external, { recursive: true });
+    await rm(keyDir, { recursive: true, force: true });
+    await symlink(external, keyDir);
+
+    // Register a namespace that doesn't exist yet. ensure() must reject
+    // BEFORE mkdir creates it under the external target.
+    storage.register("external-ns");
+    await expect(storage.ensure(shared, "external-ns")).rejects.toThrow(/symbolic link/i);
+    // The external directory must not contain the namespace
+    expect(await readdir(external)).not.toContain("external-ns");
   });
 });
