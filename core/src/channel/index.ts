@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { join } from "node:path";
 import { Universal } from "koishi";
 
 export interface ChannelScope {
@@ -53,10 +52,6 @@ export function channelKey(scope: ChannelScope): string {
   return encodeBase32(digest.subarray(0, 16));
 }
 
-export function channelPath(basePath: string, scope: ChannelScope): string {
-  return join(basePath, "sessions", `${channelFileName(scope)}.jsonl`);
-}
-
 export function sameChannel(left: ChannelScope, right: ChannelScope): boolean {
   return channelKey(left) === channelKey(right);
 }
@@ -69,12 +64,4 @@ export function fromEvent(record: ChannelEvent): ChannelScope | null {
     channelId: record.channel.id,
     isDirect: record.channel.type === Universal.Channel.Type.DIRECT,
   };
-}
-
-export function channelFileName(scope: ChannelScope): string {
-  const digest = createHash("sha256")
-    .update("yesimbot:channel-path:v2:\0")
-    .update(channelKey(scope))
-    .digest("base64url");
-  return `channel_v2_${digest}`;
 }

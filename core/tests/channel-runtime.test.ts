@@ -38,6 +38,7 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
 
 import type { EventRecord } from "../src/event/index.js";
 import { ChannelRuntime } from "../src/runtime/channel.js";
+import { createJsonlStorage } from "../src/runtime/storage.js";
 import type { Will } from "../src/will/index.js";
 
 function record(overrides: Partial<EventRecord<"message">> = {}): EventRecord<"message"> {
@@ -73,6 +74,7 @@ function createRuntime(
     model: {} as never,
     agentPlugins: [],
     includeMessageId,
+    storage: createJsonlStorage("/tmp/yesimbot-channel-runtime/messages.jsonl"),
   });
   return { ctx, logger, runtime, sendMessage, assets };
 }
@@ -97,6 +99,20 @@ describe("ChannelRuntime", () => {
     state.options = undefined;
     state.activeTurnId = null;
     state.stream = undefined;
+  });
+
+  it("uses the prepared Agent storage", () => {
+    const storage = { append: vi.fn(), read: vi.fn(), clear: vi.fn() };
+    new ChannelRuntime({
+      ctx: new Context(), config: { basePath: "/tmp/unused", chatModel: "test:model" },
+      logger: { warn: vi.fn() } as never,
+      scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
+      bot: { sendMessage: vi.fn() } as never, will: { decide: async () => "wait" },
+      assets: { clear: vi.fn(), readByAssetId: vi.fn() } as never, model: {} as never,
+      agentPlugins: [], includeMessageId: false, storage: storage as never,
+    });
+
+    expect(state.options?.storage).toBe(storage);
   });
 
   it("persists before event observation and Will evaluation", async () => {

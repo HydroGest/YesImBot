@@ -4,6 +4,7 @@ import type { ChannelScope } from "../channel/index.js";
 import type { EventRecord } from "../event/index.js";
 import type { RuntimeManager } from "../runtime/manager.js";
 import type { AssetStore } from "../shared/asset.js";
+import type { ChannelStorage } from "../storage/index.js";
 import { normalizeElements, sealElements, unavailableImage } from "../shared/element.js";
 import { createImageFreezer } from "./image.js";
 
@@ -25,6 +26,8 @@ export interface GatewayOptions {
   readonly ctx: Context;
   readonly runtime: RuntimeManager;
   readonly assets: AssetStore;
+  readonly storage: ChannelStorage;
+  readonly ready: () => Promise<void>;
   readonly logger: Logger;
 }
 
@@ -90,6 +93,7 @@ export class Gateway {
   }
 
   private async route(session: Session): Promise<void> {
+    await this.opts.ready();
     let record: EventRecord | null;
     try {
       record = await this.resolve(session);

@@ -4,13 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 const state = vi.hoisted(() => ({
-  gateway: undefined as
-    | {
-        register: ReturnType<typeof vi.fn>;
-        close: ReturnType<typeof vi.fn>;
-        drain: ReturnType<typeof vi.fn>;
-      }
-    | undefined,
   runtime: undefined as
     | {
         setWill: ReturnType<typeof vi.fn>;
@@ -33,20 +26,9 @@ vi.mock("../src/runtime/manager.js", () => ({
   },
 }));
 
-vi.mock("../src/gateway/index.js", () => ({
-  Gateway: class {
-    register = vi.fn(() => vi.fn());
-    close = vi.fn();
-    drain = vi.fn(async () => undefined);
-
-    constructor() {
-      state.gateway = this;
-    }
-  },
-}));
-
 import type { Config } from "../src/config.js";
 import type { AgentPluginFactory } from "../src/index.js";
+import { Gateway } from "../src/gateway/index.js";
 import { YesImBotService } from "../src/service.js";
 
 const config: Config = { basePath: "data/yesimbot-service", chatModel: "mock:model" };
@@ -65,7 +47,6 @@ function createService() {
 
 describe("YesImBotService facade", () => {
   beforeEach(() => {
-    state.gateway = undefined;
     state.runtime = undefined;
   });
 
@@ -76,12 +57,15 @@ describe("YesImBotService facade", () => {
     expect(ctx.yesimbot.registerResolver).toEqual(expect.any(Function));
     expect(ctx.yesimbot.registerWill).toEqual(expect.any(Function));
     expect(ctx.yesimbot.registerAgentPlugin).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.channelKey).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.registerStorage).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.ensureStorage).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.listChannels).toEqual(expect.any(Function));
     expect(ctx.yesimbot.reset).toEqual(expect.any(Function));
     expect(ctx.yesimbot.stop).toEqual(expect.any(Function));
     expect("assets" in ctx.yesimbot).toBe(false);
     expect("runtime" in ctx.yesimbot).toBe(false);
     expect("gateway" in ctx.yesimbot).toBe(false);
-    expect(Object.keys(ctx.yesimbot)).not.toContain("config");
     expect("platform" in ctx.yesimbot).toBe(false);
     expect("delivery" in ctx.yesimbot).toBe(false);
   });
@@ -95,16 +79,65 @@ describe("YesImBotService facade", () => {
     expect(factory).toBeTypeOf("function");
   });
 
-  it("delegates resolver and reset registration to the composed boundaries", async () => {
+  it("delegates reset registration to the composed boundary", async () => {
     const { service } = createService();
-    const resolver = { platform: "test", resolve: vi.fn() };
     const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
 
-    service.registerResolver(resolver);
     await service.reset(scope);
 
-    expect(state.gateway?.register).toHaveBeenCalledWith(resolver);
     expect(state.runtime?.reset).toHaveBeenCalledWith(scope);
+  });
+
+  it("exposes Core channel storage methods", async () => {
+    const { service } = createService();
+    const scope = { platform: "onebot", selfId: "10000", channelId: "123456", isDirect: false };
+
+    await service.start();
+    const dispose = service.registerStorage("workspace");
+    expect(service.channelKey(scope)).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
+    await expect(service.ensureStorage(scope, "workspace")).resolves.toContain(
+      "channels/a5vnf2ijd75c2ibyo2s5czdir4/workspace",
+    );
+    expect(service.listChannels()).toEqual([
+      expect.objectContaining({ key: "a5vnf2ijd75c2ibyo2s5czdir4", selfId: null }),
+    ]);
+    dispose();
+  });
+
+  it("waits for storage readiness before resolving or routing a Session", async () => {
+    const { ctx } = createService();
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const resolver = {
+      platform: "test",
+      resolve: vi.fn(async () => ({
+        type: "message", platform: "test", selfId: "bot-1", timestamp: 1,
+        channel: { id: "room-1", type: 0 }, user: { id: "user-1" },
+        message: { id: "message-1", content: "hello" }, content: "hello",
+      })),
+    };
+    const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
+    const assets = { readByAssetId: vi.fn(), clear: vi.fn() };
+    const gateway = new Gateway({
+      ctx: ctx as never, runtime: runtime as never, assets: assets as never,
+      storage: {} as never, ready: () => ready, logger: { warn: vi.fn() } as never,
+    });
+    gateway.register(resolver);
+    const handling = gateway.handle({
+      type: "message-created", platform: "test", selfId: "bot-1", channelId: "room-1",
+      isDirect: false, content: "hello", elements: [], event: {}, send: vi.fn(),
+    } as never);
+
+    await Promise.resolve();
+    expect(resolver.resolve).not.toHaveBeenCalled();
+    expect(runtime.route).not.toHaveBeenCalled();
+    expect(assets.readByAssetId).not.toHaveBeenCalled();
+    release();
+    await handling;
+    expect(resolver.resolve).toHaveBeenCalledOnce();
+    expect(runtime.route).toHaveBeenCalledOnce();
   });
 
   it("restores the active Will factory through identity-safe registration disposal", () => {

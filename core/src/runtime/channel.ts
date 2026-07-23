@@ -1,10 +1,9 @@
-import { isAbsolute, resolve } from "node:path";
-
 import {
   createAgent,
   type Agent,
   type AgentInternalEvent,
   type AgentPlugin,
+  type AgentStorage,
   type AgentToolSet,
 } from "@yesimbot/agent-runtime";
 import type { LanguageModel } from "ai";
@@ -18,7 +17,6 @@ import { createEvent, type Event, type EventRecord } from "../event/index.js";
 import type { AssetStore } from "../shared/asset.js";
 import type { Will, WillObservation } from "../will/index.js";
 import { buildCoreSystemPrompt, createPromptFilePlugin } from "./prompt.js";
-import { createChannelStorage } from "./storage.js";
 
 export interface ChannelRuntimeOptions {
   readonly ctx: Context;
@@ -31,6 +29,7 @@ export interface ChannelRuntimeOptions {
   readonly model: LanguageModel;
   readonly agentPlugins: readonly AgentPlugin[];
   readonly includeMessageId: boolean;
+  readonly storage: AgentStorage;
 }
 
 export const MAX_RECENT_EVENTS = 32;
@@ -85,10 +84,6 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-function resolveBasePath(basePath: string, ctx: Context): string {
-  return isAbsolute(basePath) ? basePath : resolve(ctx.baseDir, basePath);
-}
-
 function isRenderableAssistant(event: AgentInternalEvent): event is AgentInternalEvent & {
   type: "message.appended";
   turnId: string;
@@ -134,10 +129,6 @@ export class ChannelRuntime {
     this.scope = Object.freeze({ ...opts.scope });
     const plugins = opts.agentPlugins;
     const includeMessageId = opts.includeMessageId;
-    const storage = createChannelStorage(
-      resolveBasePath(opts.config.basePath, opts.ctx),
-      this.scope,
-    );
     const tools: AgentToolSet = [
       {
         name: "sendMessage",
@@ -163,7 +154,7 @@ export class ChannelRuntime {
     this.agent = createAgent({
       id: channelKey(this.scope),
       model: opts.model,
-      storage,
+      storage: opts.storage,
       systemPrompt: buildCoreSystemPrompt({ channel: this.scope }),
       tools,
       plugins: [
@@ -181,7 +172,9 @@ export class ChannelRuntime {
           },
         },
         createPromptFilePlugin({
-          basePath: resolveBasePath(opts.config.basePath, opts.ctx),
+          basePath: isAbsolute(opts.config.basePath)
+            ? opts.config.basePath
+            : resolve(opts.ctx.baseDir, opts.config.basePath),
           logger: opts.logger,
         }),
         ...plugins,
@@ -365,3 +358,4 @@ export namespace ChannelRuntime {
         readonly output: AsyncIterable<Output>;
       };
 }
+import { isAbsolute, resolve } from "node:path";

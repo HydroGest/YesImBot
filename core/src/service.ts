@@ -2,13 +2,14 @@ import { isAbsolute, resolve } from "node:path";
 
 import { Service, type Context } from "koishi";
 
-import type { ChannelScope } from "./channel/index.js";
+import { channelKey, type ChannelScope } from "./channel/index.js";
 import type { Config } from "./config.js";
 import { IMAGE_BUDGET } from "./gateway/image.js";
 import { Gateway, type SessionResolver } from "./gateway/index.js";
 import type { ModelService } from "./model/service.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/manager.js";
 import { AssetStore } from "./shared/asset.js";
+import { ChannelStorage, type ChannelFilter, type ChannelRecord } from "./storage/index.js";
 import { DefaultWill, type Will } from "./will/index.js";
 
 export type { AgentPluginFactory } from "./runtime/manager.js";
@@ -23,6 +24,7 @@ export class YesImBotService extends Service<Config> {
   static readonly inject = ["yesimbot.model"];
 
   readonly model: ModelService;
+  private readonly storage: ChannelStorage;
   private readonly asset: AssetStore;
   private readonly rt: RuntimeManager;
   private readonly gate: Gateway;
@@ -38,8 +40,11 @@ export class YesImBotService extends Service<Config> {
     this.logger.level = config.logLevel ?? 2;
     this.model = ctx["yesimbot.model"];
     this.defaultWill = () => new DefaultWill(config.will);
+    this.storage = new ChannelStorage(resolveBasePath(config.basePath, ctx.baseDir), (code, fields) => {
+      this.logger.warn({ code, ...fields });
+    });
     this.asset = new AssetStore({
-      basePath: resolveBasePath(config.basePath, ctx.baseDir),
+      storage: this.storage,
       maxFileBytes: IMAGE_BUDGET.maxBytesPerImage,
     });
     this.rt = new RuntimeManager({
@@ -47,6 +52,7 @@ export class YesImBotService extends Service<Config> {
       config,
       logger: this.logger,
       assets: this.asset,
+      storage: this.storage,
       getAgentPluginFactories: () =>
         [...this.plugins].map(({ factory }) => factory),
     });
@@ -54,6 +60,8 @@ export class YesImBotService extends Service<Config> {
       ctx,
       assets: this.asset,
       runtime: this.rt,
+      storage: this.storage,
+      ready: () => this.storage.start(),
       logger: this.logger,
     });
 
@@ -72,6 +80,26 @@ export class YesImBotService extends Service<Config> {
 
   registerResolver(resolver: SessionResolver): () => void {
     return this.gate.register(resolver);
+  }
+
+  override async start(): Promise<void> {
+    await this.storage.start();
+  }
+
+  channelKey(scope: ChannelScope): string {
+    return channelKey(scope);
+  }
+
+  registerStorage(namespace: string): () => void {
+    return this.storage.register(namespace);
+  }
+
+  ensureStorage(scope: ChannelScope, namespace: string, ...segments: string[]): Promise<string> {
+    return this.storage.ensure(scope, namespace, ...segments);
+  }
+
+  listChannels(filter?: ChannelFilter): readonly ChannelRecord[] {
+    return this.storage.list(filter);
   }
 
   registerWill(factory: Will.Factory): () => void {

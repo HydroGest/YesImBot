@@ -1,5 +1,3 @@
-import { isAbsolute, resolve } from "node:path";
-
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 
@@ -7,15 +5,17 @@ import { channelKey, fromEvent, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
 import type { EventRecord } from "../event/index.js";
 import type { AssetStore } from "../shared/asset.js";
+import type { ChannelStorage } from "../storage/index.js";
 import { DefaultWill, type Will } from "../will/index.js";
 import { ChannelRuntime } from "./channel.js";
-import { createChannelStorage } from "./storage.js";
+import { createJsonlStorage } from "./storage.js";
 
 export interface RuntimeManagerOptions {
   readonly ctx: Context;
   readonly config: Config;
   readonly logger: Logger;
   readonly assets: Pick<AssetStore, "clear" | "readByAssetId">;
+  readonly storage: ChannelStorage;
   readonly getAgentPluginFactories: () => readonly AgentPluginFactory[];
 }
 
@@ -130,6 +130,7 @@ export class RuntimeManager {
     ).filter((plugin): plugin is AgentPlugin => plugin !== null);
     const includeMessageId = factories.some((factory) => factory.requiresMessageId === true);
     const will = await this.makeWill(scope);
+    const storagePath = await this.opts.storage.ensure(scope, "sessions", "messages.jsonl");
     return {
       generation,
       runtime: new ChannelRuntime({
@@ -143,6 +144,7 @@ export class RuntimeManager {
         model,
         agentPlugins: plugins,
         includeMessageId,
+        storage: createJsonlStorage(storagePath),
       }),
     };
   }
@@ -170,12 +172,10 @@ export class RuntimeManager {
   }
 
   private async clearPersisted(scope: ChannelScope): Promise<void> {
-    const basePath = isAbsolute(this.opts.config.basePath)
-      ? this.opts.config.basePath
-      : resolve(this.opts.ctx.baseDir, this.opts.config.basePath);
     let failure: unknown;
     try {
-      await createChannelStorage(basePath, scope).clear();
+      const storagePath = await this.opts.storage.ensure(scope, "sessions", "messages.jsonl");
+      await createJsonlStorage(storagePath).clear();
     } catch (cause) {
       failure = cause;
       this.warn("storage_clear_failed", { scope, cause });

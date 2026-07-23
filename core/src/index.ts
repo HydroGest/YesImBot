@@ -9,7 +9,7 @@ export const usage = ``;
 export const inject = [];
 export { Config } from "./config.js";
 
-export * from "./channel/index.js";
+export type { ChannelScope } from "./channel/index.js";
 export * from "./event/index.js";
 export type { ResolveContext, SessionResolver } from "./gateway/index.js";
 export { YesImBotService, type AgentPluginFactory } from "./service.js";

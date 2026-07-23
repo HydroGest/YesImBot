@@ -7,8 +7,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { channelPath } from "../src/channel/index.js";
+import type { ChannelScope } from "../src/channel/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
+import { ChannelStorage } from "../src/storage/index.js";
 
 describe("jsonl storage", () => {
   it("appends entries and reads them back across restarts", async () => {
@@ -52,7 +53,9 @@ describe("jsonl storage", () => {
 
   it("does not load a legacy platform message entry", async () => {
     const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
-    const scope = { platform: "test", selfId: "bot", channelId: "room", isDirect: false };
+    const scope: ChannelScope = {
+      platform: "onebot", selfId: "10000", channelId: "123456", isDirect: false,
+    };
     const legacyPath = join(
       dir,
       "channels",
@@ -60,7 +63,7 @@ describe("jsonl storage", () => {
       "sessions",
       "messages.jsonl",
     );
-    const eventPath = channelPath(dir, scope);
+    const eventPath = await new ChannelStorage(dir).ensure(scope, "sessions", "messages.jsonl");
     const legacyEntry = {
       type: "message",
       data: {
@@ -69,7 +72,9 @@ describe("jsonl storage", () => {
       },
     };
 
-    expect(eventPath).not.toBe(legacyPath);
+    expect(eventPath).toBe(join(
+      dir, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "sessions", "messages.jsonl",
+    ));
     await mkdir(dirname(legacyPath), { recursive: true });
     await writeFile(legacyPath, `${JSON.stringify(legacyEntry)}\n`, "utf8");
 

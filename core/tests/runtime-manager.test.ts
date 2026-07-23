@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,9 +28,10 @@ vi.mock("../src/runtime/channel.js", () => ({
   },
 }));
 
-import { channelPath, type ChannelScope } from "../src/channel/index.js";
+import type { ChannelScope } from "../src/channel/index.js";
 import type { EventRecord } from "../src/event/index.js";
 import { RuntimeManager } from "../src/runtime/manager.js";
+import { ChannelStorage } from "../src/storage/index.js";
 import type { Will } from "../src/will/index.js";
 
 function record(
@@ -60,11 +61,13 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
   Object.assign(ctx, { "yesimbot.model": { resolveChatModel } });
   const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
   const getAgentPluginFactories = vi.fn(() => []);
+  const storage = new ChannelStorage(basePath);
   const manager = new RuntimeManager({
     ctx,
     config: { basePath, chatModel: "test:model" },
     logger: { warn: vi.fn() } as never,
     assets: assets as never,
+    storage,
     getAgentPluginFactories,
   });
   return {
@@ -75,6 +78,7 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
     resolveChatModel,
     assets,
     getAgentPluginFactories,
+    storage,
   };
 }
 
@@ -164,6 +168,16 @@ describe("RuntimeManager", () => {
     expect(state.runtimes[0]?.options.agentPlugins).toEqual([{ name: "plain" }]);
   });
 
+  it("injects channel-first JSONL storage into the runtime", async () => {
+    const { manager } = createManager();
+
+    await manager.route(record("room"));
+
+    expect(state.runtimes[0]?.options.storage).toEqual(
+      expect.objectContaining({ append: expect.any(Function) }),
+    );
+  });
+
   it("removes a reset runtime from the cache only after its teardown completes", async () => {
     const { manager } = createManager();
 
@@ -199,8 +213,7 @@ describe("RuntimeManager", () => {
       channelId: "uncached",
       isDirect: false,
     };
-    const storagePath = channelPath(basePath, scope);
-    await mkdir(join(basePath, "sessions"), { recursive: true });
+    const storagePath = await new ChannelStorage(basePath).ensure(scope, "sessions", "messages.jsonl");
     await writeFile(storagePath, "stored\n");
 
     await manager.reset(scope);
@@ -208,6 +221,35 @@ describe("RuntimeManager", () => {
     expect(state.runtimes).toHaveLength(0);
     expect(assets.clear).toHaveBeenCalledWith(scope);
     await expect(access(storagePath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("preserves channel metadata and registered namespaces when resetting uncached storage", async () => {
+    const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
+    const { manager, assets, storage } = createManager(basePath);
+    const scope: ChannelScope = {
+      platform: "test", selfId: "bot-1", channelId: "uncached", isDirect: false,
+    };
+    const dispose = storage.register("workspace");
+    const messagesPath = await storage.ensure(scope, "sessions", "messages.jsonl");
+    const assetsPath = await storage.ensure(scope, "assets", "asset");
+    const workspacePath = await storage.ensure(scope, "workspace", "keep.txt");
+    await Promise.all([
+      writeFile(messagesPath, "stored\n"),
+      writeFile(assetsPath, "asset\n"),
+      writeFile(workspacePath, "keep\n"),
+    ]);
+    assets.clear.mockImplementation(async (target) => {
+      await rm(await storage.ensure(target, "assets"), { recursive: true, force: true });
+    });
+
+    await manager.reset(scope);
+
+    await expect(access(messagesPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(assetsPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(access(workspacePath)).resolves.toBeUndefined();
+    await expect(access(join(basePath, "channels.json"))).resolves.toBeUndefined();
+    await expect(access(join(basePath, "channels", storage.list()[0]!.key, "channel.json"))).resolves.toBeUndefined();
+    dispose();
   });
 
   it("stops every cached runtime after a teardown failure and preserves assets", async () => {
@@ -235,8 +277,7 @@ describe("RuntimeManager", () => {
       channelId: "room",
       isDirect: false,
     };
-    const storagePath = channelPath(basePath, scope);
-    await mkdir(join(basePath, "sessions"), { recursive: true });
+    const storagePath = await new ChannelStorage(basePath).ensure(scope, "sessions", "messages.jsonl");
     await writeFile(storagePath, "persisted\n");
     await manager.route(record(scope.channelId));
 

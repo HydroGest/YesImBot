@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { channelFileName, type ChannelScope } from "../channel/index.js";
+import type { ChannelScope } from "../channel/index.js";
+import type { ChannelStorage } from "../storage/index.js";
 
 export function detectImageMime(data: Uint8Array): string | undefined {
   if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff)
@@ -45,16 +46,16 @@ export function detectImageMime(data: Uint8Array): string | undefined {
 }
 
 export interface AssetStoreOptions {
-  basePath: string;
+  storage: ChannelStorage;
   maxFileBytes: number;
 }
 
 export class AssetStore {
-  private basePath: string;
+  private storage: ChannelStorage;
   private maxBytes: number;
 
   constructor(options: AssetStoreOptions) {
-    this.basePath = options.basePath;
+    this.storage = options.storage;
     this.maxBytes = options.maxFileBytes;
   }
 
@@ -73,7 +74,7 @@ export class AssetStore {
 
     const copied = data.slice();
     const hash = createHash("sha256").update(copied).digest("hex");
-    const path = this.assetPath(scope, hash);
+    const path = await this.assetPath(scope, hash);
     const temporary = join(dirname(path), `.${hash}.${randomUUID()}.tmp`);
     await mkdir(dirname(path), { recursive: true });
     try {
@@ -92,7 +93,7 @@ export class AssetStore {
       throw new Error("Invalid platform asset id");
     }
 
-    const data = new Uint8Array(await readFile(this.assetPath(scope, hash)));
+    const data = new Uint8Array(await readFile(await this.assetPath(scope, hash)));
     const actual = createHash("sha256").update(data).digest("hex");
     if (actual !== hash) {
       throw new Error(`Platform asset ${assetId} failed integrity validation`);
@@ -101,11 +102,12 @@ export class AssetStore {
   }
 
   async clear(scope: ChannelScope): Promise<void> {
-    await rm(this.assetPath(scope), { recursive: true, force: true });
+    await rm(await this.assetPath(scope), { recursive: true, force: true });
   }
 
-  private assetPath(scope: ChannelScope, hash?: string): string {
-    const root = join(this.basePath, "assets", channelFileName(scope));
-    return hash ? join(root, hash) : root;
+  private async assetPath(scope: ChannelScope, hash?: string): Promise<string> {
+    return hash
+      ? this.storage.ensure(scope, "assets", hash)
+      : this.storage.ensure(scope, "assets");
   }
 }

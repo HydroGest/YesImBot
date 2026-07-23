@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { type ChannelScope } from "../src/channel/index.js";
 import { AssetStore } from "../src/shared/asset.js";
+import { ChannelStorage } from "../src/storage/index.js";
 
 const scope: ChannelScope = {
   platform: "onebot",
@@ -25,7 +26,7 @@ describe("AssetStore", () => {
 
   beforeEach(async () => {
     basePath = await mkdtemp(join(tmpdir(), "yesimbot-assets-"));
-    assets = new AssetStore({ basePath, maxFileBytes: 16 });
+    assets = new AssetStore({ storage: new ChannelStorage(basePath), maxFileBytes: 16 });
   });
 
   afterEach(async () => {
@@ -34,8 +35,12 @@ describe("AssetStore", () => {
 
   it("round-trips a private image and rejects an invalid asset id", async () => {
     const stored = await assets.put(scope, PNG_BYTES);
+    const hash = stored.assetId.slice("asset_".length);
 
     await expect(assets.readByAssetId(scope, stored.assetId)).resolves.toEqual(PNG_BYTES);
+    await expect(readFile(join(
+      basePath, "channels", "j4bccwhe5a72utwrwgtk4gvf5e", "assets", hash,
+    ))).resolves.toEqual(Buffer.from(PNG_BYTES));
     await expect(assets.readByAssetId(scope, "asset_invalid")).rejects.toThrow(
       "Invalid platform asset id",
     );
