@@ -1,8 +1,8 @@
 ## 1. Channel Identity And Key
 
-- [ ] 1.1 Add `isDirect` to `ChannelScope`, derive it consistently from Session and EventRecord data, and reject resolver classification mismatches.
-- [ ] 1.2 Replace legacy channel key and filename helpers with the tagged shared/direct SHA-256/Base32 protocol and all approved conformance vectors.
-- [ ] 1.3 Update channel identity callers and tests so shared scopes ignore `selfId` while direct scopes retain bot isolation.
+- [x] 1.1 Add `isDirect` to `ChannelScope`, derive it consistently from Session and EventRecord data, and reject resolver classification mismatches.
+- [x] 1.2 Replace legacy channel key and filename helpers with the tagged shared/direct SHA-256/Base32 protocol and all approved conformance vectors.
+- [x] 1.3 Update channel identity callers and tests so shared scopes ignore `selfId` while direct scopes retain bot isolation.
 
 ## 2. Core Channel Storage
 
