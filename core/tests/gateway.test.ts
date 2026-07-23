@@ -37,7 +37,7 @@ function record(): EventRecord<"message"> {
   } as EventRecord<"message">;
 }
 
-function createGateway() {
+function createGateway(options: { ready?: () => Promise<void> } = {}) {
   const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
   const logger = { warn: vi.fn() };
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
@@ -62,7 +62,7 @@ function createGateway() {
       runtime: runtime as never,
       assets,
       storage,
-      ready: () => storage.start(),
+      ready: options.ready ?? (() => storage.start()),
       logger,
     }),
     runtime,
@@ -76,6 +76,29 @@ function createGateway() {
 }
 
 describe("Gateway", () => {
+  it("waits for storage readiness before shared admission and later side effects", async () => {
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { gateway, runtime, assets, database, storage } = createGateway({ ready: () => ready });
+    const updateName = vi.spyOn(storage, "updateName");
+    const resolve = vi.fn(async () => record());
+    gateway.register({ platform: "test", resolve });
+
+    const handling = gateway.handle(session() as never);
+
+    await Promise.resolve();
+    expect(database.get).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+    expect(assets.put).not.toHaveBeenCalled();
+    expect(updateName).not.toHaveBeenCalled();
+    expect(runtime.route).not.toHaveBeenCalled();
+
+    release();
+    await handling;
+  });
+
   it.each([
     [[], "missing"],
     [[{ assignee: "" }], "empty"],

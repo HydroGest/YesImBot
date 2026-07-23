@@ -96,13 +96,13 @@ export class Gateway {
   private async route(session: Session): Promise<void> {
     const scope = scopeFromSession(session);
     if (!scope) return;
+    await this.opts.ready();
     try {
       await assertAssignee(this.opts.ctx, scope);
     } catch (cause) {
       this.warn("gateway.assignee_rejected", cause, session.platform);
       return;
     }
-    await this.opts.ready();
     let record: EventRecord | null;
     try {
       record = await this.resolve(session);
