@@ -1,14 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "../..",
-    "baseUrl": "../..",
-    "composite": false,
-    "incremental": false,
-    "paths": {
-      "koishi-plugin-yesimbot": ["core/src/index.ts"]
-    }
+    "outDir": "dist",
+    "rootDir": "src"
   },
   "include": ["src"]
 }

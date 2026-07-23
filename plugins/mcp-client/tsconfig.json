@@ -1,9 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "esModuleInterop": true
+    "outDir": "dist",
+    "rootDir": "src"
   },
-  "include": ["src", "src/**/*.json"]
+  "include": ["src"]
 }

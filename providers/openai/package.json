@@ -1,6 +1,6 @@
 {
   "name": "@yesimbot/koishi-plugin-provider-openai",
-  "version": "0.1.0-beta.1",
+  "version": "0.0.1",
   "description": "",
   "bugs": {
     "url": "https://github.com/YesWeAreBot/YesImBot/issues"
