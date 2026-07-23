@@ -310,6 +310,87 @@ describe("ChannelRuntime", () => {
     expect(order).toEqual(["will", "interrupt", "agent.stop", "will.stop"]);
   });
 
+  it("waits for delivery release before graceful stop", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" });
+    const release = runtime.acquireDeliveryLease();
+    const stopping = runtime.drainAndStop();
+
+    await Promise.resolve();
+    expect(state.agent?.stop).not.toHaveBeenCalled();
+    expect(state.agent?.interrupt).not.toHaveBeenCalled();
+
+    release();
+    await stopping;
+    expect(state.agent?.wait).toHaveBeenCalledOnce();
+    expect(state.agent?.stop).toHaveBeenCalledOnce();
+    expect(state.agent?.interrupt).not.toHaveBeenCalled();
+  });
+
+  it("keeps a delivery lease release idempotent", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" });
+    const first = runtime.acquireDeliveryLease();
+    first();
+    first();
+    const second = runtime.acquireDeliveryLease();
+    const stopping = runtime.drainAndStop();
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(state.agent?.stop).not.toHaveBeenCalled();
+
+    second();
+    await stopping;
+    expect(state.agent?.stop).toHaveBeenCalledOnce();
+  });
+
+  it("waits for committed FIFO work before graceful stop", async () => {
+    const entered = deferred();
+    const release = deferred();
+    const order: string[] = [];
+    const { runtime } = createRuntime({
+      decide: async () => {
+        order.push("will");
+        entered.resolve();
+        await release.promise;
+        return "wait";
+      },
+    });
+    state.agent?.wait.mockImplementation(async () => order.push("agent.wait"));
+    state.agent?.stop.mockImplementation(async () => order.push("agent.stop"));
+    const handling = runtime.handle(record());
+    await entered.promise;
+    const stopping = runtime.drainAndStop();
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(state.agent?.wait).not.toHaveBeenCalled();
+
+    release.resolve();
+    order.push("release");
+    await Promise.all([handling, stopping]);
+    expect(order).toEqual(["will", "release", "agent.wait", "agent.stop"]);
+  });
+
+  it("accepts internal completion while rejecting new platform events during drain", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" });
+    const failure = {
+      type: "delivery.failed",
+      platform: "test",
+      selfId: "bot-1",
+      timestamp: 2,
+      channel: { id: "room-1", type: 0 },
+      delivery: {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        error: { name: "Error", message: "offline" },
+      },
+      content: "Delivery failed",
+    } as EventRecord<"delivery.failed">;
+
+    runtime.beginDrain();
+
+    await expect(runtime.handle(record())).rejects.toThrow("draining");
+    await expect(runtime.handleInternal(failure)).resolves.toMatchObject({ kind: "wait" });
+  });
+
   it("isolates Agent and Will stop failures while waiting for an active stream", async () => {
     const release = deferred();
     state.stream = (async function* () {

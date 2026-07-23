@@ -119,6 +119,10 @@ export class ChannelRuntime {
   private tail = Promise.resolve();
   private stopped = false;
   private stopTask: Promise<void> | undefined;
+  private draining = false;
+  private deliveryLeases = 0;
+  private deliveryWaiters = new Set<() => void>();
+  private drainTask: Promise<void> | undefined;
   private streams = new Set<Promise<void>>();
   private pending: Event[] = [];
   private recent: Event[] = [];
@@ -184,11 +188,54 @@ export class ChannelRuntime {
   }
 
   handle(record: EventRecord): Promise<ChannelRuntime.Result> {
-    if (this.stopped) {
-      return Promise.reject(new Error("Channel runtime is stopped"));
-    }
+    return this.handleRecord(record, false);
+  }
+
+  handleInternal(record: EventRecord): Promise<ChannelRuntime.Result> {
+    return this.handleRecord(record, true);
+  }
+
+  beginDrain(): void {
+    if (this.stopped) throw new Error("Channel runtime is stopped");
+    this.draining = true;
+  }
+
+  acquireDeliveryLease(): () => void {
+    if (this.stopped) throw new Error("Channel runtime is stopped");
+    this.deliveryLeases += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.deliveryLeases -= 1;
+      if (this.deliveryLeases === 0) {
+        for (const resolve of this.deliveryWaiters) resolve();
+        this.deliveryWaiters.clear();
+      }
+    };
+  }
+
+  drainAndStop(): Promise<void> {
+    if (this.drainTask) return this.drainTask;
+    this.beginDrain();
+    this.drainTask = (async () => {
+      await this.tail;
+      await this.waitForDeliveries();
+      await this.agent.wait();
+      await Promise.allSettled([...this.streams]);
+      this.stopped = true;
+      await this.agent.stop();
+      await this.opts.will.stop?.();
+    })();
+    return this.drainTask;
+  }
+
+  private handleRecord(record: EventRecord, internal: boolean): Promise<ChannelRuntime.Result> {
+    if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
+    if (this.draining && !internal) return Promise.reject(new Error("Channel runtime is draining"));
     return this.enqueue(async () => {
       this.assertOpen();
+      if (this.draining && !internal) throw new Error("Channel runtime is draining");
       const event = createEvent(record);
       await this.agent.append(event);
       this.remember(event);
@@ -256,6 +303,11 @@ export class ChannelRuntime {
       this.warn("will_stop_failed", { cause, reason });
     }
     await Promise.allSettled([...this.streams]);
+  }
+
+  private waitForDeliveries(): Promise<void> {
+    if (this.deliveryLeases === 0) return Promise.resolve();
+    return new Promise((resolve) => this.deliveryWaiters.add(resolve));
   }
 
   private startRun(event: Event): ChannelRuntime.Result {

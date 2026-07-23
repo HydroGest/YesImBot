@@ -128,12 +128,16 @@ export class Gateway {
       await this.opts.storage.updateName(scope, record.channel.name);
       const result = await this.opts.runtime.route(record);
       if (result.kind === "run") {
-        for await (const output of result.output) {
-          try {
-            await session.send(output.content);
-          } catch (cause) {
-            await this.failDelivery(record, output, cause);
+        try {
+          for await (const output of result.output) {
+            try {
+              await session.send(output.content);
+            } catch (cause) {
+              await this.failDelivery(record, output, cause, result.delivery);
+            }
           }
+        } finally {
+          result.delivery.release();
         }
       }
     } catch (cause) {
@@ -145,6 +149,7 @@ export class Gateway {
     record: EventRecord,
     output: { readonly turnId: string; readonly messageId: string },
     cause: unknown,
+    delivery: RuntimeManager.Delivery,
   ): Promise<void> {
     const error = normalizeDeliveryError(cause);
     const failure = {
@@ -157,7 +162,7 @@ export class Gateway {
       content: `Delivery of assistant message ${output.messageId} failed: ${error.message}`,
     } as EventRecord<"delivery.failed">;
     try {
-      await this.opts.runtime.route(failure);
+      await delivery.fail(failure);
     } catch (feedbackCause) {
       this.warn("delivery.failed", feedbackCause, record.platform);
     }

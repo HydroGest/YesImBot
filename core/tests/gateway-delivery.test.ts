@@ -43,6 +43,10 @@ function outputs(...content: string[]) {
   })();
 }
 
+function delivery() {
+  return { fail: vi.fn(async () => ({ kind: "wait" as const, eventId: "failure-1" })), release: vi.fn() };
+}
+
 function createGateway(route: ReturnType<typeof vi.fn>, logger = { warn: vi.fn() }) {
   const ctx = {
     middleware: vi.fn(() => vi.fn()),
@@ -65,11 +69,13 @@ function createGateway(route: ReturnType<typeof vi.fn>, logger = { warn: vi.fn()
 
 describe("Gateway passive delivery", () => {
   it("sends complete outputs in yield order and accepts empty receipts", async () => {
+    const binding = delivery();
     const route = vi.fn(async () => ({
       kind: "run" as const,
       eventId: "event-1",
       turnId: "turn-1",
       output: outputs("first", "second"),
+      delivery: binding,
     }));
     const send = vi.fn().mockResolvedValueOnce(["receipt-1"]).mockResolvedValueOnce([]);
     const { gateway } = createGateway(route);
@@ -79,18 +85,18 @@ describe("Gateway passive delivery", () => {
     expect(send).toHaveBeenNthCalledWith(1, "first");
     expect(send).toHaveBeenNthCalledWith(2, "second");
     expect(route).toHaveBeenCalledOnce();
+    expect(binding.release).toHaveBeenCalledOnce();
   });
 
-  it("continues later outputs and routes one normalized frozen failure event", async () => {
-    const route = vi
-      .fn()
-      .mockResolvedValueOnce({
-        kind: "run",
-        eventId: "event-1",
-        turnId: "turn-1",
-        output: outputs("first", "second"),
-      })
-      .mockResolvedValueOnce({ kind: "wait", eventId: "failure-1" });
+  it("continues later outputs and persists one normalized failure through the bound delivery", async () => {
+    const binding = delivery();
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: outputs("first", "second"),
+      delivery: binding,
+    }));
     const offline = Object.assign(new Error("offline"), { code: "ECONNRESET" });
     const send = vi.fn().mockRejectedValueOnce(offline).mockResolvedValueOnce(["receipt-2"]);
     const { gateway } = createGateway(route);
@@ -99,8 +105,8 @@ describe("Gateway passive delivery", () => {
 
     expect(send).toHaveBeenNthCalledWith(1, "first");
     expect(send).toHaveBeenNthCalledWith(2, "second");
-    expect(route).toHaveBeenCalledTimes(2);
-    expect(route.mock.calls[1]?.[0]).toMatchObject({
+    expect(route).toHaveBeenCalledOnce();
+    expect(binding.fail.mock.calls[0]?.[0]).toMatchObject({
       type: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -114,44 +120,35 @@ describe("Gateway passive delivery", () => {
     });
   });
 
-  it("does not consume or recursively deliver output returned by failed feedback routing", async () => {
-    const feedbackOutput = outputs("must-not-send");
-    const route = vi
-      .fn()
-      .mockResolvedValueOnce({
-        kind: "run",
-        eventId: "event-1",
-        turnId: "turn-1",
-        output: outputs("first"),
-      })
-      .mockResolvedValueOnce({
-        kind: "run",
-        eventId: "failure-1",
-        turnId: "turn-2",
-        output: feedbackOutput,
-      });
+  it("does not recursively route delivery-failure completion output", async () => {
+    const binding = delivery();
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: outputs("first"),
+      delivery: binding,
+    }));
     const send = vi.fn().mockRejectedValueOnce(new Error("offline"));
     const { gateway } = createGateway(route);
 
     await gateway.handle(session(send) as never);
 
     expect(send).toHaveBeenCalledTimes(1);
-    expect(route).toHaveBeenCalledTimes(2);
-    await expect(feedbackOutput.next()).resolves.toMatchObject({
-      value: expect.objectContaining({ content: "must-not-send" }),
-    });
+    expect(route).toHaveBeenCalledOnce();
+    expect(binding.fail).toHaveBeenCalledOnce();
   });
 
-  it("keeps consuming later outputs when failure feedback diagnostics and routing fail", async () => {
-    const route = vi
-      .fn()
-      .mockResolvedValueOnce({
-        kind: "run",
-        eventId: "event-1",
-        turnId: "turn-1",
-        output: outputs("first", "second"),
-      })
-      .mockRejectedValueOnce(new Error("history unavailable"));
+  it("keeps consuming later outputs when bound failure diagnostics fail", async () => {
+    const binding = delivery();
+    binding.fail.mockRejectedValueOnce(new Error("history unavailable"));
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: outputs("first", "second"),
+      delivery: binding,
+    }));
     const send = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([]);
     const { gateway } = createGateway(route, {
       warn: vi.fn(() => {
@@ -163,7 +160,8 @@ describe("Gateway passive delivery", () => {
 
     expect(send).toHaveBeenNthCalledWith(1, "first");
     expect(send).toHaveBeenNthCalledWith(2, "second");
-    expect(route).toHaveBeenCalledTimes(2);
+    expect(route).toHaveBeenCalledOnce();
+    expect(binding.release).toHaveBeenCalledOnce();
   });
 
   it("retains the originating Session only while consuming its active output", async () => {
@@ -179,6 +177,7 @@ describe("Gateway passive delivery", () => {
         yield { turnId: "turn-1", messageId: "assistant-1", content: "first" };
         await finished;
       })(),
+      delivery: delivery(),
     }));
     const send = vi.fn(async () => []);
     const { gateway } = createGateway(route);

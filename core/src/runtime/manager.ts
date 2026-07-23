@@ -42,13 +42,22 @@ export class RuntimeManager {
     this.makeWill = () => new DefaultWill(opts.config.will);
   }
 
-  async route(record: EventRecord): Promise<ChannelRuntime.Result> {
+  async route(record: EventRecord): Promise<RuntimeManager.Result> {
     this.assertOpen();
     const scope = fromEvent(record);
     if (!scope) throw new Error("Accepted event requires a channel");
     const runtime = await this.getOrCreate(scope);
     this.assertOpen();
-    return runtime.handle(record);
+    const result = await runtime.handle(record);
+    if (result.kind !== "run") return result;
+    const release = runtime.acquireDeliveryLease();
+    return {
+      ...result,
+      delivery: {
+        fail: (failure) => runtime.handleInternal(failure),
+        release,
+      },
+    };
   }
 
   setWill(factory: Will.Factory): void {
@@ -208,4 +217,17 @@ export class RuntimeManager {
       this.opts.logger.warn({ event, ...fields });
     } catch {}
   }
+}
+
+export namespace RuntimeManager {
+  export interface Delivery {
+    fail(record: EventRecord<"delivery.failed">): Promise<ChannelRuntime.Result>;
+    release(): void;
+  }
+
+  export type Result =
+    | Exclude<ChannelRuntime.Result, { readonly kind: "run" }>
+    | (Extract<ChannelRuntime.Result, { readonly kind: "run" }> & {
+        readonly delivery: Delivery;
+      });
 }
