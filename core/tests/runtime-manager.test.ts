@@ -174,6 +174,29 @@ describe("RuntimeManager", () => {
     expect(state.runtimes[2]?.options).toMatchObject({ model, will: secondWill });
   });
 
+  it("gracefully hands over a same-assignee Runtime after its Will generation changes", async () => {
+    const { manager } = createManager();
+    const firstWill = { decide: vi.fn(async () => "wait" as const) } satisfies Will;
+    const secondWill = { decide: vi.fn(async () => "wait" as const) } satisfies Will;
+    const oldDrain = deferred<void>();
+
+    manager.setWill(async () => firstWill);
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+    manager.setWill(async () => secondWill);
+
+    const routing = manager.route(record("room"));
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+    expect(state.runtimes).toHaveLength(1);
+    expect(state.runtimes[0]?.stop).not.toHaveBeenCalled();
+
+    oldDrain.resolve();
+    await routing;
+
+    expect(state.runtimes).toHaveLength(2);
+    expect(state.runtimes[1]?.options).toMatchObject({ will: secondWill });
+  });
+
   it("uses factory capabilities only for the runtime created from that factory snapshot", async () => {
     const { manager, getAgentPluginFactories } = createManager();
     const factory = Object.assign(

@@ -111,7 +111,11 @@ export class RuntimeManager {
         if (current?.state === "failed")
           throw new Error("Channel handover failed; restart required");
         if (current) {
-          if (current.state === "draining" || current.selfId !== scope.selfId) {
+          if (
+            current.state === "draining" ||
+            current.selfId !== scope.selfId ||
+            current.generation !== this.gen
+          ) {
             return { handover: current };
           }
           if (current.generation === this.gen) return { runtime: current.runtime };
