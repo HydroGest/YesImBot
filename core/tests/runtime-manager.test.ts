@@ -11,6 +11,10 @@ const state = vi.hoisted(() => ({
   runtimes: [] as Array<{
     readonly options: Record<string, unknown>;
     handle: ReturnType<typeof vi.fn>;
+    handleInternal: ReturnType<typeof vi.fn>;
+    acquireDeliveryLease: ReturnType<typeof vi.fn>;
+    beginDrain: ReturnType<typeof vi.fn>;
+    drainAndStop: ReturnType<typeof vi.fn>;
     reset: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
   }>,
@@ -19,6 +23,10 @@ const state = vi.hoisted(() => ({
 vi.mock("../src/runtime/channel.js", () => ({
   ChannelRuntime: class {
     readonly handle = vi.fn(async () => ({ kind: "wait", eventId: "event-1" }));
+    readonly handleInternal = vi.fn(async () => ({ kind: "wait", eventId: "event-1" }));
+    readonly acquireDeliveryLease = vi.fn(() => vi.fn());
+    readonly beginDrain = vi.fn();
+    readonly drainAndStop = vi.fn(async () => undefined);
     readonly reset = vi.fn(async () => undefined);
     readonly stop = vi.fn(async () => undefined);
 
@@ -86,10 +94,12 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((next) => {
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<T>((next, fail) => {
     resolve = next;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 describe("RuntimeManager", () => {
@@ -225,7 +235,11 @@ describe("RuntimeManager", () => {
       channelId: "uncached",
       isDirect: false,
     };
-    const storagePath = await new ChannelStorage(basePath).ensure(scope, "sessions", "messages.jsonl");
+    const storagePath = await new ChannelStorage(basePath).ensure(
+      scope,
+      "sessions",
+      "messages.jsonl",
+    );
     await writeFile(storagePath, "stored\n");
 
     await manager.reset(scope);
@@ -239,7 +253,10 @@ describe("RuntimeManager", () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
     const { manager, assets, storage } = createManager(basePath);
     const scope: ChannelScope = {
-      platform: "test", selfId: "bot-1", channelId: "uncached", isDirect: false,
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "uncached",
+      isDirect: false,
     };
     const dispose = storage.register("workspace");
     const messagesPath = await storage.ensure(scope, "sessions", "messages.jsonl");
@@ -260,7 +277,9 @@ describe("RuntimeManager", () => {
     await expect(access(assetsPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(workspacePath)).resolves.toBeUndefined();
     await expect(access(join(basePath, "channels.json"))).resolves.toBeUndefined();
-    await expect(access(join(basePath, "channels", storage.list()[0]!.key, "channel.json"))).resolves.toBeUndefined();
+    await expect(
+      access(join(basePath, "channels", storage.list()[0]!.key, "channel.json")),
+    ).resolves.toBeUndefined();
     dispose();
   });
 
@@ -289,7 +308,11 @@ describe("RuntimeManager", () => {
       channelId: "room",
       isDirect: false,
     };
-    const storagePath = await new ChannelStorage(basePath).ensure(scope, "sessions", "messages.jsonl");
+    const storagePath = await new ChannelStorage(basePath).ensure(
+      scope,
+      "sessions",
+      "messages.jsonl",
+    );
     await writeFile(storagePath, "persisted\n");
     await manager.route(record(scope.channelId));
 
@@ -318,5 +341,186 @@ describe("RuntimeManager", () => {
     await expect(routing).rejects.toThrow("Runtime manager is stopped");
     await stopping;
     expect(state.runtimes[0]?.handle ?? vi.fn()).not.toHaveBeenCalled();
+  });
+
+  it("drains an old shared assignee outside the lifecycle coordinator before creating its replacement", async () => {
+    const { manager, database } = createManager();
+    const oldDrain = deferred<void>();
+
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+
+    const routing = manager.route(record("room", { selfId: "other" }));
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+
+    const resetting = manager.reset({
+      platform: "test",
+      selfId: "other",
+      channelId: "room",
+      isDirect: false,
+    });
+    expect(state.runtimes[0]?.reset).not.toHaveBeenCalled();
+    oldDrain.resolve();
+
+    await Promise.all([routing, resetting]);
+    expect(state.runtimes).toHaveLength(2);
+    expect(state.runtimes[1]?.options.scope).toMatchObject({ selfId: "other" });
+    expect(state.runtimes[1]?.reset).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a waiting shared event when reassignment changes again before phase two", async () => {
+    const { manager, database, resolveChatModel } = createManager();
+    const oldDrain = deferred<void>();
+
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+    const routing = manager.route(record("room", { selfId: "other" }));
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+    database.get.mockResolvedValue([{ assignee: "bot-1" }]);
+    oldDrain.resolve();
+
+    await expect(routing).rejects.toMatchObject({ reason: "mismatch" });
+    expect(state.runtimes).toHaveLength(1);
+    expect(resolveChatModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when the phase-two shared assignee row is missing", async () => {
+    const { manager, database } = createManager();
+    const oldDrain = deferred<void>();
+
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+    const routing = manager.route(record("room", { selfId: "other" }));
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+    database.get.mockResolvedValue([]);
+    oldDrain.resolve();
+
+    await expect(routing).rejects.toMatchObject({ reason: "missing" });
+    expect(state.runtimes).toHaveLength(1);
+  });
+
+  it("fails closed when the phase-two shared assignee query fails", async () => {
+    const { manager, database } = createManager();
+    const oldDrain = deferred<void>();
+
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+    const routing = manager.route(record("room", { selfId: "other" }));
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+    database.get.mockRejectedValue(new Error("database unavailable"));
+    oldDrain.resolve();
+
+    await expect(routing).rejects.toThrow("database unavailable");
+    expect(state.runtimes).toHaveLength(1);
+  });
+
+  it("keeps delivery-failure completion on the old Runtime while shared handover drains", async () => {
+    const { manager, database } = createManager();
+    const oldDrain = deferred<void>();
+
+    await manager.route(record("room"));
+    state.runtimes[0]?.handle.mockResolvedValue({ kind: "run", eventId: "event-1", output: {} });
+    const running = await manager.route(record("room"));
+    if (running.kind !== "run") throw new Error("Expected a run result");
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+    const routing = manager.route(record("room", { selfId: "other" }));
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+
+    await running.delivery.fail({
+      type: "delivery.failed",
+      platform: "test",
+      selfId: "bot-1",
+      timestamp: 2,
+      channel: { id: "room", type: 0 },
+      delivery: {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        error: { name: "Error", message: "offline" },
+      },
+      content: "Delivery failed",
+    } as EventRecord<"delivery.failed">);
+    expect(state.runtimes[0]?.handleInternal).toHaveBeenCalledOnce();
+    expect(state.runtimes[1]).toBeUndefined();
+
+    oldDrain.resolve();
+    await routing;
+  });
+
+  it("bounds a shared handover to five waiting events and shares one drain", async () => {
+    const { manager, database } = createManager();
+    const oldDrain = deferred<void>();
+
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+    const waiting = Array.from({ length: 5 }, (_, index) =>
+      manager.route(
+        record("room", { selfId: "other", message: { id: `message-${index}`, content: "hello" } }),
+      ),
+    );
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+
+    await expect(manager.route(record("room", { selfId: "other" }))).rejects.toThrow(
+      "queue is full",
+    );
+    oldDrain.resolve();
+    await Promise.all(waiting);
+
+    expect(state.runtimes[0]?.drainAndStop).toHaveBeenCalledOnce();
+    expect(state.runtimes).toHaveLength(2);
+  });
+
+  it("remains fail closed when an old shared Runtime cannot drain", async () => {
+    const { manager, database } = createManager();
+    const oldDrain = deferred<void>();
+
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+    const routing = manager.route(record("room", { selfId: "other" }));
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+    oldDrain.reject(new Error("drain failed"));
+
+    await expect(routing).rejects.toThrow("drain failed");
+    await expect(manager.route(record("room", { selfId: "other" }))).rejects.toThrow(
+      "handover failed",
+    );
+    expect(state.runtimes).toHaveLength(1);
+  });
+
+  it("keeps direct channels independent across self ids without handover", async () => {
+    const { manager, database } = createManager();
+    database.get.mockRejectedValue(new Error("direct channels do not query assignees"));
+
+    await manager.route(record("room", { selfId: "bot-1", channel: { id: "room", type: 1 } }));
+    await manager.route(record("room", { selfId: "other", channel: { id: "room", type: 1 } }));
+
+    expect(state.runtimes).toHaveLength(2);
+    expect(state.runtimes[0]?.beginDrain).not.toHaveBeenCalled();
+    expect(database.get).not.toHaveBeenCalled();
+  });
+
+  it("stops a draining Runtime without publishing a replacement", async () => {
+    const { manager, database } = createManager();
+    const oldDrain = deferred<void>();
+
+    await manager.route(record("room"));
+    state.runtimes[0]!.drainAndStop.mockReturnValueOnce(oldDrain.promise);
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+    const routing = manager.route(record("room", { selfId: "other" }));
+    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
+
+    const stopping = manager.stop();
+    oldDrain.reject(new Error("stopped"));
+    await stopping;
+
+    await expect(routing).rejects.toThrow(/stopped|handover/i);
+    expect(state.runtimes[0]?.stop).toHaveBeenCalledOnce();
+    expect(state.runtimes).toHaveLength(1);
   });
 });

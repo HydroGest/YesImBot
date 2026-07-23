@@ -27,12 +27,16 @@ export interface AgentPluginFactory {
 
 interface RuntimeEntry {
   readonly generation: number;
+  readonly selfId: string;
+  state: "active" | "draining" | "failed";
   readonly runtime: ChannelRuntime;
 }
 
 export class RuntimeManager {
   private runtimes = new Map<string, RuntimeEntry>();
   private tails = new Map<string, Promise<void>>();
+  private handovers = new Map<string, Promise<void>>();
+  private handoverWaiters = new Map<string, number>();
   private gen = 0;
   private makeWill: Will.Factory;
   private stopped = false;
@@ -68,25 +72,26 @@ export class RuntimeManager {
   async reset(scope: ChannelScope): Promise<void> {
     this.assertOpen();
     const key = channelKey(scope);
-    await this.enqueueLifecycle(key, async () => {
+    const snapshot = await this.enqueueLifecycle(key, async () => {
       this.assertOpen();
-      try {
-        await assertAssignee(this.opts.ctx, scope);
-      } catch (cause) {
-        this.warn("runtime.assignee_rejected", { scope, cause });
-        throw cause;
-      }
       const entry = this.runtimes.get(key);
+      if (entry?.state === "draining") return { handover: this.handovers.get(key) };
+      await this.assertCurrentAssignee(scope);
       if (entry) {
         try {
           await entry.runtime.reset();
         } finally {
           if (this.runtimes.get(key) === entry) this.runtimes.delete(key);
         }
-        return;
+        return {};
       }
       await this.clearPersisted(scope);
+      return {};
     });
+    if (!snapshot.handover) return;
+    await snapshot.handover;
+    await this.getOrCreate(scope);
+    return this.reset(scope);
   }
 
   stop(): Promise<void> {
@@ -98,25 +103,30 @@ export class RuntimeManager {
 
   private async getOrCreate(scope: ChannelScope): Promise<ChannelRuntime> {
     const key = channelKey(scope);
-    const entry = await this.enqueueLifecycle(key, async () => {
-      this.assertOpen();
-      try {
-        await assertAssignee(this.opts.ctx, scope);
-      } catch (cause) {
-        this.warn("runtime.assignee_rejected", { scope, cause });
-        throw cause;
-      }
-      const current = this.runtimes.get(key);
-      if (current?.generation === this.gen) return current;
-      if (current) {
-        await this.stopRuntime(key, current.runtime);
-        this.runtimes.delete(key);
-      }
-      const entry = await this.createRuntime(scope, this.gen);
-      this.runtimes.set(key, entry);
-      return entry;
-    });
-    if (entry.generation === this.gen) return entry.runtime;
+    const result: { readonly runtime: ChannelRuntime } | { readonly handover: RuntimeEntry } =
+      await this.enqueueLifecycle(key, async () => {
+        this.assertOpen();
+        await this.assertCurrentAssignee(scope);
+        const current = this.runtimes.get(key);
+        if (current?.state === "failed")
+          throw new Error("Channel handover failed; restart required");
+        if (current) {
+          if (current.state === "draining" || current.selfId !== scope.selfId) {
+            return { handover: current };
+          }
+          if (current.generation === this.gen) return { runtime: current.runtime };
+          await this.stopRuntime(key, current.runtime);
+          if (this.runtimes.get(key) === current) this.runtimes.delete(key);
+        }
+        await this.assertCurrentAssignee(scope);
+        const entry = await this.createRuntime(scope, this.gen);
+        this.assertOpen();
+        this.runtimes.set(key, entry);
+        return { runtime: entry.runtime };
+      });
+    if ("runtime" in result) return result.runtime;
+    await this.awaitHandover(key, result.handover);
+    await this.assertCurrentAssignee(scope);
     return this.getOrCreate(scope);
   }
 
@@ -138,6 +148,8 @@ export class RuntimeManager {
     const storagePath = await this.opts.storage.ensure(scope, "sessions", "messages.jsonl");
     return {
       generation,
+      selfId: scope.selfId,
+      state: "active",
       runtime: new ChannelRuntime({
         ctx: this.opts.ctx,
         config: this.opts.config,
@@ -157,15 +169,58 @@ export class RuntimeManager {
   private async stopInternal(): Promise<void> {
     await Promise.allSettled([...this.tails.values()]);
     const entries = [...this.runtimes.entries()];
-    await Promise.all(
-      entries.map(([key, entry]) =>
-        this.enqueueLifecycle(key, async () => {
-          await this.stopRuntime(key, entry.runtime);
-          if (this.runtimes.get(key) === entry) this.runtimes.delete(key);
-        }),
-      ),
-    );
+    await Promise.all(entries.map(([key, entry]) => this.stopRuntime(key, entry.runtime)));
+    await Promise.allSettled([...this.handovers.values()]);
     this.runtimes.clear();
+    this.tails.clear();
+    this.handovers.clear();
+    this.handoverWaiters.clear();
+  }
+
+  private async awaitHandover(key: string, entry: RuntimeEntry): Promise<void> {
+    const waiting = this.handoverWaiters.get(key) ?? 0;
+    if (waiting >= 5) throw new Error("Channel handover queue is full");
+    this.handoverWaiters.set(key, waiting + 1);
+    try {
+      let task = this.handovers.get(key);
+      if (!task) {
+        task = this.runHandover(key, entry);
+        this.handovers.set(key, task);
+        void task
+          .finally(() => {
+            if (this.handovers.get(key) === task) this.handovers.delete(key);
+          })
+          .catch(() => undefined);
+      }
+      await task;
+    } finally {
+      const remaining = (this.handoverWaiters.get(key) ?? 1) - 1;
+      if (remaining === 0) this.handoverWaiters.delete(key);
+      else this.handoverWaiters.set(key, remaining);
+    }
+  }
+
+  private async runHandover(key: string, entry: RuntimeEntry): Promise<void> {
+    try {
+      await this.enqueueLifecycle(key, async () => {
+        this.assertOpen();
+        if (this.runtimes.get(key) !== entry) throw new Error("Channel handover is stale");
+        if (entry.state === "failed") throw new Error("Channel handover failed; restart required");
+        entry.state = "draining";
+        entry.runtime.beginDrain();
+      });
+      await entry.runtime.drainAndStop();
+    } catch (cause) {
+      await this.enqueueLifecycle(key, async () => {
+        if (this.runtimes.get(key) === entry) entry.state = "failed";
+      });
+      throw cause;
+    }
+    await this.enqueueLifecycle(key, async () => {
+      if (this.runtimes.get(key) === entry && entry.state === "draining") {
+        this.runtimes.delete(key);
+      }
+    });
   }
 
   private async stopRuntime(key: string, runtime: ChannelRuntime): Promise<void> {
@@ -173,6 +228,15 @@ export class RuntimeManager {
       await runtime.stop();
     } catch (cause) {
       this.warn("runtime.stop_failed", { key, cause });
+    }
+  }
+
+  private async assertCurrentAssignee(scope: ChannelScope): Promise<void> {
+    try {
+      await assertAssignee(this.opts.ctx, scope);
+    } catch (cause) {
+      this.warn("runtime.assignee_rejected", { scope, cause });
+      throw cause;
     }
   }
 
