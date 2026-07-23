@@ -25,11 +25,11 @@
 
 ## 5. Online Runtime Handover
 
-- [ ] 5.1 Track each shared Runtime's bound `selfId` and generation under the shared Channel Key.
+- [x] 5.1 Track each shared Runtime's bound `selfId` and generation under the shared Channel Key.
 - [x] 5.2 Add a delivery lease and internal completion lane so a draining Runtime owns all output delivery and delivery-failure work.
-- [ ] 5.3 Implement two-phase graceful handover outside the per-Key lifecycle coordinator, with repeated assignee checks and no normal-turn interruption.
-- [ ] 5.4 Bound each handover at five waiting events and fail closed on stale assignment, drain failure, or stuck Runtime.
-- [ ] 5.5 Add concurrency tests for normal handover, assignment changes during drain, delivery failure completion, queue overflow, and direct-channel independence.
+- [x] 5.3 Implement two-phase graceful handover outside the per-Key lifecycle coordinator, with repeated assignee checks and no normal-turn interruption.
+- [x] 5.4 Bound each handover at five waiting events and fail closed on stale assignment, drain failure, or stuck Runtime.
+- [x] 5.5 Add concurrency tests for normal handover, assignment changes during drain, delivery failure completion, queue overflow, and direct-channel independence.
 
 ## 6. Workspace Integration
 
