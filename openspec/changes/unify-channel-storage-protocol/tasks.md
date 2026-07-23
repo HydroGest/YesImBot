@@ -19,9 +19,9 @@
 
 ## 4. Database Assignee Admission
 
-- [ ] 4.1 Declare Koishi Database as a required Core dependency and add one shared-channel assignee resolver keyed by `platform + channelId`.
-- [ ] 4.2 Reject missing, empty, failed, or mismatched shared-channel assignments before resolver work, asset freezing, persistence, and Runtime creation.
-- [ ] 4.3 Apply the same assignee check at Runtime submission and to state-changing YesImBot commands while direct channels skip assignment.
+- [x] 4.1 Declare Koishi Database as a required Core dependency and add one shared-channel assignee resolver keyed by `platform + channelId`.
+- [x] 4.2 Reject missing, empty, failed, or mismatched shared-channel assignments before resolver work, asset freezing, persistence, and Runtime creation.
+- [x] 4.3 Apply the same assignee check at Runtime submission and to state-changing YesImBot commands while direct channels skip assignment.
 
 ## 5. Online Runtime Handover
 
