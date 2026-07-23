@@ -2,7 +2,6 @@ import { isAbsolute, resolve } from "node:path";
 
 import { Service, type Context } from "koishi";
 
-import { assertAssignee } from "./assignee.js";
 import { channelKey, type ChannelScope } from "./channel/index.js";
 import type { Config } from "./config.js";
 import { IMAGE_BUDGET } from "./gateway/image.js";
@@ -10,6 +9,7 @@ import { Gateway, type SessionResolver } from "./gateway/index.js";
 import type { ModelService } from "./model/service.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/manager.js";
 import { AssetStore } from "./shared/asset.js";
+import { assertAssignee } from "./shared/assignee.js";
 import { ChannelStorage, type ChannelFilter, type ChannelRecord } from "./storage/index.js";
 import { DefaultWill, type Will } from "./will/index.js";
 

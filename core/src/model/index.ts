@@ -1,6 +1,4 @@
-export { createProviderPlugin } from "./provider";
-export type { BaseProviderConfig } from "./provider";
-export { createChatModelsSchema, createEmbeddingModelsSchema } from "./schema";
-export { ModelService } from "./service";
-export type { ModelServiceConfig } from "./service";
-export type { ChatModelConfig, EmbeddingModelConfig, ModelId } from "./types";
+export { createProviderPlugin, type BaseProviderConfig } from "./provider.js";
+export { createChatModelsSchema, createEmbeddingModelsSchema } from "./schema.js";
+export { ModelService, type ModelServiceConfig } from "./service.js";
+export type { ChatModelConfig, EmbeddingModelConfig, ModelId } from "./types.js";

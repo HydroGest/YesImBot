@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { assertAssignee, AssigneeAdmissionError } from "../src/assignee.js";
+import { assertAssignee, AssigneeAdmissionError } from "../src/shared/assignee.js";
 
 const shared = { platform: "onebot", selfId: "10000", channelId: "123", isDirect: false };
 const direct = { ...shared, isDirect: true };

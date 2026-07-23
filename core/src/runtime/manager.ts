@@ -1,11 +1,11 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 
-import { assertAssignee } from "../assignee.js";
 import { channelKey, fromEvent, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
 import type { EventRecord } from "../event/index.js";
 import type { AssetStore } from "../shared/asset.js";
+import { assertAssignee } from "../shared/assignee.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { DefaultWill, type Will } from "../will/index.js";
 import { ChannelRuntime } from "./channel.js";

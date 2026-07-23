@@ -1,6 +1,6 @@
 import type { Context } from "koishi";
 
-import type { ChannelScope } from "./channel/index.js";
+import type { ChannelScope } from "../channel/index.js";
 
 export class AssigneeAdmissionError extends Error {
   constructor(

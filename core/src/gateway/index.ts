@@ -1,10 +1,10 @@
 import { Context, h, Logger, type Awaitable, type Element, type Session, Universal } from "koishi";
 
-import { assertAssignee } from "../assignee.js";
 import type { ChannelScope } from "../channel/index.js";
 import type { EventRecord } from "../event/index.js";
 import type { RuntimeManager } from "../runtime/manager.js";
 import type { AssetStore } from "../shared/asset.js";
+import { assertAssignee } from "../shared/assignee.js";
 import { normalizeElements, sealElements, unavailableImage } from "../shared/element.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { createImageFreezer } from "./image.js";
