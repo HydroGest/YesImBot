@@ -12,6 +12,7 @@ import { formatEvent } from "../src/event/formatter.js";
 import { createEvent, type EventRecord } from "../src/event/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import { AssetStore } from "../src/shared/asset.js";
+import { ChannelStorage } from "../src/storage/index.js";
 
 const scope: ChannelScope = {
   platform: "onebot",
@@ -112,7 +113,9 @@ describe("formatEvent", () => {
   it("reloads a persisted Event with an AssetStore image without remote access", async () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-replay-"));
     const filePath = join(basePath, "events.jsonl");
-    const assets = new AssetStore({ basePath, maxFileBytes: pngBytes.byteLength });
+    const storage = new ChannelStorage(basePath);
+    await storage.start();
+    const assets = new AssetStore({ storage, maxFileBytes: pngBytes.byteLength });
     const frozen = await assets.put(scope, pngBytes);
     const stored = messageEvent(`stored text <img id="${frozen.assetId}" mime="${frozen.mime}"/>`);
     await createJsonlStorage(filePath).append(createEntry("message", stored));
@@ -143,16 +146,20 @@ describe("formatEvent", () => {
   it("diagnoses a missing AssetStore image after JSONL reload without remote access", async () => {
     const sourcePath = await mkdtemp(join(tmpdir(), "yesimbot-replay-source-"));
     const filePath = join(sourcePath, "events.jsonl");
+    const sourceStorage = new ChannelStorage(sourcePath);
+    await sourceStorage.start();
     const sourceAssets = new AssetStore({
-      basePath: sourcePath,
+      storage: sourceStorage,
       maxFileBytes: pngBytes.byteLength,
     });
     const frozen = await sourceAssets.put(scope, pngBytes);
     const stored = messageEvent(`stored text <img id="${frozen.assetId}" mime="${frozen.mime}"/>`);
     await createJsonlStorage(filePath).append(createEntry("message", stored));
     const [entry] = await createJsonlStorage(filePath).read();
+    const storage = new ChannelStorage(await mkdtemp(join(tmpdir(), "yesimbot-replay-missing-")));
+    await storage.start();
     const assets = new AssetStore({
-      basePath: await mkdtemp(join(tmpdir(), "yesimbot-replay-missing-")),
+      storage,
       maxFileBytes: pngBytes.byteLength,
     });
     const onAssetMissing = vi.fn();

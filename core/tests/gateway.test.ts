@@ -6,6 +6,7 @@ import { h, Universal } from "koishi";
 
 import type { EventRecord } from "../src/event/index.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
+import { ChannelStorage } from "../src/storage/index.js";
 
 function session(overrides: Record<string, unknown> = {}) {
   return {
@@ -52,8 +53,16 @@ function createGateway() {
     }),
   };
   const assets = { put: vi.fn(async () => ({ assetId: "asset_image", mime: "image/png" })) };
+  const storage = new ChannelStorage("/tmp/yesimbot-gateway-test");
   return {
-    gateway: new Gateway({ ctx: ctx as never, runtime: runtime as never, assets, logger }),
+    gateway: new Gateway({
+      ctx: ctx as never,
+      runtime: runtime as never,
+      assets,
+      storage,
+      ready: () => storage.start(),
+      logger,
+    }),
     runtime,
     logger,
     middleware: () => middleware!,

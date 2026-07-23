@@ -4,6 +4,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { EventRecord } from "../src/event/index.js";
 import { Gateway } from "../src/gateway/index.js";
+import { ChannelStorage } from "../src/storage/index.js";
 
 function session(send = vi.fn(async () => ["receipt-1"])) {
   return {
@@ -47,11 +48,14 @@ function createGateway(route: ReturnType<typeof vi.fn>, logger = { warn: vi.fn()
     middleware: vi.fn(() => vi.fn()),
     on: vi.fn(() => vi.fn()),
   };
+  const storage = new ChannelStorage("/tmp/yesimbot-gateway-delivery-test");
   return {
     gateway: new Gateway({
       ctx: ctx as never,
       runtime: { route } as never,
       assets: { put: vi.fn() },
+      storage,
+      ready: () => storage.start(),
       logger,
     }),
     logger,
