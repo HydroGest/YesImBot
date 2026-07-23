@@ -124,24 +124,33 @@ describe("ChannelStorage", () => {
   it("sorts Catalog records by ASCII Key", async () => {
     storage.register("workspace");
     await storage.ensure(shared, "workspace");
+    await storage.ensure({ ...shared, selfId: "10000", isDirect: true }, "workspace");
     await storage.ensure({ ...shared, selfId: "20000", isDirect: true }, "workspace");
 
     const catalog = JSON.parse(await readFile(join(basePath, "channels.json"), "utf8"));
     const keys = catalog.channels.map((record: { key: string }) => record.key);
-    expect(keys).toEqual([...keys].sort());
+    expect(keys).toEqual([
+      "3fdpuhlm2tmzybzrlgxotmtmxq",
+      "a5vnf2ijd75c2ibyo2s5czdir4",
+      "ymdz53gzamgvzjzrtf6vesoal4",
+    ]);
   });
 
-  it("preserves unknown namespace directories", async () => {
-    storage.register("workspace");
-    const workspace = await storage.ensure(shared, "workspace");
-    const unknown = join(workspace, "..", "unknown-module");
+  it("preserves and reports unknown namespace directories during startup", async () => {
+    const sessions = await storage.ensure(shared, "sessions");
+    const unknown = join(sessions, "..", "unknown-module");
     await mkdir(unknown);
     await writeFile(join(unknown, "keep.txt"), "keep", "utf8");
 
-    const restarted = new ChannelStorage(basePath);
+    const warn = vi.fn();
+    const restarted = new ChannelStorage(basePath, warn);
     await restarted.start();
 
     expect(await readFile(join(unknown, "keep.txt"), "utf8")).toBe("keep");
+    expect(warn).toHaveBeenCalledWith("storage.namespace_unregistered", {
+      key: "a5vnf2ijd75c2ibyo2s5czdir4",
+      namespace: "unknown-module",
+    });
   });
 
   it("shares one startup scan across concurrent callers", async () => {

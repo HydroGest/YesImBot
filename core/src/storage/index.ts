@@ -146,7 +146,7 @@ export class ChannelStorage {
   list(filter: ChannelFilter = {}): readonly ChannelRecord[] {
     return [...this.records.values()]
       .filter((record) => matchesFilter(record, filter))
-      .sort((left, right) => left.key.localeCompare(right.key, "en"))
+      .sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
       .map((record) => Object.freeze({ ...record }));
   }
 
@@ -182,6 +182,21 @@ export class ChannelStorage {
         )));
         if (manifest.key !== entry.name) throw new Error("Manifest Key does not match directory");
         this.records.set(manifest.key, this.toRecord(manifest));
+        const namespaceEntries = await readdir(join(this.channelsPath, entry.name), {
+          withFileTypes: true,
+        });
+        for (const namespace of namespaceEntries) {
+          if (
+            namespace.isDirectory()
+            && namespace.name !== "channel.json"
+            && !this.namespaces.has(namespace.name)
+          ) {
+            this.warn("storage.namespace_unregistered", {
+              key: entry.name,
+              namespace: namespace.name,
+            });
+          }
+        }
       } catch (cause) {
         this.warn("storage.manifest_invalid", { key: entry.name, cause });
       }
