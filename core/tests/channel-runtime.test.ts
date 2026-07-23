@@ -66,7 +66,7 @@ function createRuntime(
     ctx,
     config: { basePath: "/tmp/yesimbot-channel-runtime", chatModel: "test:model" },
     logger: logger as never,
-    scope: { platform: "test", selfId: "bot-1", channelId: "room-1" },
+    scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
     bot: { sendMessage } as never,
     will,
     assets: assets as never,

@@ -64,6 +64,7 @@ export class YesImBotService extends Service<Config> {
         platform: session.platform,
         selfId: session.selfId,
         channelId: session.channelId,
+        isDirect: session.isDirect,
       });
     });
     if (typeof command.dispose === "function") this.dispose = () => command.dispose();

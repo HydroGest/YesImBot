@@ -13,7 +13,12 @@ import { createEvent, type EventRecord } from "../src/event/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import { AssetStore } from "../src/shared/asset.js";
 
-const scope: ChannelScope = { platform: "onebot", selfId: "bot-1", channelId: "room-42" };
+const scope: ChannelScope = {
+  platform: "onebot",
+  selfId: "bot-1",
+  channelId: "room-42",
+  isDirect: false,
+};
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 function messageEvent(content?: string) {

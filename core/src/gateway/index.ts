@@ -1,4 +1,4 @@
-import { Context, h, Logger, type Awaitable, type Element, type Session } from "koishi";
+import { Context, h, Logger, type Awaitable, type Element, type Session, Universal } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
 import type { EventRecord } from "../event/index.js";
@@ -178,7 +178,12 @@ function isMessageSession(session: Session): boolean {
 
 function scopeFromSession(session: Session): ChannelScope | null {
   if (!session.platform || !session.selfId || !session.channelId) return null;
-  return { platform: session.platform, selfId: session.selfId, channelId: session.channelId };
+  return {
+    platform: session.platform,
+    selfId: session.selfId,
+    channelId: session.channelId,
+    isDirect: session.isDirect,
+  };
 }
 
 function draftMessageEventBase(session: Session): Omit<EventRecord<"message">, "content"> | null {
@@ -233,7 +238,8 @@ function hasScope(record: EventRecord, scope: ChannelScope): boolean {
   return (
     record.platform === scope.platform &&
     record.selfId === scope.selfId &&
-    record.channel.id === scope.channelId
+    record.channel.id === scope.channelId &&
+    (record.channel.type === Universal.Channel.Type.DIRECT) === scope.isDirect
   );
 }
 

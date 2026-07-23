@@ -1,44 +1,53 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("koishi", async () => import("@koishijs/core"));
 
 import {
-  channelFileName,
   channelKey,
-  channelPath,
   sameChannel,
   type ChannelScope,
 } from "../src/channel/index.js";
 
-const scope: ChannelScope = { platform: "onebot", selfId: "bot-1", channelId: "room/42" };
+const shared = (selfId: string): ChannelScope => ({
+  platform: "onebot",
+  selfId,
+  channelId: "123456",
+  isDirect: false,
+});
 
-describe("ChannelScope", () => {
-  it("uses an injective canonical identity and an opaque v2 persistence path", () => {
-    const delimiterCollision: ChannelScope = {
-      platform: "onebot:bot-1",
-      selfId: "room",
-      channelId: "42",
-    };
+const direct = (selfId: string): ChannelScope => ({
+  platform: "onebot",
+  selfId,
+  channelId: "123456",
+  isDirect: true,
+});
 
-    expect(channelKey(scope)).not.toBe(channelKey(delimiterCollision));
-    expect(channelKey(scope)).toBe(JSON.stringify(["onebot", "bot-1", "room/42"]));
-    expect(channelFileName(scope)).toMatch(/^channel_v2_[A-Za-z0-9_-]{43}$/);
-    expect(channelFileName(scope)).not.toContain(scope.platform);
-    expect(channelFileName(scope)).not.toContain(scope.selfId);
-    expect(channelFileName(scope)).not.toContain(scope.channelId);
-    expect(channelPath("/tmp/athena", scope)).toBe(
-      `/tmp/athena/sessions/${channelFileName(scope)}.jsonl`,
-    );
+describe("channelKey", () => {
+  it("matches the shared conformance vector and ignores selfId", () => {
+    expect(channelKey(shared("10000"))).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
+    expect(channelKey(shared("20000"))).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
+    expect(sameChannel(shared("10000"), shared("20000"))).toBe(true);
   });
 
-  it("keeps filename-safe collisions in separate scopes", () => {
-    const slash: ChannelScope = { ...scope, channelId: "room/a" };
-    const question: ChannelScope = { ...scope, channelId: "room?a" };
-
-    expect(channelFileName(slash)).not.toBe(channelFileName(question));
-    expect(channelPath("/tmp/athena", slash)).not.toBe(channelPath("/tmp/athena", question));
+  it("matches direct conformance vectors and retains selfId", () => {
+    expect(channelKey(direct("10000"))).toBe("ymdz53gzamgvzjzrtf6vesoal4");
+    expect(channelKey(direct("20000"))).toBe("3fdpuhlm2tmzybzrlgxotmtmxq");
+    expect(sameChannel(direct("10000"), direct("20000"))).toBe(false);
   });
 
-  it("compares channel identity without comparing object identity", () => {
-    expect(sameChannel(scope, { ...scope })).toBe(true);
-    expect(sameChannel(scope, { ...scope, channelId: "other" })).toBe(false);
+  it("matches the Unicode vector without normalization", () => {
+    expect(
+      channelKey({
+        platform: "测试",
+        selfId: "机器人 01",
+        channelId: "群/α",
+        isDirect: false,
+      }),
+    ).toBe("jhmjjrbkhmceyookuqyolglf7m");
+  });
+
+  it.each(["platform", "selfId", "channelId"] as const)("rejects empty %s", (field) => {
+    const scope = { ...direct("10000"), [field]: "" };
+    expect(() => channelKey(scope)).toThrow(`ChannelScope.${field}`);
   });
 });

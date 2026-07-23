@@ -2,12 +2,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { type ChannelScope } from "../src/channel/index.js";
 import { AssetStore } from "../src/shared/asset.js";
 
-const scope: ChannelScope = { platform: "onebot", selfId: "bot-1", channelId: "room-42" };
+const scope: ChannelScope = {
+  platform: "onebot",
+  selfId: "bot-1",
+  channelId: "room-42",
+  isDirect: false,
+};
 const otherScope: ChannelScope = { ...scope, channelId: "room?a" };
 const collidingScope: ChannelScope = { ...scope, channelId: "room/a" };
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);

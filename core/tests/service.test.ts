@@ -98,7 +98,7 @@ describe("YesImBotService facade", () => {
   it("delegates resolver and reset registration to the composed boundaries", async () => {
     const { service } = createService();
     const resolver = { platform: "test", resolve: vi.fn() };
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room-1" };
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
 
     service.registerResolver(resolver);
     await service.reset(scope);

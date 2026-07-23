@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { createEntry, createUserMessage } from "@yesimbot/agent-runtime";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { channelPath } from "../src/channel/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
@@ -50,7 +52,7 @@ describe("jsonl storage", () => {
 
   it("does not load a legacy platform message entry", async () => {
     const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
-    const scope = { platform: "test", selfId: "bot", channelId: "room" };
+    const scope = { platform: "test", selfId: "bot", channelId: "room", isDirect: false };
     const legacyPath = join(
       dir,
       "channels",

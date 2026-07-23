@@ -169,7 +169,7 @@ describe("RuntimeManager", () => {
 
     await manager.route(record("room"));
     const first = state.runtimes[0];
-    await manager.reset({ platform: "test", selfId: "bot-1", channelId: "room" });
+    await manager.reset({ platform: "test", selfId: "bot-1", channelId: "room", isDirect: false });
     await manager.route(record("room"));
 
     expect(first?.reset).toHaveBeenCalledOnce();
@@ -183,7 +183,7 @@ describe("RuntimeManager", () => {
     state.runtimes[0]?.reset.mockRejectedValueOnce(new Error("storage clear failed"));
 
     await expect(
-      manager.reset({ platform: "test", selfId: "bot-1", channelId: "room" }),
+      manager.reset({ platform: "test", selfId: "bot-1", channelId: "room", isDirect: false }),
     ).rejects.toThrow("storage clear failed");
     await manager.route(record("room"));
 
@@ -193,7 +193,12 @@ describe("RuntimeManager", () => {
   it("clears uncached channel storage and assets without creating a runtime", async () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
     const { manager, assets } = createManager(basePath);
-    const scope: ChannelScope = { platform: "test", selfId: "bot-1", channelId: "uncached" };
+    const scope: ChannelScope = {
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "uncached",
+      isDirect: false,
+    };
     const storagePath = channelPath(basePath, scope);
     await mkdir(join(basePath, "sessions"), { recursive: true });
     await writeFile(storagePath, "stored\n");
@@ -224,7 +229,12 @@ describe("RuntimeManager", () => {
   it("rejects reset after stop without clearing persisted channel data", async () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
     const { manager, assets } = createManager(basePath);
-    const scope: ChannelScope = { platform: "test", selfId: "bot-1", channelId: "room" };
+    const scope: ChannelScope = {
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room",
+      isDirect: false,
+    };
     const storagePath = channelPath(basePath, scope);
     await mkdir(join(basePath, "sessions"), { recursive: true });
     await writeFile(storagePath, "persisted\n");

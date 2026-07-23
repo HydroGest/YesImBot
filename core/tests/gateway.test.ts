@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { h } from "koishi";
+import { h, Universal } from "koishi";
 
 import type { EventRecord } from "../src/event/index.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
@@ -12,6 +12,8 @@ function session(overrides: Record<string, unknown> = {}) {
     platform: "test",
     selfId: "bot-1",
     channelId: "room-1",
+    isDirect: false,
+    type: "message-created",
     userId: "user-1",
     messageId: "message-1",
     timestamp: 1,
@@ -111,6 +113,26 @@ describe("Gateway", () => {
     expect(runtime.route).toHaveBeenCalledWith(record());
   });
 
+  it("rejects a resolver that changes direct classification", async () => {
+    const { gateway, logger, runtime } = createGateway();
+    const resolver = {
+      platform: "test",
+      resolve: vi.fn(async () => ({
+        ...record(),
+        channel: { ...record().channel, type: Universal.Channel.Type.TEXT },
+        content: "mismatch",
+      })),
+    } satisfies SessionResolver;
+    gateway.register(resolver);
+
+    await gateway.handle(session({ isDirect: true, type: "message-created" }) as never);
+
+    expect(runtime.route).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "gateway.invalid_record" }),
+    );
+  });
+
   it("creates a normalized and sealed fallback EventRecord for an unregistered message platform", async () => {
     const { gateway, runtime } = createGateway();
 
@@ -130,6 +152,7 @@ describe("Gateway", () => {
   it("preserves Satori resources while filling the fallback message identity from Session", async () => {
     const { gateway, runtime } = createGateway();
     const input = session({
+      isDirect: true,
       elements: h.parse('hello <at id="bot-1"/>'),
       event: {
         type: "message",
@@ -167,6 +190,7 @@ describe("Gateway", () => {
   it("uses the Session channel id while preserving the Satori channel resources", async () => {
     const { gateway, runtime } = createGateway();
     const input = session({
+      isDirect: true,
       event: {
         type: "message",
         channel: { id: "event-room", type: 1, name: "Direct channel" },
@@ -204,7 +228,9 @@ describe("Gateway", () => {
   it("skips an unregistered non-message Session", async () => {
     const { gateway, runtime } = createGateway();
 
-    await gateway.handle(session({ event: { type: "notice" }, messageId: undefined }) as never);
+    await gateway.handle(
+      session({ event: { type: "notice" }, messageId: undefined, type: "notice" }) as never,
+    );
 
     expect(runtime.route).not.toHaveBeenCalled();
   });
@@ -248,7 +274,9 @@ describe("Gateway", () => {
     const message = session();
     await middleware()(message as never, async () => undefined);
     internal()(message as never);
-    internal()(session({ platform: "notice", event: { type: "notice" } }) as never);
+    internal()(
+      session({ platform: "notice", event: { type: "notice" }, type: "notice" }) as never,
+    );
     await gateway.drain();
 
     expect(runtime.route).toHaveBeenCalledTimes(2);

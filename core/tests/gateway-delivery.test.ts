@@ -10,6 +10,8 @@ function session(send = vi.fn(async () => ["receipt-1"])) {
     platform: "test",
     selfId: "bot-1",
     channelId: "room-1",
+    isDirect: false,
+    type: "message-created",
     userId: "user-1",
     messageId: "message-1",
     timestamp: 1,
