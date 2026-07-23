@@ -1,10 +1,9 @@
-import { createHash } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
-import { channelKey, type ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelScope } from "koishi-plugin-yesimbot";
 
 import { createBashToolSet } from "./bash-tool";
 import { assertValidMountConfig } from "./mounts";
@@ -13,7 +12,6 @@ import type { WorkspaceConfig } from "./types";
 import { Workspace } from "./workspace";
 
 export interface WorkspacePluginConfig {
-  root: string;
   cwd: string;
   persistPaths?: Record<string, string>;
   readOnlyPaths?: Record<string, string>;
@@ -30,9 +28,6 @@ export default class WorkspacePlugin {
   static inject = ["yesimbot"];
 
   static Config: Schema<WorkspacePluginConfig> = Schema.object({
-    root: Schema.path({ filters: ["directory"], allowCreate: true })
-      .default("data/yesimbot/workspace")
-      .description("工作区根目录"),
     cwd: Schema.string().default("/home/workspace").description("虚拟文件系统默认目录"),
     persistPaths: Schema.dict(
       Schema.path({ filters: ["directory"], allowCreate: true }),
@@ -56,12 +51,12 @@ export default class WorkspacePlugin {
   public readonly logger: Logger;
 
   private workspaces = new Map<string, Workspace>();
-  private rootPath?: string;
   private normalizedMounts?: {
     persistPaths: Record<string, string>;
     readOnlyPaths: Record<string, string>;
     overlayPaths: Record<string, string>;
   };
+  private disposeStorage?: () => void;
   private disposeAgentPlugin?: () => void;
 
   constructor(ctx: Context, config: WorkspacePluginConfig) {
@@ -75,30 +70,35 @@ export default class WorkspacePlugin {
   public async start(): Promise<void> {
     this.logger.info("Starting workspace plugin...");
 
+    this.disposeStorage?.();
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
 
-    const rootPath = resolve(this.ctx.baseDir, this.config.root);
+    this.disposeStorage = this.ctx.yesimbot.registerStorage("workspace");
+
     const normalizedMounts = assertValidMountConfig({
       persistPaths: this.resolveMountMap(this.config.persistPaths),
       readOnlyPaths: this.resolveMountMap(this.config.readOnlyPaths),
       overlayPaths: this.resolveMountMap(this.config.overlayPaths),
     });
 
-    await mkdir(rootPath, { recursive: true });
     for (const hostPath of Object.values(normalizedMounts.persistPaths)) {
       await mkdir(hostPath, { recursive: true });
     }
     await this.assertExistingDirectoryMounts(normalizedMounts.readOnlyPaths, "readOnlyPaths");
     await this.assertExistingDirectoryMounts(normalizedMounts.overlayPaths, "overlayPaths");
 
-    this.rootPath = rootPath;
     this.normalizedMounts = normalizedMounts;
 
-    this.logger.info(`Workspace root: ${rootPath}`);
-    this.logger.info(`Persist paths: ${JSON.stringify(normalizedMounts.persistPaths, null, 2)}`);
-    this.logger.info(`Read-only paths: ${JSON.stringify(normalizedMounts.readOnlyPaths, null, 2)}`);
-    this.logger.info(`Overlay paths: ${JSON.stringify(normalizedMounts.overlayPaths, null, 2)}`);
+    this.logger.info(
+      `Persist paths: ${JSON.stringify(normalizedMounts.persistPaths, null, 2)}`,
+    );
+    this.logger.info(
+      `Read-only paths: ${JSON.stringify(normalizedMounts.readOnlyPaths, null, 2)}`,
+    );
+    this.logger.info(
+      `Overlay paths: ${JSON.stringify(normalizedMounts.overlayPaths, null, 2)}`,
+    );
 
     this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((context) => {
       return {
@@ -120,8 +120,9 @@ export default class WorkspacePlugin {
   public async stop(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
+    this.disposeStorage?.();
+    this.disposeStorage = undefined;
     this.workspaces.clear();
-    this.rootPath = undefined;
     this.normalizedMounts = undefined;
     this.logger.info("Workspace plugin stopped");
   }
@@ -154,24 +155,17 @@ export default class WorkspacePlugin {
   }
 
   private async getOrCreateWorkspace(channel: ChannelScope): Promise<Workspace> {
-    const key = channelKey(channel);
+    const key = this.ctx.yesimbot.channelKey(channel);
     const existing = this.workspaces.get(key);
     if (existing) {
       return existing;
     }
 
-    if (!this.rootPath || !this.normalizedMounts) {
+    if (!this.normalizedMounts) {
       throw new Error("Workspace plugin has not been started");
     }
 
-    const workspaceRoot = join(
-      this.rootPath,
-      "channels",
-      workspaceDirectoryId(channel),
-      "workspace",
-    );
-
-    await mkdir(workspaceRoot, { recursive: true });
+    const workspaceRoot = await this.ctx.yesimbot.ensureStorage(channel, "workspace");
 
     const workspace = new Workspace(this.createWorkspaceConfig(workspaceRoot));
     await workspace.init();
@@ -198,11 +192,4 @@ export default class WorkspacePlugin {
   }
 }
 
-function workspaceDirectoryId(channel: ChannelScope): string {
-  const digest = createHash("sha256")
-    .update("yesimbot:workspace-path:v2:\0")
-    .update(channelKey(channel))
-    .digest("base64url")
-    .slice(0, 22);
-  return `workspace_v2_${digest}`;
-}
+

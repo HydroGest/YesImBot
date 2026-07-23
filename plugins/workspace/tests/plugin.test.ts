@@ -1,6 +1,5 @@
 import { constants } from "node:fs";
-import { mkdir, readdir } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,21 +52,22 @@ vi.mock("koishi", () => ({
   },
 }));
 
-const mockChannelKey = vi.hoisted(() => {
-  return (scope: { platform: string; selfId: string; channelId: string }) =>
-    `${scope.platform}:${scope.selfId}:${scope.channelId}`;
-});
-
-vi.mock("koishi-plugin-yesimbot", () => ({
-  channelKey: mockChannelKey,
-}));
-
 import WorkspacePlugin from "../src";
 
 function createMockCtx(baseDir: string) {
   const readyHandlers: Array<() => Promise<void> | void> = [];
   const disposeHandlers: Array<() => Promise<void> | void> = [];
   const factories: Array<(context: never) => AgentPlugin> = [];
+  const channelKey = vi.fn(
+    (scope: { platform: string; selfId: string; channelId: string }) =>
+      `${scope.platform}:${scope.selfId}:${scope.channelId}`,
+  );
+  const ensureStorage = vi.fn(async (scope: { platform: string; selfId: string; channelId: string }) => {
+    const path = join(baseDir, "channels", channelKey(scope), "workspace");
+    await mkdir(path, { recursive: true });
+    return path;
+  });
+  const registerStorage = vi.fn(() => vi.fn());
 
   return {
     ctx: {
@@ -84,6 +84,9 @@ function createMockCtx(baseDir: string) {
         if (event === "dispose") disposeHandlers.push(handler);
       }),
       yesimbot: {
+        channelKey,
+        ensureStorage,
+        registerStorage,
         registerAgentPlugin: vi.fn((factory: (context: never) => AgentPlugin) => {
           factories.push(factory);
           return vi.fn();
@@ -93,6 +96,7 @@ function createMockCtx(baseDir: string) {
     readyHandlers,
     disposeHandlers,
     factories,
+    yesimbot: { channelKey, ensureStorage, registerStorage },
   };
 }
 
@@ -111,29 +115,115 @@ describe("WorkspacePlugin", () => {
     await mkdir(baseDir, { recursive: true });
   });
 
-  it("registers bash-tool default tools for a channel", async () => {
+  it("registers workspace storage and uses the Core path", async () => {
     const mocks = createMockCtx(baseDir);
-    new WorkspacePlugin(mocks.ctx as never, {
-      root: "workspace",
+    const disposeStorage = vi.fn();
+    mocks.yesimbot.registerStorage.mockReturnValue(disposeStorage);
+    mocks.yesimbot.channelKey.mockReturnValue("a5vnf2ijd75c2ibyo2s5czdir4");
+    mocks.yesimbot.ensureStorage.mockImplementation(async () => {
+      const root = "/data/yesimbot/channels/a5vnf2ijd75c2ibyo2s5czdir4/workspace";
+      await mkdir(root, { recursive: true });
+      return root;
+    });
+    const workspacePlugin = new WorkspacePlugin(mocks.ctx as never, {
       cwd: "/home/workspace",
       timeoutMs: 1000,
       enableNetwork: false,
     });
 
     await mocks.readyHandlers[0]?.();
+    const sharedScope = { platform: "onebot", selfId: "bot", channelId: "a", isDirect: false };
     const plugin = mocks.factories[0]?.({
-      channel: { platform: "onebot", selfId: "bot", channelId: "a", type: "text" },
+      channel: sharedScope,
       platform: { name: "onebot", unsafeBot: {} },
     } as never);
     const tools = await getTools(plugin!);
 
+    expect(mocks.yesimbot.registerStorage).toHaveBeenCalledWith("workspace");
+    expect(mocks.yesimbot.ensureStorage).toHaveBeenCalledWith(sharedScope, "workspace");
+    expect((workspacePlugin as never).workspaces.get("a5vnf2ijd75c2ibyo2s5czdir4").config.root).toBe(
+      "/data/yesimbot/channels/a5vnf2ijd75c2ibyo2s5czdir4/workspace",
+    );
     expect(tools.map((tool) => tool.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
+
+    await mocks.disposeHandlers[0]?.();
+    expect(disposeStorage).toHaveBeenCalledOnce();
   });
 
-  it("isolates default workspace files by channel", async () => {
+  it("stop disposes registration and clears process cache without deleting data", async () => {
+    const mocks = createMockCtx(baseDir);
+    const disposeStorage = vi.fn();
+    mocks.yesimbot.registerStorage.mockReturnValue(disposeStorage);
+    const workspacePlugin = new WorkspacePlugin(mocks.ctx as never, {
+      cwd: "/home/workspace",
+      timeoutMs: 1000,
+      enableNetwork: false,
+    });
+
+    await mocks.readyHandlers[0]?.();
+    const scope = { platform: "onebot", selfId: "bot", channelId: "a", isDirect: false };
+    const plugin = mocks.factories[0]?.({
+      channel: scope,
+      platform: { name: "onebot", unsafeBot: {} },
+    } as never);
+    await getTools(plugin!);
+
+    const key = mocks.yesimbot.channelKey(scope);
+    const workspaces = (workspacePlugin as never).workspaces as Map<string, unknown>;
+    expect(workspaces.has(key)).toBe(true);
+    const workspaceDir = join(baseDir, "channels", key, "workspace");
+
+    // stop: dispose storage, clear cache
+    await mocks.disposeHandlers[0]?.();
+    expect(disposeStorage).toHaveBeenCalledOnce();
+    expect(workspaces.size).toBe(0);
+
+    // directory is still on disk (data preserved)
+    await expect(access(workspaceDir, constants.F_OK)).resolves.toBeUndefined();
+  });
+
+  it("restart at same unified root sees existing Workspace data", async () => {
+    const scope = { platform: "onebot", selfId: "bot", channelId: "a", isDirect: false };
+
+    // first plugin instance
+    const firstMocks = createMockCtx(baseDir);
+    const firstPlugin_ = new WorkspacePlugin(firstMocks.ctx as never, {
+      cwd: "/home/workspace",
+      timeoutMs: 1000,
+      enableNetwork: false,
+    });
+    await firstMocks.readyHandlers[0]?.();
+    const firstFactoryPlugin = firstMocks.factories[0]?.({ channel: scope } as never);
+    await getTools(firstFactoryPlugin!);
+    const firstKey = firstMocks.yesimbot.channelKey(scope);
+    const firstWorkspaces = (firstPlugin_ as never).workspaces as Map<string, { config: { root: string } }>;
+    const firstRoot = firstWorkspaces.get(firstKey)!.config.root;
+
+    // stop first instance — clears cache but leaves disk data
+    await firstMocks.disposeHandlers[0]?.();
+
+    // second plugin instance, same baseDir
+    const secondMocks = createMockCtx(baseDir);
+    const secondPlugin_ = new WorkspacePlugin(secondMocks.ctx as never, {
+      cwd: "/home/workspace",
+      timeoutMs: 1000,
+      enableNetwork: false,
+    });
+    await secondMocks.readyHandlers[0]?.();
+    const secondFactoryPlugin = secondMocks.factories[0]?.({ channel: scope } as never);
+    await getTools(secondFactoryPlugin!);
+    const secondKey = secondMocks.yesimbot.channelKey(scope);
+    const secondWorkspaces = (secondPlugin_ as never).workspaces as Map<string, { config: { root: string } }>;
+    const secondRoot = secondWorkspaces.get(secondKey)!.config.root;
+
+    // same root resolved; second instance did not crash on existing directory
+    expect(secondKey).toBe(firstKey);
+    expect(secondRoot).toBe(firstRoot);
+  });
+
+  it("reuses shared scopes and isolates direct scopes by Core key", async () => {
     const mocks = createMockCtx(baseDir);
     new WorkspacePlugin(mocks.ctx as never, {
-      root: "workspace",
       cwd: "/home/workspace",
       timeoutMs: 1000,
       enableNetwork: false,
@@ -141,60 +231,38 @@ describe("WorkspacePlugin", () => {
 
     await mocks.readyHandlers[0]?.();
     const factory = mocks.factories[0]!;
-    const channelA = { platform: "onebot", selfId: "bot", channelId: "a", type: "text" } as const;
-    const channelB = { platform: "onebot", selfId: "bot", channelId: "b", type: "text" } as const;
-    const pluginA = factory({
-      channel: channelA,
+    const oldSharedScope = { platform: "onebot", selfId: "old", channelId: "a", isDirect: false };
+    const newSharedScope = { platform: "onebot", selfId: "new", channelId: "a", isDirect: false };
+    const oldDirectScope = { platform: "onebot", selfId: "old", channelId: "a", isDirect: true };
+    const newDirectScope = { platform: "onebot", selfId: "new", channelId: "a", isDirect: true };
+    mocks.yesimbot.channelKey.mockImplementation((scope) =>
+      scope.isDirect ? `direct:${scope.selfId}` : "shared:a",
+    );
+
+    const oldSharedPlugin = factory({
+      channel: oldSharedScope,
       platform: { name: "onebot", unsafeBot: {} },
     } as never);
-    const pluginB = factory({
-      channel: channelB,
+    const newSharedPlugin = factory({
+      channel: newSharedScope,
       platform: { name: "onebot", unsafeBot: {} },
     } as never);
-
-    const writeA = (await getTools(pluginA)).find((tool) => tool.name === "writeFile");
-    const readB = (await getTools(pluginB)).find((tool) => tool.name === "readFile");
-
-    expect(writeA?.execute).toBeTypeOf("function");
-    expect(readB?.execute).toBeTypeOf("function");
-
-    await writeA!.execute!({ path: "note.txt", content: "channel-a" }, {} as never);
-    await expect(readB!.execute!({ path: "note.txt" }, {} as never)).rejects.toThrow();
-    const directories = await readdir(join(baseDir, "workspace", "channels"));
-    expect(directories).toHaveLength(2);
-    expect(directories).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^workspace_v2_[A-Za-z0-9_-]{22}$/)]),
-    );
-    const notePaths = directories.map((directory) =>
-      access(
-        join(baseDir, "workspace", "channels", directory, "workspace", "note.txt"),
-        constants.F_OK,
-      ),
-    );
-    const noteResults = await Promise.allSettled(notePaths);
-    expect(noteResults.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    expect(noteResults.filter((result) => result.status === "rejected")).toHaveLength(1);
-  });
-
-  it("hashes hostile channel ids before constructing workspace paths", async () => {
-    const mocks = createMockCtx(baseDir);
-    new WorkspacePlugin(mocks.ctx as never, {
-      root: "workspace",
-      cwd: "/home/workspace",
-      timeoutMs: 1000,
-      enableNetwork: false,
-    });
-
-    await mocks.readyHandlers[0]?.();
-    const plugin = mocks.factories[0]?.({
-      channel: { platform: "onebot", selfId: "bot", channelId: "../../outside" },
+    const oldDirectPlugin = factory({
+      channel: oldDirectScope,
+    } as never);
+    const newDirectPlugin = factory({
+      channel: newDirectScope,
     } as never);
 
-    await getTools(plugin!);
+    await getTools(oldSharedPlugin);
+    await getTools(newSharedPlugin);
+    await getTools(oldDirectPlugin);
+    await getTools(newDirectPlugin);
 
-    const directories = await readdir(join(baseDir, "workspace", "channels"));
-    expect(directories).toEqual([expect.stringMatching(/^workspace_v2_[A-Za-z0-9_-]{22}$/)]);
-    await expect(access(join(baseDir, "workspace", "outside"), constants.F_OK)).rejects.toThrow();
+    expect(mocks.yesimbot.ensureStorage).toHaveBeenCalledTimes(3);
+    expect(mocks.yesimbot.ensureStorage).toHaveBeenCalledWith(oldSharedScope, "workspace");
+    expect(mocks.yesimbot.ensureStorage).toHaveBeenCalledWith(oldDirectScope, "workspace");
+    expect(mocks.yesimbot.ensureStorage).toHaveBeenCalledWith(newDirectScope, "workspace");
   });
 
   it("extends prompt with sandbox and mount policy", async () => {
@@ -204,7 +272,6 @@ describe("WorkspacePlugin", () => {
 
     const mocks = createMockCtx(baseDir);
     new WorkspacePlugin(mocks.ctx as never, {
-      root: "workspace",
       cwd: "/home/workspace",
       persistPaths: { "/shared": "shared" },
       readOnlyPaths: { "/knowledge": "knowledge" },
@@ -235,7 +302,6 @@ describe("WorkspacePlugin", () => {
   it("fails fast when a read-only mount host path does not exist", async () => {
     const mocks = createMockCtx(baseDir);
     new WorkspacePlugin(mocks.ctx as never, {
-      root: "workspace",
       cwd: "/home/workspace",
       readOnlyPaths: { "/knowledge": "missing-knowledge" },
       timeoutMs: 1000,
@@ -248,7 +314,6 @@ describe("WorkspacePlugin", () => {
   it("fails fast when an overlay mount host path does not exist", async () => {
     const mocks = createMockCtx(baseDir);
     new WorkspacePlugin(mocks.ctx as never, {
-      root: "workspace",
       cwd: "/home/workspace",
       overlayPaths: { "/repo": "missing-repo" },
       timeoutMs: 1000,
@@ -261,7 +326,6 @@ describe("WorkspacePlugin", () => {
   it("creates persist mount host paths automatically", async () => {
     const mocks = createMockCtx(baseDir);
     new WorkspacePlugin(mocks.ctx as never, {
-      root: "workspace",
       cwd: "/home/workspace",
       persistPaths: { "/shared": "created/shared" },
       timeoutMs: 1000,
