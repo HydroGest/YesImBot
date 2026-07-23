@@ -39,8 +39,8 @@
 
 ## 7. MemOS Integration
 
-- [ ] 7.1 Replace memos-client's local channel hash with `ctx.yesimbot.channelKey(scope)` while retaining all MemOS-owned identity derivations.
-- [ ] 7.2 Update runtime and import identity call sites and tests for stable shared-channel hashes and direct-channel bot isolation.
+- [x] 7.1 Replace memos-client's local channel hash with `ctx.yesimbot.channelKey(scope)` while retaining all MemOS-owned identity derivations.
+- [x] 7.2 Update runtime and import identity call sites and tests for stable shared-channel hashes and direct-channel bot isolation.
 
 ## 8. Documentation And Verification
 
