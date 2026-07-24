@@ -67,6 +67,21 @@ function readBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
+function readLimit(value: unknown, fullId: string, warnings: string[]): ChatModelConfig["limit"] {
+  if (!isPlainObject(value)) {
+    warnings.push(`models.json chat override for "${fullId}" limit must be an object.`);
+    return undefined;
+  }
+  const context = value.context;
+  const output = value.output;
+  if (typeof context !== "number" || typeof output !== "number") {
+    warnings.push(`models.json chat override for "${fullId}" limit must contain numeric context and output.`);
+    return undefined;
+  }
+  return { context, output };
+}
+
+
 function readVariants(value: unknown): Record<string, unknown> | undefined {
   return isPlainObject(value) ? { ...value } : undefined;
 }
@@ -115,6 +130,7 @@ function readChatOverrides(
       toolCall: readBoolean(value.toolCall),
       reasoning: readBoolean(value.reasoning),
       hidden: readBoolean(value.hidden),
+      limit: value.limit === undefined ? undefined : readLimit(value.limit, fullId, warnings),
       modalities: value.modalities === undefined ? undefined : readModalities(value.modalities, fullId, warnings),
       variants: readVariants(value.variants),
     };

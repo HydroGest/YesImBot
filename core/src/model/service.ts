@@ -191,6 +191,7 @@ export class ModelService extends Service<ModelServiceConfig> {
               ...(override.modalities.output ? { output: [...override.modalities.output] } : {}),
             }
           : record.config.modalities,
+        limit: override.limit ?? record.config.limit,
       };
     }
 

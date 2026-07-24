@@ -155,4 +155,33 @@ describe("models.json modalities", () => {
       embedding: {},
     });
   });
+
+  it("preserves chat model limit through an add-input-modality write cycle", async () => {
+    const path = await createModelsPath({
+      chat: {
+        "openai:gpt-4o": {
+          name: "Limited",
+          limit: { context: 8000, output: 2000 },
+        },
+        "openai:other": {
+          hidden: true,
+          limit: { context: 4000, output: 1000 },
+        },
+      },
+    });
+    const service = await createModelService(
+      JSON.parse(await readFile(path, "utf8")),
+      path.slice(0, -"/models.json".length),
+    );
+
+    await service.addChatModelInputModality("openai:gpt-4o", "image");
+
+    const persisted = JSON.parse(await readFile(path, "utf8"));
+    expect(persisted.chat["openai:gpt-4o"].limit).toEqual({ context: 8000, output: 2000 });
+    expect(persisted.chat["openai:other"].limit).toEqual({ context: 4000, output: 1000 });
+    expect(service.resolveChatModel("openai:gpt-4o").entry.limit).toEqual({
+      context: 8000,
+      output: 2000,
+    });
+  });
 });
