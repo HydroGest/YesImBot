@@ -8,6 +8,8 @@ import type {
   AgentCustomMessage,
   AgentCustomMessages,
   AgentCustomState,
+  Agent,
+  AgentConfig,
   AgentEntry,
   AgentInternalEvent,
   AgentInternalEventInit,
@@ -15,6 +17,7 @@ import type {
   AgentPlugin,
   AgentState,
   CustomMessageBase,
+  SystemPromptAppend,
 } from "../src/index.js";
 import { createCustomMessage } from "../src/index.js";
 
@@ -140,6 +143,21 @@ describe("public types", () => {
       type: "example.updated";
       data: { ok: true };
     }>();
+  });
+
+  it("exposes immutable Agent configuration", () => {
+    type HasSetModel = "setModel" extends keyof Agent ? true : false;
+    type HasSetTools = "setTools" extends keyof Agent ? true : false;
+    const prompt: SystemPromptAppend = [
+      "base",
+      { role: "system", content: "structured", providerOptions: { mock: {} } },
+    ];
+    const config: AgentConfig = { model: {} as never, systemPrompt: prompt };
+
+    expect(config.systemPrompt).toBe(prompt);
+    expectTypeOf<Agent["getModel"]>().toBeFunction();
+    expectTypeOf<HasSetModel>().toEqualTypeOf<false>();
+    expectTypeOf<HasSetTools>().toEqualTypeOf<false>();
   });
 
   it("rejects legacy metadata and event names on merged surfaces", () => {

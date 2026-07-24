@@ -1,10 +1,9 @@
 import type {
-  LanguageModelV3,
   LanguageModelV3FinishReason,
-  LanguageModelV3CallOptions,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
-import { describe, expect, it } from "vitest";
+import type { LanguageModelV3, LanguageModelV3CallOptions } from "ai";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { createAgent } from "../src/agent.js";
@@ -51,13 +50,15 @@ function createToolModel() {
       };
     },
     observedToolNames,
-  } as unknown as LanguageModelV3;
+  } as unknown as LanguageModelV3 & { observedToolNames: string[][] };
 }
 
 function createSingleToolCallModel() {
   const stopReason = "stop" as unknown as LanguageModelV3FinishReason;
   const toolCallsReason = "tool-calls" as unknown as LanguageModelV3FinishReason;
   let callCount = 0;
+  const observedPrompts: LanguageModelV3CallOptions["prompt"][] = [];
+  const observedToolNames: string[][] = [];
 
   return {
     specificationVersion: "v3",
@@ -67,7 +68,14 @@ function createSingleToolCallModel() {
     async doGenerate() {
       throw new Error("not implemented");
     },
-    async doStream() {
+    async doStream(options: LanguageModelV3CallOptions) {
+      observedPrompts.push(structuredClone(options.prompt));
+      const tools = options.tools ?? {};
+      observedToolNames.push(
+        Array.isArray(tools)
+          ? tools.map((tool) => String((tool as { name: unknown }).name))
+          : Object.keys(tools),
+      );
       callCount += 1;
       if (callCount === 1) {
         return {
@@ -114,7 +122,12 @@ function createSingleToolCallModel() {
         }),
       };
     },
-  } as unknown as LanguageModelV3;
+    observedPrompts,
+    observedToolNames,
+  } as unknown as LanguageModelV3 & {
+    observedPrompts: LanguageModelV3CallOptions["prompt"][];
+    observedToolNames: string[][];
+  };
 }
 
 describe("tools", () => {
@@ -145,20 +158,7 @@ describe("tools", () => {
       ],
     });
 
-    const events: Array<{ type: string; error?: { name?: string } }> = [];
-    agent.channel.subscribe("internal", (event) => {
-      if (event.type === "turn.failed") {
-        events.push(event);
-      }
-    });
-    agent.send(createUserMessage("hello"));
-    await agent.wait();
-    expect(events).toEqual([
-      expect.objectContaining({
-        type: "turn.failed",
-        error: expect.objectContaining({ name: "ToolConflictError" }),
-      }),
-    ]);
+    await expect(agent.init()).rejects.toBeInstanceOf(ToolConflictError);
   });
 
   it("uses stable plugin tools without running dynamic hooks", async () => {
@@ -197,35 +197,50 @@ describe("tools", () => {
     ]);
   });
 
-  it("runs dynamic tool extensions after stable tools when present", async () => {
+  it("resolves deprecated tool extensions once and reuses the frozen registry", async () => {
     const model = createToolModel();
-    const seen: string[][] = [];
+    const extend = vi.fn((tools) => [
+      ...tools,
+      { name: "legacy", inputSchema: z.object({}), execute: async () => "legacy" },
+    ] as never);
     const agent = createAgent({
       model,
       tools: [{ name: "base", inputSchema: z.object({}), execute: async () => "base" } as never],
       plugins: [
         {
-          name: "stable-tools",
+          name: "stable",
           tools: [{ name: "stable", inputSchema: z.object({}), execute: async () => "stable" }],
-          extendTools(tools) {
-            seen.push(tools.map((tool) => tool.name));
-            return [
-              ...tools,
-              { name: "dynamic", inputSchema: z.object({}), execute: async () => "dynamic" },
-            ] as never;
+          extendTools: extend,
+        },
+      ],
+    });
+
+    agent.send(createUserMessage("first"));
+    await agent.wait();
+    agent.send(createUserMessage("second"));
+    await agent.wait();
+
+    expect(extend).toHaveBeenCalledOnce();
+    expect(model.observedToolNames).toEqual([
+      ["base", "stable", "legacy"],
+      ["base", "stable", "legacy"],
+    ]);
+  });
+
+  it("fails initialization when a required deprecated tool extension throws", async () => {
+    const agent = createAgent({
+      model: createToolModel(),
+      plugins: [
+        {
+          name: "broken",
+          extendTools() {
+            throw new Error("tool init failed");
           },
         },
       ],
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
-    await agent.wait();
-    expect(agent.isIdle()).toBe(true);
-
-    expect(seen).toEqual([["base", "stable"]]);
-    expect((model as unknown as { observedToolNames: string[][] }).observedToolNames).toEqual([
-      ["base", "stable", "dynamic"],
-    ]);
+    await expect(agent.init()).rejects.toThrow("tool init failed");
   });
 
   it("injects turn execution context into stable tool calls", async () => {
@@ -272,6 +287,30 @@ describe("tools", () => {
         hasSignal: true,
       },
     ]);
+  });
+
+  it("extends the prior provider prompt during a tool loop", async () => {
+    const model = createSingleToolCallModel();
+    const agent = createAgent({
+      model,
+      systemPrompt: "stable",
+      tools: [
+        {
+          name: "inspect",
+          inputSchema: z.object({}),
+          execute: async () => ({ ok: true }),
+        },
+      ],
+    });
+
+    agent.send(createUserMessage("inspect"));
+    await agent.wait();
+
+    const [firstPrompt, secondPrompt] = model.observedPrompts;
+    expect(firstPrompt).toBeDefined();
+    expect(secondPrompt?.slice(0, firstPrompt!.length)).toEqual(firstPrompt);
+    expect(secondPrompt!.length).toBeGreaterThan(firstPrompt!.length);
+    expect(model.observedToolNames).toEqual([["inspect"], ["inspect"]]);
   });
 
   it("includes tool events in the run stream", async () => {
@@ -481,43 +520,6 @@ describe("tools", () => {
     expect(pluginErrors).toContain("broken-observer:observer boom");
   });
 
-  it("fails open when extendTools hook throws", async () => {
-    const seen: string[] = [];
-    const model = createToolModel();
-    const agent = createAgent({
-      model,
-      tools: [
-        {
-          name: "base",
-          inputSchema: z.object({}),
-          execute: async () => "ok",
-        } as never,
-      ],
-      plugins: [
-        {
-          name: "broken-tools",
-
-          extendTools() {
-            throw new Error("bad tools");
-          },
-        },
-      ],
-    });
-
-    agent.channel.subscribe("internal", (event) => {
-      if (event.type === "plugin.error") {
-        seen.push(`${event.plugin}:${event.error.name}:${event.error.message}`);
-      }
-    });
-
-    const turnId = agent.send(createUserMessage("hello"));
-    await agent.wait();
-    expect(agent.isIdle()).toBe(true);
-    expect(seen).toEqual(["broken-tools:Error:bad tools"]);
-    expect((model as unknown as { observedToolNames: string[][] }).observedToolNames).toHaveLength(
-      1,
-    );
-  });
 });
 
 function createObservedToolModel() {

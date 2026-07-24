@@ -12,14 +12,13 @@ import { createEventEntry, createMessageEntry } from "./entry.js";
 import { formatErrorCause } from "./errors.js";
 import { createDiagnostic, createInternalEvent } from "./event.js";
 import { buildModelMessages, createAssistantMessage, createToolMessage } from "./message.js";
-import { createPluginHost } from "./plugin.js";
+import { createPluginHost, normalizeSystemPromptAppend } from "./plugin.js";
 import { AgentStateManager, createStateManager } from "./state.js";
 import { createMemoryStorage } from "./storage.js";
 import {
   AgentTool,
   AgentToolSet,
   createTerminalTool,
-  mergeTools,
   resolveTerminalToolName,
   toAiToolSet,
 } from "./tools.js";
@@ -31,8 +30,8 @@ import type { AgentInternalEvent, AgentInternalEventInit } from "./types/event.j
 import type { AgentMessage } from "./types/message.js";
 import type {
   AgentPlugin,
-  PromptContext,
-  ToolExtensionContext,
+  AgentPluginRuntime,
+  SystemPromptAppend,
   ToolHookContext,
 } from "./types/plugin.js";
 import type { AgentState } from "./types/state.js";
@@ -49,7 +48,9 @@ export interface AgentTerminalToolConfig {
 export interface AgentConfig {
   id?: string;
   model: LanguageModel;
-  systemPrompt?: string | ((context: PromptContext) => Awaitable<string>);
+  systemPrompt?:
+    | SystemPromptAppend
+    | ((runtime: AgentPluginRuntime) => Awaitable<SystemPromptAppend | void>);
   tools?: AgentToolSet;
   terminalTool?: boolean | AgentTerminalToolConfig;
   storage?: AgentStorage<AgentEntry>;
@@ -70,9 +71,7 @@ export interface Agent {
   run(message: AgentMessage, options?: AgentSendOptions): AsyncIterable<AgentInternalEvent>;
   wait(options?: AgentWaitOptions): Promise<void>;
   interrupt(reason?: unknown): Awaitable<void>;
-  setTools(tools: AgentToolSet): void;
   getModel(): LanguageModel;
-  setModel(model: LanguageModel): void;
   clear(): Promise<void>;
   getActiveTurnId(): string | null;
   isIdle(): boolean;
@@ -117,6 +116,21 @@ function isTerminalTurnEvent(event: AgentInternalEvent) {
   );
 }
 
+interface ResolvedSystemPrompt {
+  legacy?: string;
+  blocks: SystemModelMessage[];
+}
+
+async function resolveConfiguredSystemPrompt(
+  input: AgentConfig["systemPrompt"],
+  runtime: AgentPluginRuntime,
+): Promise<ResolvedSystemPrompt> {
+  const value = typeof input === "function" ? await input(runtime) : input;
+  if (value === undefined) return { blocks: [] };
+  if (typeof value === "string") return { legacy: value, blocks: [] };
+  return { blocks: normalizeSystemPromptAppend(value) };
+}
+
 export function createAgent(config: AgentConfig): Agent {
   const id = config.id ?? crypto.randomUUID();
   const baseStorage = config.storage ?? createMemoryStorage();
@@ -142,11 +156,12 @@ export function createAgent(config: AgentConfig): Agent {
     initialState: config.initialState ?? config.defaultState,
   });
 
-  let model = config.model;
-  let tools = config.tools ?? [];
+  const model = config.model;
+  const baseTools = config.tools ?? [];
   const terminalToolName = resolveTerminalToolName(config.terminalTool);
   const terminalTools = terminalToolName ? [createTerminalTool(terminalToolName)] : [];
-  const systemPrompt = config.systemPrompt;
+  let frozenSystemPrompt: string | SystemModelMessage[] | undefined;
+  let frozenTools: AgentToolSet = [];
 
   const pluginHost = createPluginHost({
     plugins: config.plugins ?? [],
@@ -237,7 +252,27 @@ export function createAgent(config: AgentConfig): Agent {
     }
 
     initPromise = (async () => {
-      await pluginHost.init();
+      const base = await resolveConfiguredSystemPrompt(config.systemPrompt, {
+        id,
+        channel,
+        state,
+      });
+      await pluginHost.init({
+        legacySystemPrompt: base.legacy,
+        baseTools,
+        terminalTools,
+      });
+
+      const blocks = [...base.blocks, ...pluginHost.stablePromptBlocks];
+      frozenSystemPrompt =
+        pluginHost.stableLegacySystemPrompt !== undefined
+          ? blocks.length === 0
+            ? pluginHost.stableLegacySystemPrompt
+            : [{ role: "system", content: pluginHost.stableLegacySystemPrompt }, ...blocks]
+          : blocks.length > 0
+            ? blocks
+            : undefined;
+      frozenTools = [...pluginHost.stableTools];
       initialized = true;
       await emitInternal({ type: "agent.init" });
     })().finally(() => {
@@ -249,44 +284,8 @@ export function createAgent(config: AgentConfig): Agent {
     return initPromise;
   };
 
-  const resolveSystemPrompt = async (
-    turnId: string,
-    signal?: AbortSignal,
-  ): Promise<string | SystemModelMessage[] | undefined> => {
-    const promptContext: PromptContext = {
-      ...runtimeContext,
-      turnId,
-      signal,
-    };
-    const basePrompt =
-      typeof systemPrompt === "function" ? await systemPrompt(promptContext) : systemPrompt;
-
-    const legacyPrompt =
-      basePrompt === undefined
-        ? undefined
-        : await pluginHost.helpers.extendSystemPrompt(basePrompt, promptContext);
-    const structuredBlocks = await pluginHost.helpers.appendSystemPrompt(promptContext);
-
-    if (structuredBlocks.length === 0) {
-      return legacyPrompt;
-    }
-
-    return legacyPrompt === undefined
-      ? structuredBlocks
-      : [{ role: "system", content: legacyPrompt }, ...structuredBlocks];
-  };
-
-  const resolveTools = async (turnId: string, signal?: AbortSignal) => {
-    const toolContext: ToolExtensionContext = {
-      ...runtimeContext,
-      turnId,
-      signal,
-    };
-    const stableTools = mergeTools([tools, [...pluginHost.stableTools], terminalTools]);
-    const visibleTools = pluginHost.hasDynamicToolExtensions
-      ? await pluginHost.helpers.extendTools([...stableTools], toolContext)
-      : stableTools;
-    const merged = mergeTools([visibleTools]);
+  const resolveTools = (turnId: string, signal?: AbortSignal): AgentToolSet => {
+    const merged = frozenTools;
 
     let serial = Promise.resolve();
     const wrapped: AgentToolSet = [];
@@ -560,9 +559,9 @@ export function createAgent(config: AgentConfig): Agent {
         let persistedResponseMessageCount = 0;
         const response = streamText({
           model,
-          system: await resolveSystemPrompt(request.turnId, abortSignal),
+          system: frozenSystemPrompt,
           messages: modelMessages,
-          tools: toAiToolSet(await resolveTools(request.turnId, abortSignal)),
+          tools: toAiToolSet(resolveTools(request.turnId, abortSignal)),
           stopWhen: terminalToolName
             ? [isLoopFinished(), hasToolCall(terminalToolName)]
             : isLoopFinished(),
@@ -752,14 +751,8 @@ export function createAgent(config: AgentConfig): Agent {
     interrupt(reason) {
       return turnQueue.interrupt(reason);
     },
-    setTools(nextTools) {
-      tools = nextTools;
-    },
     getModel() {
       return model;
-    },
-    setModel(nextModel) {
-      model = nextModel;
     },
     async clear() {
       await storage.clear();

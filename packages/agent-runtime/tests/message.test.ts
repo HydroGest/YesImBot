@@ -249,69 +249,74 @@ describe("system prompt resolution", () => {
     streamTextMock.mockClear();
   });
 
-  it("passes structured prompt blocks through the ai-sdk system option", async () => {
-    const agent = createAgent({
-      model: {} as never,
-      systemPrompt: "base",
-      plugins: [
-        {
-          name: "legacy",
-          extendSystemPrompt(prompt) {
-            return `${prompt}\nlegacy`;
-          },
-        },
-        {
-          name: "structured",
-          appendSystemPrompt() {
-            return [
-              "structured a",
-              {
-                role: "system",
-                content: "structured b",
-                providerOptions: { mock: { cache: true } },
-              },
-            ];
-          },
-        },
-      ],
-    });
-
-    const turnId = agent.send(createUserMessage("hello"));
-    await agent.wait();
-
-    expect(streamTextMock).toHaveBeenCalledOnce();
-    expect(streamTextMock.mock.calls[0]![0].system).toEqual([
-      { role: "system", content: "base\nlegacy" },
-      { role: "system", content: "structured a" },
+  it("resolves structured system input and plugin blocks once", async () => {
+    const resolveBase = vi.fn(async () => [
+      "constitution",
       {
-        role: "system",
-        content: "structured b",
+        role: "system" as const,
+        content: "operator",
         providerOptions: { mock: { cache: true } },
       },
     ]);
-    expect(streamTextMock.mock.calls[0]![0].messages).toEqual([
-      expect.objectContaining({ role: "user", content: "hello" }),
+    const append = vi.fn(() => "plugin prompt");
+    const agent = createAgent({
+      model: {} as never,
+      systemPrompt: resolveBase,
+      plugins: [
+        {
+          name: "stable",
+          appendSystemPrompt: append,
+        },
+      ],
+    });
+
+    agent.send(createUserMessage("first"));
+    await agent.wait();
+    agent.send(createUserMessage("second"));
+    await agent.wait();
+
+    expect(resolveBase).toHaveBeenCalledOnce();
+    expect(append).toHaveBeenCalledOnce();
+    expect(streamTextMock).toHaveBeenCalledTimes(2);
+    expect(streamTextMock.mock.calls[0]![0].system).toEqual([
+      { role: "system", content: "constitution" },
+      {
+        role: "system",
+        content: "operator",
+        providerOptions: { mock: { cache: true } },
+      },
+      { role: "system", content: "plugin prompt" },
     ]);
+    expect(streamTextMock.mock.calls[1]![0].system).toEqual(streamTextMock.mock.calls[0]![0].system);
+    const firstMessages = streamTextMock.mock.calls[0]![0].messages;
+    const secondMessages = streamTextMock.mock.calls[1]![0].messages;
+    expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages);
+    expect(secondMessages.at(-1)).toEqual(expect.objectContaining({ role: "user", content: "second" }));
   });
 
-  it("preserves string system output when no structured blocks exist", async () => {
+  it("runs the deprecated string reducer once for a legacy string prompt", async () => {
+    const legacy = vi.fn((prompt: string) => `${prompt}\nlegacy`);
     const agent = createAgent({
       model: {} as never,
       systemPrompt: "base",
       plugins: [
         {
           name: "legacy",
-          extendSystemPrompt(prompt) {
-            return `${prompt}\nlegacy`;
-          },
+          extendSystemPrompt: legacy,
         },
       ],
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("first"));
+    await agent.wait();
+    agent.send(createUserMessage("second"));
     await agent.wait();
 
-    expect(streamTextMock.mock.calls[0]![0].system).toBe("base\nlegacy");
+    expect(legacy).toHaveBeenCalledOnce();
+    expect(streamTextMock.mock.calls.map(([call]) => call.system)).toEqual([
+      "base\nlegacy",
+      "base\nlegacy",
+    ]);
   });
 
   it("allows structured prompt blocks without a base system prompt", async () => {
@@ -329,12 +334,26 @@ describe("system prompt resolution", () => {
       ],
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("hello"));
     await agent.wait();
 
     expect(legacy).not.toHaveBeenCalled();
     expect(streamTextMock.mock.calls[0]![0].system).toEqual([
       { role: "system", content: "structured only" },
     ]);
+  });
+
+  it("fails initialization before plugin startup when base system resolution fails", async () => {
+    const init = vi.fn();
+    const agent = createAgent({
+      model: {} as never,
+      systemPrompt: async () => {
+        throw new Error("prompt read failed");
+      },
+      plugins: [{ name: "plugin", init }],
+    });
+
+    await expect(agent.init()).rejects.toThrow("prompt read failed");
+    expect(init).not.toHaveBeenCalled();
   });
 });

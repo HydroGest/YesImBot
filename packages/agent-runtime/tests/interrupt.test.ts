@@ -152,7 +152,6 @@ describe("interrupt", () => {
 
   it("allows later turns after interrupt", async () => {
     const agent = createAgent({ model: createTextModel("after") });
-    agent.setTools([]);
     const events: string[] = [];
     agent.channel.subscribe("internal", (event) => {
       if (event.type === "turn.aborted" || event.type === "turn.done") {
