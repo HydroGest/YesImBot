@@ -16,8 +16,8 @@ export interface ChatModelConfig {
     output: number;
   };
   modalities?: {
-    input: ChatModelModality[];
-    output: ChatModelModality[];
+    input?: ChatModelModality[];
+    output?: ChatModelModality[];
   };
   variants?: Record<string, unknown>;
 }
@@ -57,6 +57,10 @@ export interface EmbeddingModelRef {
   modelId: string;
   entry: EmbeddingModelConfig;
   model: EmbeddingModel;
+}
+
+export function isChatModelModality(value: string): value is ChatModelModality {
+  return CHAT_MODEL_MODALITIES.some((modality) => modality === value);
 }
 
 export function parseModelId(fullId: string): { provider: string; model: string } | null {

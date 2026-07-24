@@ -15,6 +15,13 @@ const state = vi.hoisted(() => ({
     | undefined,
 }));
 
+type RegisteredCommand = {
+  readonly name: string;
+  readonly options: unknown;
+  readonly action: ReturnType<typeof vi.fn>;
+  readonly dispose: ReturnType<typeof vi.fn>;
+};
+
 vi.mock("../src/runtime/manager.js", () => ({
   RuntimeManager: class {
     setWill = vi.fn();
@@ -35,18 +42,26 @@ import { YesImBotService } from "../src/service.js";
 
 const config: Config = { basePath: "data/yesimbot-service", chatModel: "mock:model" };
 
-function createService(serviceConfig: Config = config) {
+function createService(
+  serviceConfig: Config = config,
+  model: { addChatModelInputModality?: ReturnType<typeof vi.fn> } = {},
+) {
   const ctx = new Context();
   ctx.baseDir = "/tmp/yesimbot-service";
-  Object.assign(ctx, { "yesimbot.model": {} });
+  Object.assign(ctx, { "yesimbot.model": model });
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
   Object.assign(ctx, { database });
   vi.spyOn(ctx, "middleware").mockReturnValue(vi.fn() as never);
   vi.spyOn(ctx, "on").mockReturnValue(vi.fn() as never);
-  vi.spyOn(ctx, "command").mockReturnValue({ action: vi.fn(), dispose: vi.fn() } as never);
+  const commands: RegisteredCommand[] = [];
+  vi.spyOn(ctx, "command").mockImplementation((name, description, options) => {
+    const command = { name, options: options ?? description, action: vi.fn(), dispose: vi.fn() };
+    commands.push(command);
+    return command as never;
+  });
   const service = new YesImBotService(ctx as never, serviceConfig);
   Object.assign(ctx, { yesimbot: service });
-  return { ctx, service, database };
+  return { ctx, service, database, commands };
 }
 
 describe("YesImBotService facade", () => {
@@ -112,6 +127,31 @@ describe("YesImBotService facade", () => {
     await service.reload(scope);
 
     expect(state.runtime?.reload).toHaveBeenCalledWith(scope);
+  });
+
+  it("registers the authority-4 modality command without replacing active runtimes", async () => {
+    const addChatModelInputModality = vi.fn(async () => "added" as const);
+    const { commands } = createService(config, { addChatModelInputModality });
+    const command = commands.find(({ name }) => name.startsWith("yesimbot.model.add-input-modality"));
+
+    expect(command?.options).toEqual({ authority: 4 });
+    const action = command?.action.mock.calls[0]?.[0];
+    await expect(action({}, "vision", "image")).resolves.toContain("added");
+    expect(addChatModelInputModality).toHaveBeenCalledWith("vision", "image");
+    expect(state.runtime?.reload).not.toHaveBeenCalled();
+  });
+
+  it("reports an idempotent modality command no-op and invalid command error", async () => {
+    const addChatModelInputModality = vi
+      .fn()
+      .mockResolvedValueOnce("unchanged")
+      .mockRejectedValueOnce(new Error("invalid modality"));
+    const { commands } = createService(config, { addChatModelInputModality });
+    const command = commands.find(({ name }) => name.startsWith("yesimbot.model.add-input-modality"));
+    const action = command?.action.mock.calls[0]?.[0];
+
+    await expect(action({}, "vision", "image")).resolves.toContain("unchanged");
+    await expect(action({}, "vision", "unknown")).resolves.toContain("invalid modality");
   });
 
   it("rejects shared reload before RuntimeManager for a non-assignee", async () => {

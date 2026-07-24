@@ -1,6 +1,14 @@
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 
-import { ChatModelConfig, EmbeddingModelConfig, ModelId, parseModelId } from "./types.js";
+import {
+  ChatModelConfig,
+  type ChatModelModality,
+  EmbeddingModelConfig,
+  isChatModelModality,
+  ModelId,
+  parseModelId,
+} from "./types.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -59,6 +67,37 @@ function readBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
+function readVariants(value: unknown): Record<string, unknown> | undefined {
+  return isPlainObject(value) ? { ...value } : undefined;
+}
+
+function readModalities(value: unknown, fullId: string, warnings: string[]): ChatModelConfig["modalities"] {
+  if (!isPlainObject(value)) {
+    warnings.push(`models.json chat override for "${fullId}" modalities must be an object.`);
+    return undefined;
+  }
+
+  const input = readModalityArray(value.input, fullId, "input", warnings);
+  const output = readModalityArray(value.output, fullId, "output", warnings);
+  return input || output ? { ...(input ? { input } : {}), ...(output ? { output } : {}) } : undefined;
+}
+
+function readModalityArray(
+  value: unknown,
+  fullId: string,
+  direction: "input" | "output",
+  warnings: string[],
+): ChatModelModality[] | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value) && value.every(isModelModality)) return [...value];
+  warnings.push(`models.json chat override for "${fullId}" modalities.${direction} must be valid.`);
+  return undefined;
+}
+
+function isModelModality(value: unknown): value is ChatModelModality {
+  return typeof value === "string" && isChatModelModality(value);
+}
+
 function readChatOverrides(
   section: JsonObject,
   warnings: string[],
@@ -76,10 +115,22 @@ function readChatOverrides(
       toolCall: readBoolean(value.toolCall),
       reasoning: readBoolean(value.reasoning),
       hidden: readBoolean(value.hidden),
+      modalities: value.modalities === undefined ? undefined : readModalities(value.modalities, fullId, warnings),
+      variants: readVariants(value.variants),
     };
   }
 
   return result;
+}
+
+export async function writeModelsConfig(filePath: string, config: ModelsConfigData): Promise<void> {
+  const temporary = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    await rename(temporary, filePath);
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 function readEmbeddingOverrides(

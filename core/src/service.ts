@@ -30,7 +30,7 @@ export class YesImBotService extends Service<Config> {
   private readonly plugins = new Set<{ readonly factory: AgentPluginFactory }>();
   private readonly defaultWill: Will.Factory;
   private readonly wills = new Set<{ readonly factory: Will.Factory }>();
-  private dispose: (() => unknown) | undefined;
+  private readonly commandDisposers = new Set<() => unknown>();
   private stopTask: Promise<void> | undefined;
 
   constructor(ctx: Context, config: Config) {
@@ -67,8 +67,8 @@ export class YesImBotService extends Service<Config> {
       logger: this.logger,
     });
 
-    const command = ctx.command("yesimbot.reset", { authority: 4 });
-    command.action(async ({ session }) => {
+    const resetCommand = ctx.command("yesimbot.reset", { authority: 4 });
+    resetCommand.action(async ({ session }) => {
       if (!session?.platform || !session.selfId || !session.channelId) return;
       await this.reset({
         platform: session.platform,
@@ -77,7 +77,22 @@ export class YesImBotService extends Service<Config> {
         isDirect: session.isDirect,
       });
     });
-    if (typeof command.dispose === "function") this.dispose = () => command.dispose();
+    this.registerCommandDisposer(resetCommand);
+
+    const modalityCommand = ctx.command(
+      "yesimbot.model.add-input-modality <model:string> <modality:string>",
+      "",
+      { authority: 4 },
+    );
+    modalityCommand.action(async (_, model, modality) => {
+      try {
+        const result = await this.model.addChatModelInputModality(model, modality);
+        return `Input modality ${result}. Active ChannelRuntimes require reload or replacement.`;
+      } catch (error) {
+        return `Failed to add input modality: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    });
+    this.registerCommandDisposer(modalityCommand);
   }
 
   registerResolver(resolver: SessionResolver): () => void {
@@ -162,13 +177,18 @@ export class YesImBotService extends Service<Config> {
   }
 
   private disposeCommand(): void {
-    const dispose = this.dispose;
-    this.dispose = undefined;
-    try {
-      dispose?.();
-    } catch (cause) {
-      this.warn("command.dispose_failed", cause);
+    for (const dispose of this.commandDisposers) {
+      try {
+        dispose();
+      } catch (cause) {
+        this.warn("command.dispose_failed", cause);
+      }
     }
+    this.commandDisposers.clear();
+  }
+
+  private registerCommandDisposer(command: { dispose?: () => unknown }): void {
+    if (typeof command.dispose === "function") this.commandDisposers.add(() => command.dispose?.());
   }
 
   private warn(event: string, cause: unknown): void {

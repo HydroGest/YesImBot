@@ -2,14 +2,15 @@ import { isAbsolute, join, resolve } from "node:path";
 
 import { Context, Schema, Service } from "koishi";
 
-import { loadModelsConfig, type ModelsConfigData } from "./config.js";
+import { loadModelsConfig, type ModelsConfigData, writeModelsConfig } from "./config.js";
 import {
-  ChatModelConfig,
-  ChatModelRef,
-  EmbeddingModelConfig,
+  type ChatModelConfig,
+  type ChatModelRef,
+  type EmbeddingModelConfig,
   formatModelId,
-  ModelId,
-  ModelProvider,
+  type ModelId,
+  type ModelProvider,
+  isChatModelModality,
   parseModelId,
 } from "./types.js";
 
@@ -23,7 +24,15 @@ function resolveBasePath(basePath: string, ctxBaseDir: string): string {
 }
 
 function cloneChatModelConfig(config: ChatModelConfig): ChatModelConfig {
-  return { ...config };
+  return {
+    ...config,
+    modalities: config.modalities
+      ? {
+          ...(config.modalities.input ? { input: [...config.modalities.input] } : {}),
+          ...(config.modalities.output ? { output: [...config.modalities.output] } : {}),
+        }
+      : undefined,
+  };
 }
 
 function cloneEmbeddingModelConfig(config: EmbeddingModelConfig): EmbeddingModelConfig {
@@ -54,6 +63,30 @@ function createEmptyModelsConfig(): ModelsConfigData {
     aliases: {},
     chat: {},
     embedding: {},
+  };
+}
+
+function cloneModelsConfig(config: ModelsConfigData): ModelsConfigData {
+  return {
+    defaults: { ...config.defaults },
+    aliases: { ...config.aliases },
+    chat: Object.fromEntries(
+      Object.entries(config.chat).map(([fullId, override]) => [
+        fullId,
+        {
+          ...override,
+          modalities: override.modalities
+            ? {
+                ...(override.modalities.input ? { input: [...override.modalities.input] } : {}),
+                ...(override.modalities.output ? { output: [...override.modalities.output] } : {}),
+              }
+            : undefined,
+        },
+      ]),
+    ),
+    embedding: Object.fromEntries(
+      Object.entries(config.embedding).map(([fullId, override]) => [fullId, { ...override }]),
+    ),
   };
 }
 
@@ -152,6 +185,12 @@ export class ModelService extends Service<ModelServiceConfig> {
         toolCall: override.toolCall ?? record.config.toolCall,
         reasoning: override.reasoning ?? record.config.reasoning,
         hidden: override.hidden ?? record.config.hidden,
+        modalities: override.modalities
+          ? {
+              ...(override.modalities.input ? { input: [...override.modalities.input] } : {}),
+              ...(override.modalities.output ? { output: [...override.modalities.output] } : {}),
+            }
+          : record.config.modalities,
       };
     }
 
@@ -288,6 +327,33 @@ export class ModelService extends Service<ModelServiceConfig> {
       this.refreshModels();
       this.logger.info(`Provider unregistered: ${provider.id}`);
     };
+  }
+
+  async addChatModelInputModality(model: string, modality: string): Promise<"added" | "unchanged"> {
+    if (!isChatModelModality(modality)) {
+      throw new Error(`Unsupported chat model input modality: ${modality}`);
+    }
+
+    const record = this.getChatRecord(model);
+    const override = this.modelsConfig.chat[record.fullId];
+    const input = override?.modalities?.input ?? [];
+    if (input.includes(modality)) return "unchanged";
+
+    const next = cloneModelsConfig(this.modelsConfig);
+    const nextOverride = next.chat[record.fullId] ?? {};
+    next.chat[record.fullId] = {
+      ...nextOverride,
+      modalities: {
+        ...(nextOverride.modalities?.input ? { input: [...nextOverride.modalities.input] } : {}),
+        ...(nextOverride.modalities?.output ? { output: [...nextOverride.modalities.output] } : {}),
+        input: [...(nextOverride.modalities?.input ?? []), modality],
+      },
+    };
+
+    await writeModelsConfig(this.getModelsConfigPath(), next);
+    this.modelsConfig = next;
+    this.refreshModels();
+    return "added";
   }
 
   resolveChatModel(fullId: string): ChatModelRef {
