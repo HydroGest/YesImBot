@@ -1,7 +1,7 @@
 import type { Universal } from "koishi";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import type { Config } from "../src/config.js";
+import type { Config as ConfigType } from "../src/config.js";
 import { createEvent, type Event, type EventRecord } from "../src/event/index.js";
 import {
   DefaultWill,
@@ -126,6 +126,19 @@ describe("DefaultWill", () => {
 });
 
 describe("Will contract", () => {
+  it("types allowed channel rules with exact and optional fields", () => {
+    const config = {
+      basePath: "data/yesimbot",
+      chatModel: "test-model",
+      allowedChannels: [
+        { platform: "test", channelId: "room-1" },
+        { platform: "*", channelId: "*", isDirect: true },
+      ],
+    } satisfies ConfigType;
+
+    expect(config.allowedChannels).toHaveLength(2);
+  });
+
   it("represents the Event and completed decision in one typed observation", () => {
     const event = directMessageEvent();
     const observation = { event, decision: "trigger" } satisfies WillObservation;

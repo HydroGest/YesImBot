@@ -4,7 +4,10 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h, Universal } from "koishi";
 
+import type { ChannelScope } from "../src/channel/index.js";
+import { Config } from "../src/config.js";
 import type { EventRecord } from "../src/event/index.js";
+import { matchesAllowedChannel } from "../src/gateway/allowlist.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
 import { ChannelStorage } from "../src/storage/index.js";
 
@@ -74,6 +77,76 @@ function createGateway(options: { ready?: () => Promise<void> } = {}) {
     internal: () => internal!,
   };
 }
+
+describe("Channel allowlist", () => {
+  const sharedScope: ChannelScope = {
+    platform: "test",
+    selfId: "bot-1",
+    channelId: "room-1",
+    isDirect: false,
+  };
+  const directScope: ChannelScope = { ...sharedScope, isDirect: true };
+
+  it("denies missing and empty rules", () => {
+    expect(matchesAllowedChannel(sharedScope, undefined)).toBe(false);
+    expect(matchesAllowedChannel(sharedScope, [])).toBe(false);
+  });
+
+  it("matches exact platform and channel values", () => {
+    expect(
+      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "room-1" }]),
+    ).toBe(true);
+    expect(
+      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "room-2" }]),
+    ).toBe(false);
+  });
+
+  it("matches platform and channel wildcards", () => {
+    expect(
+      matchesAllowedChannel(sharedScope, [{ platform: "*", channelId: "room-1" }]),
+    ).toBe(true);
+    expect(
+      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "*" }]),
+    ).toBe(true);
+  });
+
+  it("matches omitted directness for both channel scopes", () => {
+    const rule = [{ platform: "test", channelId: "room-1" }];
+
+    expect(matchesAllowedChannel(sharedScope, rule)).toBe(true);
+    expect(matchesAllowedChannel(directScope, rule)).toBe(true);
+  });
+
+  it("matches direct-only and shared-only rules", () => {
+    expect(
+      matchesAllowedChannel(directScope, [{ platform: "test", channelId: "*", isDirect: true }]),
+    ).toBe(true);
+    expect(
+      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "*", isDirect: true }]),
+    ).toBe(false);
+    expect(
+      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "*", isDirect: false }]),
+    ).toBe(true);
+    expect(
+      matchesAllowedChannel(directScope, [{ platform: "test", channelId: "*", isDirect: false }]),
+    ).toBe(false);
+  });
+
+  it("uses OR semantics across rules", () => {
+    expect(
+      matchesAllowedChannel(sharedScope, [
+        { platform: "other", channelId: "room-1" },
+        { platform: "test", channelId: "room-1" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("defaults the configured allowlist to an empty array", () => {
+    const config = Config({ basePath: "data/yesimbot", chatModel: "test-model" });
+
+    expect(config.allowedChannels).toEqual([]);
+  });
+});
 
 describe("Gateway", () => {
   it("waits for storage readiness before shared admission and later side effects", async () => {
