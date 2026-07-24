@@ -8,6 +8,7 @@ import type { AssetStore } from "../shared/asset.js";
 import { assertAssignee } from "../shared/assignee.js";
 import { normalizeElements, sealElements, unavailableImage } from "../shared/element.js";
 import type { ChannelStorage } from "../storage/index.js";
+import { matchesAllowedChannel, type ChannelAllowRule } from "./allowlist.js";
 import { createImageFreezer } from "./image.js";
 
 export interface ResolveContext {
@@ -29,6 +30,7 @@ export interface GatewayOptions {
   readonly runtime: RuntimeManager;
   readonly assets: AssetStore;
   readonly storage: ChannelStorage;
+  readonly allowedChannels: readonly ChannelAllowRule[];
   readonly ready: () => Promise<void>;
   readonly logger: Logger;
 }
@@ -102,6 +104,7 @@ export class Gateway {
   private async route(session: Session): Promise<void> {
     const scope = scopeFromSession(session);
     if (!scope) return;
+    if (!matchesAllowedChannel(scope, this.opts.allowedChannels)) return;
     await this.opts.ready();
     try {
       await assertAssignee(this.opts.ctx, scope);

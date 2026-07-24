@@ -62,6 +62,7 @@ export class YesImBotService extends Service<Config> {
       assets: this.asset,
       runtime: this.rt,
       storage: this.storage,
+      allowedChannels: config.allowedChannels ?? [],
       ready: () => this.storage.start(),
       logger: this.logger,
     });

@@ -35,7 +35,7 @@ import { YesImBotService } from "../src/service.js";
 
 const config: Config = { basePath: "data/yesimbot-service", chatModel: "mock:model" };
 
-function createService() {
+function createService(serviceConfig: Config = config) {
   const ctx = new Context();
   ctx.baseDir = "/tmp/yesimbot-service";
   Object.assign(ctx, { "yesimbot.model": {} });
@@ -44,7 +44,7 @@ function createService() {
   vi.spyOn(ctx, "middleware").mockReturnValue(vi.fn() as never);
   vi.spyOn(ctx, "on").mockReturnValue(vi.fn() as never);
   vi.spyOn(ctx, "command").mockReturnValue({ action: vi.fn(), dispose: vi.fn() } as never);
-  const service = new YesImBotService(ctx as never, config);
+  const service = new YesImBotService(ctx as never, serviceConfig);
   Object.assign(ctx, { yesimbot: service });
   return { ctx, service, database };
 }
@@ -73,6 +73,13 @@ describe("YesImBotService facade", () => {
     expect("gateway" in ctx.yesimbot).toBe(false);
     expect("platform" in ctx.yesimbot).toBe(false);
     expect("delivery" in ctx.yesimbot).toBe(false);
+  });
+
+  it("passes configured channel allowlist rules to Gateway", () => {
+    const allowedChannels = [{ platform: "test", channelId: "room-1", isDirect: false }];
+    const { service } = createService({ ...config, allowedChannels });
+
+    expect(service["gate"]["opts"].allowedChannels).toEqual(allowedChannels);
   });
 
   it("accepts the public AgentPluginFactory context", () => {
@@ -174,6 +181,7 @@ describe("YesImBotService facade", () => {
       assets: assets as never,
       storage: { updateName: vi.fn() } as never,
       ready: () => ready,
+      allowedChannels: [{ platform: "test", channelId: "room-1" }],
       logger: { warn: vi.fn() } as never,
     });
     gateway.register(resolver);

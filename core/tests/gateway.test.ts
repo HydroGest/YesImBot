@@ -7,7 +7,7 @@ import { h, Universal } from "koishi";
 import type { ChannelScope } from "../src/channel/index.js";
 import { Config } from "../src/config.js";
 import type { EventRecord } from "../src/event/index.js";
-import { matchesAllowedChannel } from "../src/gateway/allowlist.js";
+import { matchesAllowedChannel, type ChannelAllowRule } from "../src/gateway/allowlist.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
 import { ChannelStorage } from "../src/storage/index.js";
 
@@ -40,7 +40,12 @@ function record(): EventRecord<"message"> {
   } as EventRecord<"message">;
 }
 
-function createGateway(options: { ready?: () => Promise<void> } = {}) {
+function createGateway(
+  options: {
+    readonly ready?: () => Promise<void>;
+    readonly allowedChannels?: readonly ChannelAllowRule[];
+  } = {},
+) {
   const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
   const logger = { warn: vi.fn() };
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
@@ -66,6 +71,7 @@ function createGateway(options: { ready?: () => Promise<void> } = {}) {
       assets,
       storage,
       ready: options.ready ?? (() => storage.start()),
+      allowedChannels: options.allowedChannels ?? [{ platform: "*", channelId: "*" }],
       logger,
     }),
     runtime,
@@ -149,6 +155,41 @@ describe("Channel allowlist", () => {
 });
 
 describe("Gateway", () => {
+  it("rejects an unmatched valid scope before readiness or downstream admission work", async () => {
+    const ready = vi.fn(async () => undefined);
+    const { gateway, runtime, assets, database, storage } = createGateway({
+      ready,
+      allowedChannels: [],
+    });
+    const updateName = vi.spyOn(storage, "updateName");
+    const resolve = vi.fn(async () => record());
+    gateway.register({ platform: "test", resolve });
+
+    await gateway.handle(session() as never);
+
+    expect(ready).not.toHaveBeenCalled();
+    expect(database.get).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+    expect(assets.put).not.toHaveBeenCalled();
+    expect(updateName).not.toHaveBeenCalled();
+    expect(runtime.route).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [[{ platform: "*", channelId: "room-1", isDirect: false }], {}, 0],
+    [[{ platform: "test", channelId: "*", isDirect: true }], { isDirect: true }, 1],
+  ])("admits Sessions matching a directness-specific wildcard rule", async (allowedChannels, overrides, type) => {
+    const { gateway, runtime } = createGateway({ allowedChannels });
+    gateway.register({
+      platform: "test",
+      resolve: async () => ({ ...record(), channel: { ...record().channel, type } }),
+    });
+
+    await gateway.handle(session(overrides) as never);
+
+    expect(runtime.route).toHaveBeenCalledOnce();
+  });
+
   it("waits for storage readiness before shared admission and later side effects", async () => {
     let release!: () => void;
     const ready = new Promise<void>((resolve) => {
