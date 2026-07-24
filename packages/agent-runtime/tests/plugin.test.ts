@@ -37,63 +37,127 @@ describe("plugin host", () => {
     ]);
   });
 
-  it("resolves stable plugin tools once during initialization in plugin order", async () => {
-    const calls: string[] = [];
+  it("resolves stable prompt and tool resources once in plugin order", async () => {
     const runtime = createRuntime();
+    const calls: string[] = [];
     const host = createPluginHost({
       runtime,
       plugins: [
-        {
-          name: "normal",
-          tools: () => {
-            calls.push("tools:normal");
-            return [{ name: "normal_tool", inputSchema: z.object({}), execute: async () => "ok" }];
-          },
-        },
         {
           name: "pre",
           enforce: "pre",
           tools: () => {
             calls.push("tools:pre");
-            return [{ name: "pre_tool", inputSchema: z.object({}), execute: async () => "ok" }];
+            return [{ name: "pre_tool", inputSchema: z.object({}) }] as never;
+          },
+          appendSystemPrompt: () => {
+            calls.push("prompt:pre");
+            return "pre prompt";
           },
         },
         {
-          name: "post",
-          enforce: "post",
-          tools: [{ name: "post_tool", inputSchema: z.object({}), execute: async () => "ok" }],
+          name: "normal",
+          tools: [{ name: "normal_tool", inputSchema: z.object({}) }] as never,
+          extendSystemPrompt(prompt) {
+            calls.push("legacy-prompt:normal");
+            return `${prompt}\nlegacy`;
+          },
+          extendTools(tools) {
+            calls.push("legacy-tools:normal");
+            return [...tools, { name: "legacy_tool", inputSchema: z.object({}) }] as never;
+          },
+          appendSystemPrompt: () => ({
+            role: "system",
+            content: "normal prompt",
+            providerOptions: { mock: { cache: true } },
+          }),
         },
       ],
     });
 
-    await host.init();
-    await host.init();
+    await host.init({
+      legacySystemPrompt: "base",
+      baseTools: [{ name: "base", inputSchema: z.object({}) }] as never,
+      terminalTools: [{ name: "finalize_response", inputSchema: z.object({}) }] as never,
+    });
+    await host.init({ legacySystemPrompt: "ignored", baseTools: [], terminalTools: [] });
 
-    expect(calls).toEqual(["tools:pre", "tools:normal"]);
+    expect(calls).toEqual([
+      "tools:pre",
+      "prompt:pre",
+      "legacy-prompt:normal",
+      "legacy-tools:normal",
+    ]);
+    expect(host.stableLegacySystemPrompt).toBe("base\nlegacy");
+    expect(host.stablePromptBlocks).toEqual([
+      { role: "system", content: "pre prompt" },
+      {
+        role: "system",
+        content: "normal prompt",
+        providerOptions: { mock: { cache: true } },
+      },
+    ]);
     expect(host.stableTools.map((tool) => tool.name)).toEqual([
+      "base",
       "pre_tool",
       "normal_tool",
-      "post_tool",
+      "legacy_tool",
+      "finalize_response",
     ]);
-    expect(host.hasDynamicToolExtensions).toBe(false);
   });
 
-  it("reports whether any active plugin has dynamic tool extensions", async () => {
+  it("fails initialization when a required stable resource throws", async () => {
+    const calls: string[] = [];
     const host = createPluginHost({
       runtime: createRuntime(),
       plugins: [
+        { name: "first", init: () => void calls.push("init:first"), stop: () => void calls.push("stop:first") },
         {
-          name: "dynamic",
-          extendTools(tools) {
-            return tools;
+          name: "broken",
+          init: () => calls.push("init:broken"),
+          appendSystemPrompt: () => {
+            throw new Error("bad prompt");
           },
+          stop: () => void calls.push("stop:broken"),
         },
       ],
     });
 
-    await host.init();
+    await expect(host.init({ baseTools: [], terminalTools: [] })).rejects.toThrow("bad prompt");
+    expect(calls).toEqual(["init:first", "init:broken", "stop:broken", "stop:first"]);
+  });
 
-    expect(host.hasDynamicToolExtensions).toBe(true);
+  it("disables an optional plugin without retaining partial resources", async () => {
+    const runtime = createRuntime();
+    const disabled: string[] = [];
+    runtime.channel.subscribe("internal", (event) => {
+      if (event.type === "plugin.disabled") disabled.push(event.plugin);
+    });
+    const host = createPluginHost({
+      runtime,
+      plugins: [
+        {
+          name: "optional",
+          optional: true,
+          tools: [{ name: "must_disappear", inputSchema: z.object({}) }] as never,
+          appendSystemPrompt: () => {
+            throw new Error("bad optional prompt");
+          },
+        },
+        {
+          name: "required",
+          tools: [{ name: "kept", inputSchema: z.object({}) }] as never,
+          appendSystemPrompt: () => "kept prompt",
+        },
+      ],
+    });
+
+    await host.init({ baseTools: [], terminalTools: [] });
+
+    expect(disabled).toEqual(["optional"]);
+    expect(host.activePlugins.map((plugin) => plugin.name)).toEqual(["required"]);
+    expect(host.stableTools.map((tool) => tool.name)).toEqual(["kept"]);
+    expect(host.stablePromptBlocks).toEqual([{ role: "system", content: "kept prompt" }]);
   });
 
   it("initializes plugins once and stops initialized plugins in reverse order on failure", async () => {
@@ -235,98 +299,5 @@ describe("plugin host", () => {
 
     expect(result).toEqual({ type: "block", reason: "plugin-error" });
     expect(seen).toEqual(["broken-before"]);
-  });
-
-  it("appends structured system prompt blocks in plugin order after legacy prompt hooks", async () => {
-    const runtime = createRuntime();
-    const host = createPluginHost({
-      runtime,
-      plugins: [
-        {
-          name: "legacy",
-          extendSystemPrompt(prompt) {
-            return `${prompt}\nlegacy`;
-          },
-        },
-        {
-          name: "structured-a",
-          appendSystemPrompt() {
-            return "structured a";
-          },
-        },
-        {
-          name: "structured-b",
-          appendSystemPrompt() {
-            return [
-              {
-                role: "system",
-                content: "structured b",
-                providerOptions: { mock: { cache: true } },
-              },
-              "structured c",
-            ];
-          },
-        },
-      ],
-    });
-
-    await host.init();
-
-    const context = {
-      runtime: { id: runtime.id },
-      channel: runtime.channel,
-      state: runtime.state,
-    };
-
-    await expect(host.helpers.extendSystemPrompt("base", context)).resolves.toBe("base\nlegacy");
-    await expect(host.helpers.appendSystemPrompt(context)).resolves.toEqual([
-      { role: "system", content: "structured a" },
-      {
-        role: "system",
-        content: "structured b",
-        providerOptions: { mock: { cache: true } },
-      },
-      { role: "system", content: "structured c" },
-    ]);
-  });
-
-  it("keeps structured system prompt append hooks fail-open", async () => {
-    const runtime = createRuntime();
-    const seen: string[] = [];
-
-    runtime.channel.subscribe("internal", (event) => {
-      if (event.type === "plugin.error") {
-        seen.push(`${event.plugin}:${event.error.name}:${event.error.message}`);
-      }
-    });
-
-    const host = createPluginHost({
-      runtime,
-      plugins: [
-        {
-          name: "broken-structured",
-          appendSystemPrompt() {
-            throw new Error("bad structured prompt");
-          },
-        },
-        {
-          name: "later-structured",
-          appendSystemPrompt() {
-            return "later";
-          },
-        },
-      ],
-    });
-
-    await host.init();
-
-    const result = await host.helpers.appendSystemPrompt({
-      runtime: { id: runtime.id },
-      channel: runtime.channel,
-      state: runtime.state,
-    });
-
-    expect(result).toEqual([{ role: "system", content: "later" }]);
-    expect(seen).toEqual(["broken-structured:Error:bad structured prompt"]);
   });
 });

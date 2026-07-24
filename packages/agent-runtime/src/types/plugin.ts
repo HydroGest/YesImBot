@@ -28,6 +28,7 @@ export interface AgentPlugin {
   init?(runtime: AgentPluginRuntime): Awaitable<void>;
   stop?(): Awaitable<void>;
   onAppend?(entries: AgentEntry[], context: AppendHookContext): Awaitable<AgentEntry[] | void>;
+  /** @deprecated Define an explicit cache lifecycle before adding historical projection behavior. */
   transformMessages?(
     messages: AgentMessage[],
     context: MessageTransformContext,
@@ -36,8 +37,10 @@ export interface AgentPlugin {
     message: AgentMessage,
     context: ModelMessageContext,
   ): Awaitable<ModelMessage[] | ModelMessage | void>;
+  /** @deprecated Use structured `systemPrompt` input and `appendSystemPrompt`. */
   extendSystemPrompt?(prompt: string, context: PromptContext): Awaitable<string | void>;
   appendSystemPrompt?(context: PromptContext): Awaitable<SystemPromptAppend | void>;
+  /** @deprecated Declare stable tools through `AgentPlugin.tools`. */
   extendTools?(tools: AgentToolSet, context: ToolExtensionContext): Awaitable<AgentToolSet | void>;
   beforeToolCall?(call: ToolCallContext, context: ToolHookContext): Awaitable<ToolDecision | void>;
   afterToolCall?(

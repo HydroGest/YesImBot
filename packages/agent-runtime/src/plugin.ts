@@ -1,7 +1,7 @@
 import type { ModelMessage, SystemModelMessage } from "ai";
 
 import { createDiagnostic, createInternalEvent } from "./event.js";
-import type { AgentToolSet, ToolDecision } from "./tools.js";
+import { mergeTools, type AgentToolSet, type ToolDecision } from "./tools.js";
 import { TurnResult } from "./turn.js";
 import { Awaitable } from "./types/base.js";
 import type { AgentEntry } from "./types/entry.js";
@@ -41,9 +41,6 @@ export interface PluginHostHelpers {
     context: MessageTransformContext,
   ): Promise<AgentMessage[]>;
   toModelMessages(message: AgentMessage, context: ModelMessageContext): Promise<ModelMessage[]>;
-  extendSystemPrompt(prompt: string, context: PromptContext): Promise<string>;
-  appendSystemPrompt(context: PromptContext): Promise<SystemModelMessage[]>;
-  extendTools(tools: AgentToolSet, context: ToolExtensionContext): Promise<AgentToolSet>;
   beforeToolCall(
     decision: ToolDecision,
     call: ToolCallContext,
@@ -53,24 +50,30 @@ export interface PluginHostHelpers {
   onTurnFinish(result: TurnResult, context: TurnFinishContext): Promise<void>;
 }
 
+
+export interface PluginHostInitOptions {
+  legacySystemPrompt?: string;
+  baseTools?: AgentToolSet;
+  terminalTools?: AgentToolSet;
+}
+
 export interface PluginHost {
   readonly plugins: readonly AgentPlugin[];
   readonly activePlugins: readonly AgentPlugin[];
+  readonly stableLegacySystemPrompt: string | undefined;
+  readonly stablePromptBlocks: readonly SystemModelMessage[];
   readonly stableTools: Readonly<AgentToolSet>;
-  readonly hasDynamicToolExtensions: boolean;
   readonly helpers: PluginHostHelpers;
-  init(): Promise<void>;
+  init(options?: PluginHostInitOptions): Promise<void>;
   stop(): Promise<void>;
   emitPluginError(pluginName: string, error: unknown): void;
 }
-
-function normalizeSystemPromptAppend(value: SystemPromptAppend): SystemModelMessage[] {
+export function normalizeSystemPromptAppend(value: SystemPromptAppend): SystemModelMessage[] {
   const blocks = Array.isArray(value) ? value : [value];
   return blocks.map((block) =>
     typeof block === "string" ? { role: "system", content: block } : block,
   );
 }
-
 export function createPluginHost(options: {
   plugins: readonly AgentPlugin[];
   runtime: PluginHostRuntime;
@@ -78,6 +81,8 @@ export function createPluginHost(options: {
   const plugins = orderPlugins(options.plugins);
   const activePlugins: AgentPlugin[] = [];
   const stableTools: AgentToolSet = [];
+  const stablePromptBlocks: SystemModelMessage[] = [];
+  let stableLegacySystemPrompt: string | undefined;
   let didInit = false;
 
   const emitInternal = (event: AgentInternalEventInit) => {
@@ -147,59 +152,6 @@ export function createPluginHost(options: {
       return [];
     },
 
-    async extendSystemPrompt(prompt, context) {
-      let current = prompt;
-
-      for (const plugin of activePlugins) {
-        const hook = plugin?.extendSystemPrompt;
-        if (!hook) continue;
-
-        try {
-          const next = await hook(current, context);
-          if (next !== undefined) current = next;
-        } catch (error) {
-          emitPluginError(plugin.name, error);
-        }
-      }
-
-      return current;
-    },
-
-    async appendSystemPrompt(context) {
-      const current: SystemModelMessage[] = [];
-
-      for (const plugin of activePlugins) {
-        const hook = plugin?.appendSystemPrompt;
-        if (!hook) continue;
-
-        try {
-          const next = await hook(context);
-          if (next !== undefined) current.push(...normalizeSystemPromptAppend(next));
-        } catch (error) {
-          emitPluginError(plugin.name, error);
-        }
-      }
-
-      return current;
-    },
-
-    async extendTools(tools, context) {
-      let current = tools;
-
-      for (const plugin of activePlugins) {
-        const hook = plugin?.extendTools;
-        if (!hook) continue;
-
-        try {
-          const next = await hook(current, context);
-          if (next) current = next;
-        } catch (error) {
-          emitPluginError(plugin.name, error);
-        }
-      }
-
-      return current;
-    },
 
     async beforeToolCall(decision, call, context) {
       let currentDecision = decision;
@@ -266,24 +218,36 @@ export function createPluginHost(options: {
       }
     },
   };
-
   return {
     plugins,
     get activePlugins() {
       return activePlugins;
     },
+    get stableLegacySystemPrompt() {
+      return stableLegacySystemPrompt;
+    },
+    get stablePromptBlocks() {
+      return stablePromptBlocks;
+    },
     get stableTools() {
       return stableTools;
     },
-    get hasDynamicToolExtensions() {
-      return activePlugins.some((plugin) => typeof plugin.extendTools === "function");
-    },
     helpers,
-    async init() {
+    async init(initOptions: PluginHostInitOptions = {}) {
       if (didInit) return;
-
       activePlugins.length = 0;
+      stablePromptBlocks.length = 0;
       stableTools.length = 0;
+      stableLegacySystemPrompt = undefined;
+
+      const initializationContext: PromptContext & ToolExtensionContext = {
+        runtime: { id: options.runtime.id },
+        channel: options.runtime.channel,
+        state: options.runtime.state,
+      };
+      let nextLegacy = initOptions.legacySystemPrompt;
+      let nextTools = [...(initOptions.baseTools ?? [])];
+      const nextBlocks: SystemModelMessage[] = [];
 
       for (const plugin of plugins) {
         let didStartPlugin = false;
@@ -291,18 +255,32 @@ export function createPluginHost(options: {
           await plugin.init?.(options.runtime);
           didStartPlugin = true;
 
-          const declaredTools =
+          const declared =
             typeof plugin.tools === "function" ? await plugin.tools(options.runtime) : plugin.tools;
-          if (declaredTools) {
-            stableTools.push(...declaredTools);
+          let candidateTools = mergeTools([nextTools, declared ?? []]);
+          let candidateLegacy = nextLegacy;
+          const appended = await plugin.appendSystemPrompt?.(initializationContext);
+          const candidateBlocks =
+            appended === undefined ? [] : normalizeSystemPromptAppend(appended);
+
+          if (candidateLegacy !== undefined && plugin.extendSystemPrompt) {
+            candidateLegacy =
+              (await plugin.extendSystemPrompt(candidateLegacy, initializationContext)) ??
+              candidateLegacy;
+          }
+          if (plugin.extendTools) {
+            candidateTools = mergeTools([
+              (await plugin.extendTools([...candidateTools], initializationContext)) ??
+                candidateTools,
+            ]);
           }
 
           activePlugins.push(plugin);
+          nextLegacy = candidateLegacy;
+          nextTools = candidateTools;
+          nextBlocks.push(...candidateBlocks);
         } catch (error) {
-          if (didStartPlugin) {
-            await Promise.resolve(plugin.stop?.()).catch(() => undefined);
-          }
-
+          if (didStartPlugin) await Promise.resolve(plugin.stop?.()).catch(() => undefined);
           if (plugin.optional) {
             emitInternal({
               type: "plugin.disabled",
@@ -311,16 +289,25 @@ export function createPluginHost(options: {
             });
             continue;
           }
-
-          for (const initializedPlugin of [...activePlugins].reverse()) {
-            await initializedPlugin.stop?.();
-          }
+          for (const initialized of [...activePlugins].reverse()) await initialized.stop?.();
           activePlugins.length = 0;
-          stableTools.length = 0;
           throw error;
         }
       }
 
+      stableLegacySystemPrompt = nextLegacy;
+      stablePromptBlocks.push(...nextBlocks);
+      try {
+        stableTools.push(...mergeTools([nextTools, initOptions.terminalTools ?? []]));
+      } catch (error) {
+        await Promise.allSettled(
+          [...activePlugins].reverse().map((plugin) => Promise.resolve(plugin.stop?.())),
+        );
+        activePlugins.length = 0;
+        stablePromptBlocks.length = 0;
+        stableLegacySystemPrompt = undefined;
+        throw error;
+      }
       didInit = true;
     },
     async stop() {
@@ -330,6 +317,8 @@ export function createPluginHost(options: {
 
       activePlugins.length = 0;
       stableTools.length = 0;
+      stablePromptBlocks.length = 0;
+      stableLegacySystemPrompt = undefined;
       didInit = false;
     },
     emitPluginError,
