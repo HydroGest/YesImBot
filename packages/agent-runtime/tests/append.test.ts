@@ -270,7 +270,7 @@ describe("append", () => {
     ).toHaveLength(1);
   });
 
-  it("persists messages through append hooks without triggering non-append hooks", async () => {
+  it("persists messages through append hooks after initializing stable resources", async () => {
     const storage = createMemoryStorage();
     const transformMessages = vi.fn<NonNullable<AgentPlugin["transformMessages"]>>();
     const toModelMessages = vi.fn<NonNullable<AgentPlugin["toModelMessages"]>>();
@@ -311,7 +311,7 @@ describe("append", () => {
     expect(transformMessages).not.toHaveBeenCalled();
     expect(toModelMessages).not.toHaveBeenCalled();
     expect(extendSystemPrompt).not.toHaveBeenCalled();
-    expect(extendTools).not.toHaveBeenCalled();
+    expect(extendTools).toHaveBeenCalledOnce();
     expect(beforeToolCall).not.toHaveBeenCalled();
     expect(afterToolCall).not.toHaveBeenCalled();
     expect(onTurnFinish).not.toHaveBeenCalled();
