@@ -60,7 +60,7 @@ yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/tools.t
 ## Current Architecture
 
 - `core/src/index.ts` is the Koishi entrypoint. It registers `ModelService` and `YesImBotService`; Database is a required injection.
-- `core/src/service.ts` owns the public `ctx.yesimbot` facade: model, resolver/Will/Agent plugin registration, Channel Key/storage methods, reset, and stop. Gateway, RuntimeManager, ChannelRuntime, ChannelStorage, AssetStore, and assignee helpers stay private.
+- `core/src/service.ts` owns the public `ctx.yesimbot` facade: model, resolver/Will/Agent plugin registration, Channel Key/storage methods, non-destructive `reload(scope)`, reset, and stop. Gateway, RuntimeManager, ChannelRuntime, ChannelStorage, AssetStore, and assignee helpers stay private.
 - `core/src/gateway/` owns Koishi middleware and `internal/session` admission, one Resolver call, bounded image freezing, passive `Session.send()`, and same-channel `delivery.failed` feedback. A Session never leaves its active Gateway handle.
 - `core/src/runtime/manager.ts` owns one Runtime entry per Channel Key, per-Key lifecycle coordination, Database assignee revalidation, Will generations, reset, global stop, and bounded two-phase online handover.
 - `core/src/runtime/channel.ts` owns one channel FIFO, Agent, Will, JSONL storage, prompt/plugin assembly, atomic append/join/run submission, one stream consumer, delivery leases, delivery-failure completion, graceful drain, reset, and stop.
@@ -70,10 +70,10 @@ yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/tools.t
 - Shared-channel handover reserves at most five waiting events before they can join the lifecycle tail, drains the old Runtime outside the coordinator, then revalidates Database assignment and Will generation before publishing a replacement. Shared assignee changes preserve Key, JSONL, assets, and workspace.
 - The message pipeline is: Session admission -> Resolver or Satori fallback -> sealed EventRecord -> RuntimeManager -> ChannelRuntime persist/observe/Will FIFO -> idle run or busy join -> one internal stream consumer -> Gateway passive delivery. Delivery failure is persisted through the producing Runtime's completion lane.
 - Reset checks assignment, stops the matching Runtime, clears only `sessions` and `assets`, and preserves Manifest, Catalog, workspace, and other namespaces. Global stop rejects new admission, tears down runtimes, waits active Gateway handlers, and preserves persisted data.
-- Runtime prompt composition starts with `buildCoreSystemPrompt()` and then optionally appends runtime prompt files from the configured data `basePath`: `AGENTS.md` and `PERSONA.md`. Do not confuse those runtime prompt files with this repository developer guide.
+- ChannelRuntime initialization freezes Constitution version 1, optional `<agents>`, exactly one `<persona>`, `<runtime_context>`, plugin instructions, native tools, model, and provider in that order. Do not confuse runtime `AGENTS.md` and `PERSONA.md` prompt files with this repository developer guide.
 - `core/src/model/` owns `ctx["yesimbot.model"]`, `models.json` loading, aliases/defaults, Koishi schema refresh, and provider registration.
 - Provider packages use `createProviderPlugin()` from `koishi-plugin-yesimbot/model` and AI SDK provider packages.
-- `packages/agent-runtime/src/agent.ts` owns the turn lifecycle: `append()`, `send()`, `run()`, idle `wait()`, interruption, storage serialization, tool wrapping, streamed model execution, and terminal events.
+- `packages/agent-runtime/src/agent.ts` owns the turn lifecycle: `append()`, `send()`, `run()`, idle `wait()`, interruption, storage serialization, tool wrapping, streamed model execution, and terminal events. `Agent.setModel()` and `Agent.setTools()` no longer exist; runtime replacement activates stable resource changes.
 - `packages/agent-runtime/src/plugin.ts` owns ordered plugin hooks: append/message transforms, model projection, prompt/tool extension, tool call hooks, and turn finish hooks.
 - Optional plugins register Agent behavior through `ctx.yesimbot.registerAgentPlugin(factory)` and channel storage through a unique `registerStorage(namespace)` registration.
 

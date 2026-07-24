@@ -261,6 +261,16 @@ Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调�
 - Database assignee 成为操作中共享频道 Runtime 所有权的事实来源，不再依赖 middleware 注册顺序或本地缓存。
 - 主 specs 已同步到无前缀 26 字符 Channel Key、channel-first storage、Database admission 和 online handover；`ChannelScopeId` 与 `ch_v1_*` 只保留在 no-migration 边界说明中。
 
+### 2026-07-24：系统提示词成为可缓存的数字主体运行时契约
+
+证据：OpenSpec change `establish-system-prompt-architecture` 的 proposal、design、delta specs、tasks、plan 与实现 `[D]`；最终实现提交 `[C]`。
+
+这次变化把过去混在一段 system prompt 中的宿主规则、Athena 人格、运营者策略、运行时上下文和插件能力拆成了有所有权顺序的稳定段。Core Constitution 只约束真实性、权限、能力、记忆信任和私有审议；默认 Athena persona 承担公开身份、价值与表达方式，自定义 `PERSONA.md` 会完整替换它。
+
+ChannelRuntime 在发布前一次性冻结 prompt、tools、model、provider 和插件集合。稳定内容改变后，`reload(scope)` 排空旧 runtime 并保留历史、资源与 workspace，再由下一条事件惰性创建新快照。这个边界让 provider prompt cache 成为可维护的运行时属性，也阻止每轮重建 system prompt 悄悄改写历史前缀。
+
+MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结果区分已完成检索、已持久化写入、仅被异步接受和失败，模型不再获得选择其他原始频道的 debug tool。
+
 ## 4. 决策索引
 
 ### 当前有效

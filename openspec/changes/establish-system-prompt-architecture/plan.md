@@ -1000,6 +1000,7 @@ it("initializes a runtime before publishing it", async () => {
   expect(state.runtimes[0]?.init).toHaveBeenCalledOnce();
   expect(state.runtimes[0]?.handle).toHaveBeenCalledOnce();
 });
+```
 
 Add initialization-failure cleanup coverage:
 
