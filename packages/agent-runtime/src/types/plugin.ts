@@ -68,6 +68,8 @@ export interface MessageTransformContext extends HookContextBase {
 
 export interface ModelMessageContext extends HookContextBase {
   readonly turnId?: string;
+  readonly history: readonly AgentMessage[];
+  readonly current: readonly AgentMessage[];
 }
 
 export interface PromptContext extends HookContextBase {

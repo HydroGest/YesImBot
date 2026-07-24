@@ -120,6 +120,133 @@ describe("message constructors", () => {
 });
 
 describe("model conversion", () => {
+  it("exposes one frozen conversion boundary for transformed history and current input", async () => {
+    const history = [createCustomMessage("custom.visible", { text: "history" })];
+    const current = [createCustomMessage("custom.visible", { text: "current" })];
+    const transformedHistory = [createCustomMessage("custom.visible", { text: "transformed" })];
+    const contexts: Array<Parameters<NonNullable<AgentPlugin["toModelMessages"]>>[1]> = [];
+    const { pluginHost, context } = createModelContext([
+      {
+        name: "boundary",
+        transformMessages() {
+          return transformedHistory;
+        },
+        toModelMessages(message, conversionContext) {
+          contexts.push(conversionContext);
+          if (message.role !== "custom" || message.type !== "custom.visible") {
+            return undefined;
+          }
+
+          return { role: "user", content: message.data.text };
+        },
+      },
+    ]);
+    await pluginHost.init();
+
+    const result = await buildModelMessages({ history, current, pluginHost, context });
+    const firstContext = contexts[0];
+
+    expect(contexts).toHaveLength(2);
+    expect(contexts.every((conversionContext) => conversionContext === firstContext)).toBe(true);
+    expect(firstContext?.history).toEqual(transformedHistory);
+    expect(firstContext?.current).toEqual(current);
+    expect(Object.isFrozen(firstContext)).toBe(true);
+    expect(Object.isFrozen(firstContext?.history)).toBe(true);
+    expect(Object.isFrozen(firstContext?.current)).toBe(true);
+    expect("requestId" in (firstContext ?? {})).toBe(false);
+    expect("activeTurnId" in (firstContext ?? {})).toBe(false);
+    expect(Object.getOwnPropertySymbols(firstContext ?? {})).toEqual([]);
+    expect(result).toEqual([
+      { role: "user", content: "transformed" },
+      { role: "user", content: "current" },
+    ]);
+
+    await buildModelMessages({ history, current, pluginHost, context });
+
+    expect(contexts.at(-1)).not.toBe(firstContext);
+  });
+
+  it("exposes initial and joined batches only to their submitting model requests", async () => {
+    let releaseInitialStream: (() => void) | undefined;
+    let markInitialStreamStarted: (() => void) | undefined;
+    const initialStreamStarted = new Promise<void>((resolve) => {
+      markInitialStreamStarted = resolve;
+    });
+    const contexts: Array<Parameters<NonNullable<AgentPlugin["toModelMessages"]>>[1]> = [];
+    streamTextMock.mockImplementationOnce(() => ({
+      fullStream: (async function* () {
+        markInitialStreamStarted?.();
+        await new Promise<void>((resolve) => {
+          releaseInitialStream = resolve;
+        });
+      })(),
+    }));
+    const agent = createAgent({
+      model: {} as never,
+      plugins: [
+        {
+          name: "boundary",
+          toModelMessages(message, context) {
+            contexts.push(context);
+            if (message.role !== "custom" || message.type !== "custom.visible") {
+              return undefined;
+            }
+
+            return { role: "user", content: message.data.text };
+          },
+        },
+      ],
+    });
+    const initial = createCustomMessage("custom.visible", { text: "initial" });
+    const joined = createCustomMessage("custom.visible", { text: "joined" });
+
+    agent.send(initial);
+    await initialStreamStarted;
+    agent.send(joined, { ifBusy: "join" });
+    releaseInitialStream?.();
+    await agent.wait();
+
+    expect(contexts).toHaveLength(3);
+    expect(contexts[0]?.current).toEqual([initial]);
+    expect(contexts[1]?.history).toEqual([initial]);
+    expect(contexts[1]?.current).toEqual([joined]);
+    expect(contexts[2]).toBe(contexts[1]);
+  });
+
+  it("exposes an empty current batch to a later tool step without joins", async () => {
+    const contexts: Array<Parameters<NonNullable<AgentPlugin["toModelMessages"]>>[1]> = [];
+    streamTextMock.mockImplementationOnce((options) => ({
+      fullStream: (async function* () {
+        await options.prepareStep?.({ stepNumber: 1 });
+      })(),
+    }));
+    const agent = createAgent({
+      model: {} as never,
+      plugins: [
+        {
+          name: "boundary",
+          toModelMessages(message, context) {
+            contexts.push(context);
+            if (message.role !== "custom" || message.type !== "custom.visible") {
+              return undefined;
+            }
+
+            return { role: "user", content: message.data.text };
+          },
+        },
+      ],
+    });
+    const initial = createCustomMessage("custom.visible", { text: "initial" });
+
+    agent.send(initial);
+    await agent.wait();
+
+    expect(contexts).toHaveLength(2);
+    expect(contexts[0]?.current).toEqual([initial]);
+    expect(contexts[1]?.history).toEqual([initial]);
+    expect(contexts[1]?.current).toEqual([]);
+  });
+
   it("transforms history before adding current turn messages", async () => {
     const history = [createUserMessage("old")];
     const current = [createUserMessage("current")];

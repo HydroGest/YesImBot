@@ -105,19 +105,23 @@ export async function buildModelMessages(options: {
   history: AgentMessage[];
   current: AgentMessage[];
   pluginHost: PluginHost;
-  context: ModelMessageContext;
+  context: Omit<ModelMessageContext, "history" | "current">;
 }): Promise<ModelMessage[]> {
   const history = await options.pluginHost.helpers.transformMessages(
     options.history,
     options.context,
   );
-
-  const allMessages = [...history, ...options.current];
+  const context: ModelMessageContext = Object.freeze({
+    ...options.context,
+    history: Object.freeze([...history]),
+    current: Object.freeze([...options.current]),
+  });
+  const allMessages = [...context.history, ...context.current];
   const result: ModelMessage[] = [];
 
   for (const message of allMessages) {
     if (message.role === "custom") {
-      const converted = await options.pluginHost.helpers.toModelMessages(message, options.context);
+      const converted = await options.pluginHost.helpers.toModelMessages(message, context);
       if (converted.length > 0) {
         result.push(...(converted as ModelMessage[]));
       }
