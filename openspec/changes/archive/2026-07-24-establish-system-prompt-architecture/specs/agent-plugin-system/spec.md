@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 
-### Requirement: Deprecated Historical Message Transformation
+### Requirement: Historical Message Transformation
 
 `transformMessages` MUST remain implemented for source compatibility and its public declaration MUST be marked deprecated. It MUST continue to operate on historical messages only and MUST NOT receive current turn live messages. Core and new plugins MUST NOT use it. Agents that use this compatibility hook are outside the cache-stable historical projection contract until a later compaction design defines an explicit reset protocol.
 
