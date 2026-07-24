@@ -8,7 +8,7 @@
 - Separates observation from generation: `append()` records a message, `send()` starts a model turn.
 - Runs AI SDK `LanguageModel`s with runtime tools.
 - Emits typed internal events through `agent.channel`.
-- Lets plugins transform messages, project custom messages, extend prompts/tools, and observe turns.
+- Lets plugins contribute stable tools and system blocks, transform messages, project custom messages, and observe turns.
 - Provides optional runtime plugins from `@yesimbot/agent-runtime/plugins`.
 
 ## Install Context
@@ -134,11 +134,11 @@ const agent = createAgent({
 });
 ```
 
-Tool names must be unique after runtime tools, plugin tools, dynamic tool extensions, and the optional terminal tool are merged.
+Tool names must be unique after runtime tools, plugin tools, initialization-only compatibility extensions, and the optional terminal tool are merged.
 
 ## Plugins
 
-Plugins are the main extension boundary. They can provide stable tools, transform appended entries, project custom messages to model messages, extend prompts, adjust the visible tool list per turn, wrap tool calls, and observe turn completion.
+Plugins are the main extension boundary. New plugins provide stable tools through `AgentPlugin.tools` and stable instructions through `appendSystemPrompt`. They can also transform appended entries, project custom messages to model messages, wrap tool calls, and observe turn completion.
 
 ```ts
 import { createAgent, type AgentPlugin } from "@yesimbot/agent-runtime";
@@ -146,8 +146,8 @@ import { createAgent, type AgentPlugin } from "@yesimbot/agent-runtime";
 const plugin: AgentPlugin = {
   name: "example-plugin",
   tools: [echoTool],
-  extendSystemPrompt(prompt) {
-    return `${prompt}\n\nPrefer short answers.`;
+  appendSystemPrompt() {
+    return "Prefer short answers.";
   },
   toModelMessages(message) {
     if (message.role !== "custom" || message.type !== "example.note") {
@@ -168,6 +168,7 @@ const agent = createAgent({
 ```
 
 Plugin order is `enforce: "pre"` first, then normal plugins, then `enforce: "post"`.
+`extendSystemPrompt` and `extendTools` remain deprecated, initialization-only compatibility hooks. New plugins must use `appendSystemPrompt` and `AgentPlugin.tools`; neither compatibility hook runs per turn.
 
 ## Storage
 

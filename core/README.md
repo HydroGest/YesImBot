@@ -14,7 +14,7 @@ The public facade exposes:
 - `model`
 - `registerResolver()`, `registerWill()`, and `registerAgentPlugin()`
 - `channelKey()`, `registerStorage()`, `ensureStorage()`, and `listChannels()`
-- `reset()` and `stop()`
+- `reload(scope)`, `reset()`, and `stop()`
 
 The package root exports `ChannelScope`, `channelKey`, Event contracts,
 `SessionResolver`, `ChannelFilter`, `ChannelRecord`, and Will contracts. Gateway,
@@ -27,11 +27,14 @@ Gateway owns the live Session, Resolver invocation, bounded image freezing, and
 passive `Session.send()`. A failed passive delivery appends one same-channel
 `delivery.failed` Event and does not stop later outputs.
 
-RuntimeManager owns one Runtime entry per Channel Key and coordinates reset,
-global stop, Will generations, and shared-channel assignee handover.
+RuntimeManager owns one Runtime entry per Channel Key and coordinates reload,
+reset, global stop, Will generations, and shared-channel assignee handover.
 ChannelRuntime owns one channel FIFO, Agent, Will, JSONL storage, model stream,
 delivery leases, and delivery-failure completion lane. Runtime modules and
 persisted data never retain a Koishi Session.
+
+`reload(scope)` drains an active runtime for that channel, preserves persisted
+channel data, and recreates the runtime lazily on the next accepted event.
 
 ## Channel Key
 
