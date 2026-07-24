@@ -7,10 +7,7 @@ import { memosConfigSchema } from "./config.js";
 import { deriveMemosIdentity } from "./identity.js";
 import { formatMemosPrompt } from "./prompt.js";
 import { createAddMessageTool } from "./tools/core/add-message.js";
-import {
-  createDebugSearchChannelMemoryTool,
-  createSearchMessageTool,
-} from "./tools/core/search-message.js";
+import { createSearchMessageTool } from "./tools/core/search-message.js";
 import type { MemosChannelType, MemosClientConfig } from "./types.js";
 
 function captureMessageEvent(
@@ -75,23 +72,12 @@ export default class MemosClientPlugin {
     this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((channelContext) => {
       let latestAuthorId = "";
       let latestMessageId: string | undefined;
-      let latestChannelType: MemosChannelType = "group";
-
-      const resolveIdentity = (
-        turnId: string,
-        target?: { channelId?: string; channelType?: MemosChannelType },
-      ) => {
-        const channelType = target?.channelType ?? latestChannelType;
-        const channelScope = {
-          platform: channelContext.channel.platform,
-          selfId: channelContext.channel.selfId,
-          channelId: target?.channelId ?? channelContext.channel.channelId,
-          isDirect: target ? target.channelType === "private" : channelContext.channel.isDirect,
-        };
+      const resolveIdentity = (turnId: string) => {
+        const channelScope = channelContext.channel;
         return deriveMemosIdentity({
           channelScope,
           channelHash: this.ctx.yesimbot.channelKey(channelScope),
-          channelType,
+          channelType: channelScope.isDirect ? "private" : "group",
           authorId: latestAuthorId,
           messageId: latestMessageId,
           turnId,
@@ -116,17 +102,6 @@ export default class MemosClientPlugin {
         }),
       ];
 
-      if (this.config.enableDebugTools) {
-        tools.push(
-          createDebugSearchChannelMemoryTool({
-            client,
-            config: this.config,
-            resolveIdentity,
-            logger: this.logger,
-          }),
-        );
-      }
-
       return {
         name: "memos-client",
         tools,
@@ -136,26 +111,22 @@ export default class MemosClientPlugin {
               continue;
             }
 
-            captureMessageEvent(entry.data, ({ authorId, messageId, channelType }) => {
+            captureMessageEvent(entry.data, ({ authorId, messageId }) => {
               latestAuthorId = authorId;
               latestMessageId = messageId;
-              latestChannelType = channelType;
             });
           }
 
           return entries;
         },
         toModelMessages(message) {
-          captureMessageEvent(message, ({ authorId, messageId, channelType }) => {
+          captureMessageEvent(message, ({ authorId, messageId }) => {
             latestAuthorId = authorId;
             latestMessageId = messageId;
-            latestChannelType = channelType;
           });
           return undefined;
         },
-        appendSystemPrompt: async () => {
-          return formatMemosPrompt();
-        },
+        appendSystemPrompt: () => formatMemosPrompt(),
       } satisfies AgentPlugin;
     });
   }

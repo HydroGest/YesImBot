@@ -2,7 +2,6 @@ import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
 
 import type { MemosCloudClient } from "../../client.js";
 import type {
-  MemosChannelType,
   MemosClientConfig,
   MemosIdentity,
   MemosSearchFilter,
@@ -12,38 +11,30 @@ export interface SearchMessageToolInput {
   query: string;
 }
 
-export interface DebugSearchChannelMemoryToolInput {
-  query: string;
-  channelId: string;
-  channelType?: MemosChannelType;
-}
-
-export interface SearchMessageToolOutput {
-  memories: Array<{
-    content: string;
-    type: "memory" | "preference";
-    id?: string;
-    key?: string;
+export interface SearchMemoryItem {
+  content: string;
+  type: "memory" | "preference";
+  id?: string;
+  key?: string;
+  conversationId?: string;
+  tags?: string[];
+  confidence?: number;
+  relativity?: number;
+  source?: {
+    type?: string;
     conversationId?: string;
     tags?: string[];
-    confidence?: number;
-    relativity?: number;
-    source?: {
-      type?: string;
-      conversationId?: string;
-      tags?: string[];
-    };
-  }>;
-  error?: { code: string; message: string };
+  };
 }
+
+export type SearchMessageToolOutput =
+  | { outcome: "completed"; memories: SearchMemoryItem[] }
+  | { outcome: "failed"; memories: []; error: { code: string; message: string } };
 
 export interface SearchMessageToolOptions {
   client: MemosCloudClient;
   config: MemosClientConfig;
-  resolveIdentity(
-    turnId: string,
-    target?: { channelId?: string; channelType?: MemosChannelType },
-  ): MemosIdentity;
+  resolveIdentity(turnId: string): MemosIdentity;
   logger?: { warn(message: string): void };
 }
 
@@ -147,7 +138,7 @@ async function searchWithIdentity(
     })),
   ].filter((item) => item.content.trim().length > 0);
 
-  return { memories };
+  return { outcome: "completed", memories };
 }
 
 export function createSearchMessageTool(
@@ -175,48 +166,7 @@ export function createSearchMessageTool(
       } catch (error) {
         const message = sanitizeErrorMessage(error, options.config.apiKey);
         options.logger?.warn(`MemOS search failed: ${message}`);
-        return { memories: [], error: { code: "request_failed", message } };
-      }
-    },
-  };
-}
-
-export function createDebugSearchChannelMemoryTool(
-  options: SearchMessageToolOptions,
-): AgentTool<DebugSearchChannelMemoryToolInput, SearchMessageToolOutput> {
-  return {
-    name: "debug_search_channel_memory",
-    description: "Development-only tool for searching another channel's MemOS memory.",
-    inputSchema: jsonSchema<DebugSearchChannelMemoryToolInput>({
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          minLength: 1,
-          description: "Memory search query.",
-        },
-        channelId: {
-          type: "string",
-          minLength: 1,
-          description: "Target platform channel id to search.",
-        },
-        channelType: {
-          type: "string",
-          enum: ["group", "private"],
-          description: "Target channel type. Defaults to the current chat type.",
-        },
-      },
-      required: ["query", "channelId"],
-      additionalProperties: false,
-    }),
-    execute: async ({ query, channelId, channelType }, context) => {
-      try {
-        const identity = options.resolveIdentity(context.turnId, { channelId, channelType });
-        return await searchWithIdentity(options, identity, query);
-      } catch (error) {
-        const message = sanitizeErrorMessage(error, options.config.apiKey);
-        options.logger?.warn(`MemOS debug search failed: ${message}`);
-        return { memories: [], error: { code: "request_failed", message } };
+        return { outcome: "failed", memories: [], error: { code: "request_failed", message } };
       }
     },
   };

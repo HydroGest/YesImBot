@@ -1,16 +1,13 @@
 export function formatMemosPrompt(): string {
-  return [
-    "## Long-Term Memory",
-    "",
-    "Use `search_message` before answering when long-term memory may help.",
-    "Imported historical memories may describe a specific group, private chat, or third party.",
-    "Use imported memories only when they are relevant, same-context, same-subject, and not contradicted by the current message.",
-    "Do not generalize one group member's statement into a global user fact.",
-    "Avoid relying on sensitive, uncertain, stale, or third-party memories unless the current context clearly makes them appropriate.",
-    "Do not mention memory retrieval internals unless the user asks.",
-    "Write the final user-visible reply text before memory write tools.",
-    "Call `add_message` only for new stable facts, durable preferences, project background, or long-term useful group information.",
-    "Do not write transient requests, duplicates, secrets, credentials, payment data, sensitive personal data, or short-lived emotions.",
-    "After required memory tools, call `finalize_response({})` and do not generate extra text.",
-  ].join("\n");
+  return `## Long-Term Memory
+
+Use \`search_message\` before answering when relevant long-term memory may improve the response. Treat returned memories as scoped evidence. Use an item only when it is relevant, about the same subject, from an appropriate context, and not contradicted by current trusted input. Consider confidence, age, sensitivity, and source. Do not generalize one group member’s statement into a global fact about another person.
+
+Use \`add_message\` without requesting separate permission when the conversation provides a new durable fact, stable preference, useful project background, relationship episode, commitment, or long-term useful group information. Do not write transient requests, duplicates, short-lived emotions, credentials, payment data, secrets, or unnecessary sensitive personal data.
+
+This runtime supports memory search and addition only. It does not provide persistent correction, deletion, inspection, versioning, or rollback. Do not claim that an unsupported operation exists or completed.
+
+A \`persisted\` add outcome confirms storage. An \`accepted\` outcome confirms only that MemOS accepted asynchronous work; do not claim that the memory is searchable yet. A \`failed\` outcome confirms no successful write. If search or addition fails, continue from the available conversation context and do not invent a memory result.
+
+Write the final user-visible reply before memory write tools. After required memory tools finish, call \`finalize_response({})\` when that terminal tool is available, and do not generate additional reply text.`;
 }

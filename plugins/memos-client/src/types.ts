@@ -26,7 +26,6 @@ export interface MemosClientConfig {
   asyncMode: boolean;
   tags: string[];
   includeRawIdentityInfo: boolean;
-  enableDebugTools: boolean;
 }
 
 export interface MemosIdentityInput {

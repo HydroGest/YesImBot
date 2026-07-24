@@ -2,10 +2,7 @@ import type { AgentToolExecuteContext } from "@yesimbot/agent-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 import { createAddMessageTool } from "../src/tools/core/add-message.js";
-import {
-  createDebugSearchChannelMemoryTool,
-  createSearchMessageTool,
-} from "../src/tools/core/search-message.js";
+import { createSearchMessageTool } from "../src/tools/core/search-message.js";
 import type { MemosClientConfig, MemosIdentity } from "../src/types.js";
 
 const config: MemosClientConfig = {
@@ -23,7 +20,6 @@ const config: MemosClientConfig = {
   asyncMode: true,
   tags: ["yesimbot", "test"],
   includeRawIdentityInfo: false,
-  enableDebugTools: false,
 };
 
 const identity: MemosIdentity = {
@@ -169,6 +165,7 @@ describe("MemOS tools", () => {
     });
 
     await expect(tool.execute?.({ query: "项目包管理器" }, toolContext())).resolves.toEqual({
+      outcome: "completed",
       memories: [
         {
           id: "mem-1",
@@ -204,63 +201,6 @@ describe("MemOS tools", () => {
     });
   });
 
-  it("constructs debug cross-channel search requests from manual channel id", async () => {
-    const searchMemory = vi.fn<() => Promise<unknown>>(async () => ({
-      code: 0,
-      data: { memory_detail_list: [], preference_detail_list: [] },
-      message: "ok",
-    }));
-    const targetIdentity: MemosIdentity = {
-      ...identity,
-      userId: "yb_subject_target_channel",
-      info: {
-        ...identity.info,
-        subject_hash: "target_subject_hash",
-      },
-    };
-    const resolveIdentity = vi.fn<
-      (
-        turnId: string,
-        target?: { channelId?: string; channelType?: "group" | "private" },
-      ) => MemosIdentity
-    >(() => targetIdentity);
-    const tool = createDebugSearchChannelMemoryTool({
-      client: { searchMemory } as never,
-      config,
-      resolveIdentity,
-    });
-
-    await tool.execute?.(
-      { query: "跨频道记忆", channelId: "target-channel", channelType: "group" },
-      toolContext("turn-debug"),
-    );
-
-    const schema = schemaText(tool.inputSchema);
-    expect(tool.name).toBe("debug_search_channel_memory");
-    expect(schema).toContain("query");
-    expect(schema).toContain("channelId");
-    expect(schema).toContain("channelType");
-    for (const forbidden of ["user_id", "conversation_id", "agent_id", "filter", "apiKey"]) {
-      expect(schema).not.toContain(forbidden);
-    }
-    expect(resolveIdentity).toHaveBeenCalledWith("turn-debug", {
-      channelId: "target-channel",
-      channelType: "group",
-    });
-    expect(searchMemory).toHaveBeenCalledWith({
-      user_id: "yb_subject_target_channel",
-      query: "跨频道记忆",
-      filter: {
-        and: [{ scene: "group_chat" }, { memory_scope: "channel" }],
-      },
-      relativity: 0.67,
-      memory_limit_number: 3,
-      include_preference: true,
-      preference_limit_number: 2,
-    });
-    expect(searchMemory.mock.calls[0]?.[0]).not.toHaveProperty("conversation_id");
-  });
-
   it("fails search open with sanitized structured errors", async () => {
     const warn = vi.fn<(message: string) => void>();
     const tool = createSearchMessageTool({
@@ -277,6 +217,7 @@ describe("MemOS tools", () => {
     const result = await tool.execute?.({ query: "secret" }, toolContext());
 
     expect(result).toEqual({
+      outcome: "failed",
       memories: [],
       error: {
         code: "request_failed",
@@ -340,9 +281,8 @@ describe("MemOS tools", () => {
     await expect(
       tool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext()),
     ).resolves.toEqual({
-      success: true,
+      outcome: "accepted",
       taskId: "task-1",
-      status: "pending",
     });
 
     expect(resolveIdentity).toHaveBeenCalledWith("turn-real");
@@ -361,6 +301,20 @@ describe("MemOS tools", () => {
       async_mode: true,
       source: "yesimbot",
     });
+
+    const synchronousTool = createAddMessageTool({
+      client: { addMessage } as never,
+      config: { ...config, asyncMode: false },
+      resolveIdentity,
+      now: () => new Date("2026-07-05T03:04:05.000Z"),
+    });
+    await expect(
+      synchronousTool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext()),
+    ).resolves.toEqual({
+      outcome: "persisted",
+      taskId: "task-1",
+    });
+    expect(addMessage).toHaveBeenLastCalledWith(expect.objectContaining({ async_mode: false }));
   });
 
   it("fails add open with sanitized structured errors", async () => {
@@ -380,7 +334,7 @@ describe("MemOS tools", () => {
     const result = await tool.execute?.({ content: "remember me" }, toolContext());
 
     expect(result).toEqual({
-      success: false,
+      outcome: "failed",
       error: { code: "request_failed", message: "bad api key [REDACTED]" },
     });
     expect(JSON.stringify(result)).not.toContain("mpg-secret");

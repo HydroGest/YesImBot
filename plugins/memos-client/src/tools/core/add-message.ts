@@ -7,12 +7,9 @@ export interface AddMessageToolInput {
   content: string;
 }
 
-export interface AddMessageToolOutput {
-  success: boolean;
-  taskId?: string;
-  status?: string;
-  error?: { code: string; message: string };
-}
+export type AddMessageToolOutput =
+  | { outcome: "persisted" | "accepted"; taskId?: string }
+  | { outcome: "failed"; error: { code: string; message: string } };
 
 export interface AddMessageToolOptions {
   client: MemosCloudClient;
@@ -73,14 +70,13 @@ export function createAddMessageTool(
         });
 
         return {
-          success: true,
+          outcome: options.config.asyncMode ? "accepted" : "persisted",
           taskId: response.data?.task_id,
-          status: response.data?.status,
         };
       } catch (error) {
         const message = sanitizeErrorMessage(error, options.config.apiKey);
         options.logger?.warn(`MemOS add message failed: ${message}`);
-        return { success: false, error: { code: "request_failed", message } };
+        return { outcome: "failed", error: { code: "request_failed", message } };
       }
     },
   };

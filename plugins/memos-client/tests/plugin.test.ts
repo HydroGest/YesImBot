@@ -75,6 +75,7 @@ vi.mock("koishi-plugin-yesimbot", () => ({
 
 import { deriveMemosIdentity } from "../src/identity.js";
 import MemosClientPlugin from "../src/index.js";
+import { formatMemosPrompt } from "../src/prompt.js";
 
 const config: MemosClientConfig = {
   baseUrl: "https://memos.example/api",
@@ -91,7 +92,6 @@ const config: MemosClientConfig = {
   asyncMode: true,
   tags: ["yesimbot"],
   includeRawIdentityInfo: false,
-  enableDebugTools: false,
 };
 
 function createLogger() {
@@ -192,64 +192,16 @@ describe("MemosClientPlugin", () => {
     const tools = await getTools(runtimePlugin);
 
     expect(tools.map((tool) => tool.name)).toEqual(["search_message", "add_message"]);
-    expect(tools.map((tool) => tool.name)).not.toContain("get_memory");
-    expect(tools.map((tool) => tool.name)).not.toContain("delete_memory");
     const prompt = await runtimePlugin.appendSystemPrompt?.({} as never);
-    const promptText = Array.isArray(prompt) ? prompt.join("\n") : String(prompt ?? "");
-    expect(promptText).toContain("search_message");
-    expect(promptText).toContain("same-subject");
-    expect(promptText).toContain("same-context");
-    expect(promptText).toContain("Imported historical memories");
-    expect(promptText).toContain("Do not generalize one group member's statement");
-    expect(promptText).toContain("add_message");
-    expect(promptText).toContain("finalize_response({})");
-    expect(promptText).not.toContain("mpg-secret");
+    expect(prompt).toBe(formatMemosPrompt());
+    expect(String(prompt)).toContain("persisted");
+    expect(String(prompt)).toContain("accepted");
+    expect(String(prompt)).toContain("does not provide persistent correction, deletion");
+    expect(String(prompt)).not.toContain("debug_search_channel_memory");
 
     await plugin.stop();
 
     expect(dispose).toHaveBeenCalledOnce();
-  });
-
-  it("registers debug cross-channel search only when explicitly enabled", async () => {
-    const { ctx, factories, post } = createContext();
-    const plugin = new MemosClientPlugin(ctx as never, { ...config, enableDebugTools: true });
-
-    await plugin.start();
-
-    const runtimePlugin = factories[0]!(channelContext() as never);
-    const tools = await getTools(runtimePlugin);
-    const debugTool = tools.find((tool) => tool.name === "debug_search_channel_memory");
-
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "search_message",
-      "add_message",
-      "debug_search_channel_memory",
-    ]);
-    expect(debugTool).toBeDefined();
-
-    await debugTool?.execute?.(
-      { query: "历史约定", channelId: "other-group" },
-      toolContext("turn-real"),
-    );
-
-    const expectedIdentity = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "bot-raw",
-        channelId: "other-group",
-        isDirect: false,
-      },
-      channelHash: "63up33lwnwsbbvzkgalypu3dvq",
-      channelType: "group",
-      authorId: "",
-      turnId: "turn-real",
-      memoryScope: "auto",
-      includeRawIdentityInfo: false,
-    });
-    const body = post.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(body.user_id).toBe(expectedIdentity.userId);
-    expect(body.query).toBe("历史约定");
-    expect(body).not.toHaveProperty("conversation_id");
   });
 
   it("updates identity from message Events appended before model projection", async () => {
@@ -341,7 +293,7 @@ describe("MemosClientPlugin", () => {
         isDirect: false,
       },
       channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
-      channelType: "private",
+      channelType: "group",
       authorId: "direct-author",
       messageId: "direct-message",
       turnId: "turn-direct",

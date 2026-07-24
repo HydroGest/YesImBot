@@ -14,7 +14,6 @@ MemOS Cloud long-term memory plugin for yesimbot. It adds `search_message` and `
 - `asyncMode`: defaults to `true`. Async writes may take a few seconds to become searchable.
 - `tags`
 - `includeRawIdentityInfo`: defaults to `false`, so raw platform ids are not sent to MemOS unless you opt in explicitly.
-- `enableDebugTools`: defaults to `false`. When enabled, registers development-only debug tools.
 
 ## Channel identity
 
@@ -31,12 +30,6 @@ deterministic canonical tuples:
 MemOS `user_id`, `conversation_id`, and `agent_id` remain plugin-owned
 identities derived through the plugin's `deriveMemosIdentity` helper. The
 Core Channel Key does not replace those field semantics.
-
-## Development Debug Tools
-
-When `enableDebugTools` is `true`, the plugin also registers `debug_search_channel_memory`. It accepts `query`, `channelId`, and optional `channelType` so developers can search another channel's MemOS subject without exposing raw `user_id`, `conversation_id`, filters, credentials, or MemOS request parameters to the model.
-
-Keep this option disabled outside development or controlled debugging sessions.
 
 ## Local verification without API key
 

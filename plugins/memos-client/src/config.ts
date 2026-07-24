@@ -43,7 +43,4 @@ export const memosConfigSchema: Schema<MemosClientConfig> = Schema.object({
   includeRawIdentityInfo: Schema.boolean()
     .default(false)
     .description("Include raw platform ids in MemOS info"),
-  enableDebugTools: Schema.boolean()
-    .default(false)
-    .description("Register development-only MemOS debug tools"),
 });
