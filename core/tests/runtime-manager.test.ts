@@ -416,7 +416,9 @@ describe("RuntimeManager", () => {
     });
     old?.drainAndStop.mockImplementation(async () => releaseDrain.promise);
 
-    const racing = manager.route(record("room", { message: { id: "message-race", content: "race" } }));
+    const racing = manager.route(
+      record("room", { message: { id: "message-race", content: "race" } }),
+    );
     await handleEntered.promise;
     const reloading = manager.reload({
       platform: "test",

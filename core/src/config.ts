@@ -24,9 +24,9 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description("基础配置"),
   Schema.object({
     will: Schema.object({
-      direct: Schema.union(["wait", "trigger"]),
-      mention: Schema.union(["wait", "trigger"]),
-      group: Schema.union(["wait", "trigger"]),
+      direct: Schema.union(["wait", "trigger"]).default("trigger"),
+      mention: Schema.union(["wait", "trigger"]).default("trigger"),
+      group: Schema.union(["wait", "trigger"]).default("wait"),
     }),
   }).description("消息路由"),
 ]) as Schema<Config>;

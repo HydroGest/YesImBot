@@ -287,11 +287,15 @@ describe("system prompt resolution", () => {
       },
       { role: "system", content: "plugin prompt" },
     ]);
-    expect(streamTextMock.mock.calls[1]![0].system).toEqual(streamTextMock.mock.calls[0]![0].system);
+    expect(streamTextMock.mock.calls[1]![0].system).toEqual(
+      streamTextMock.mock.calls[0]![0].system,
+    );
     const firstMessages = streamTextMock.mock.calls[0]![0].messages;
     const secondMessages = streamTextMock.mock.calls[1]![0].messages;
     expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages);
-    expect(secondMessages.at(-1)).toEqual(expect.objectContaining({ role: "user", content: "second" }));
+    expect(secondMessages.at(-1)).toEqual(
+      expect.objectContaining({ role: "user", content: "second" }),
+    );
   });
 
   it("snapshots configured and plugin system blocks for later model calls", async () => {

@@ -5,9 +5,6 @@ import type { EventRecord, ResolveContext, SessionResolver } from "koishi-plugin
 import { resolveOneBotEvent } from "./events.js";
 import { freezeOneBotImages } from "./image.js";
 
-export const name = "yesimbot-platform-onebot";
-export const inject = ["yesimbot"];
-
 export function createResolver(ctx: Context): SessionResolver {
   return {
     platform: "onebot",
@@ -31,7 +28,7 @@ async function resolveOneBotMessage({
 }): Promise<EventRecord<"message">> {
   const elements = await freezeOneBotImages(
     ctx,
-    ((base.message as { elements?: readonly Element[] }).elements ?? []) as readonly Element[],
+    (base.message.elements ?? []) as readonly Element[],
     freezeImage,
   );
   const content = elements.map((element) => element.toString()).join("");
@@ -40,11 +37,6 @@ async function resolveOneBotMessage({
     message: { ...base.message, content, elements },
     content,
   } as EventRecord<"message">;
-}
-
-export function apply(ctx: Context): void {
-  const dispose = ctx.yesimbot.registerResolver(createResolver(ctx));
-  ctx.on("dispose", dispose);
 }
 
 export { resolveOneBotEvent } from "./events.js";

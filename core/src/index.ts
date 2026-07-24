@@ -1,7 +1,8 @@
 import { Context } from "koishi";
 
 import type { Config } from "./config.js";
-import { ModelService } from "./model/service.js";
+import { ModelService } from "./model/index.js";
+import { Platform } from "./platforms/index.js";
 import { YesImBotService } from "./service.js";
 
 export const name = "yesimbot";
@@ -12,11 +13,13 @@ export { Config } from "./config.js";
 export { channelKey, type ChannelScope } from "./channel/index.js";
 export * from "./event/index.js";
 export type { ResolveContext, SessionResolver } from "./gateway/index.js";
-export { YesImBotService, type AgentPluginFactory } from "./service.js";
+export type { AgentPluginFactory } from "./runtime/index.js";
+export type { YesImBotService } from "./service.js";
 export type { ChannelFilter, ChannelRecord } from "./storage/index.js";
 export { DefaultWill, type Will, type WillObservation } from "./will/index.js";
 
 export function apply(ctx: Context, config: Config) {
   ctx.plugin(ModelService, config);
   ctx.plugin(YesImBotService, config);
+  ctx.plugin(Platform, config);
 }

@@ -1,4 +1,5 @@
 import { Context, h, Logger, type Awaitable, type Element, type Session, Universal } from "koishi";
+import { set } from "zod/v4";
 
 import type { ChannelScope } from "../channel/index.js";
 import type { EventRecord } from "../event/index.js";
@@ -42,11 +43,16 @@ export class Gateway {
   constructor(private readonly opts: GatewayOptions) {
     const middleware = opts.ctx.middleware(async (session, next) => {
       try {
+        await new Promise((resolve, _reject) => {
+          setImmediate(() => {
+            resolve(0);
+          });
+        });
         await this.handle(session);
       } finally {
         await next();
       }
-    }, true);
+    });
     if (typeof middleware === "function") this.disposers.push(middleware as () => unknown);
 
     const internal = opts.ctx.on("internal/session", (session) => {

@@ -1,7 +1,4 @@
-import type {
-  LanguageModelV3FinishReason,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3FinishReason, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import type { LanguageModelV3, LanguageModelV3CallOptions } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -145,7 +142,12 @@ describe("tools", () => {
     const pluginExecute = async () => "plugin";
     const legacyExecute = async () => "legacy";
     const terminalExecute = async () => "terminal";
-    const base = { name: "base", description: "base original", inputSchema: z.object({}), execute: baseExecute };
+    const base = {
+      name: "base",
+      description: "base original",
+      inputSchema: z.object({}),
+      execute: baseExecute,
+    };
     const plugin = {
       name: "plugin",
       description: "plugin original",
@@ -252,10 +254,13 @@ describe("tools", () => {
 
   it("resolves deprecated tool extensions once and reuses the frozen registry", async () => {
     const model = createToolModel();
-    const extend = vi.fn((tools) => [
-      ...tools,
-      { name: "legacy", inputSchema: z.object({}), execute: async () => "legacy" },
-    ] as never);
+    const extend = vi.fn(
+      (tools) =>
+        [
+          ...tools,
+          { name: "legacy", inputSchema: z.object({}), execute: async () => "legacy" },
+        ] as never,
+    );
     const agent = createAgent({
       model,
       tools: [{ name: "base", inputSchema: z.object({}), execute: async () => "base" } as never],
@@ -600,7 +605,6 @@ describe("tools", () => {
     expect(agent.isIdle()).toBe(true);
     expect(pluginErrors).toContain("broken-observer:observer boom");
   });
-
 });
 
 function createObservedToolModel() {

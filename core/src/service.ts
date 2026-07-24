@@ -13,8 +13,6 @@ import { assertAssignee } from "./shared/assignee.js";
 import { ChannelStorage, type ChannelFilter, type ChannelRecord } from "./storage/index.js";
 import { DefaultWill, type Will } from "./will/index.js";
 
-export type { AgentPluginFactory } from "./runtime/manager.js";
-
 declare module "koishi" {
   interface Context {
     yesimbot: YesImBotService;

@@ -1,11 +1,7 @@
 import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
 
 import type { MemosCloudClient } from "../../client.js";
-import type {
-  MemosClientConfig,
-  MemosIdentity,
-  MemosSearchFilter,
-} from "../../types.js";
+import type { MemosClientConfig, MemosIdentity, MemosSearchFilter } from "../../types.js";
 
 export interface SearchMessageToolInput {
   query: string;

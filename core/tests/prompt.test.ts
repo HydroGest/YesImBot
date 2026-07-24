@@ -5,9 +5,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ChannelScope } from "../src/channel/index.js";
-import { CORE_CONSTITUTION, CORE_CONSTITUTION_VERSION } from "../src/runtime/prompts/constitution.js";
-import { DEFAULT_ATHENA_PERSONA } from "../src/runtime/prompts/athena.js";
 import { buildCoreSystemPrompt } from "../src/runtime/prompt.js";
+import { DEFAULT_ATHENA_PERSONA } from "../src/runtime/prompts/athena.js";
+import {
+  CORE_CONSTITUTION,
+  CORE_CONSTITUTION_VERSION,
+} from "../src/runtime/prompts/constitution.js";
 
 const roots: string[] = [];
 const scope = {

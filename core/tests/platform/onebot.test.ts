@@ -1,16 +1,83 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { h, type Element } from "koishi";
-import type { ResolveContext } from "koishi-plugin-yesimbot";
+import { mkdtemp, rm, writeFile } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+import { pathToFileURL } from "url";
 
-import { freezeOneBotImages } from "../src/image.js";
+import { h, type Session, type Element } from "koishi";
+import { EventRecord, ResolveContext } from "koishi-plugin-yesimbot";
+
+import { resolveOneBotEvent } from "../../src/platforms/onebot/events.js";
+import { freezeOneBotImages } from "../../src/platforms/onebot/image.js";
+import { createResolver } from "../../src/platforms/onebot/index.js";
+
+function makeSession(onebot: Record<string, unknown> = {}): Session {
+  return {
+    platform: "onebot",
+    selfId: "10000",
+    channelId: "20000",
+    userId: "30000",
+    timestamp: 1,
+    event: {},
+    onebot,
+  } as unknown as Session;
+}
+
+describe("resolveOneBotEvent", () => {
+  it("produces a typed reaction event from a valid reactions-updated notice", () => {
+    const result = resolveOneBotEvent(
+      makeSession({
+        post_type: "notice",
+        notice_type: "message_reactions_updated",
+        group_id: "20000",
+        message_id: "40000",
+        user_id: "30000",
+        reactions: [{ emoji_id: "100", emoji_type: "1", count: 5 }],
+      }),
+    );
+
+    expect(result).toMatchObject({
+      type: "onebot.message-reactions-updated",
+      platform: "onebot",
+      selfId: "10000",
+      channel: { id: "20000" },
+      reaction: {
+        messageId: "40000",
+        userId: "30000",
+        reactions: [{ id: "100", type: "1", count: 5 }],
+      },
+    });
+    expect(result).not.toHaveProperty("content");
+  });
+
+  it.each([
+    {},
+    { post_type: "notice", notice_type: "group_increase" },
+    { post_type: "notice", notice_type: "message_reactions_updated", group_id: "20000" },
+  ])("returns null for unsupported or incomplete input", (onebot) => {
+    expect(resolveOneBotEvent(makeSession(onebot))).toBeNull();
+  });
+
+  it("preserves numeric protocol identifiers and zero reaction counts", () => {
+    const result = resolveOneBotEvent(
+      makeSession({
+        post_type: "notice",
+        notice_type: "message_reactions_updated",
+        group_id: 20000,
+        message_id: 40000,
+        user_id: 30000,
+        reactions: [{ emoji_id: 100, emoji_type: 1, count: 0 }],
+      }),
+    );
+    expect(result?.reaction).toMatchObject({
+      messageId: "40000",
+      reactions: [{ id: "100", count: 0 }],
+    });
+  });
+});
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
@@ -177,5 +244,84 @@ describe("freezeOneBotImages", () => {
     ).resolves.toEqual(elements);
     expect(file).not.toHaveBeenCalled();
     expect(freezeImage).not.toHaveBeenCalled();
+  });
+});
+
+function messageBase(): Omit<EventRecord<"message">, "content"> {
+  return {
+    type: "message",
+    platform: "onebot",
+    selfId: "bot",
+    timestamp: 1,
+    channel: { id: "room", type: 0, name: "room" },
+    user: { id: "user", name: "Alice" },
+    member: { nick: "Alice" },
+    guild: { id: "guild", name: "Guild" },
+    message: { id: "message", content: "hello", elements: [h.text("hello")] },
+  } as Omit<EventRecord<"message">, "content">;
+}
+
+function context(overrides: Partial<ResolveContext> = {}): ResolveContext {
+  return {
+    session: { platform: "onebot", selfId: "bot", event: { type: "message" } } as Session,
+    base: messageBase(),
+    freezeImage: vi.fn(async (element) => element),
+    ...overrides,
+  };
+}
+
+describe("createResolver", () => {
+  it("preserves the complete generic message base while freezing OneBot images", async () => {
+    const resolver = createResolver({ http: { file: vi.fn() } } as never);
+    const base = messageBase();
+    const result = await resolver.resolve(context({ base }));
+
+    expect(result).toMatchObject({
+      type: "message",
+      channel: base.channel,
+      user: base.user,
+      member: base.member,
+      guild: base.guild,
+      message: { id: base.message.id, elements: [h.text("hello")] },
+    });
+    expect(result?.content).toBe("hello");
+  });
+
+  it("resolves a supported notice before considering the optional message base", async () => {
+    const resolver = createResolver({ http: { file: vi.fn() } } as never);
+    const result = await resolver.resolve(
+      context({
+        session: {
+          platform: "onebot",
+          selfId: "bot",
+          event: { type: "message" },
+          onebot: {
+            post_type: "notice",
+            notice_type: "message_reactions_updated",
+            group_id: "room",
+            message_id: "message",
+            user_id: "user",
+            reactions: [],
+          },
+        } as unknown as Session,
+      }),
+    );
+
+    expect(result).toMatchObject({
+      type: "onebot.message-reactions-updated",
+      channel: { id: "room" },
+    });
+  });
+
+  it("returns null for an unsupported non-message session", async () => {
+    const resolver = createResolver({ http: { file: vi.fn() } } as never);
+    await expect(
+      resolver.resolve(
+        context({
+          session: { platform: "onebot", selfId: "bot", event: {} } as Session,
+          base: undefined,
+        }),
+      ),
+    ).resolves.toBeNull();
   });
 });

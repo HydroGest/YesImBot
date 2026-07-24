@@ -50,7 +50,6 @@ export interface PluginHostHelpers {
   onTurnFinish(result: TurnResult, context: TurnFinishContext): Promise<void>;
 }
 
-
 export interface PluginHostInitOptions {
   legacySystemPrompt?: string;
   baseTools?: AgentToolSet;
@@ -182,7 +181,6 @@ export function createPluginHost(options: {
 
       return [];
     },
-
 
     async beforeToolCall(decision, call, context) {
       let currentDecision = decision;

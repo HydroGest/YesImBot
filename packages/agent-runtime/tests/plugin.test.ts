@@ -111,7 +111,11 @@ describe("plugin host", () => {
     const host = createPluginHost({
       runtime: createRuntime(),
       plugins: [
-        { name: "first", init: () => void calls.push("init:first"), stop: () => void calls.push("stop:first") },
+        {
+          name: "first",
+          init: () => void calls.push("init:first"),
+          stop: () => void calls.push("stop:first"),
+        },
         {
           name: "broken",
           init: () => calls.push("init:broken"),
