@@ -51,8 +51,6 @@ for await (const event of agent.run(createUserMessage("hello"))) {
 | `run(message, options?)`  | Enqueues a turn and returns a turn-scoped async event stream.             |
 | `wait(options?)`          | Resolves when no turn is active or queued; returns `void`.                |
 | `interrupt(reason?)`      | Aborts the active turn, if any.                                           |
-| `setTools(tools)`         | Replaces runtime-level tools.                                             |
-| `setModel(model)`         | Replaces the active model.                                                |
 | `clear()`                 | Clears storage.                                                           |
 | `stop()`                  | Stops active plugins and emits `agent.stop`.                              |
 
