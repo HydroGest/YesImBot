@@ -127,6 +127,48 @@ describe("plugin host", () => {
     expect(calls).toEqual(["init:first", "init:broken", "stop:broken", "stop:first"]);
   });
 
+  it("continues required-plugin rollback after cleanup failures and preserves the resource error", async () => {
+    const calls: string[] = [];
+    const primaryError = new Error("stable resource failed");
+    const host = createPluginHost({
+      runtime: createRuntime(),
+      plugins: [
+        {
+          name: "first",
+          init: () => void calls.push("init:first"),
+          stop: () => void calls.push("stop:first"),
+        },
+        {
+          name: "intermediate",
+          init: () => void calls.push("init:intermediate"),
+          stop: () => {
+            calls.push("stop:intermediate");
+            throw new Error("cleanup failed");
+          },
+        },
+        {
+          name: "broken",
+          init: () => void calls.push("init:broken"),
+          appendSystemPrompt: () => {
+            throw primaryError;
+          },
+          stop: () => void calls.push("stop:broken"),
+        },
+      ],
+    });
+
+    await expect(host.init()).rejects.toBe(primaryError);
+    expect(calls).toEqual([
+      "init:first",
+      "init:intermediate",
+      "init:broken",
+      "stop:broken",
+      "stop:intermediate",
+      "stop:first",
+    ]);
+    expect(host.activePlugins).toEqual([]);
+  });
+
   it("disables an optional plugin without retaining partial resources", async () => {
     const runtime = createRuntime();
     const disabled: string[] = [];

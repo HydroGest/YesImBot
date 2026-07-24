@@ -44,7 +44,7 @@ export function mergeTools(toolSets: readonly AgentToolSet[]): AgentToolSet {
         throw new ToolConflictError(tool.name);
       }
       seen.add(tool.name);
-      merged.push(tool);
+      merged.push({ ...tool });
     }
   }
 

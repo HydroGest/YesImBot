@@ -71,7 +71,15 @@ export interface PluginHost {
 export function normalizeSystemPromptAppend(value: SystemPromptAppend): SystemModelMessage[] {
   const blocks = Array.isArray(value) ? value : [value];
   return blocks.map((block) =>
-    typeof block === "string" ? { role: "system", content: block } : block,
+    typeof block === "string"
+      ? { role: "system", content: block }
+      : {
+          ...block,
+          content: structuredClone(block.content),
+          ...(block.providerOptions === undefined
+            ? {}
+            : { providerOptions: structuredClone(block.providerOptions) }),
+        },
   );
 }
 export function createPluginHost(options: {
@@ -95,6 +103,29 @@ export function createPluginHost(options: {
       plugin: pluginName,
       error: createDiagnostic(error),
     });
+  };
+
+  const stopPlugin = async (plugin: AgentPlugin) => {
+    try {
+      await plugin.stop?.();
+    } catch (error) {
+      emitPluginError(plugin.name, error);
+    }
+  };
+
+  const rollbackPlugins = async (currentPlugin?: AgentPlugin) => {
+    const pluginsToStop = currentPlugin
+      ? [currentPlugin, ...[...activePlugins].reverse()]
+      : [...activePlugins].reverse();
+
+    for (const plugin of pluginsToStop) {
+      await stopPlugin(plugin);
+    }
+
+    activePlugins.length = 0;
+    stableTools.length = 0;
+    stablePromptBlocks.length = 0;
+    stableLegacySystemPrompt = undefined;
   };
 
   const helpers: PluginHostHelpers = {
@@ -280,7 +311,9 @@ export function createPluginHost(options: {
           nextTools = candidateTools;
           nextBlocks.push(...candidateBlocks);
         } catch (error) {
-          if (didStartPlugin) await Promise.resolve(plugin.stop?.()).catch(() => undefined);
+          if (didStartPlugin && plugin.optional) {
+            await stopPlugin(plugin);
+          }
           if (plugin.optional) {
             emitInternal({
               type: "plugin.disabled",
@@ -289,8 +322,7 @@ export function createPluginHost(options: {
             });
             continue;
           }
-          for (const initialized of [...activePlugins].reverse()) await initialized.stop?.();
-          activePlugins.length = 0;
+          await rollbackPlugins(didStartPlugin ? plugin : undefined);
           throw error;
         }
       }
@@ -300,12 +332,7 @@ export function createPluginHost(options: {
       try {
         stableTools.push(...mergeTools([nextTools, initOptions.terminalTools ?? []]));
       } catch (error) {
-        await Promise.allSettled(
-          [...activePlugins].reverse().map((plugin) => Promise.resolve(plugin.stop?.())),
-        );
-        activePlugins.length = 0;
-        stablePromptBlocks.length = 0;
-        stableLegacySystemPrompt = undefined;
+        await rollbackPlugins();
         throw error;
       }
       didInit = true;

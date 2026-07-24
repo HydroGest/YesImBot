@@ -294,6 +294,60 @@ describe("system prompt resolution", () => {
     expect(secondMessages.at(-1)).toEqual(expect.objectContaining({ role: "user", content: "second" }));
   });
 
+  it("snapshots configured and plugin system blocks for later model calls", async () => {
+    const configuredBlock = {
+      role: "system" as const,
+      content: "configured-original",
+      providerOptions: { mock: { cache: "configured-original" } },
+    };
+    const pluginBlock = {
+      role: "system" as const,
+      content: "plugin-original",
+      providerOptions: { mock: { cache: "plugin-original" } },
+    };
+    const agent = createAgent({
+      model: {} as never,
+      systemPrompt: [configuredBlock],
+      plugins: [{ name: "stable", appendSystemPrompt: () => pluginBlock }],
+    });
+
+    agent.send(createUserMessage("first"));
+    await agent.wait();
+    configuredBlock.content = "configured-mutated";
+    configuredBlock.providerOptions.mock.cache = "configured-mutated";
+    pluginBlock.content = "plugin-mutated";
+    pluginBlock.providerOptions.mock.cache = "plugin-mutated";
+    agent.send(createUserMessage("second"));
+    await agent.wait();
+
+    expect(streamTextMock.mock.calls.map(([call]) => call.system)).toEqual([
+      [
+        {
+          role: "system",
+          content: "configured-original",
+          providerOptions: { mock: { cache: "configured-original" } },
+        },
+        {
+          role: "system",
+          content: "plugin-original",
+          providerOptions: { mock: { cache: "plugin-original" } },
+        },
+      ],
+      [
+        {
+          role: "system",
+          content: "configured-original",
+          providerOptions: { mock: { cache: "configured-original" } },
+        },
+        {
+          role: "system",
+          content: "plugin-original",
+          providerOptions: { mock: { cache: "plugin-original" } },
+        },
+      ],
+    ]);
+  });
+
   it("runs the deprecated string reducer once for a legacy string prompt", async () => {
     const legacy = vi.fn((prompt: string) => `${prompt}\nlegacy`);
     const agent = createAgent({

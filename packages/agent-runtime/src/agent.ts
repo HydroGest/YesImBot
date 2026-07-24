@@ -292,9 +292,10 @@ export function createAgent(config: AgentConfig): Agent {
 
     for (const tool of merged) {
       const toolName = tool.name;
+      const execute = tool.execute;
       const wrappedTool: AgentTool = {
         ...tool,
-        execute: tool.execute
+        execute: execute
           ? async (input, options) => {
               const run = serial.then(async () => {
                 const hookContext: ToolHookContext = {
@@ -347,7 +348,7 @@ export function createAgent(config: AgentConfig): Agent {
                     abortSignal: hookContext.signal,
                   };
                   const output = await raceAbort(
-                    Promise.resolve(tool.execute?.(nextInput, executeContext)),
+                    Promise.resolve(execute(nextInput, executeContext)),
                     hookContext.signal,
                   );
                   throwIfAborted(hookContext.signal);

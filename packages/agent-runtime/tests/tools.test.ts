@@ -140,6 +140,59 @@ describe("tools", () => {
     ).toThrow(ToolConflictError);
   });
 
+  it("copies descriptors from every stable tool source", () => {
+    const baseExecute = async () => "base";
+    const pluginExecute = async () => "plugin";
+    const legacyExecute = async () => "legacy";
+    const terminalExecute = async () => "terminal";
+    const base = { name: "base", description: "base original", inputSchema: z.object({}), execute: baseExecute };
+    const plugin = {
+      name: "plugin",
+      description: "plugin original",
+      inputSchema: z.object({}),
+      execute: pluginExecute,
+    };
+    const legacy = {
+      name: "legacy",
+      description: "legacy original",
+      inputSchema: z.object({}),
+      execute: legacyExecute,
+    };
+    const terminal = {
+      name: "terminal",
+      description: "terminal original",
+      inputSchema: z.object({}),
+      execute: terminalExecute,
+    };
+    const merged = mergeTools([[base], [plugin], [legacy], [terminal]]);
+
+    base.name = "base mutated";
+    base.description = "base mutated";
+    base.execute = async () => "base mutated";
+    plugin.name = "plugin mutated";
+    plugin.description = "plugin mutated";
+    plugin.execute = async () => "plugin mutated";
+    legacy.name = "legacy mutated";
+    legacy.description = "legacy mutated";
+    legacy.execute = async () => "legacy mutated";
+    terminal.name = "terminal mutated";
+    terminal.description = "terminal mutated";
+    terminal.execute = async () => "terminal mutated";
+
+    expect(merged.map(({ name, description }) => ({ name, description }))).toEqual([
+      { name: "base", description: "base original" },
+      { name: "plugin", description: "plugin original" },
+      { name: "legacy", description: "legacy original" },
+      { name: "terminal", description: "terminal original" },
+    ]);
+    expect(merged.map((tool) => tool.execute)).toEqual([
+      baseExecute,
+      pluginExecute,
+      legacyExecute,
+      terminalExecute,
+    ]);
+  });
+
   it("throws when plugins extend tools with a duplicate name", async () => {
     const model = createToolModel();
     const agent = createAgent({
@@ -287,6 +340,34 @@ describe("tools", () => {
         hasSignal: true,
       },
     ]);
+  });
+
+  it("uses the initialized tool name, description, and execute function after caller mutation", async () => {
+    const model = createSingleToolCallModel();
+    const executions: string[] = [];
+    const tool = {
+      name: "inspect",
+      description: "inspect original",
+      inputSchema: z.object({}),
+      execute: async () => {
+        executions.push("original");
+        return "original";
+      },
+    };
+    const agent = createAgent({ model, tools: [tool] });
+
+    await agent.init();
+    tool.name = "inspect_mutated";
+    tool.description = "inspect mutated";
+    tool.execute = async () => {
+      executions.push("mutated");
+      return "mutated";
+    };
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    expect(model.observedToolNames).toEqual([["inspect"], ["inspect"]]);
+    expect(executions).toEqual(["original"]);
   });
 
   it("extends the prior provider prompt during a tool loop", async () => {
