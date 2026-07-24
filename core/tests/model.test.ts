@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,7 +9,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import * as modelConfig from "../src/model/config.js";
 import { ModelService } from "../src/model/service.js";
-import type { ModelProvider } from "../src/model/types.js";
+import type { ChatModelModality, ModelProvider } from "../src/model/types.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -32,13 +32,34 @@ function createProvider(): ModelProvider {
   };
 }
 
-async function createModelService(models: unknown, basePath?: string): Promise<ModelService> {
+function createProviderWithImage(): ModelProvider {
+  return {
+    id: "openai",
+    capabilities: { chat: true, embedding: true },
+    chatModels: () => [
+      {
+        id: "gpt-4o",
+        name: "GPT-4o",
+        modalities: { input: ["image" as ChatModelModality] },
+      },
+    ],
+    embeddingModels: () => [{ id: "text-embedding-3-small", dimension: 1536 }],
+    chat: () => ({}) as never,
+    embedding: () => ({}) as never,
+  };
+}
+
+async function createModelService(
+  models: unknown,
+  basePath?: string,
+  provider?: ModelProvider,
+): Promise<ModelService> {
   const directory = basePath ?? (await createModelsPath(models)).slice(0, -"/models.json".length);
   const ctx = new Context();
   ctx.baseDir = "/";
   const service = new ModelService(ctx as never, { basePath: directory });
   await service.start();
-  service.register(createProvider());
+  service.register(provider ?? createProvider());
   return service;
 }
 
@@ -183,5 +204,35 @@ describe("models.json modalities", () => {
       context: 8000,
       output: 2000,
     });
+  });
+
+  it("does not expose provider-declared image modalities without a models.json override", async () => {
+    const path = await createModelsPath({});
+    const service = await createModelService(
+      JSON.parse(await readFile(path, "utf8")),
+      path.slice(0, -"/models.json".length),
+      createProviderWithImage(),
+    );
+
+    expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toBeUndefined();
+  });
+
+  it("rejects addChatModelInputModality and preserves state when atomic write fails", async () => {
+    const models = { chat: { "openai:gpt-4o": { name: "GPT-4o" } } };
+    const path = await createModelsPath(models);
+    const service = await createModelService(
+      models,
+      path.slice(0, -"/models.json".length),
+    );
+
+    expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toBeUndefined();
+
+    await unlink(path);
+    await mkdir(path);
+
+    await expect(service.addChatModelInputModality("openai:gpt-4o", "image")).rejects.toThrow();
+
+    expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toBeUndefined();
+    expect(service.resolveChatModel("openai:gpt-4o").entry.name).toBe("GPT-4o");
   });
 });

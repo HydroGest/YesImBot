@@ -149,11 +149,14 @@ export class ModelService extends Service<ModelServiceConfig> {
       if (provider.capabilities.chat) {
         for (const config of provider.chatModels()) {
           const fullId = formatModelId(provider.id, config.id);
+          const cloned = cloneChatModelConfig(config);
+          // Strip provider modalities: only models.json overrides own this field.
+          cloned.modalities = undefined;
           this.chatModels.set(fullId, {
             fullId,
             providerId: provider.id,
             modelId: config.id,
-            config: cloneChatModelConfig(config),
+            config: cloned,
           });
         }
       }
