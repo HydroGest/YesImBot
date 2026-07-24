@@ -23,6 +23,12 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/runtime/channel.js", () => ({
+  ChannelRuntimeDrainingError: class ChannelRuntimeDrainingError extends Error {
+    constructor() {
+      super("Channel runtime is draining");
+      this.name = "ChannelRuntimeDrainingError";
+    }
+  },
   ChannelRuntime: class {
     readonly init = vi.fn(async () => {
       const next = state.nextInit;
@@ -45,6 +51,7 @@ vi.mock("../src/runtime/channel.js", () => ({
 
 import type { ChannelScope } from "../src/channel/index.js";
 import type { EventRecord } from "../src/event/index.js";
+import { ChannelRuntimeDrainingError } from "../src/runtime/channel.js";
 import { RuntimeManager } from "../src/runtime/manager.js";
 import { ChannelStorage } from "../src/storage/index.js";
 import type { Will } from "../src/will/index.js";
@@ -310,6 +317,122 @@ describe("RuntimeManager", () => {
     expect(state.runtimes).toHaveLength(0);
     expect(assets.clear).toHaveBeenCalledWith(scope);
     await expect(access(storagePath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("reloads an active runtime without clearing persisted channel data", async () => {
+    const basePath = await mkdtemp(join(tmpdir(), "yesimbot-reload-"));
+    const { manager, assets, storage } = createManager(basePath);
+    storage.register("workspace");
+    storage.register("custom");
+    const scope = {
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room",
+      isDirect: false,
+    } satisfies ChannelScope;
+    const persistedFiles = await Promise.all([
+      storage.ensure(scope, "sessions", "messages.jsonl"),
+      storage.ensure(scope, "assets", "asset.bin"),
+      storage.ensure(scope, "workspace", "state.txt"),
+      storage.ensure(scope, "custom", "state.json"),
+    ]);
+    await Promise.all(persistedFiles.map((path) => writeFile(path, "keep")));
+
+    await manager.route(record("room"));
+    const old = state.runtimes[0];
+    await manager.reload(scope);
+
+    expect(old?.beginDrain).toHaveBeenCalledOnce();
+    expect(old?.drainAndStop).toHaveBeenCalledOnce();
+    expect(old?.reset).not.toHaveBeenCalled();
+    expect(assets.clear).not.toHaveBeenCalled();
+    for (const path of persistedFiles) await expect(access(path)).resolves.toBeUndefined();
+    expect(storage.list()).toHaveLength(1);
+    expect(state.runtimes).toHaveLength(1);
+
+    await manager.route(record("room", { message: { id: "message-2", content: "again" } }));
+    expect(state.runtimes).toHaveLength(2);
+    expect(state.runtimes[1]?.init).toHaveBeenCalledOnce();
+  });
+
+  it("validates an uncached reload without creating a runtime", async () => {
+    const { manager, database, resolveChatModel } = createManager();
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false };
+
+    await manager.reload(scope);
+
+    expect(database.get).toHaveBeenCalled();
+    expect(resolveChatModel).not.toHaveBeenCalled();
+    expect(state.runtimes).toHaveLength(0);
+  });
+
+  it("coalesces concurrent reload calls for one draining generation", async () => {
+    const { manager } = createManager();
+    await manager.route(record("room"));
+    const old = state.runtimes[0];
+    const drain = deferred<void>();
+    old?.drainAndStop.mockImplementation(async () => drain.promise);
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false };
+
+    const first = manager.reload(scope);
+    const second = manager.reload(scope);
+    await vi.waitFor(() => expect(old?.beginDrain).toHaveBeenCalledOnce());
+    drain.resolve();
+    await Promise.all([first, second]);
+
+    expect(old?.drainAndStop).toHaveBeenCalledOnce();
+  });
+
+  it("remains fail closed when reload cannot drain the old runtime", async () => {
+    const { manager } = createManager();
+    const scope = {
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room",
+      isDirect: false,
+    } satisfies ChannelScope;
+    await manager.route(record("room"));
+    const old = state.runtimes[0];
+    old?.drainAndStop.mockRejectedValueOnce(new Error("drain failed"));
+
+    await expect(manager.reload(scope)).rejects.toThrow("drain failed");
+    await expect(manager.route(record("room"))).rejects.toThrow(
+      "Channel handover failed; restart required",
+    );
+    expect(state.runtimes).toHaveLength(1);
+  });
+
+  it("retries an event that races with reload through bounded handover", async () => {
+    const { manager } = createManager();
+    await manager.route(record("room"));
+    const old = state.runtimes[0];
+    const handleEntered = deferred<void>();
+    const releaseHandle = deferred<void>();
+    const releaseDrain = deferred<void>();
+    old?.handle.mockImplementationOnce(async () => {
+      handleEntered.resolve();
+      await releaseHandle.promise;
+      throw new ChannelRuntimeDrainingError();
+    });
+    old?.drainAndStop.mockImplementation(async () => releaseDrain.promise);
+
+    const racing = manager.route(record("room", { message: { id: "message-race", content: "race" } }));
+    await handleEntered.promise;
+    const reloading = manager.reload({
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room",
+      isDirect: false,
+    });
+    await vi.waitFor(() => expect(old?.beginDrain).toHaveBeenCalledOnce());
+    releaseHandle.resolve();
+    releaseDrain.resolve();
+
+    await Promise.all([racing, reloading]);
+    expect(state.runtimes).toHaveLength(2);
+    expect(state.runtimes[1]?.handle).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.objectContaining({ id: "message-race" }) }),
+    );
   });
 
   it("preserves channel metadata and registered namespaces when resetting uncached storage", async () => {

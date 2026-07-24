@@ -8,7 +8,7 @@ import type { AssetStore } from "../shared/asset.js";
 import { assertAssignee } from "../shared/assignee.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { DefaultWill, type Will } from "../will/index.js";
-import { ChannelRuntime } from "./channel.js";
+import { ChannelRuntime, ChannelRuntimeDrainingError } from "./channel.js";
 import { createJsonlStorage } from "./storage.js";
 
 export interface RuntimeManagerOptions {
@@ -50,18 +50,24 @@ export class RuntimeManager {
     this.assertOpen();
     const scope = fromEvent(record);
     if (!scope) throw new Error("Accepted event requires a channel");
-    const runtime = await this.getOrCreate(scope);
-    this.assertOpen();
-    const result = await runtime.handle(record);
-    if (result.kind !== "run") return result;
-    const release = runtime.acquireDeliveryLease();
-    return {
-      ...result,
-      delivery: {
-        fail: (failure) => runtime.handleInternal(failure),
-        release,
-      },
-    };
+    for (;;) {
+      const runtime = await this.getOrCreate(scope);
+      this.assertOpen();
+      try {
+        const result = await runtime.handle(record);
+        if (result.kind !== "run") return result;
+        const release = runtime.acquireDeliveryLease();
+        return {
+          ...result,
+          delivery: {
+            fail: (failure) => runtime.handleInternal(failure),
+            release,
+          },
+        };
+      } catch (cause) {
+        if (!(cause instanceof ChannelRuntimeDrainingError)) throw cause;
+      }
+    }
   }
 
   setWill(factory: Will.Factory): void {
@@ -92,6 +98,22 @@ export class RuntimeManager {
     await snapshot.handover;
     await this.getOrCreate(scope);
     return this.reset(scope);
+  }
+
+  async reload(scope: ChannelScope): Promise<void> {
+    this.assertOpen();
+    const key = channelKey(scope);
+    const entry = await this.enqueueLifecycle(key, async () => {
+      this.assertOpen();
+      await this.assertCurrentAssignee(scope);
+      const current = this.runtimes.get(key);
+      if (!current) return undefined;
+      if (current.state === "failed") {
+        throw new Error("Channel handover failed; restart required");
+      }
+      return current;
+    });
+    if (entry) await this.awaitHandover(key, entry);
   }
 
   stop(): Promise<void> {

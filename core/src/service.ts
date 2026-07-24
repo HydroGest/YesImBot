@@ -129,6 +129,11 @@ export class YesImBotService extends Service<Config> {
     return this.rt.reset(scope);
   }
 
+  async reload(scope: ChannelScope): Promise<void> {
+    await assertAssignee(this.ctx, scope);
+    return this.rt.reload(scope);
+  }
+
   override stop(): Promise<void> {
     if (!this.stopTask) this.stopTask = this.stopInternal();
     return this.stopTask;

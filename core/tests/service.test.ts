@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   runtime: undefined as
     | {
         setWill: ReturnType<typeof vi.fn>;
+        reload: ReturnType<typeof vi.fn>;
         reset: ReturnType<typeof vi.fn>;
         stop: ReturnType<typeof vi.fn>;
         options: { getAgentPluginFactories(): readonly AgentPluginFactory[] };
@@ -17,6 +18,7 @@ const state = vi.hoisted(() => ({
 vi.mock("../src/runtime/manager.js", () => ({
   RuntimeManager: class {
     setWill = vi.fn();
+    reload = vi.fn(async () => undefined);
     reset = vi.fn(async () => undefined);
     stop = vi.fn(async () => undefined);
 
@@ -63,6 +65,7 @@ describe("YesImBotService facade", () => {
     expect(ctx.yesimbot.registerStorage).toEqual(expect.any(Function));
     expect(ctx.yesimbot.ensureStorage).toEqual(expect.any(Function));
     expect(ctx.yesimbot.listChannels).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.reload).toEqual(expect.any(Function));
     expect(ctx.yesimbot.reset).toEqual(expect.any(Function));
     expect(ctx.yesimbot.stop).toEqual(expect.any(Function));
     expect("assets" in ctx.yesimbot).toBe(false);
@@ -88,6 +91,34 @@ describe("YesImBotService facade", () => {
     await service.reset(scope);
 
     expect(state.runtime?.reset).toHaveBeenCalledWith(scope);
+  });
+
+  it("delegates reload through the composed boundary", async () => {
+    const { service } = createService();
+    const scope = {
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room-1",
+      isDirect: false,
+    };
+
+    await service.reload(scope);
+
+    expect(state.runtime?.reload).toHaveBeenCalledWith(scope);
+  });
+
+  it("rejects shared reload before RuntimeManager for a non-assignee", async () => {
+    const { service, database } = createService();
+    const scope = {
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room-1",
+      isDirect: false,
+    };
+    database.get.mockResolvedValue([{ assignee: "other" }]);
+
+    await expect(service.reload(scope)).rejects.toMatchObject({ reason: "mismatch" });
+    expect(state.runtime?.reload).not.toHaveBeenCalled();
   });
 
   it("rejects shared resets before the Runtime manager for a non-assignee", async () => {

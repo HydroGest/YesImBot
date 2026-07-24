@@ -49,7 +49,7 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
 });
 
 import type { EventRecord } from "../src/event/index.js";
-import { ChannelRuntime } from "../src/runtime/channel.js";
+import { ChannelRuntime, ChannelRuntimeDrainingError } from "../src/runtime/channel.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import type { Will } from "../src/will/index.js";
 
@@ -436,8 +436,16 @@ describe("ChannelRuntime", () => {
 
     runtime.beginDrain();
 
-    await expect(runtime.handle(record())).rejects.toThrow("draining");
+    await expect(runtime.handle(record())).rejects.toBeInstanceOf(ChannelRuntimeDrainingError);
     await expect(runtime.handleInternal(failure)).resolves.toMatchObject({ kind: "wait" });
+  });
+
+  it("rejects external events with a dedicated error before persistence while draining", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" });
+    runtime.beginDrain();
+
+    await expect(runtime.handle(record())).rejects.toBeInstanceOf(ChannelRuntimeDrainingError);
+    expect(state.agent?.append).not.toHaveBeenCalled();
   });
 
   it("isolates Agent and Will stop failures while waiting for an active stream", async () => {

@@ -36,6 +36,13 @@ export interface ChannelRuntimeOptions {
 
 export const MAX_RECENT_EVENTS = 32;
 
+export class ChannelRuntimeDrainingError extends Error {
+  constructor() {
+    super("Channel runtime is draining");
+    this.name = "ChannelRuntimeDrainingError";
+  }
+}
+
 class OutputQueue<T> implements AsyncIterable<T> {
   private items: T[] = [];
   private waiter:
@@ -242,10 +249,10 @@ export class ChannelRuntime {
 
   private handleRecord(record: EventRecord, internal: boolean): Promise<ChannelRuntime.Result> {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
-    if (this.draining && !internal) return Promise.reject(new Error("Channel runtime is draining"));
+    if (this.draining && !internal) return Promise.reject(new ChannelRuntimeDrainingError());
     return this.enqueue(async () => {
       this.assertOpen();
-      if (this.draining && !internal) throw new Error("Channel runtime is draining");
+      if (this.draining && !internal) throw new ChannelRuntimeDrainingError();
       const event = createEvent(record);
       await this.agent.append(event);
       this.remember(event);
