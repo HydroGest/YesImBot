@@ -1,10 +1,18 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { AgentPlugin } from "@yesimbot/agent-runtime";
+import type { SystemModelMessage } from "ai";
 import type { Logger } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
+import { DEFAULT_ATHENA_PERSONA } from "./prompts/athena.js";
+import { CORE_CONSTITUTION } from "./prompts/constitution.js";
+
+export interface CoreSystemPromptOptions {
+  readonly basePath: string;
+  readonly channel: ChannelScope;
+  readonly logger?: Logger;
+}
 
 async function readPromptFile(
   basePath: string,
@@ -12,9 +20,8 @@ async function readPromptFile(
   logger?: Logger,
 ): Promise<string | undefined> {
   try {
-    const content = await readFile(join(basePath, fileName), "utf8");
-    const trimmed = content.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
+    const content = (await readFile(join(basePath, fileName), "utf8")).trim();
+    return content.length > 0 ? content : undefined;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       logger?.debug?.(`Prompt file ${fileName} not found under ${basePath}.`);
@@ -25,36 +32,53 @@ async function readPromptFile(
         error instanceof Error ? error.message : String(error)
       }`,
     );
-    return undefined;
+    throw error;
   }
 }
 
-export function createPromptFilePlugin(options: {
-  basePath: string;
-  logger?: Logger;
-}): AgentPlugin {
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function wrap(tag: "agents" | "persona", content: string): SystemModelMessage {
   return {
-    name: "core.prompt-files",
-    async appendSystemPrompt() {
-      const agents = await readPromptFile(options.basePath, "AGENTS.md", options.logger);
-      const persona = await readPromptFile(options.basePath, "PERSONA.md", options.logger);
-      const blocks = [
-        agents ? { role: "system" as const, content: `<agents>\n${agents}\n</agents>` } : undefined,
-        persona
-          ? { role: "system" as const, content: `<persona>\n${persona}\n</persona>` }
-          : undefined,
-      ].filter((block): block is { role: "system"; content: string } => block !== undefined);
-      return blocks.length > 0 ? blocks : undefined;
-    },
+    role: "system",
+    content: `<${tag}>\n${content}\n</${tag}>`,
   };
 }
 
-export function buildCoreSystemPrompt(context: { readonly channel: ChannelScope }): string {
-  const { channel } = context;
+function formatRuntimeContext(channel: ChannelScope): SystemModelMessage {
+  return {
+    role: "system",
+    content: [
+      "<runtime_context>",
+      `  <platform>${escapeXml(channel.platform)}</platform>`,
+      `  <selfId>${escapeXml(channel.selfId)}</selfId>`,
+      `  <channelId>${escapeXml(channel.channelId)}</channelId>`,
+      `  <isDirect>${channel.isDirect}</isDirect>`,
+      "</runtime_context>",
+    ].join("\n"),
+  };
+}
+
+export async function buildCoreSystemPrompt(
+  options: CoreSystemPromptOptions,
+): Promise<SystemModelMessage[]> {
+  const [agents, customPersona] = await Promise.all([
+    readPromptFile(options.basePath, "AGENTS.md", options.logger),
+    readPromptFile(options.basePath, "PERSONA.md", options.logger),
+  ]);
+  const persona = customPersona ?? DEFAULT_ATHENA_PERSONA;
+
   return [
-    "You are Athena, a Koishi-based chat agent running in a channel.",
-    `Channel context: platform=${channel.platform}, selfId=${channel.selfId}, channelId=${channel.channelId}.`,
-    "Channel messages are presented as [sender]: content and may include Koishi message element strings.",
-    "Reply in plain text unless the user explicitly asks for another format.",
-  ].join("\n");
+    { role: "system", content: CORE_CONSTITUTION },
+    ...(agents ? [wrap("agents", agents)] : []),
+    wrap("persona", persona),
+    formatRuntimeContext(options.channel),
+  ];
 }

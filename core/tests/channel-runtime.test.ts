@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { Context } from "@koishijs/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +12,7 @@ const state = vi.hoisted(() => ({
   options: undefined as Record<string, unknown> | undefined,
   activeTurnId: null as string | null,
   stream: undefined as AsyncIterable<unknown> | undefined,
+  resolvedSystem: undefined as unknown,
 }));
 
 vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
@@ -17,6 +22,13 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
     createAgent: vi.fn((options) => {
       state.options = options as Record<string, unknown>;
       const agent = {
+        init: vi.fn(async () => {
+          const input = options.systemPrompt;
+          state.resolvedSystem =
+            typeof input === "function"
+              ? await input({ id: "channel-test", channel: {} as never, state: {} as never })
+              : input;
+        }),
         append: vi.fn(async () => undefined),
         send: vi.fn(() => "turn-joined"),
         run: vi.fn(() => {
@@ -59,13 +71,14 @@ function createRuntime(
   will: Will,
   sendMessage = vi.fn(async () => ["sent-1"]),
   includeMessageId = false,
+  basePath = "/tmp/yesimbot-channel-runtime",
 ) {
   const ctx = new Context();
   const logger = { warn: vi.fn() };
   const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
   const runtime = new ChannelRuntime({
     ctx,
-    config: { basePath: "/tmp/yesimbot-channel-runtime", chatModel: "test:model" },
+    config: { basePath, chatModel: "test:model" },
     logger: logger as never,
     scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
     bot: { sendMessage } as never,
@@ -99,6 +112,37 @@ describe("ChannelRuntime", () => {
     state.options = undefined;
     state.activeTurnId = null;
     state.stream = undefined;
+    state.resolvedSystem = undefined;
+  });
+
+  it("initializes its Agent once", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" as const });
+
+    await runtime.init();
+    await runtime.init();
+
+    expect(state.agent?.init).toHaveBeenCalledOnce();
+  });
+
+  it("keeps prompt-file content frozen after initialization", async () => {
+    const basePath = await mkdtemp(join(tmpdir(), "yesimbot-channel-prompt-"));
+    await writeFile(join(basePath, "AGENTS.md"), "first policy");
+    const sendMessage = vi.fn(async () => ["sent-1"]);
+    const { runtime } = createRuntime(
+      { decide: async () => "wait" as const },
+      sendMessage,
+      false,
+      basePath,
+    );
+
+    await runtime.init();
+    await writeFile(join(basePath, "AGENTS.md"), "second policy");
+    await runtime.init();
+
+    expect(state.agent?.init).toHaveBeenCalledOnce();
+    expect(JSON.stringify(state.resolvedSystem)).toContain("first policy");
+    expect(JSON.stringify(state.resolvedSystem)).not.toContain("second policy");
+    await rm(basePath, { recursive: true, force: true });
   });
 
   it("uses the prepared Agent storage", () => {

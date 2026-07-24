@@ -1,3 +1,5 @@
+import { isAbsolute, resolve } from "node:path";
+
 import {
   createAgent,
   type Agent,
@@ -16,7 +18,7 @@ import { formatEvent } from "../event/formatter.js";
 import { createEvent, type Event, type EventRecord } from "../event/index.js";
 import type { AssetStore } from "../shared/asset.js";
 import type { Will, WillObservation } from "../will/index.js";
-import { buildCoreSystemPrompt, createPromptFilePlugin } from "./prompt.js";
+import { buildCoreSystemPrompt } from "./prompt.js";
 
 export interface ChannelRuntimeOptions {
   readonly ctx: Context;
@@ -128,11 +130,15 @@ export class ChannelRuntime {
   private recent: Event[] = [];
   private lastAt: number | null = null;
   private readonly agent: Agent;
+  private initTask: Promise<void> | undefined;
 
   constructor(private readonly opts: ChannelRuntimeOptions) {
     this.scope = Object.freeze({ ...opts.scope });
     const plugins = opts.agentPlugins;
     const includeMessageId = opts.includeMessageId;
+    const basePath = isAbsolute(opts.config.basePath)
+      ? opts.config.basePath
+      : resolve(opts.ctx.baseDir, opts.config.basePath);
     const tools: AgentToolSet = [
       {
         name: "sendMessage",
@@ -159,7 +165,12 @@ export class ChannelRuntime {
       id: channelKey(this.scope),
       model: opts.model,
       storage: opts.storage,
-      systemPrompt: buildCoreSystemPrompt({ channel: this.scope }),
+      systemPrompt: () =>
+        buildCoreSystemPrompt({
+          basePath,
+          channel: this.scope,
+          logger: opts.logger,
+        }),
       tools,
       plugins: [
         {
@@ -175,16 +186,15 @@ export class ChannelRuntime {
             return formatted ? [formatted] : [];
           },
         },
-        createPromptFilePlugin({
-          basePath: isAbsolute(opts.config.basePath)
-            ? opts.config.basePath
-            : resolve(opts.ctx.baseDir, opts.config.basePath),
-          logger: opts.logger,
-        }),
         ...plugins,
       ],
       terminalTool: true,
     });
+  }
+
+  init(): Promise<void> {
+    if (!this.initTask) this.initTask = this.agent.init();
+    return this.initTask;
   }
 
   handle(record: EventRecord): Promise<ChannelRuntime.Result> {
@@ -410,4 +420,3 @@ export namespace ChannelRuntime {
         readonly output: AsyncIterable<Output>;
       };
 }
-import { isAbsolute, resolve } from "node:path";

@@ -10,6 +10,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 const state = vi.hoisted(() => ({
   runtimes: [] as Array<{
     readonly options: Record<string, unknown>;
+    init: ReturnType<typeof vi.fn>;
     handle: ReturnType<typeof vi.fn>;
     handleInternal: ReturnType<typeof vi.fn>;
     acquireDeliveryLease: ReturnType<typeof vi.fn>;
@@ -18,10 +19,16 @@ const state = vi.hoisted(() => ({
     reset: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
   }>,
+  nextInit: undefined as (() => Promise<void>) | undefined,
 }));
 
 vi.mock("../src/runtime/channel.js", () => ({
   ChannelRuntime: class {
+    readonly init = vi.fn(async () => {
+      const next = state.nextInit;
+      state.nextInit = undefined;
+      await next?.();
+    });
     readonly handle = vi.fn(async () => ({ kind: "wait", eventId: "event-1" }));
     readonly handleInternal = vi.fn(async () => ({ kind: "wait", eventId: "event-1" }));
     readonly acquireDeliveryLease = vi.fn(() => vi.fn());
@@ -105,6 +112,39 @@ function deferred<T>() {
 describe("RuntimeManager", () => {
   beforeEach(() => {
     state.runtimes = [];
+    state.nextInit = undefined;
+  });
+
+  it("initializes a runtime before publishing it", async () => {
+    const { manager } = createManager();
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    state.nextInit = async () => {
+      entered.resolve();
+      await release.promise;
+    };
+
+    const routing = manager.route(record("room"));
+    await entered.promise;
+    expect(state.runtimes[0]?.handle).not.toHaveBeenCalled();
+
+    release.resolve();
+    await routing;
+    expect(state.runtimes[0]?.init).toHaveBeenCalledOnce();
+    expect(state.runtimes[0]?.handle).toHaveBeenCalledOnce();
+  });
+
+  it("stops an unpublished runtime when initialization fails", async () => {
+    const { manager } = createManager();
+    state.nextInit = async () => {
+      throw new Error("init failed");
+    };
+
+    await expect(manager.route(record("room"))).rejects.toThrow("init failed");
+
+    expect(state.runtimes).toHaveLength(1);
+    expect(state.runtimes[0]?.stop).toHaveBeenCalledOnce();
+    expect(state.runtimes[0]?.handle).not.toHaveBeenCalled();
   });
 
   it("creates one runtime for concurrent first events with the same canonical key", async () => {

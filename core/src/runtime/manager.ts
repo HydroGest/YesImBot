@@ -214,23 +214,30 @@ export class RuntimeManager {
     const includeMessageId = factories.some((factory) => factory.requiresMessageId === true);
     const will = await this.makeWill(scope);
     const storagePath = await this.opts.storage.ensure(scope, "sessions", "messages.jsonl");
+    const runtime = new ChannelRuntime({
+      ctx: this.opts.ctx,
+      config: this.opts.config,
+      logger: this.opts.logger,
+      scope,
+      bot,
+      will,
+      assets: this.opts.assets,
+      model,
+      agentPlugins: plugins,
+      includeMessageId,
+      storage: createJsonlStorage(storagePath),
+    });
+    try {
+      await runtime.init();
+    } catch (cause) {
+      await runtime.stop().catch(() => undefined);
+      throw cause;
+    }
     return {
       generation,
       selfId: scope.selfId,
       state: "active",
-      runtime: new ChannelRuntime({
-        ctx: this.opts.ctx,
-        config: this.opts.config,
-        logger: this.opts.logger,
-        scope,
-        bot,
-        will,
-        assets: this.opts.assets,
-        model,
-        agentPlugins: plugins,
-        includeMessageId,
-        storage: createJsonlStorage(storagePath),
-      }),
+      runtime,
     };
   }
 
