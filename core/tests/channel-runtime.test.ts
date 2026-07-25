@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ModelMessageContext } from "@yesimbot/agent-runtime";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
@@ -13,6 +14,7 @@ const state = vi.hoisted(() => ({
   activeTurnId: null as string | null,
   stream: undefined as AsyncIterable<unknown> | undefined,
   resolvedSystem: undefined as unknown,
+  selectEventFiles: vi.fn(),
 }));
 
 vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
@@ -48,7 +50,13 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
   };
 });
 
-import type { EventRecord } from "../src/event/index.js";
+vi.mock("../src/event/media.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/event/media.js")>();
+  return { ...actual, selectEventFiles: state.selectEventFiles };
+});
+
+import { createEvent, type EventRecord } from "../src/event/index.js";
+import { type MediaSelectionOptions, UnsupportedImageMimeError } from "../src/event/media.js";
 import { ChannelRuntime, ChannelRuntimeDrainingError } from "../src/runtime/channel.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import type { Will } from "../src/will/index.js";
@@ -121,6 +129,8 @@ describe("ChannelRuntime", () => {
     state.activeTurnId = null;
     state.stream = undefined;
     state.resolvedSystem = undefined;
+    state.selectEventFiles.mockReset();
+    state.selectEventFiles.mockResolvedValue(new Map());
   });
 
   it("initializes its Agent once", async () => {
@@ -310,13 +320,17 @@ describe("ChannelRuntime", () => {
     ).find((plugin) => plugin.name === "core.event-format");
 
     await runtime.handle(record());
-    const messages = await formatter?.toModelMessages({
+    const event = {
       id: "event-1",
       timestamp: 1,
       role: "custom",
       type: "yesimbot.event",
       data: record(),
-    });
+    };
+    const messages = await formatter?.toModelMessages(event, {
+      history: [event],
+      current: [],
+    } satisfies ModelMessageContext);
 
     expect(messages[0].content).toContain('id="message-1"');
   });
@@ -351,6 +365,87 @@ describe("ChannelRuntime", () => {
       "core.event-format",
       "external.formatter",
     ]);
+  });
+
+  it("selects files once for multiple Event conversions in the same model context", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" });
+    const formatter = (
+      state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
+    ).find((plugin) => plugin.name === "core.event-format");
+    const first = createEvent(
+      record({ message: { id: "message-1", content: "first" }, content: "first" }),
+    );
+    const second = createEvent(
+      record({ message: { id: "message-2", content: "second" }, content: "second" }),
+    );
+    const file = { type: "file" as const, data: new Uint8Array([1]), mediaType: "image/png" };
+    const context = { history: [first, second], current: [] } as ModelMessageContext;
+    state.selectEventFiles.mockResolvedValue(new Map([[first.id, [file]], [second.id, [file]]]));
+
+    await runtime.handle(record());
+    const [firstResult, secondResult] = await Promise.all([
+      formatter?.toModelMessages(first, context),
+      formatter?.toModelMessages(second, context),
+    ]);
+
+    expect(state.selectEventFiles).toHaveBeenCalledOnce();
+    expect(firstResult[0].content).toEqual([
+      { type: "text", text: '[time="1970/1/1 08:00" sender="User (user-1)"]\nfirst' },
+      file,
+    ]);
+    expect(secondResult[0].content).toEqual([
+      { type: "text", text: '[time="1970/1/1 08:00" sender="User (user-1)"]\nsecond' },
+      file,
+    ]);
+  });
+
+  it("degrades a fatal selection failure once per context and retries for a fresh context", async () => {
+    const { logger } = createRuntime({ decide: async () => "wait" });
+    const formatter = (
+      state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
+    ).find((plugin) => plugin.name === "core.event-format");
+    const event = createEvent(record());
+    const firstContext = { history: [event], current: [] } as ModelMessageContext;
+    const secondContext = { history: [event], current: [] } as ModelMessageContext;
+    state.selectEventFiles.mockRejectedValueOnce(new Error("selection failed"));
+    state.selectEventFiles.mockResolvedValueOnce(new Map());
+
+    const first = await formatter?.toModelMessages(event, firstContext);
+    const second = await formatter?.toModelMessages(event, firstContext);
+    await formatter?.toModelMessages(event, secondContext);
+
+    expect(first[0].content).toBe('[time="1970/1/1 08:00" sender="User (user-1)"]\nhello');
+    expect(second[0].content).toBe('[time="1970/1/1 08:00" sender="User (user-1)"]\nhello');
+    expect(state.selectEventFiles).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "media_selection_failed" }),
+    );
+  });
+
+  it("reports invalid MIME and local read failures as distinct text-only diagnostics", async () => {
+    const { logger } = createRuntime({ decide: async () => "wait" });
+    const formatter = (
+      state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
+    ).find((plugin) => plugin.name === "core.event-format");
+    const event = createEvent(record());
+    const context = { history: [event], current: [] } as ModelMessageContext;
+    state.selectEventFiles.mockImplementation(
+      async (_context: ModelMessageContext, options: MediaSelectionOptions) => {
+        options.onAssetFailure?.("asset_invalid", new UnsupportedImageMimeError());
+        options.onAssetFailure?.("asset_missing", new Error("missing"));
+        return new Map();
+      },
+    );
+
+    const messages = await formatter?.toModelMessages(event, context);
+
+    expect(messages[0].content).toBe('[time="1970/1/1 08:00" sender="User (user-1)"]\nhello');
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "asset_invalid_mime", assetId: "asset_invalid" }),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "asset_read_failed", assetId: "asset_missing" }),
+    );
   });
 
   it("returns active-send errors without creating delivery events", async () => {

@@ -7,8 +7,9 @@ import {
   type AgentPlugin,
   type AgentStorage,
   type AgentToolSet,
+  type ModelMessageContext,
 } from "@yesimbot/agent-runtime";
-import type { LanguageModel } from "ai";
+import type { FilePart, LanguageModel } from "ai";
 import type { Bot, Context, Fragment, Logger } from "koishi";
 import { z } from "zod";
 
@@ -16,6 +17,7 @@ import { channelKey, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
 import { formatEvent } from "../event/formatter.js";
 import { createEvent, type Event, type EventRecord } from "../event/index.js";
+import { selectEventFiles, UnsupportedImageMimeError } from "../event/media.js";
 import type { AssetStore } from "../shared/asset.js";
 import type { Will, WillObservation } from "../will/index.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
@@ -153,6 +155,10 @@ export class ChannelRuntime {
     this.scope = Object.freeze({ ...opts.scope });
     const plugins = opts.agentPlugins;
     const includeMessageId = opts.includeMessageId;
+    const selectedFilesByContext = new WeakMap<
+      ModelMessageContext,
+      Promise<ReadonlyMap<Event["id"], readonly FilePart[]>>
+    >();
     const basePath = isAbsolute(opts.config.basePath)
       ? opts.config.basePath
       : resolve(opts.ctx.baseDir, opts.config.basePath);
@@ -192,15 +198,34 @@ export class ChannelRuntime {
       plugins: [
         {
           name: "core.event-format",
-          toModelMessages: async (message) => {
+          toModelMessages: async (message, context) => {
             if (message.role !== "custom" || message.type !== "yesimbot.event") return [];
-            const formatted = await formatEvent(message as Event, {
-              scope: this.scope,
-              assetStore: opts.assets,
+            const event = message as Event;
+            let selectedFiles = selectedFilesByContext.get(context);
+            if (!selectedFiles) {
+              selectedFiles = selectEventFiles(context, {
+                scope: this.scope,
+                assetStore: opts.assets,
+                imageInput: opts.imageInput,
+                policy: opts.mediaPolicy,
+                onAssetFailure: (assetId, cause) =>
+                  this.warn(
+                    cause instanceof UnsupportedImageMimeError
+                      ? "asset_invalid_mime"
+                      : "asset_read_failed",
+                    { assetId, cause },
+                  ),
+              }).catch((cause: unknown) => {
+                this.warn("media_selection_failed", { cause });
+                return new Map();
+              });
+              selectedFilesByContext.set(context, selectedFiles);
+            }
+            const formatted = formatEvent(event, {
               includeMessageId,
-              onAssetMissing: (assetId, cause) => this.warn("asset_missing", { assetId, cause }),
+              files: (await selectedFiles).get(event.id),
             });
-            return formatted ? [formatted] : [];
+            return [formatted];
           },
         },
         ...plugins,
