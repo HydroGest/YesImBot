@@ -12,7 +12,6 @@ import {
   type Event,
   type EventMap,
   type EventRecord,
-  type EventPayload,
   type Input,
   type InputRecord,
   type Message,
@@ -179,17 +178,17 @@ describe("Event", () => {
   });
 
   it("delivery.failed variant retains delivery field in persisted data", () => {
-    type DeliveryData = EventPayload<"delivery.failed">;
-    expectTypeOf<DeliveryData["delivery"]["turnId"]>().toBeString();
-    expectTypeOf<DeliveryData["delivery"]["messageId"]>().toBeString();
-    expectTypeOf<DeliveryData["eventType"]>().toEqualTypeOf<"delivery.failed">();
+    type D = Event<"delivery.failed">["data"];
+    expectTypeOf<D["delivery"]["turnId"]>().toBeString();
+    expectTypeOf<D["delivery"]["messageId"]>().toBeString();
+    expectTypeOf<D["eventType"]>().toEqualTypeOf<"delivery.failed">();
   });
 
   it("declaration-merged test.variant retains test.value in persisted data", () => {
-    type TestData = EventPayload<"test.variant">;
-    expectTypeOf<TestData["test"]["value"]>().toBeNumber();
-    expectTypeOf<TestData["channel"]["id"]>().toBeString();
-    expectTypeOf<TestData["eventType"]>().toEqualTypeOf<"test.variant">();
+    type T = Event<"test.variant">["data"];
+    expectTypeOf<T["test"]["value"]>().toBeNumber();
+    expectTypeOf<T["channel"]["id"]>().toBeString();
+    expectTypeOf<T["eventType"]>().toEqualTypeOf<"test.variant">();
   });
 
   it("createEvent returns variant-specific Event type", () => {
