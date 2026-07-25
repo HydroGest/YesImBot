@@ -85,6 +85,14 @@ function createRuntime(
     will,
     assets: assets as never,
     model: {} as never,
+    imageInput: false,
+    mediaPolicy: Object.freeze({
+      enabled: true,
+      maxImages: 4,
+      maxImageBytes: 5 * 1024 * 1024,
+      maxTotalImageBytes: 10 * 1024 * 1024,
+      strategy: "current-first" as const,
+    }),
     agentPlugins: [],
     includeMessageId,
     storage: createJsonlStorage("/tmp/yesimbot-channel-runtime/messages.jsonl"),
@@ -156,6 +164,14 @@ describe("ChannelRuntime", () => {
       will: { decide: async () => "wait" },
       assets: { clear: vi.fn(), readByAssetId: vi.fn() } as never,
       model: {} as never,
+      imageInput: false,
+      mediaPolicy: Object.freeze({
+        enabled: true,
+        maxImages: 4,
+        maxImageBytes: 5 * 1024 * 1024,
+        maxTotalImageBytes: 10 * 1024 * 1024,
+        strategy: "current-first" as const,
+      }),
       agentPlugins: [],
       includeMessageId: false,
       storage: storage as never,
@@ -303,6 +319,38 @@ describe("ChannelRuntime", () => {
     });
 
     expect(messages[0].content).toContain('id="message-1"');
+  });
+
+  it("keeps the inline Core event formatter before external plugins", () => {
+    const externalPlugin = { name: "external.formatter" };
+    const ctx = new Context();
+
+    new ChannelRuntime({
+      ctx,
+      config: { basePath: "/tmp/unused", chatModel: "test:model" },
+      logger: { warn: vi.fn() } as never,
+      scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
+      bot: { sendMessage: vi.fn() } as never,
+      will: { decide: async () => "wait" },
+      assets: { clear: vi.fn(), readByAssetId: vi.fn() } as never,
+      model: {} as never,
+      imageInput: false,
+      mediaPolicy: Object.freeze({
+        enabled: true,
+        maxImages: 4,
+        maxImageBytes: 5 * 1024 * 1024,
+        maxTotalImageBytes: 10 * 1024 * 1024,
+        strategy: "current-first" as const,
+      }),
+      agentPlugins: [externalPlugin],
+      includeMessageId: false,
+      storage: { append: vi.fn(), read: vi.fn(), clear: vi.fn() } as never,
+    });
+
+    expect((state.options?.plugins as Array<{ name: string }>).map((plugin) => plugin.name)).toEqual([
+      "core.event-format",
+      "external.formatter",
+    ]);
   });
 
   it("returns active-send errors without creating delivery events", async () => {

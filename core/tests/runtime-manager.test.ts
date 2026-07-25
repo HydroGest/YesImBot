@@ -78,16 +78,18 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
   const matchingBot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn() };
   const otherBot = { platform: "test", selfId: "other", sendMessage: vi.fn() };
   ctx.bots.push(otherBot as never, matchingBot as never);
-  const model = { modelId: "test-model" };
-  const resolveChatModel = vi.fn(() => ({ model }));
+  const model = { modelId: "test-model", modalities: { input: ["image"] } };
+  let entry: { readonly modalities?: { readonly input?: readonly string[] } } = {};
+  const resolveChatModel = vi.fn(() => ({ model, entry }));
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
   Object.assign(ctx, { "yesimbot.model": { resolveChatModel }, database });
   const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
   const getAgentPluginFactories = vi.fn(() => []);
   const storage = new ChannelStorage(basePath);
+  const config = { basePath, chatModel: "test:model" };
   const manager = new RuntimeManager({
     ctx,
-    config: { basePath, chatModel: "test:model" },
+    config,
     logger: { warn: vi.fn() } as never,
     assets: assets as never,
     storage,
@@ -98,6 +100,10 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
     matchingBot,
     otherBot,
     model,
+    setEntry: (next: typeof entry) => {
+      entry = next;
+    },
+    config,
     resolveChatModel,
     assets,
     database,
@@ -219,6 +225,54 @@ describe("RuntimeManager", () => {
     expect(state.runtimes[0]?.options.agentPlugins).toEqual([firstPlugin]);
     expect(state.runtimes[1]?.options).toMatchObject({ model, will: secondWill });
     expect(state.runtimes[2]?.options).toMatchObject({ model, will: secondWill });
+  });
+
+  it("snapshots resolved model media capability and policy until non-destructive reload", async () => {
+    const { manager, config, setEntry, assets } = createManager();
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false };
+
+    await manager.route(record("room"));
+    const first = state.runtimes[0]?.options;
+
+    expect(first?.imageInput).toBe(false);
+    expect(first?.mediaPolicy).toEqual({
+      enabled: true,
+      maxImages: 4,
+      maxImageBytes: 5 * 1024 * 1024,
+      maxTotalImageBytes: 10 * 1024 * 1024,
+      strategy: "current-first",
+    });
+    expect(Object.isFrozen(first?.mediaPolicy)).toBe(true);
+
+    setEntry({ modalities: { input: ["image"] } });
+    config.multimedia = {
+      enabled: false,
+      image: {
+        selection: "fifo",
+        maxCountPerCall: 2,
+        maxBytesPerImage: 1024,
+        maxBytesPerCall: 2048,
+      },
+    };
+
+    await manager.route(record("room"));
+    expect(state.runtimes).toHaveLength(1);
+    expect(first?.imageInput).toBe(false);
+    expect(first?.mediaPolicy).toMatchObject({ enabled: true, strategy: "current-first" });
+
+    await manager.reload(scope);
+    await manager.route(record("room"));
+    const replacement = state.runtimes[1]?.options;
+
+    expect(replacement?.imageInput).toBe(true);
+    expect(replacement?.mediaPolicy).toEqual({
+      enabled: false,
+      maxImages: 2,
+      maxImageBytes: 1024,
+      maxTotalImageBytes: 2048,
+      strategy: "fifo",
+    });
+    expect(assets.clear).not.toHaveBeenCalled();
   });
 
   it("gracefully hands over a same-assignee Runtime after its Will generation changes", async () => {

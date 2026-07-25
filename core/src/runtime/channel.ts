@@ -20,6 +20,14 @@ import type { AssetStore } from "../shared/asset.js";
 import type { Will, WillObservation } from "../will/index.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
 
+export interface MediaPolicy {
+  readonly enabled: boolean;
+  readonly maxImages: number;
+  readonly maxImageBytes: number;
+  readonly maxTotalImageBytes: number;
+  readonly strategy: "current-first" | "fifo" | "lifo";
+}
+
 export interface ChannelRuntimeOptions {
   readonly ctx: Context;
   readonly config: Config;
@@ -29,6 +37,8 @@ export interface ChannelRuntimeOptions {
   readonly will: Will;
   readonly assets: Pick<AssetStore, "clear" | "readByAssetId">;
   readonly model: LanguageModel;
+  readonly imageInput: boolean;
+  readonly mediaPolicy: MediaPolicy;
   readonly agentPlugins: readonly AgentPlugin[];
   readonly includeMessageId: boolean;
   readonly storage: AgentStorage;

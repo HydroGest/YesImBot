@@ -8,7 +8,11 @@ import type { AssetStore } from "../shared/asset.js";
 import { assertAssignee } from "../shared/assignee.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { DefaultWill, type Will } from "../will/index.js";
-import { ChannelRuntime, ChannelRuntimeDrainingError } from "./channel.js";
+import {
+  ChannelRuntime,
+  ChannelRuntimeDrainingError,
+  type MediaPolicy,
+} from "./channel.js";
 import { createJsonlStorage } from "./storage.js";
 
 export interface RuntimeManagerOptions {
@@ -226,9 +230,15 @@ export class RuntimeManager {
       (candidate) => candidate.platform === scope.platform && candidate.selfId === scope.selfId,
     );
     if (!bot) throw new Error(`No Bot is available for ${scope.platform}:${scope.selfId}`);
-    const model = this.opts.ctx["yesimbot.model"].resolveChatModel(
-      this.opts.config.chatModel,
-    ).model;
+    const resolved = this.opts.ctx["yesimbot.model"].resolveChatModel(this.opts.config.chatModel);
+    const imageInput = resolved.entry.modalities?.input?.includes("image") === true;
+    const mediaPolicy: MediaPolicy = Object.freeze({
+      enabled: this.opts.config.multimedia?.enabled ?? true,
+      maxImages: this.opts.config.multimedia?.image?.maxCountPerCall ?? 4,
+      maxImageBytes: this.opts.config.multimedia?.image?.maxBytesPerImage ?? 5 * 1024 * 1024,
+      maxTotalImageBytes: this.opts.config.multimedia?.image?.maxBytesPerCall ?? 10 * 1024 * 1024,
+      strategy: this.opts.config.multimedia?.image?.selection ?? "current-first",
+    });
     const factories = this.opts.getAgentPluginFactories();
     const plugins = (
       await Promise.all(factories.map((factory) => factory({ channel: scope, bot })))
@@ -244,7 +254,9 @@ export class RuntimeManager {
       bot,
       will,
       assets: this.opts.assets,
-      model,
+      model: resolved.model,
+      imageInput,
+      mediaPolicy,
       agentPlugins: plugins,
       includeMessageId,
       storage: createJsonlStorage(storagePath),
