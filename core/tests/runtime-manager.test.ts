@@ -579,9 +579,11 @@ describe("RuntimeManager", () => {
     await expect(access(messagesPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(assetsPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(workspacePath)).resolves.toBeUndefined();
-    await expect(access(join(basePath, "channels.json"))).resolves.toBeUndefined();
+    await expect(access(join(basePath, "channels.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    const [channel] = storage.list();
+    if (!channel) throw new Error("Expected reset storage to retain a channel record");
     await expect(
-      access(join(basePath, "channels", storage.list()[0]!.key, "channel.json")),
+      access(join(basePath, "channels", channel.directoryName, "channel.json")),
     ).resolves.toBeUndefined();
     dispose();
   });

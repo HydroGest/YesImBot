@@ -1,11 +1,11 @@
 import {
+  access,
   mkdir,
   mkdtemp,
   readdir,
   readFile,
   rm,
   symlink,
-  unlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import type { ChannelScope } from "../src/channel/index.js";
+import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
 import { detectImageMime } from "../src/shared/image-mime.js";
 import { ChannelStorage } from "../src/storage/index.js";
 
@@ -25,6 +25,8 @@ const shared: ChannelScope = {
   channelId: "123456",
   isDirect: false,
 };
+
+const sharedDirectoryName = "v1-shared-onebot-123456";
 
 describe("detectImageMime", () => {
   it.each([
@@ -58,27 +60,62 @@ describe("ChannelStorage", () => {
   it("commits a channel Manifest before returning a namespace path", async () => {
     const dispose = storage.register("workspace");
     const path = await storage.ensure(shared, "workspace");
-    expect(path).toBe(join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "workspace"));
+    expect(path).toBe(join(basePath, "channels", sharedDirectoryName, "workspace"));
 
     const manifest = JSON.parse(
       await readFile(
-        join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "channel.json"),
+        join(basePath, "channels", sharedDirectoryName, "channel.json"),
         "utf8",
       ),
     );
     expect(manifest).toEqual({
       formatVersion: 1,
-      keyVersion: 1,
-      key: "a5vnf2ijd75c2ibyo2s5czdir4",
+      identityVersion: 1,
+      directoryVersion: 1,
+      identity: channelIdentity(shared),
+      directoryName: sharedDirectoryName,
       isDirect: false,
       platform: "onebot",
       selfId: null,
       channelId: "123456",
     });
 
-    const catalog = JSON.parse(await readFile(join(basePath, "channels.json"), "utf8"));
-    expect(catalog.channels).toEqual([manifest]);
+    await expect(access(join(basePath, "channels.json"))).rejects.toMatchObject({ code: "ENOENT" });
     dispose();
+  });
+
+  it.each([
+    [
+      { platform: "one-bot", selfId: "bot", channelId: "room/1", isDirect: false },
+      "v1-shared-one_bot-room_1",
+    ],
+    [
+      { platform: "sandbox:node", selfId: "bot-1", channelId: "@Alice", isDirect: true },
+      "v1-direct-sandbox_node-_Alice-bot_1",
+    ],
+    [
+      { platform: "A__B", selfId: "bot", channelId: "X--Y😀", isDirect: false },
+      "v1-shared-A__B-X__Y_",
+    ],
+  ] satisfies ReadonlyArray<readonly [ChannelScope, string]>)
+    ("uses the readable directory name %#", async (scope, directoryName) => {
+      const path = await storage.ensure(scope, "sessions");
+
+      expect(path).toBe(join(basePath, "channels", directoryName, "sessions"));
+    });
+
+  it("accepts a 200-character directory basename and rejects 201 characters", async () => {
+    const prefix = "v1-shared-p-";
+    const maxScope = {
+      platform: "p",
+      selfId: "bot",
+      channelId: "x".repeat(200 - prefix.length),
+      isDirect: false,
+    } satisfies ChannelScope;
+    const oversizedScope = { ...maxScope, channelId: `${maxScope.channelId}x` };
+
+    await expect(storage.ensure(maxScope, "sessions")).resolves.toBeDefined();
+    await expect(storage.ensure(oversizedScope, "sessions")).rejects.toThrow(/200/);
   });
 
   it.each(["", "Workspace", "a/../b", "con", "name-"])(
@@ -101,23 +138,54 @@ describe("ChannelStorage", () => {
     },
   );
 
-  it("rebuilds a missing Catalog from valid Manifests", async () => {
-    storage.register("workspace");
-    await storage.ensure(shared, "workspace");
-    await unlink(join(basePath, "channels.json"));
+  it("scans valid Manifests by identity order and preserves their names", async () => {
+    const direct: ChannelScope = { ...shared, selfId: "20000", isDirect: true };
+    const directDirectoryName = "v1-direct-onebot-123456-20000";
+    const manifests = [
+      {
+        formatVersion: 1,
+        identityVersion: 1,
+        directoryVersion: 1,
+        identity: channelIdentity(shared),
+        directoryName: sharedDirectoryName,
+        isDirect: false,
+        platform: "onebot",
+        selfId: null,
+        channelId: "123456",
+        name: "Room",
+      },
+      {
+        formatVersion: 1,
+        identityVersion: 1,
+        directoryVersion: 1,
+        identity: channelIdentity(direct),
+        directoryName: directDirectoryName,
+        isDirect: true,
+        platform: "onebot",
+        selfId: "20000",
+        channelId: "123456",
+        name: "Direct",
+      },
+    ];
+    for (const manifest of manifests) {
+      const root = join(basePath, "channels", manifest.directoryName);
+      await mkdir(root, { recursive: true });
+      await writeFile(join(root, "channel.json"), `${JSON.stringify(manifest)}\n`, "utf8");
+    }
 
     const restarted = new ChannelStorage(basePath);
     await restarted.start();
 
-    const catalog = JSON.parse(await readFile(join(basePath, "channels.json"), "utf8"));
-    expect(catalog.channels).toEqual([
-      expect.objectContaining({ key: "a5vnf2ijd75c2ibyo2s5czdir4" }),
-    ]);
+    expect(restarted.list()).toEqual(
+      [...manifests]
+        .sort((left, right) => (left.identity < right.identity ? -1 : left.identity > right.identity ? 1 : 0))
+        .map(({ formatVersion: _formatVersion, identityVersion: _identityVersion, directoryVersion: _directoryVersion, ...record }) => record),
+    );
+    await expect(access(join(basePath, "channels.json"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("preserves and excludes a malformed Manifest", async () => {
-    const key = "a5vnf2ijd75c2ibyo2s5czdir4";
-    const root = join(basePath, "channels", key);
+    const root = join(basePath, "channels", sharedDirectoryName);
     await mkdir(root, { recursive: true });
     await writeFile(join(root, "channel.json"), "{broken", "utf8");
 
@@ -128,32 +196,44 @@ describe("ChannelStorage", () => {
     expect(await readFile(join(root, "channel.json"), "utf8")).toBe("{broken");
   });
 
-  it("rejects an identity mismatch in an existing Key directory", async () => {
-    storage.register("workspace");
-    await storage.ensure(shared, "workspace");
-    const path = join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "channel.json");
-    const manifest = JSON.parse(await readFile(path, "utf8"));
-    await writeFile(path, `${JSON.stringify({ ...manifest, channelId: "other" }, null, 2)}\n`);
+  it("rejects an identity mismatch without changing the existing directory data", async () => {
+    const manifestPath = join(basePath, "channels", sharedDirectoryName, "channel.json");
+    const namespacePath = join(basePath, "channels", sharedDirectoryName, "workspace", "keep.txt");
+    const mismatchedManifest = {
+      formatVersion: 1,
+      identityVersion: 1,
+      directoryVersion: 1,
+      identity: channelIdentity({ ...shared, channelId: "other" }),
+      directoryName: sharedDirectoryName,
+      isDirect: false,
+      platform: "onebot",
+      selfId: null,
+      channelId: "123456",
+    };
+    await mkdir(join(basePath, "channels", sharedDirectoryName, "workspace"), { recursive: true });
+    await writeFile(manifestPath, `${JSON.stringify(mismatchedManifest)}\n`, "utf8");
+    await writeFile(namespacePath, "keep", "utf8");
 
-    const restarted = new ChannelStorage(basePath);
-    await restarted.start();
-    restarted.register("workspace");
-    await expect(restarted.ensure(shared, "workspace")).rejects.toThrow(/integrity|identity/i);
+    storage.register("workspace");
+    await expect(storage.ensure(shared, "workspace")).rejects.toThrow(/integrity|identity/i);
+    await expect(readFile(manifestPath, "utf8")).resolves.toBe(`${JSON.stringify(mismatchedManifest)}\n`);
+    await expect(readFile(namespacePath, "utf8")).resolves.toBe("keep");
   });
 
-  it("sorts Catalog records by ASCII Key", async () => {
-    storage.register("workspace");
-    await storage.ensure(shared, "workspace");
-    await storage.ensure({ ...shared, selfId: "10000", isDirect: true }, "workspace");
-    await storage.ensure({ ...shared, selfId: "20000", isDirect: true }, "workspace");
+  it("preserves old hash directories without reading them as current storage", async () => {
+    const oldDirectory = join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4");
+    await mkdir(oldDirectory, { recursive: true });
+    await writeFile(join(oldDirectory, "channel.json"), "{old", "utf8");
 
-    const catalog = JSON.parse(await readFile(join(basePath, "channels.json"), "utf8"));
-    const keys = catalog.channels.map((record: { key: string }) => record.key);
-    expect(keys).toEqual([
-      "3fdpuhlm2tmzybzrlgxotmtmxq",
-      "a5vnf2ijd75c2ibyo2s5czdir4",
-      "ymdz53gzamgvzjzrtf6vesoal4",
-    ]);
+    const warn = vi.fn();
+    const restarted = new ChannelStorage(basePath, warn);
+    await restarted.start();
+
+    expect(restarted.list()).toEqual([]);
+    expect(await readFile(join(oldDirectory, "channel.json"), "utf8")).toBe("{old");
+    expect(warn).toHaveBeenCalledWith("storage.directory_invalid", {
+      entry: "a5vnf2ijd75c2ibyo2s5czdir4",
+    });
   });
 
   it("preserves and reports unknown namespace directories during startup", async () => {
@@ -168,7 +248,7 @@ describe("ChannelStorage", () => {
 
     expect(await readFile(join(unknown, "keep.txt"), "utf8")).toBe("keep");
     expect(warn).toHaveBeenCalledWith("storage.namespace_unregistered", {
-      key: "a5vnf2ijd75c2ibyo2s5czdir4",
+      directoryName: sharedDirectoryName,
       namespace: "unknown-module",
     });
   });
@@ -186,16 +266,15 @@ describe("ChannelStorage", () => {
     await storage.updateName(shared, "");
 
     const records = storage.list({ platform: "onebot", name: "Room 123456" });
-    expect(records).toEqual([expect.objectContaining({ key: "a5vnf2ijd75c2ibyo2s5czdir4" })]);
+    expect(records).toEqual([expect.objectContaining({ identity: channelIdentity(shared) })]);
     expect(Object.isFrozen(records[0])).toBe(true);
-    expect(JSON.parse(await readFile(join(basePath, "channels.json"), "utf8")).channels[0]).toEqual(
+    expect(JSON.parse(await readFile(join(basePath, "channels", sharedDirectoryName, "channel.json"), "utf8"))).toEqual(
       expect.objectContaining({ name: "Room 123456" }),
     );
   });
 
   it("rejects a pre-existing symlink as a key directory", async () => {
-    const key = "a5vnf2ijd75c2ibyo2s5czdir4";
-    const keyPath = join(basePath, "channels", key);
+    const keyPath = join(basePath, "channels", sharedDirectoryName);
     const fakePath = join(basePath, "external-target");
     await mkdir(fakePath, { recursive: true });
     // Remove the real directory (created by start()) and replace with symlink
@@ -213,7 +292,7 @@ describe("ChannelStorage", () => {
     storage.register("workspace");
     await storage.ensure(shared, "workspace");
     // Replace the namespace directory with a symlink
-    const nsPath = join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "workspace");
+    const nsPath = join(basePath, "channels", sharedDirectoryName, "workspace");
     const external = join(basePath, "external-target");
     await mkdir(external, { recursive: true });
     await rm(nsPath, { recursive: true, force: true });
@@ -252,7 +331,7 @@ describe("ChannelStorage", () => {
     await storage.ensure(shared, "workspace");
 
     // Replace the key directory with a symlink to an empty external path
-    const keyDir = join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4");
+    const keyDir = join(basePath, "channels", sharedDirectoryName);
     const external = join(basePath, "external-storage");
     await mkdir(external, { recursive: true });
     await rm(keyDir, { recursive: true, force: true });

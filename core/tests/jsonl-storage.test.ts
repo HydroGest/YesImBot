@@ -76,7 +76,7 @@ describe("jsonl storage", () => {
     };
 
     expect(eventPath).toBe(
-      join(dir, "channels", "a5vnf2ijd75c2ibyo2s5czdir4", "sessions", "messages.jsonl"),
+      join(dir, "channels", "v1-shared-onebot-123456", "sessions", "messages.jsonl"),
     );
     await mkdir(dirname(legacyPath), { recursive: true });
     await writeFile(legacyPath, `${JSON.stringify(legacyEntry)}\n`, "utf8");
