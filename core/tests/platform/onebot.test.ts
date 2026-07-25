@@ -77,6 +77,41 @@ describe("resolveOneBotEvent", () => {
       reactions: [{ id: "100", count: 0 }],
     });
   });
+
+  it("produces the notice.poke event schema from a real poke Session event", () => {
+    const result = resolveOneBotEvent({
+      ...makeSession(),
+      type: "notice",
+      event: {
+        sn: 7,
+        type: "notice",
+        login: { sn: 1, adapter: "onebot", status: 1, features: [] },
+        referrer: { source: "test" },
+        subtype: "poke",
+        channel: { id: "20000", type: 0 },
+        user: { id: "30000", name: "Alice" },
+        _data: { user_id: 30000, target_id: 10000 },
+      },
+    });
+
+    expect(result).toEqual({
+      sn: 7,
+      login: { sn: 1, adapter: "onebot", status: 1, features: [] },
+      referrer: { source: "test" },
+      schemaVersion: 1,
+      eventType: "notice.poke",
+      platform: "onebot",
+      selfId: "10000",
+      timestamp: 1,
+      channel: { id: "20000", type: 0 },
+      user: { id: "30000", name: "Alice" },
+      target: { id: "10000" },
+      action: "拍了拍",
+      text: "30000 拍了拍 10000",
+    });
+    expect(result).not.toHaveProperty("type");
+    expect(result).not.toHaveProperty("content");
+  });
 });
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
@@ -289,6 +324,23 @@ describe("createResolver", () => {
     expect(result).toHaveProperty("text");
   });
 
+  it("derives text from frozen images while retaining the source image elements", async () => {
+    const resolver = createResolver({ http: { file: vi.fn<() => void>() } } as never);
+    const sourceElements = [h("img", { src: "data:image/png;base64,iVBORw==" })];
+    const base = { ...messageBase(), elements: sourceElements };
+    const freezeImage = vi.fn<ResolveContext["freezeImage"]>(async (_element, load) => {
+      const loaded = await load(new AbortController().signal, 16);
+      return h("img", { id: "asset_abc", mime: loaded.mime });
+    });
+
+    const result = await resolver.resolve(context({ base, freezeImage }));
+
+    if (!result || "eventType" in result) throw new Error("Expected a MessageRecord");
+    expect(result.text).toBe('<img id="asset_abc" mime="image/png"/>');
+    expect(result.elements).toBe(sourceElements);
+    expect(result.elements[0]?.attrs).toEqual({ src: "data:image/png;base64,iVBORw==" });
+  });
+
   it("resolves a supported notice before considering the optional message base", async () => {
     const resolver = createResolver({ http: { file: vi.fn() } } as never);
     const result = await resolver.resolve(
@@ -310,8 +362,7 @@ describe("createResolver", () => {
     );
 
     expect(result).toMatchObject({
-      schemaVersion: 1,
-      eventType: "notice.poke",
+      type: "onebot.message-reactions-updated",
       channel: { id: "room" },
     });
   });

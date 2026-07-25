@@ -191,8 +191,22 @@ describe("Gateway", () => {
   });
 
   it.each([
-    ["missing elements", { elements: undefined, messageId: "m1" }],
-    ["missing message id", { elements: [h.text("hi")], messageId: undefined }],
+    [
+      "missing elements",
+      {
+        elements: undefined,
+        messageId: "m1",
+        event: { type: "message", message: { id: "m1", elements: [h.text("event fallback")] } },
+      },
+    ],
+    [
+      "missing message id",
+      {
+        elements: [h.text("hi")],
+        messageId: undefined,
+        event: { type: "message", message: { id: "event-fallback" } },
+      },
+    ],
     ["empty message id", { elements: [h.text("hi")], messageId: "" }],
   ])("skips message-created session with %s", async (_label, patch) => {
     const { gateway, runtime } = createGateway();
@@ -223,6 +237,19 @@ describe("Gateway", () => {
     expect(routed).not.toHaveProperty("content");
     expect(routed).not.toHaveProperty("message");
   });
+
+  it.each([null, Number.NaN, Number.POSITIVE_INFINITY, "7"])(
+    "ignores a non-finite or non-number Session timestamp %#",
+    async (timestamp) => {
+      const { gateway, runtime } = createGateway();
+
+      await gateway.handle(
+        session({ timestamp, event: { type: "message", timestamp: 42 } }) as never,
+      );
+
+      expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ timestamp: 42 }));
+    },
+  );
 
   it.each([
     [[{ platform: "*", channelId: "room-1", isDirect: false }], {}, 0],
@@ -413,10 +440,9 @@ describe("Gateway", () => {
 
   it("creates a normalized and sealed fallback MessageRecord for an unregistered message platform", async () => {
     const { gateway, runtime } = createGateway();
+    const sourceElements = h.parse('hello <img src="https://example.test/a.png"/>');
 
-    await gateway.handle(
-      session({ elements: h.parse('hello <img src="https://example.test/a.png"/>') }) as never,
-    );
+    await gateway.handle(session({ elements: sourceElements }) as never);
 
     const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
     expect(routed).toMatchObject({
@@ -425,6 +451,8 @@ describe("Gateway", () => {
       elements: expect.any(Array),
       text: 'hello <img unavailable="true"/>',
     });
+    expect(routed.elements).toBe(sourceElements);
+    expect(routed.elements[1]?.attrs).toEqual({ src: "https://example.test/a.png" });
     expect(routed).not.toHaveProperty("type");
     expect(routed).not.toHaveProperty("content");
     expect(routed).not.toHaveProperty("message");
@@ -444,7 +472,6 @@ describe("Gateway", () => {
         guild: { id: "guild-1", name: "Guild" },
         member: { nick: "Member" },
         user: { name: "Event user" },
-        message: { content: "stale content" },
       },
     });
 
@@ -462,9 +489,7 @@ describe("Gateway", () => {
       user: { id: "user-1", name: "Event user" },
       messageId: "message-1",
     });
-    expect(routed.elements).toEqual(
-      h.parse('hello <at id="bot-1"/>'),
-    );
+    expect(routed.elements).toEqual(h.parse('hello <at id="bot-1"/>'));
     expect(routed).not.toBe(input);
   });
 

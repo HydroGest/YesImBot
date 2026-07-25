@@ -1,5 +1,11 @@
-import { Context, h, Logger, type Awaitable, type Element, type Session, Universal } from "koishi";
-import { set } from "zod/v4";
+import {
+  type Awaitable,
+  type Context,
+  type Element,
+  type Logger,
+  type Session,
+  Universal,
+} from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
 import type { EventRecord, InputRecord, MessageRecord } from "../event/index.js";
@@ -136,7 +142,7 @@ export class Gateway {
     }
     try {
       await this.opts.storage.updateName(scope, record.channel.name);
-      const result = await this.opts.runtime.route(record as EventRecord);
+      const result = await this.opts.runtime.route(record);
       if (result.kind === "run") {
         try {
           for await (const output of result.output) {
@@ -162,20 +168,19 @@ export class Gateway {
     delivery: RuntimeManager.Delivery,
   ): Promise<void> {
     const error = normalizeDeliveryError(cause);
-    // Extract extra Universal.Event fields (sn, login, referrer, etc.) from the record
-    const rec = record as unknown as Record<string, unknown>;
-    const { schemaVersion: _sv, eventType: _et, platform, selfId, timestamp: _ts, channel, text: _txt, delivery: _dl, ...extra } = rec;
     const failure: EventRecord<"delivery.failed"> = {
-      ...extra,
+      sn: record.sn,
+      login: record.login,
+      referrer: record.referrer,
       schemaVersion: 1,
       eventType: "delivery.failed",
-      platform: platform as string,
-      selfId: selfId as string,
+      platform: record.platform,
+      selfId: record.selfId,
       timestamp: Date.now(),
-      channel: channel as Universal.Channel,
+      channel: record.channel,
       delivery: { turnId: output.turnId, messageId: output.messageId, error },
       text: `Delivery of assistant message ${output.messageId} failed: ${error.message}`,
-    } as EventRecord<"delivery.failed">;
+    };
     try {
       await delivery.fail(failure);
     } catch (feedbackCause) {
@@ -220,7 +225,9 @@ function scopeFromSession(session: Session): ChannelScope | null {
 }
 
 function isRecord(record: InputRecord): boolean {
-  return Boolean(record.schemaVersion === 1 && record.platform && record.selfId && record.channel?.id);
+  return Boolean(
+    record.schemaVersion === 1 && record.platform && record.selfId && record.channel?.id,
+  );
 }
 
 function hasScope(record: InputRecord, scope: ChannelScope): boolean {
