@@ -149,8 +149,8 @@ export default class WorkspacePlugin {
   }
 
   private async getOrCreateWorkspace(channel: ChannelScope): Promise<Workspace> {
-    const key = this.ctx.yesimbot.channelKey(channel);
-    const existing = this.workspaces.get(key);
+    const identity = this.ctx.yesimbot.channelIdentity(channel);
+    const existing = this.workspaces.get(identity);
     if (existing) {
       return existing;
     }
@@ -163,7 +163,7 @@ export default class WorkspacePlugin {
 
     const workspace = new Workspace(this.createWorkspaceConfig(workspaceRoot));
     await workspace.init();
-    this.workspaces.set(key, workspace);
+    this.workspaces.set(identity, workspace);
     return workspace;
   }
 

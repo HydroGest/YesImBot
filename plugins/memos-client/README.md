@@ -17,19 +17,19 @@ MemOS Cloud long-term memory plugin for yesimbot. It adds `search_message` and `
 
 ## Channel identity
 
-The plugin uses the Core Channel Key as the MemOS `channel_hash` metadata
-field. The Core Key is a 26-character lowercase Base32 string derived from
+The plugin uses the Core channel identity as the MemOS `channel_hash` metadata
+field. The Core channel identity is a 26-character lowercase Base32 string derived from
 deterministic canonical tuples:
 
-- Shared channels: `platform + channelId` — the Key and `channel_hash` remain
+- Shared channels: `platform + channelId` — the Core channel identity and `channel_hash` remain
   stable when Koishi changes the bot assignee.
-- Direct channels: `platform + selfId + channelId` — the Key and
+- Direct channels: `platform + selfId + channelId` — the Core channel identity and
   `channel_hash` change when the bot identity differs, providing bot-level
   isolation.
 
 MemOS `user_id`, `conversation_id`, and `agent_id` remain plugin-owned
 identities derived through the plugin's `deriveMemosIdentity` helper. The
-Core Channel Key does not replace those field semantics.
+Core channel identity does not replace those field semantics.
 
 ## Local verification without API key
 
@@ -93,5 +93,5 @@ This live check is optional; local tests do not require network access or a key.
 
 ## Current gaps
 
-- Current tool execution still relies on capturing `athena.platform.message` during message conversion to recover author/message source context for MemOS metadata.
+- Current tool execution captures author and message metadata from supported `yesimbot.message` inputs only.
 - Full-turn internal memory ingestion is still future work; v1 only exposes the narrow LLM-visible `add_message(content)` path.

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi-plugin-yesimbot", () => {
   const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
-  const channelKey = (scope: {
+  const channelIdentity = (scope: {
     platform: string;
     selfId: string;
     channelId: string;
@@ -31,7 +31,7 @@ vi.mock("koishi-plugin-yesimbot", () => {
     if (bits > 0) output += BASE32[(buffer << (5 - bits)) & 31];
     return output;
   };
-  return { channelKey, isEvent: () => false };
+  return { channelIdentity };
 });
 
 import { buildQqMemosImportPlan, runQqMemosImportCli } from "../scripts/qq-memos-import.js";

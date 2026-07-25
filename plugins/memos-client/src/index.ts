@@ -1,6 +1,6 @@
 import type { AgentMessage, AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
 import { Schema, Universal, type Context, type Logger } from "koishi";
-import { isEvent, type Event } from "koishi-plugin-yesimbot";
+import { isMessage } from "koishi-plugin-yesimbot";
 
 import { MemosCloudClient } from "./client.js";
 import { memosConfigSchema } from "./config.js";
@@ -18,19 +18,15 @@ function captureMessageEvent(
     channelType: MemosChannelType;
   }) => void,
 ): void {
-  if (!isEvent(message) || !isMessageEvent(message)) {
+  if (!isMessage(message)) {
     return;
   }
 
   assign({
-    authorId: message.data.user.id!,
-    messageId: message.data.message.id!,
+    authorId: message.data.user.id,
+    messageId: message.data.messageId,
     channelType: message.data.channel.type === Universal.Channel.Type.DIRECT ? "private" : "group",
   });
-}
-
-function isMessageEvent(event: Event): event is Event<"message"> {
-  return event.data.type === "message";
 }
 
 export default class MemosClientPlugin {
@@ -76,7 +72,7 @@ export default class MemosClientPlugin {
         const channelScope = channelContext.channel;
         return deriveMemosIdentity({
           channelScope,
-          channelHash: this.ctx.yesimbot.channelKey(channelScope),
+          channelHash: this.ctx.yesimbot.channelIdentity(channelScope),
           channelType: channelScope.isDirect ? "private" : "group",
           authorId: latestAuthorId,
           messageId: latestMessageId,

@@ -10,7 +10,7 @@ describe("MemOS identity", () => {
     isDirect: false,
   } as const;
 
-  it("uses the caller-provided Core Channel Key as channel_hash", () => {
+  it("uses the caller-provided Core channel identity as channel_hash", () => {
     const identity = deriveMemosIdentity({
       channelScope: {
         platform: "onebot",
@@ -241,7 +241,7 @@ describe("MemOS identity", () => {
     });
   });
 
-  it("uses the Core Channel Key for imported history", () => {
+  it("uses the Core channel identity for imported history", () => {
     const identity = deriveMemosImportChunkIdentity({
       channelScope,
       channelHash: "76rnoqazbgqomsofkjtqxbwi4a",

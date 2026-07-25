@@ -7,7 +7,7 @@ import type { MemosClientConfig } from "../src/types.js";
 
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
 
-function mockChannelKey(scope: {
+function mockChannelIdentity(scope: {
   platform: string;
   selfId: string;
   channelId: string;
@@ -63,12 +63,13 @@ vi.mock("koishi", () => {
 });
 
 vi.mock("koishi-plugin-yesimbot", () => ({
-  isEvent(message: unknown) {
+  isMessage(message: unknown) {
     return (
       typeof message === "object" &&
       message !== null &&
       (message as { role?: unknown }).role === "custom" &&
-      (message as { type?: unknown }).type === "yesimbot.event"
+      (message as { type?: unknown }).type === "yesimbot.message" &&
+      (message as { data?: { schemaVersion?: unknown } }).data?.schemaVersion === 1
     );
   },
 }));
@@ -125,7 +126,7 @@ function createContext() {
           return dispose;
         },
       ),
-      channelKey:
+      channelIdentity:
         vi.fn<
           (scope: {
             platform: string;
@@ -133,7 +134,7 @@ function createContext() {
             channelId: string;
             isDirect: boolean;
           }) => string
-        >(mockChannelKey),
+        >(mockChannelIdentity),
     },
   };
 
@@ -204,35 +205,36 @@ describe("MemosClientPlugin", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
-  it("updates identity from message Events appended before model projection", async () => {
+  it("updates identity from supported yesimbot messages appended before model projection", async () => {
     const { ctx, factories, post } = createContext();
     const plugin = new MemosClientPlugin(ctx as never, config);
 
     await plugin.start();
 
     const runtimePlugin = factories[0]!(channelContext() as never);
-    const messageEvent = {
+    const message = {
       role: "custom",
-      type: "yesimbot.event",
-      id: "event-message",
+      type: "yesimbot.message",
+      id: "message",
       timestamp: Date.now(),
       data: {
-        type: "message",
+        schemaVersion: 1,
         platform: "onebot",
         selfId: "bot-raw",
-        channel: { id: "group-raw", type: "group" },
+        channel: { id: "group-raw", type: 0 },
         user: { id: "author-raw", name: "Ada" },
-        message: { id: "message-raw" },
-        content: "hello",
+        messageId: "message-raw",
+        elements: [],
+        text: "hello",
       },
     };
     await runtimePlugin.onAppend?.(
       [
         {
-          id: "entry-message-event",
+          id: "entry-message",
           type: "message",
-          timestamp: messageEvent.timestamp,
-          data: messageEvent,
+          timestamp: message.timestamp,
+          data: message,
         },
       ],
       {} as never,
@@ -273,16 +275,16 @@ describe("MemosClientPlugin", () => {
     expect(JSON.stringify(body.info)).not.toContain("bot-raw");
     expect(JSON.stringify(body.info)).not.toContain("message-raw");
 
-    const directMessageEvent = {
-      ...messageEvent,
+    const directMessage = {
+      ...message,
       data: {
-        ...messageEvent.data,
+        ...message.data,
         channel: { id: "direct-raw", type: 1 },
         user: { id: "direct-author" },
-        message: { id: "direct-message" },
+        messageId: "direct-message",
       },
     };
-    await runtimePlugin.toModelMessages?.(directMessageEvent as never, {} as never);
+    await runtimePlugin.toModelMessages?.(directMessage as never, {} as never);
     await addTool?.execute?.({ content: "私聊偏好" }, toolContext("turn-direct"));
 
     const directIdentity = deriveMemosIdentity({
@@ -307,46 +309,50 @@ describe("MemosClientPlugin", () => {
     });
   });
 
-  it("does not update identity for delivery failures or non-Events", async () => {
+  it("ignores events, unsupported schemas, and ordinary Agent messages", async () => {
     const { ctx, factories, post } = createContext();
     const plugin = new MemosClientPlugin(ctx as never, config);
 
     await plugin.start();
 
     const runtimePlugin = factories[0]!(channelContext() as never);
-    const messageEvent = {
+    const message = {
       role: "custom",
-      type: "yesimbot.event",
-      id: "event-message",
+      type: "yesimbot.message",
+      id: "message",
       timestamp: Date.now(),
       data: {
-        type: "message",
+        schemaVersion: 1,
         platform: "onebot",
         selfId: "bot-raw",
-        channel: { id: "group-raw", type: "group" },
+        channel: { id: "group-raw", type: 0 },
         user: { id: "author-raw" },
-        message: { id: "message-raw" },
+        messageId: "message-raw",
+        elements: [],
+        text: "hello",
       },
     };
     await runtimePlugin.onAppend?.(
       [
         {
-          id: "entry-message-event",
+          id: "entry-message",
           type: "message",
-          timestamp: messageEvent.timestamp,
-          data: messageEvent,
+          timestamp: message.timestamp,
+          data: message,
         },
       ],
       {} as never,
     );
     await runtimePlugin.toModelMessages?.(
       {
-        ...messageEvent,
+        ...message,
+        type: "yesimbot.event",
         data: {
-          type: "delivery.failed",
+          schemaVersion: 1,
+          eventType: "delivery.failed",
           platform: "onebot",
           selfId: "bot-raw",
-          channel: { id: "group-raw", type: "group" },
+          channel: { id: "group-raw", type: 0 },
           delivery: {
             turnId: "turn-failed",
             messageId: "assistant-message",
@@ -354,6 +360,14 @@ describe("MemosClientPlugin", () => {
           },
         },
       } as never,
+      {} as never,
+    );
+    await runtimePlugin.toModelMessages?.(
+      { ...message, data: { ...message.data, schemaVersion: 2 } } as never,
+      {} as never,
+    );
+    await runtimePlugin.toModelMessages?.(
+      { ...message, data: { ...message.data, schemaVersion: undefined } } as never,
       {} as never,
     );
     await runtimePlugin.toModelMessages?.(
