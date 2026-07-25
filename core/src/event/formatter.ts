@@ -4,11 +4,6 @@ import type { FilePart } from "ai";
 import type { Event, Input, Message } from "./index.js";
 import { isMessage } from "./index.js";
 
-export interface FormatEventOptions {
-  readonly includeMessageId: boolean;
-  readonly files?: readonly FilePart[];
-}
-
 export interface FormatInputOptions {
   readonly includeMessageId: boolean;
   readonly files?: readonly FilePart[];
@@ -27,11 +22,6 @@ export function formatInput(input: Input, options: FormatInputOptions): UserMode
   const content = isMessage(input)
     ? `${formatMessageHeader(input, options)}\n${input.data.text}`
     : formatEventNotification(input);
-  return { role: "user", content: appendModelFiles(content, options.files ?? []) };
-}
-
-export function formatEvent(event: Event, options: FormatEventOptions): UserModelMessage {
-  const content = formatEventNotification(event);
   return { role: "user", content: appendModelFiles(content, options.files ?? []) };
 }
 

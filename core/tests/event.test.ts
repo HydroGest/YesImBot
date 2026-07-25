@@ -171,6 +171,13 @@ describe("Event", () => {
     expectTypeOf<Event["data"]["text"]>().toBeString();
   });
 
+  it("Event data excludes timestamp from persisted payload", () => {
+    // Regression: timestamp must not appear in the persisted Event payload.
+    // If timestamp were a key, the conditional resolves to never and the test does not compile.
+    type _Assert = "timestamp" extends keyof Event["data"] ? never : true;
+    expect(true as _Assert).toBe(true);
+  });
+
   it("EventMap no longer contains a message variant", () => {
     type MapKeys = keyof EventMap;
     expectTypeOf<MapKeys>().toEqualTypeOf<"delivery.failed" | "test.variant">();

@@ -5,7 +5,7 @@ import { h, type Element } from "koishi";
 import type { ChannelScope } from "../channel/index.js";
 import type { AssetStore } from "../shared/asset.js";
 import { detectImageMime } from "../shared/image-mime.js";
-import { isEvent, isInput, type Event, type Input } from "./index.js";
+import { isInput, type Input } from "./index.js";
 
 export interface MediaSelectionPolicy {
   readonly enabled: boolean;
@@ -36,23 +36,6 @@ function reportAssetFailure(options: MediaSelectionOptions, assetId: string, cau
     options.onAssetFailure?.(assetId, cause);
   } catch (diagnosticFailure) {
     if (diagnosticFailure instanceof Error) return;
-  }
-}
-
-function eventSources(
-  context: ModelMessageContext,
-  strategy: MediaSelectionPolicy["strategy"],
-): Event[] {
-  const history = context.history.filter(isEvent);
-  const current = context.current.filter(isEvent);
-
-  switch (strategy) {
-    case "current-first":
-      return [...current, ...history];
-    case "fifo":
-      return [...history, ...current];
-    case "lifo":
-      return [...history, ...current].reverse();
   }
 }
 
@@ -134,57 +117,6 @@ export async function selectInputFiles(
       totalBytes += data.byteLength;
     }
     if (files.length > 0) selected.set(input.id, files);
-  }
-
-  return selected;
-}
-
-export async function selectEventFiles(
-  context: ModelMessageContext,
-  options: MediaSelectionOptions,
-): Promise<ReadonlyMap<Event["id"], readonly FilePart[]>> {
-  if (!options.policy.enabled || !options.imageInput) return new Map();
-
-  const selected = new Map<Event["id"], readonly FilePart[]>();
-  let imageCount = 0;
-  let totalBytes = 0;
-
-  for (const event of eventSources(context, options.policy.strategy)) {
-    const files: FilePart[] = [];
-    for (const assetId of imageAssetIds(event.data.text)) {
-      if (
-        imageCount >= options.policy.maxImages ||
-        totalBytes >= options.policy.maxTotalImageBytes
-      ) {
-        if (files.length > 0) selected.set(event.id, files);
-        return selected;
-      }
-
-      let data: Uint8Array;
-      try {
-        data = await options.assetStore.readByAssetId(options.scope, assetId);
-      } catch (cause) {
-        reportAssetFailure(options, assetId, cause);
-        continue;
-      }
-
-      const mediaType = detectImageMime(data);
-      if (mediaType === undefined) {
-        reportAssetFailure(options, assetId, new UnsupportedImageMimeError());
-        continue;
-      }
-      if (
-        data.byteLength > options.policy.maxImageBytes ||
-        data.byteLength > options.policy.maxTotalImageBytes - totalBytes
-      ) {
-        continue;
-      }
-
-      files.push({ type: "file", data, mediaType });
-      imageCount += 1;
-      totalBytes += data.byteLength;
-    }
-    if (files.length > 0) selected.set(event.id, files);
   }
 
   return selected;

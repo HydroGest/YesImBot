@@ -42,11 +42,13 @@ export type EventRecord<K extends keyof EventMap = keyof EventMap> = {
   } & EventMap[P];
 }[K];
 
+export type EventPayload = Omit<EventRecord, "timestamp">;
+
 export type InputRecord = MessageRecord | EventRecord;
 
 export type Message = CustomMessageBase<"yesimbot.message", MessageData>;
 
-export type Event = CustomMessageBase<"yesimbot.event", EventRecord>;
+export type Event = CustomMessageBase<"yesimbot.event", EventPayload>;
 
 export type Input = Message | Event;
 
@@ -58,14 +60,14 @@ export { isMessageRecord };
 
 export function createMessage(record: MessageRecord): Message {
   const { timestamp: _timestamp, ...data } = record;
-  return createCustomMessage("yesimbot.message", data as MessageData, {
+  return createCustomMessage("yesimbot.message", data, {
     timestamp: record.timestamp,
   });
 }
 
 export function createEvent(record: EventRecord): Event {
   const { timestamp: _timestamp, ...data } = record;
-  return createCustomMessage("yesimbot.event", data as unknown as EventRecord, {
+  return createCustomMessage("yesimbot.event", data, {
     timestamp: record.timestamp,
   });
 }
@@ -76,14 +78,24 @@ export function createInput(record: InputRecord): Input {
 
 export function isMessage(message: AgentMessage): message is Message {
   if (message.role !== "custom" || message.type !== "yesimbot.message") return false;
-  const data = message.data as unknown as Record<string, unknown>;
-  return data.schemaVersion === 1;
+  const data = message.data;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "schemaVersion" in data &&
+    data.schemaVersion === 1
+  );
 }
 
 export function isEvent(message: AgentMessage): message is Event {
   if (message.role !== "custom" || message.type !== "yesimbot.event") return false;
-  const data = message.data as unknown as Record<string, unknown>;
-  return data.schemaVersion === 1;
+  const data = message.data;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "schemaVersion" in data &&
+    data.schemaVersion === 1
+  );
 }
 
 export function isInput(message: AgentMessage): message is Input {
