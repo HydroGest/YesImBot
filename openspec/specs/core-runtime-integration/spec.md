@@ -16,11 +16,11 @@ Define how `koishi-plugin-yesimbot` integrates Koishi with `@yesimbot/agent-runt
 - **THEN** the facade MUST delegate the active factory to RuntimeManager
 
 ### Requirement: Runtime Manager Ownership
-RuntimeManager MUST own the map from canonical Channel Key to ChannelRuntime, concurrent get-or-create behavior, channel reset, `Will.Factory` replacement, and global stop. It MUST NOT accept Session, call SessionResolver, send platform messages, or serve as an event broadcast bus.
+RuntimeManager MUST own the map from `channelIdentity` to ChannelRuntime, concurrent get-or-create behavior, channel reset, `Will.Factory` replacement, and global stop. It MUST NOT accept Session, call SessionResolver, send platform messages, or serve as an event broadcast bus.
 
 #### Scenario: First event reaches a channel
 - **WHEN** RuntimeManager routes the first resolved event for a channel
-- **THEN** it MUST create exactly one ChannelRuntime for the canonical channel key
+- **THEN** it MUST create exactly one ChannelRuntime for the channel identity
 
 #### Scenario: Concurrent events reach an uncached channel
 - **WHEN** multiple events concurrently require the same new channel
@@ -28,11 +28,11 @@ RuntimeManager MUST own the map from canonical Channel Key to ChannelRuntime, co
 
 ### Requirement: Online Assignee Handover
 
-RuntimeManager MUST replace a cached shared-channel Runtime when Koishi Database changes the assignee, while preserving the Channel Key and persisted data.
+RuntimeManager MUST replace a cached shared-channel Runtime when Koishi Database changes the assignee, while preserving `channelIdentity` and persisted data.
 
 #### Scenario: Cached Runtime belongs to old assignee
 - **WHEN** a shared event passes admission for a `selfId` that differs from the cached Runtime Entry
-- **THEN** RuntimeManager MUST mark the old generation as draining inside the per-Key lifecycle coordinator
+- **THEN** RuntimeManager MUST mark the old generation as draining inside the per-identity lifecycle coordinator
 - **AND** it MUST prevent that Runtime from accepting new platform events
 - **AND** it MUST release the lifecycle coordinator before awaiting completion
 
@@ -53,7 +53,7 @@ RuntimeManager MUST replace a cached shared-channel Runtime when Koishi Database
 RuntimeManager MUST bound events waiting for one shared-channel handover and MUST fail closed when handover cannot complete.
 
 #### Scenario: Handover queue reaches its limit
-- **WHEN** five events are already waiting for one Channel Key handover
+- **WHEN** five events are already waiting for one channel identity handover
 - **THEN** Core MUST reject additional events explicitly
 - **AND** it MUST NOT create another Runtime or retain an unbounded queue
 
@@ -67,23 +67,23 @@ RuntimeManager MUST bound events waiting for one shared-channel handover and MUS
 - **AND** it MUST NOT start a replacement Runtime until explicit stop or restart recovery
 
 ### Requirement: Single Channel Runtime Ownership
-Each ChannelRuntime MUST represent exactly one Core Channel Key and MUST own that channel's FIFO, Agent, JSONL storage, Will instance, local state, model projection, and Agent-internal stream consumption. Shared scopes with different `selfId` values MUST use the same Channel Key but MUST NOT own concurrent Runtime instances. Direct scopes with different `selfId` values MUST use different Channel Keys.
+Each ChannelRuntime MUST represent exactly one Core `channelIdentity` and MUST own that channel's FIFO, Agent, JSONL storage, Will instance, local state, model projection, and Agent-internal stream consumption. Shared scopes with different `selfId` values MUST use the same identity but MUST NOT own concurrent Runtime instances. Direct scopes with different `selfId` values MUST use different identities.
 
 #### Scenario: Channel runtime is inspected
 - **WHEN** a ChannelRuntime handles an event
 - **THEN** it MUST NOT contain a map of other channel runtimes
-- **AND** it MUST use only its immutable Channel Key and bound execution Scope
+- **AND** it MUST use only its immutable identity and bound execution Scope
 
 #### Scenario: Shared assignee changes
-- **WHEN** RuntimeManager admits a different `selfId` for an existing shared Channel Key
+- **WHEN** RuntimeManager admits a different `selfId` for an existing shared identity
 - **THEN** it MUST perform online assignee handover instead of creating a concurrent Runtime
 
-### Requirement: FIFO Event Lifecycle
-ChannelRuntime MUST serialize accepted EventRecords through one channel FIFO for Event creation, persistence, committed-event observation, and Will decision. It MUST persist Event before calling Will.
+### Requirement: FIFO Input Lifecycle
+ChannelRuntime MUST serialize accepted `MessageRecord | EventRecord` values through one channel FIFO for Input creation, persistence, committed-input observation, and Will decision. It MUST persist Input before calling Will.
 
 #### Scenario: Accepted event enters a channel
-- **WHEN** RuntimeManager routes a resolved event to ChannelRuntime
-- **THEN** ChannelRuntime MUST append its Event
+- **WHEN** RuntimeManager routes a resolved input record to ChannelRuntime
+- **THEN** ChannelRuntime MUST append its Message or Event
 - **AND** it MUST emit `yesimbot/event`
 - **AND** it MUST then evaluate Will and emit `yesimbot/will`
 
@@ -99,7 +99,7 @@ When Will triggers an idle Agent, ChannelRuntime MUST own the sole consumer of t
 - **THEN** ChannelRuntime MUST consume them internally and MUST NOT yield them to Gateway
 
 ### Requirement: Busy Turn Join Ownership
-When Will triggers while the channel Agent is busy, ChannelRuntime MUST join the committed Event to the active turn and MUST NOT create another Agent internal stream consumer or output iterable.
+When Will triggers while the channel Agent is busy, ChannelRuntime MUST join the committed Input to the active turn and MUST NOT create another Agent internal stream consumer or output iterable.
 
 #### Scenario: Busy channel receives a trigger
 - **WHEN** Will returns `trigger` and an active turn exists
@@ -159,7 +159,7 @@ Core MUST resolve the configured chat model through `ctx["yesimbot.model"]`, pas
 - **THEN** core MUST NOT hot-swap the model or media capability for that runtime
 
 ### Requirement: Channel JSONL Storage
-Core MUST use one append-only JSONL storage file per Channel Key at `<basePath>/channels/<key>/sessions/messages.jsonl`.
+Core MUST use one append-only JSONL storage file per channel identity at the path returned by Manifest-backed channel storage: `<basePath>/channels/<directoryName>/sessions/messages.jsonl`.
 
 #### Scenario: Storage path construction
 - **WHEN** Core creates storage for a ChannelRuntime
@@ -172,8 +172,8 @@ Core MUST use one append-only JSONL storage file per Channel Key at `<basePath>/
 - **AND** the storage MUST NOT require indexes, pagination, compression, or legacy conversion
 
 #### Scenario: Restart reads history
-- **WHEN** Core recreates a ChannelRuntime whose canonical JSONL file already exists
-- **THEN** the Runtime storage MUST read the previously appended entries
+- **WHEN** Core recreates a ChannelRuntime whose current Manifest-backed JSONL file already exists
+- **THEN** the Runtime storage MUST read current-format previously appended entries and MUST not read legacy JSONL
 
 #### Scenario: Shared assignee restarts Runtime
 - **WHEN** Koishi changes a shared Channel's assignee and RuntimeManager rebuilds the Runtime
@@ -187,7 +187,7 @@ Each ChannelRuntime MUST own one immutable prompt, tool, model, and provider sna
 
 - **WHEN** RuntimeManager routes another accepted event to an active ChannelRuntime
 - **THEN** Core MUST reuse the ChannelRuntime's existing stable prompt and tool snapshot
-- **AND** the new EventRecord MUST extend the channel's append-only Agent history
+- **AND** the new InputRecord MUST extend the channel's append-only Agent history
 
 #### Scenario: Stable plugin set changes
 
@@ -202,7 +202,7 @@ Each ChannelRuntime MUST own one immutable prompt, tool, model, and provider sna
 
 ### Requirement: Non-Destructive Runtime Refresh
 
-`YesImBotService` MUST expose `reload(scope): Promise<void>` as the explicit trusted path to refresh one ChannelRuntime after a stable prompt, persona, plugin-instruction, tool, model, or provider change. Reload MUST validate current assignment and drain the old runtime without clearing channel history, assets, workspace, manifest, catalog, or registered storage namespaces. The next accepted event MUST build the fresh runtime snapshot lazily.
+`YesImBotService` MUST expose `reload(scope): Promise<void>` as the explicit trusted path to refresh one ChannelRuntime after a stable prompt, persona, plugin-instruction, tool, model, or provider change. Reload MUST validate current assignment and drain the old runtime without clearing channel history, assets, workspace, Manifest, or registered storage namespaces. The next accepted event MUST build the fresh runtime snapshot lazily.
 
 #### Scenario: Trusted persona source requests refresh
 
@@ -214,7 +214,7 @@ Each ChannelRuntime MUST own one immutable prompt, tool, model, and provider sna
 #### Scenario: Refresh fails while draining
 
 - **WHEN** the old ChannelRuntime cannot drain or stop cleanly
-- **THEN** Core MUST remain fail closed for that Channel Key
+- **THEN** Core MUST remain fail closed for that channel identity
 - **AND** it MUST NOT publish a concurrent replacement runtime
 - **AND** it MUST preserve persisted channel data
 
@@ -230,16 +230,16 @@ Each ChannelRuntime MUST own one immutable prompt, tool, model, and provider sna
 - **THEN** Core MUST validate current assignment and return without creating a runtime
 - **AND** the next accepted event MUST create the runtime from the latest stable sources
 
-#### Scenario: Event races with runtime draining
+#### Scenario: Input races with runtime draining
 
-- **WHEN** an accepted EventRecord reaches a ChannelRuntime after reload has started draining it
+- **WHEN** an accepted InputRecord reaches a ChannelRuntime after reload has started draining it
 - **THEN** ChannelRuntime MUST reject it with a dedicated draining error before persistence
-- **AND** RuntimeManager MUST retry that EventRecord through the existing handover path
-- **AND** the per-Key handover waiting limit MUST remain five
+- **AND** RuntimeManager MUST retry that InputRecord through the existing handover path
+- **AND** the per-identity handover waiting limit MUST remain five
 
 #### Scenario: Concurrent reload calls coalesce
 
-- **WHEN** multiple callers request reload for the same draining Channel Key
+- **WHEN** multiple callers request reload for the same draining channel identity
 - **THEN** they MUST await the same handover operation
 - **AND** Core MUST NOT create an additional replacement generation solely for each concurrent call
 
@@ -330,4 +330,3 @@ RuntimeManager MUST snapshot the resolved image-input capability and configured 
 #### Scenario: Runtime is reloaded
 - **WHEN** a trusted caller reloads the channel after a media policy change
 - **THEN** the replacement runtime MUST use the latest resolved capability and policy without clearing history or assets
-

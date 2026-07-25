@@ -33,7 +33,7 @@ Gateway MUST isolate direct Sessions by their real `selfId` and MUST NOT use Koi
 
 ### Requirement: Assignee Revalidation
 
-Core MUST revalidate shared-channel assignee state at the point where a resolved event enters the per-Key Runtime lifecycle coordinator.
+Core MUST revalidate shared-channel assignee state at the point where a resolved input enters the per-identity Runtime lifecycle coordinator.
 
 #### Scenario: Assignment changes while event waits
 - **WHEN** Gateway admitted a Session but the database assignee changes before Runtime submission
@@ -69,11 +69,11 @@ The public YesImBot facade MUST allow at most one `SessionResolver` registration
 - **THEN** registration MUST fail without replacing the active resolver
 
 ### Requirement: Atomic Session Resolution
-Gateway MUST call the selected resolver once with ResolveContext containing the Session, an optional Satori-derived message base, and `freezeImage()`. The resolver MUST return EventRecord or `null`.
+Gateway MUST call the selected resolver once with ResolveContext containing the Session, an optional Satori-derived message base, and `freezeImage()`. The resolver MUST return `MessageRecord | EventRecord` or `null`.
 
-#### Scenario: Resolver accepts a message Session
-- **WHEN** a resolver returns a resolved event
-- **THEN** Gateway MUST pass the EventRecord to RuntimeManager
+#### Scenario: Resolver accepts a Session
+- **WHEN** a resolver returns a resolved input record
+- **THEN** Gateway MUST pass the MessageRecord or EventRecord to RuntimeManager
 - **AND** it MUST NOT invoke a separate refine, prepare, or model-projector stage
 
 #### Scenario: Resolver skips a Session
@@ -81,32 +81,32 @@ Gateway MUST call the selected resolver once with ResolveContext containing the 
 - **THEN** core MUST NOT persist, route, or broadcast an Event for that Session
 
 ### Requirement: Authoritative Resolver Failure
-A registered resolver MUST be authoritative for its platform. If its `resolve` call throws or returns an invalid EventRecord, Gateway MUST record a diagnostic and skip the Session without falling back to generic Satori conversion.
+A registered resolver MUST be authoritative for its platform. If its `resolve` call throws or returns an invalid input record, Gateway MUST record a diagnostic and skip the Session without falling back to generic Satori conversion.
 
 #### Scenario: Resolver throws
 - **WHEN** the registered resolver throws while resolving a Session
 - **THEN** Gateway MUST record a resolver diagnostic
-- **AND** it MUST NOT create a fallback message event
+- **AND** it MUST NOT create a fallback MessageRecord
 
 ### Requirement: Satori Message Fallback
 When a platform has no registered resolver, Gateway MUST convert a standard message Session from Satori resources and MUST skip non-message Sessions.
 
 #### Scenario: Message has no platform resolver
 - **WHEN** middleware receives a valid Satori message Session for a platform without a resolver
-- **THEN** Gateway MUST create a `message` EventRecord
-- **AND** it MUST freeze the message content before routing
+- **THEN** Gateway MUST create a MessageRecord only when the Session has a routable scope, elements array, and non-empty platform message ID
+- **AND** it MUST capture source elements before transformations and freeze final message text before routing
 
 #### Scenario: Non-message Session has no platform resolver
 - **WHEN** `internal/session` receives a non-message Session for a platform without a resolver
 - **THEN** Gateway MUST return without routing the Session
 
 ### Requirement: Element-Based Resolved Message
-An accepted message event MUST retain normalized Koishi elements in its structured Satori message resource and MUST carry a separate frozen Koishi literal for model projection. Core MUST NOT introduce a parallel part, view, snapshot, reference, or reader representation.
+An accepted ordinary message MUST persist source `elements` as its sole structured message field and MUST carry separately frozen `text` for model projection. Core MUST NOT introduce a nested message/content field, Element DTO, cleaner, or parallel structured representation.
 
 #### Scenario: Resolver accepts a rich message
 - **WHEN** a message contains text, mentions, quotes, forwards, or supported media
-- **THEN** the structured runtime event MUST expose normalized Koishi message elements
-- **AND** the resolved content MUST contain their sealed literal representation
+- **THEN** the persisted Message MUST retain captured source elements
+- **AND** its frozen text MUST contain the transformed literal representation
 
 ### Requirement: Resolver-Owned Bounded Image Freezing
 Session resolution MUST finish every eligible image download before first persistence. It MUST enforce a maximum of 4 images, 5 MiB per image, 10 MiB total image bytes, 10 seconds per image, 2 concurrent downloads, and the MIME allowlist `image/jpeg`, `image/png`, `image/webp`, and `image/gif`. `freezeImage()` MUST call its loader as `load(signal, maxBytes)` using the remaining core-controlled budget; loaders MUST honor the signal and cap at transport/decode time. Timeout MUST abort the loader, return unavailable promptly, and retain its concurrency permit until that loader settles. AssetStore MUST determine accepted MIME from actual bytes; the loader MIME is only a hint.
@@ -134,10 +134,10 @@ Session resolution MUST keep forward elements as ID plus fixed summary and quote
 - **THEN** the structured and frozen representations MUST retain only its message ID
 
 ### Requirement: Shared Scoped Asset Ownership
-One internal AssetStore MUST support Gateway `freezeImage()` writes and Event formatter reads plus ChannelRuntime cleanup. Assets MUST remain private to the canonical channel identity and MUST NOT become a public Koishi service.
+One internal AssetStore MUST support Gateway `freezeImage()` writes, Message text projection reads, and ChannelRuntime cleanup. Assets MUST remain private to `channelIdentity` and MUST NOT become a public Koishi service.
 
 #### Scenario: Channel runtime projects a frozen image
-- **WHEN** model projection reads a private image reference from Event data
+- **WHEN** model projection reads a private image reference from persisted Message text
 - **THEN** it MUST load bytes only from the matching channel scope in AssetStore
 
 #### Scenario: Channel reset clears assets
@@ -165,9 +165,8 @@ Core MUST expose `allowedChannels` as a strict Gateway allowlist. Each rule MUST
 
 #### Scenario: No rule matches
 - **WHEN** Gateway derives a valid ChannelScope but no allowlist rule matches it
-- **THEN** Gateway MUST return before storage readiness, database assignee lookup, Resolver work, image freezing, Event creation, persistence, Will evaluation, or Runtime creation
+- **THEN** Gateway MUST return before storage readiness, database assignee lookup, Resolver work, image freezing, Input creation, persistence, Will evaluation, or Runtime creation
 
 #### Scenario: Internal delivery feedback is created
 - **WHEN** an admitted ChannelRuntime reports same-channel `delivery.failed` feedback
 - **THEN** Core MUST complete that internal Event through the producing Runtime without applying external Session allowlist admission again
-
