@@ -3,10 +3,19 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   createEvent,
+  createInput,
+  createMessage,
   isEvent,
+  isInput,
+  isMessage,
+  isMessageRecord,
   type Event,
   type EventMap,
   type EventRecord,
+  type Input,
+  type InputRecord,
+  type Message,
+  type MessageRecord,
 } from "../src/event/index.js";
 
 declare module "koishi-plugin-yesimbot" {
@@ -18,75 +27,152 @@ declare module "koishi-plugin-yesimbot" {
   }
 }
 
-type MessageRecord = EventRecord<"message">;
-type TestRecord = EventRecord<"test.variant">;
+function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
+  return {
+    schemaVersion: 1,
+    platform: "test",
+    selfId: "bot-1",
+    channel: { id: "channel-1" },
+    user: { id: "user-1", name: "Alice" },
+    messageId: "m1",
+    elements: [{ type: "text", attrs: { content: "hello" }, children: [] }],
+    text: "hello",
+    timestamp: overrides.timestamp ?? 1234,
+  };
+}
 
-const messageRecord: MessageRecord = {
-  id: "event-1",
-  type: "message",
-  platform: "test",
-  selfId: "bot-1",
-  timestamp: 123,
-  channel: { id: "channel-1" },
-  user: { id: "user-1" },
-  message: { id: "message-1", content: "hello" },
-  content: "hello",
-};
+function deliveryFailureRecord(overrides: { timestamp?: number } = {}): EventRecord<"delivery.failed"> {
+  return {
+    schemaVersion: 1,
+    eventType: "delivery.failed",
+    platform: "test",
+    selfId: "bot-1",
+    channel: { id: "channel-1" },
+    delivery: {
+      turnId: "turn-1",
+      messageId: "assistant-1",
+      error: { name: "Error", message: "offline" },
+    },
+    text: "failed",
+    timestamp: overrides.timestamp ?? 5678,
+  };
+}
 
 describe("Event", () => {
-  it("narrows EventRecord variants from EventMap declaration merging", () => {
-    const record = {} as MessageRecord;
-    if (record.type === "message") {
-      expectTypeOf(record.message).toMatchTypeOf<EventMap["message"]["message"]>();
-      expectTypeOf(record.user).toMatchTypeOf<EventMap["message"]["user"]>();
-      expectTypeOf(record.channel).toMatchTypeOf<EventMap["message"]["channel"]>();
-    }
-
-    const testRecord = {} as TestRecord;
-    if (testRecord.type === "test.variant") {
-      expectTypeOf(testRecord.test).toMatchTypeOf<{ value: number }>();
-      expectTypeOf(testRecord.channel).toMatchTypeOf<{ id: string }>();
-    }
-  });
-
-  it("creates a persistable Agent custom message using the record timestamp", () => {
-    const event = createEvent(messageRecord);
-    const legacyType = ["athena", "platform", "message"].join(".");
-
-    expect(event).toMatchObject({
+  it("creates yesimbot.message without payload timestamp", () => {
+    const message = createMessage(messageRecord({ timestamp: 1234 }));
+    expect(message).toMatchObject({
       role: "custom",
-      type: "yesimbot.event",
-      timestamp: 123,
-      data: messageRecord,
+      type: "yesimbot.message",
+      timestamp: 1234,
+      data: { schemaVersion: 1, messageId: "m1", text: "hello" },
     });
-    expect(JSON.stringify(event)).toContain('"type":"yesimbot.event"');
-    expect(JSON.stringify(event)).not.toContain(legacyType);
+    expect("timestamp" in message.data).toBe(false);
   });
 
-  it("uses the current time only when the record has no timestamp", () => {
-    const now = Date.now;
-    Date.now = () => 456;
-    try {
-      const { timestamp: _timestamp, ...record } = messageRecord;
-      expect(createEvent(record).timestamp).toBe(456);
-    } finally {
-      Date.now = now;
-    }
+  it("creates eventType-discriminated yesimbot.event", () => {
+    const event = createEvent(deliveryFailureRecord({ timestamp: 5678 }));
+    expect(event).toMatchObject({
+      type: "yesimbot.event",
+      timestamp: 5678,
+      data: { schemaVersion: 1, eventType: "delivery.failed" },
+    });
+    expect("timestamp" in event.data).toBe(false);
   });
 
-  it("recognizes only yesimbot Event custom messages", () => {
-    const event = createEvent(messageRecord);
-    const legacyType = ["athena", "platform", "message"].join(".");
-    const nonEvent: AgentMessage = {
-      id: "non-event-1",
-      timestamp: 123,
+  it("createInput dispatches to createMessage or createEvent", () => {
+    const messageInput = createInput(messageRecord());
+    const eventInput = createInput(deliveryFailureRecord());
+    expect(messageInput.type).toBe("yesimbot.message");
+    expect(eventInput.type).toBe("yesimbot.event");
+  });
+
+  it("isMessageRecord distinguishes message from event records", () => {
+    expect(isMessageRecord(messageRecord())).toBe(true);
+    expect(isMessageRecord(deliveryFailureRecord())).toBe(false);
+  });
+
+  it("recognizes yesimbot.message custom messages as Message", () => {
+    const message = createMessage(messageRecord());
+    const nonMessage: AgentMessage = {
+      id: "x",
+      timestamp: 0,
       role: "custom",
-      type: legacyType,
+      type: "other",
+      data: {},
+    } as AgentMessage;
+
+    expect(isMessage(message)).toBe(true);
+    expect(isMessage(nonMessage)).toBe(false);
+    expectTypeOf<Message>().toMatchTypeOf<{ role: "custom"; type: "yesimbot.message" }>();
+  });
+
+  it("recognizes yesimbot.event custom messages as Event", () => {
+    const event = createEvent(deliveryFailureRecord());
+    const nonEvent: AgentMessage = {
+      id: "x",
+      timestamp: 0,
+      role: "custom",
+      type: "other",
       data: {},
     } as AgentMessage;
 
     expect(isEvent(event)).toBe(true);
     expect(isEvent(nonEvent)).toBe(false);
     expectTypeOf<Event>().toMatchTypeOf<{ role: "custom"; type: "yesimbot.event" }>();
+  });
+
+  it("isInput matches both Message and Event", () => {
+    const message = createMessage(messageRecord());
+    const event = createEvent(deliveryFailureRecord());
+    const nonInput: AgentMessage = {
+      id: "x",
+      timestamp: 0,
+      role: "custom",
+      type: "other",
+      data: {},
+    } as AgentMessage;
+
+    expect(isInput(message)).toBe(true);
+    expect(isInput(event)).toBe(true);
+    expect(isInput(nonInput)).toBe(false);
+  });
+
+  it("rejects missing or unsupported schemaVersion", () => {
+    const badMessage = {
+      id: "x",
+      timestamp: 0,
+      role: "custom",
+      type: "yesimbot.message",
+      data: { messageId: "m1", text: "hello" },
+    } as AgentMessage;
+    const badEvent = {
+      id: "y",
+      timestamp: 0,
+      role: "custom",
+      type: "yesimbot.event",
+      data: { eventType: "delivery.failed", text: "failed" },
+    } as AgentMessage;
+
+    expect(isMessage(badMessage)).toBe(false);
+    expect(isEvent(badEvent)).toBe(false);
+    expect(isInput(badMessage)).toBe(false);
+    expect(isInput(badEvent)).toBe(false);
+  });
+
+  it("Message type exposes elements, messageId, and text", () => {
+    expectTypeOf<Message["data"]["elements"]>().toBeArray();
+    expectTypeOf<Message["data"]["messageId"]>().toBeString();
+    expectTypeOf<Message["data"]["text"]>().toBeString();
+  });
+
+  it("Event type exposes eventType and text", () => {
+    expectTypeOf<Event["data"]["eventType"]>().toBeString();
+    expectTypeOf<Event["data"]["text"]>().toBeString();
+  });
+
+  it("EventMap no longer contains a message variant", () => {
+    type MapKeys = keyof EventMap;
+    expectTypeOf<MapKeys>().toEqualTypeOf<"delivery.failed" | "test.variant">();
   });
 });

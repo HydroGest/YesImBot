@@ -3,14 +3,9 @@ import {
   type AgentMessage,
   type CustomMessageBase,
 } from "@yesimbot/agent-runtime";
-import type { Universal } from "koishi";
+import type { Element, Universal } from "koishi";
 
 export interface EventMap {
-  message: {
-    channel: Universal.Channel;
-    user: Universal.User;
-    message: Universal.Message;
-  };
   "delivery.failed": {
     channel: Universal.Channel;
     delivery: {
@@ -21,33 +16,89 @@ export interface EventMap {
   };
 }
 
+export interface MessageData
+  extends Readonly<Omit<Universal.Event, "type" | "timestamp" | "message" | "content">> {
+  readonly schemaVersion: 1;
+  readonly platform: string;
+  readonly selfId: string;
+  readonly channel: Universal.Channel;
+  readonly user: Universal.User;
+  readonly messageId: string;
+  readonly elements: readonly Element[];
+  readonly text: string;
+}
+
+export type MessageRecord = Readonly<MessageData & { readonly timestamp: number }>;
+
 export type EventRecord<K extends keyof EventMap = keyof EventMap> = {
-  [P in K]: Readonly<Omit<Universal.Event, "type"> & { type: P; content?: string } & EventMap[P]>;
+  [P in K]: Readonly<Omit<Universal.Event, "type" | "timestamp" | "message" | "content">> & {
+    readonly schemaVersion: 1;
+    readonly eventType: P;
+    readonly text: string;
+    readonly platform: string;
+    readonly selfId: string;
+    readonly channel: Universal.Channel;
+    readonly timestamp: number;
+  } & EventMap[P];
 }[K];
 
-export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<
-  "yesimbot.event",
-  EventRecord<K>
->;
+export type InputRecord = MessageRecord | EventRecord;
 
-export function createEvent(record: EventRecord): Event {
-  return createCustomMessage("yesimbot.event", record, {
-    timestamp: record.timestamp ?? Date.now(),
+export type Message = CustomMessageBase<"yesimbot.message", MessageData>;
+
+export type Event = CustomMessageBase<"yesimbot.event", EventRecord>;
+
+export type Input = Message | Event;
+
+function isMessageRecord(record: InputRecord): record is MessageRecord {
+  return !("eventType" in record);
+}
+
+export { isMessageRecord };
+
+export function createMessage(record: MessageRecord): Message {
+  const { timestamp: _timestamp, ...data } = record;
+  return createCustomMessage("yesimbot.message", data as MessageData, {
+    timestamp: record.timestamp,
   });
 }
 
+export function createEvent(record: EventRecord): Event {
+  const { timestamp: _timestamp, ...data } = record;
+  return createCustomMessage("yesimbot.event", data as unknown as EventRecord, {
+    timestamp: record.timestamp,
+  });
+}
+
+export function createInput(record: InputRecord): Input {
+  return isMessageRecord(record) ? createMessage(record) : createEvent(record);
+}
+
+export function isMessage(message: AgentMessage): message is Message {
+  if (message.role !== "custom" || message.type !== "yesimbot.message") return false;
+  const data = message.data as unknown as Record<string, unknown>;
+  return data.schemaVersion === 1;
+}
+
 export function isEvent(message: AgentMessage): message is Event {
-  return message.role === "custom" && message.type === "yesimbot.event";
+  if (message.role !== "custom" || message.type !== "yesimbot.event") return false;
+  const data = message.data as unknown as Record<string, unknown>;
+  return data.schemaVersion === 1;
+}
+
+export function isInput(message: AgentMessage): message is Input {
+  return isMessage(message) || isEvent(message);
 }
 
 declare module "@yesimbot/agent-runtime" {
   interface AgentCustomMessages {
+    "yesimbot.message": Message;
     "yesimbot.event": Event;
   }
 }
 
 declare module "koishi" {
   interface Events {
-    "yesimbot/event": (event: Event) => void;
+    "yesimbot/event": (input: Input) => void;
   }
 }
