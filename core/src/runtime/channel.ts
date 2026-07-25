@@ -198,6 +198,7 @@ export class ChannelRuntime {
       plugins: [
         {
           name: "core.event-format",
+          enforce: "pre",
           toModelMessages: async (message, context) => {
             if (message.role !== "custom" || message.type !== "yesimbot.event") return [];
             const event = message as Event;
@@ -230,6 +231,7 @@ export class ChannelRuntime {
         },
         {
           name: "core.will-reply",
+          enforce: "pre",
           onTurnFinish: async (result) => {
             const hasRenderableReply = result.messages.some(
               (message) =>

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createAgentChannel, createStateManager } from "@yesimbot/agent-runtime";
+import { createAgentChannel, createStateManager, orderPlugins } from "@yesimbot/agent-runtime";
 import type { AgentPlugin, ModelMessageContext, TurnFinishContext, TurnResult } from "@yesimbot/agent-runtime";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -363,8 +363,13 @@ describe("ChannelRuntime", () => {
     expect(messages[0].content).toContain('id="message-1"');
   });
 
-  it("keeps the inline Core event formatter before external plugins", () => {
-    const externalPlugin = { name: "external.formatter" };
+  it("keeps Core event projection and Will reply hooks ahead of external pre plugins", () => {
+    const externalPlugin: AgentPlugin = {
+      name: "external.formatter",
+      enforce: "pre",
+      toModelMessages: async () => ({ role: "user", content: "external" }),
+      onTurnFinish: async () => undefined,
+    };
     const ctx = new Context();
 
     new ChannelRuntime({
@@ -389,8 +394,22 @@ describe("ChannelRuntime", () => {
       storage: { append: vi.fn(), read: vi.fn(), clear: vi.fn() } as never,
     });
 
-    expect((state.options?.plugins as Array<{ name: string }>).map((plugin) => plugin.name)).toEqual([
+    const configured = state.options?.plugins;
+    if (!Array.isArray(configured)) throw new Error("Agent plugins are unavailable");
+    const ordered = orderPlugins(
+      configured.filter(
+        (plugin): plugin is AgentPlugin =>
+          typeof plugin === "object" && plugin !== null && "name" in plugin,
+      ),
+    );
+
+    expect(ordered.map((plugin) => plugin.name)).toEqual([
       "core.event-format",
+      "core.will-reply",
+      "external.formatter",
+    ]);
+    expect(ordered.find((plugin) => plugin.toModelMessages)?.name).toBe("core.event-format");
+    expect(ordered.filter((plugin) => plugin.onTurnFinish).map((plugin) => plugin.name)).toEqual([
       "core.will-reply",
       "external.formatter",
     ]);
