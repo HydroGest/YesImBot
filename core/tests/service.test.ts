@@ -247,7 +247,7 @@ describe("YesImBotService facade", () => {
     expect(runtime.route).toHaveBeenCalledOnce();
   });
 
-  it("restores the active Will factory through identity-safe registration disposal", () => {
+  it("clears the custom Will override after the final identity-safe disposal", () => {
     const { service } = createService();
     const firstWill = vi.fn();
     const secondWill = vi.fn();
@@ -257,8 +257,7 @@ describe("YesImBotService facade", () => {
     disposeSecondWill();
     expect(state.runtime?.setWill).toHaveBeenLastCalledWith(firstWill);
     disposeFirstWill();
-    expect(state.runtime?.setWill).not.toHaveBeenLastCalledWith(firstWill);
-    expect(state.runtime?.setWill).not.toHaveBeenLastCalledWith(secondWill);
+    expect(state.runtime?.setWill).toHaveBeenLastCalledWith(undefined);
   });
 
   it("keeps an older Will disposer from replacing a newer active factory", () => {

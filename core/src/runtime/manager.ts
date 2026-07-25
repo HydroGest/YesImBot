@@ -72,7 +72,8 @@ export class RuntimeManager {
     }
   }
 
-  setWill(factory: Will.Factory): void {
+  setWill(factory?: Will.Factory): void {
+    if (this.customWill === factory) return;
     this.customWill = factory;
     this.gen += 1;
   }

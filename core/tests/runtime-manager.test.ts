@@ -172,6 +172,19 @@ describe("RuntimeManager", () => {
     expect(state.runtimes[0]?.options.will).toBe(custom);
   });
 
+  it("restores configured willingness after clearing a custom Will override", async () => {
+    const { manager } = createManager("/tmp/yesimbot-clear-will", { engine: "willingness" });
+    const custom = { decide: async () => "wait" as const } satisfies Will;
+    manager.setWill(() => custom);
+
+    await manager.route(record("room"));
+    manager.setWill();
+    await manager.route(record("room"));
+
+    expect(state.runtimes[0]?.options.will).toBe(custom);
+    expect(state.runtimes[1]?.options.will).toBeInstanceOf(WillingnessWill);
+  });
+
   it("stops an unpublished runtime when initialization fails", async () => {
     const { manager } = createManager();
     state.nextInit = async () => {

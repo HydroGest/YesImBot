@@ -11,7 +11,7 @@ import { RuntimeManager, type AgentPluginFactory } from "./runtime/manager.js";
 import { AssetStore } from "./shared/asset.js";
 import { assertAssignee } from "./shared/assignee.js";
 import { ChannelStorage, type ChannelFilter, type ChannelRecord } from "./storage/index.js";
-import { DefaultWill, type Will } from "./will/index.js";
+import type { Will } from "./will/index.js";
 
 declare module "koishi" {
   interface Context {
@@ -28,7 +28,6 @@ export class YesImBotService extends Service<Config> {
   private readonly rt: RuntimeManager;
   private readonly gate: Gateway;
   private readonly plugins = new Set<{ readonly factory: AgentPluginFactory }>();
-  private readonly defaultWill: Will.Factory;
   private readonly wills = new Set<{ readonly factory: Will.Factory }>();
   private readonly commandDisposers = new Set<() => unknown>();
   private stopTask: Promise<void> | undefined;
@@ -38,7 +37,6 @@ export class YesImBotService extends Service<Config> {
     this.config = config;
     this.logger.level = config.logLevel ?? 2;
     this.model = ctx["yesimbot.model"];
-    this.defaultWill = () => new DefaultWill(config.will);
     this.storage = new ChannelStorage(
       resolveBasePath(config.basePath, ctx.baseDir),
       (code, fields) => {
@@ -128,7 +126,7 @@ export class YesImBotService extends Service<Config> {
       this.wills.delete(registration);
       const replacement = this.activeWill();
       if (active === replacement) return;
-      this.rt.setWill(replacement ?? this.defaultWill);
+      this.rt.setWill(replacement);
     };
   }
 
