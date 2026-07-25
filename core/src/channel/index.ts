@@ -44,7 +44,7 @@ function encodeBase32(bytes: Uint8Array): string {
   return output;
 }
 
-export function channelKey(scope: ChannelScope): string {
+export function channelIdentity(scope: ChannelScope): string {
   assertScope(scope);
   const canonical = scope.isDirect
     ? ["yesimbot.channel", 1, "direct", scope.platform, scope.selfId, scope.channelId]
@@ -54,7 +54,7 @@ export function channelKey(scope: ChannelScope): string {
 }
 
 export function sameChannel(left: ChannelScope, right: ChannelScope): boolean {
-  return channelKey(left) === channelKey(right);
+  return channelIdentity(left) === channelIdentity(right);
 }
 
 export function fromEvent(record: ChannelEvent): ChannelScope | null {

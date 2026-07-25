@@ -76,7 +76,8 @@ describe("YesImBotService facade", () => {
     expect(ctx.yesimbot.registerResolver).toEqual(expect.any(Function));
     expect(ctx.yesimbot.registerWill).toEqual(expect.any(Function));
     expect(ctx.yesimbot.registerAgentPlugin).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.channelKey).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.channelIdentity).toEqual(expect.any(Function));
+    expect("channelKey" in ctx.yesimbot).toBe(false);
     expect(ctx.yesimbot.registerStorage).toEqual(expect.any(Function));
     expect(ctx.yesimbot.ensureStorage).toEqual(expect.any(Function));
     expect(ctx.yesimbot.listChannels).toEqual(expect.any(Function));
@@ -188,7 +189,7 @@ describe("YesImBotService facade", () => {
 
     await service.start();
     const dispose = service.registerStorage("workspace");
-    expect(service.channelKey(scope)).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
+    expect(service.channelIdentity(scope)).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
     await expect(service.ensureStorage(scope, "workspace")).resolves.toContain(
       "channels/a5vnf2ijd75c2ibyo2s5czdir4/workspace",
     );
@@ -206,16 +207,7 @@ describe("YesImBotService facade", () => {
     });
     const resolver = {
       platform: "test",
-      resolve: vi.fn(async () => ({
-        type: "message",
-        platform: "test",
-        selfId: "bot-1",
-        timestamp: 1,
-        channel: { id: "room-1", type: 0 },
-        user: { id: "user-1" },
-        message: { id: "message-1", content: "hello" },
-        content: "hello",
-      })),
+      resolve: vi.fn(async ({ base }) => (base ? { ...base, text: "hello" } : null)),
     };
     const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
     const assets = { readByAssetId: vi.fn(), clear: vi.fn() };
@@ -234,6 +226,7 @@ describe("YesImBotService facade", () => {
       platform: "test",
       selfId: "bot-1",
       channelId: "room-1",
+      messageId: "message-1",
       isDirect: false,
       content: "hello",
       elements: [],

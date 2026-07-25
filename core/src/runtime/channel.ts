@@ -13,7 +13,7 @@ import type { FilePart, LanguageModel } from "ai";
 import type { Bot, Context, Fragment, Logger } from "koishi";
 import { z } from "zod";
 
-import { channelKey, type ChannelScope } from "../channel/index.js";
+import { channelIdentity, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
 import { formatEvent } from "../event/formatter.js";
 import { createEvent, type Event, type EventRecord } from "../event/index.js";
@@ -185,7 +185,7 @@ export class ChannelRuntime {
     ];
 
     this.agent = createAgent({
-      id: channelKey(this.scope),
+      id: channelIdentity(this.scope),
       model: opts.model,
       storage: opts.storage,
       systemPrompt: () =>

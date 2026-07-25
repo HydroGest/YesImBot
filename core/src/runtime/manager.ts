@@ -1,7 +1,7 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 
-import { channelKey, fromEvent, type ChannelScope } from "../channel/index.js";
+import { channelIdentity, fromEvent, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
 import type { EventRecord } from "../event/index.js";
 import type { AssetStore } from "../shared/asset.js";
@@ -76,17 +76,17 @@ export class RuntimeManager {
 
   async reset(scope: ChannelScope): Promise<void> {
     this.assertOpen();
-    const key = channelKey(scope);
-    const snapshot = await this.enqueueLifecycle(key, async () => {
+    const identity = channelIdentity(scope);
+    const snapshot = await this.enqueueLifecycle(identity, async () => {
       this.assertOpen();
-      const entry = this.runtimes.get(key);
-      if (entry?.state === "draining") return { handover: this.handovers.get(key) };
+      const entry = this.runtimes.get(identity);
+      if (entry?.state === "draining") return { handover: this.handovers.get(identity) };
       await this.assertCurrentAssignee(scope);
       if (entry) {
         try {
           await entry.runtime.reset();
         } finally {
-          if (this.runtimes.get(key) === entry) this.runtimes.delete(key);
+          if (this.runtimes.get(identity) === entry) this.runtimes.delete(identity);
         }
         return {};
       }
@@ -101,18 +101,18 @@ export class RuntimeManager {
 
   async reload(scope: ChannelScope): Promise<void> {
     this.assertOpen();
-    const key = channelKey(scope);
-    const entry = await this.enqueueLifecycle(key, async () => {
+    const identity = channelIdentity(scope);
+    const entry = await this.enqueueLifecycle(identity, async () => {
       this.assertOpen();
       await this.assertCurrentAssignee(scope);
-      const current = this.runtimes.get(key);
+      const current = this.runtimes.get(identity);
       if (!current) return undefined;
       if (current.state === "failed") {
         throw new Error("Channel handover failed; restart required");
       }
       return current;
     });
-    if (entry) await this.awaitHandover(key, entry);
+    if (entry) await this.awaitHandover(identity, entry);
   }
 
   stop(): Promise<void> {
@@ -123,7 +123,7 @@ export class RuntimeManager {
   }
 
   private async getOrCreate(scope: ChannelScope): Promise<ChannelRuntime> {
-    const key = channelKey(scope);
+    const identity = channelIdentity(scope);
 
     // Fast path: an existing active Runtime with the current identity.
     // Call assertCurrentAssignee directly without entering the lifecycle queue.
@@ -131,7 +131,7 @@ export class RuntimeManager {
     // re-check the Runtime state synchronously. A generation or assignee change
     // during the await is detected by this re-check, preventing the event from
     // joining the lifecycle tail as an unbounded unreserved waiter.
-    const current = this.runtimes.get(key);
+    const current = this.runtimes.get(identity);
     if (
       current &&
       current.state === "active" &&
@@ -139,13 +139,13 @@ export class RuntimeManager {
       current.generation === this.gen
     ) {
       await this.assertCurrentAssignee(scope);
-      const after = this.runtimes.get(key);
+      const after = this.runtimes.get(identity);
       if (
         after === current &&
         after.state === "active" &&
         after.selfId === scope.selfId &&
         after.generation === this.gen &&
-        !this.handovers.has(key)
+        !this.handovers.has(identity)
       ) {
         return current.runtime;
       }
@@ -153,19 +153,19 @@ export class RuntimeManager {
 
     // Reserve a handover slot before entering the lifecycle queue to prevent
     // unbounded queue growth from events that trigger or join a handover.
-    const needsHandover = this.wouldNeedHandover(key, scope);
+    const needsHandover = this.wouldNeedHandover(identity, scope);
     if (needsHandover) {
-      const waiting = this.handoverWaiters.get(key) ?? 0;
+      const waiting = this.handoverWaiters.get(identity) ?? 0;
       if (waiting >= 5) throw new Error("Channel handover queue is full");
-      this.handoverWaiters.set(key, waiting + 1);
+      this.handoverWaiters.set(identity, waiting + 1);
     }
 
     try {
       const result: { readonly runtime: ChannelRuntime } | { readonly handover: RuntimeEntry } =
-        await this.enqueueLifecycle(key, async () => {
+        await this.enqueueLifecycle(identity, async () => {
           this.assertOpen();
           await this.assertCurrentAssignee(scope);
-          const current = this.runtimes.get(key);
+          const current = this.runtimes.get(identity);
           if (current?.state === "failed")
             throw new Error("Channel handover failed; restart required");
           if (current) {
@@ -184,33 +184,33 @@ export class RuntimeManager {
             const capturedGen = this.gen;
             entry = await this.createRuntime(scope, capturedGen);
             if (entry.generation === this.gen) break;
-            await this.stopRuntime(key, entry.runtime);
+            await this.stopRuntime(identity, entry.runtime);
           }
           // Manager may have stopped during async construction
           try {
             this.assertOpen();
           } catch (cause) {
-            await this.stopRuntime(key, entry.runtime);
+            await this.stopRuntime(identity, entry.runtime);
             throw cause;
           }
-          this.runtimes.set(key, entry);
+          this.runtimes.set(identity, entry);
           return { runtime: entry.runtime };
         });
       if ("runtime" in result) return result.runtime;
-      await this.awaitHandover(key, result.handover);
+      await this.awaitHandover(identity, result.handover);
       await this.assertCurrentAssignee(scope);
       return this.getOrCreate(scope);
     } finally {
       if (needsHandover) {
-        const remaining = (this.handoverWaiters.get(key) ?? 1) - 1;
-        if (remaining === 0) this.handoverWaiters.delete(key);
-        else this.handoverWaiters.set(key, remaining);
+        const remaining = (this.handoverWaiters.get(identity) ?? 1) - 1;
+        if (remaining === 0) this.handoverWaiters.delete(identity);
+        else this.handoverWaiters.set(identity, remaining);
       }
     }
   }
 
-  private wouldNeedHandover(key: string, scope: ChannelScope): boolean {
-    const current = this.runtimes.get(key);
+  private wouldNeedHandover(identity: string, scope: ChannelScope): boolean {
+    const current = this.runtimes.get(identity);
     return (
       current !== undefined &&
       (current.state === "draining" ||
@@ -282,7 +282,7 @@ export class RuntimeManager {
   private async stopInternal(): Promise<void> {
     await Promise.allSettled([...this.tails.values()]);
     const entries = [...this.runtimes.entries()];
-    await Promise.all(entries.map(([key, entry]) => this.stopRuntime(key, entry.runtime)));
+    await Promise.all(entries.map(([identity, entry]) => this.stopRuntime(identity, entry.runtime)));
     await Promise.allSettled([...this.handovers.values()]);
     this.runtimes.clear();
     this.tails.clear();
@@ -290,48 +290,48 @@ export class RuntimeManager {
     this.handoverWaiters.clear();
   }
 
-  private async awaitHandover(key: string, entry: RuntimeEntry): Promise<void> {
-    let task = this.handovers.get(key);
+  private async awaitHandover(identity: string, entry: RuntimeEntry): Promise<void> {
+    let task = this.handovers.get(identity);
     if (!task) {
-      task = this.runHandover(key, entry);
-      this.handovers.set(key, task);
+      task = this.runHandover(identity, entry);
+      this.handovers.set(identity, task);
       void task
         .finally(() => {
-          if (this.handovers.get(key) === task) this.handovers.delete(key);
+          if (this.handovers.get(identity) === task) this.handovers.delete(identity);
         })
         .catch(() => undefined);
     }
     await task;
   }
 
-  private async runHandover(key: string, entry: RuntimeEntry): Promise<void> {
+  private async runHandover(identity: string, entry: RuntimeEntry): Promise<void> {
     try {
-      await this.enqueueLifecycle(key, async () => {
+      await this.enqueueLifecycle(identity, async () => {
         this.assertOpen();
-        if (this.runtimes.get(key) !== entry) throw new Error("Channel handover is stale");
+        if (this.runtimes.get(identity) !== entry) throw new Error("Channel handover is stale");
         if (entry.state === "failed") throw new Error("Channel handover failed; restart required");
         entry.state = "draining";
         entry.runtime.beginDrain();
       });
       await entry.runtime.drainAndStop();
     } catch (cause) {
-      await this.enqueueLifecycle(key, async () => {
-        if (this.runtimes.get(key) === entry) entry.state = "failed";
+      await this.enqueueLifecycle(identity, async () => {
+        if (this.runtimes.get(identity) === entry) entry.state = "failed";
       });
       throw cause;
     }
-    await this.enqueueLifecycle(key, async () => {
-      if (this.runtimes.get(key) === entry && entry.state === "draining") {
-        this.runtimes.delete(key);
+    await this.enqueueLifecycle(identity, async () => {
+      if (this.runtimes.get(identity) === entry && entry.state === "draining") {
+        this.runtimes.delete(identity);
       }
     });
   }
 
-  private async stopRuntime(key: string, runtime: ChannelRuntime): Promise<void> {
+  private async stopRuntime(identity: string, runtime: ChannelRuntime): Promise<void> {
     try {
       await runtime.stop();
     } catch (cause) {
-      this.warn("runtime.stop_failed", { key, cause });
+      this.warn("runtime.stop_failed", { identity, cause });
     }
   }
 
@@ -362,16 +362,16 @@ export class RuntimeManager {
     if (failure) throw failure;
   }
 
-  private enqueueLifecycle<T>(key: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.tails.get(key) ?? Promise.resolve();
+  private enqueueLifecycle<T>(identity: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.tails.get(identity) ?? Promise.resolve();
     const next = previous.then(operation, operation);
     const tail = next.then(
       () => undefined,
       () => undefined,
     );
-    this.tails.set(key, tail);
+    this.tails.set(identity, tail);
     void tail.finally(() => {
-      if (this.tails.get(key) === tail) this.tails.delete(key);
+      if (this.tails.get(identity) === tail) this.tails.delete(identity);
     });
     return next;
   }

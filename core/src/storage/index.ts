@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { channelKey, type ChannelScope } from "../channel/index.js";
+import { channelIdentity, type ChannelScope } from "../channel/index.js";
 
 const FORMAT_VERSION = 1;
 const KEY_VERSION = 1;
@@ -38,7 +38,7 @@ interface ChannelManifest extends ChannelRecord {
 
 function recordFor(scope: ChannelScope, name?: string): ChannelRecord {
   const record: ChannelRecord = {
-    key: channelKey(scope),
+    key: channelIdentity(scope),
     isDirect: scope.isDirect,
     platform: scope.platform,
     selfId: scope.isDirect ? scope.selfId : null,
@@ -80,7 +80,7 @@ function parseManifest(value: unknown): ChannelManifest {
     channelId: manifest.channelId,
     isDirect: manifest.isDirect,
   };
-  if (channelKey(scope) !== manifest.key) throw new Error("Manifest identity does not match Key");
+  if (channelIdentity(scope) !== manifest.key) throw new Error("Manifest identity does not match Key");
 
   const record = recordFor(scope, manifest.name as string | undefined);
   return { formatVersion: FORMAT_VERSION, keyVersion: KEY_VERSION, ...record };

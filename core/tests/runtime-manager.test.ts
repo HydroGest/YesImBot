@@ -49,7 +49,7 @@ vi.mock("../src/runtime/channel.js", () => ({
   },
 }));
 
-import type { ChannelScope } from "../src/channel/index.js";
+import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
 import type { Config } from "../src/config.js";
 import type { EventRecord } from "../src/event/index.js";
 import { ChannelRuntimeDrainingError } from "../src/runtime/channel.js";
@@ -129,6 +129,24 @@ describe("RuntimeManager", () => {
     state.nextInit = undefined;
   });
 
+  it("uses one identity for shared scopes and distinct identities for direct scopes", () => {
+    const sharedScope = (selfId: string): ChannelScope => ({
+      platform: "test",
+      selfId,
+      channelId: "room",
+      isDirect: false,
+    });
+    const directScope = (selfId: string): ChannelScope => ({
+      platform: "test",
+      selfId,
+      channelId: "room",
+      isDirect: true,
+    });
+
+    expect(channelIdentity(sharedScope("bot-a"))).toBe(channelIdentity(sharedScope("bot-b")));
+    expect(channelIdentity(directScope("bot-a"))).not.toBe(channelIdentity(directScope("bot-b")));
+  });
+
   it("initializes a runtime before publishing it", async () => {
     const { manager } = createManager();
     const entered = deferred<void>();
@@ -198,7 +216,7 @@ describe("RuntimeManager", () => {
     expect(state.runtimes[0]?.handle).not.toHaveBeenCalled();
   });
 
-  it("creates one runtime for concurrent first events with the same canonical key", async () => {
+  it("creates one runtime for concurrent first events with the same canonical identity", async () => {
     const { manager } = createManager();
 
     await Promise.all([
@@ -220,7 +238,7 @@ describe("RuntimeManager", () => {
     expect(state.runtimes).toHaveLength(0);
   });
 
-  it("keeps different canonical channel keys isolated", async () => {
+  it("keeps different canonical channel identities isolated", async () => {
     const { manager } = createManager();
 
     await manager.route(record("room-a"));

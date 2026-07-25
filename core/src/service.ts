@@ -2,7 +2,7 @@ import { isAbsolute, resolve } from "node:path";
 
 import { Service, type Context } from "koishi";
 
-import { channelKey, type ChannelScope } from "./channel/index.js";
+import { channelIdentity, type ChannelScope } from "./channel/index.js";
 import type { Config } from "./config.js";
 import { IMAGE_BUDGET } from "./gateway/image.js";
 import { Gateway, type SessionResolver } from "./gateway/index.js";
@@ -101,8 +101,8 @@ export class YesImBotService extends Service<Config> {
     await this.storage.start();
   }
 
-  channelKey(scope: ChannelScope): string {
-    return channelKey(scope);
+  channelIdentity(scope: ChannelScope): string {
+    return channelIdentity(scope);
   }
 
   registerStorage(namespace: string): () => void {
