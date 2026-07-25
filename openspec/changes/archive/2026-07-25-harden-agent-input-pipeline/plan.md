@@ -47,7 +47,7 @@
 - Produces: `export interface ChannelAllowRule { platform: string; channelId: string; isDirect?: boolean }` and `export function matchesAllowedChannel(scope: ChannelScope, rules: readonly ChannelAllowRule[] | undefined): boolean`.
 - Consumes: `ChannelScope` from `core/src/channel/index.ts`.
 
-- [ ] **Step 1: Write the failing matcher and config-schema tests**
+- [x] **Step 1: Write the failing matcher and config-schema tests**
 
 ```ts
 expect(matchesAllowedChannel(scope, undefined)).toBe(false);
@@ -56,13 +56,13 @@ expect(matchesAllowedChannel(scope, [{ platform: "*", channelId: "room-1" }])).t
 expect(matchesAllowedChannel(scope, [{ platform: "test", channelId: "*", isDirect: true }])).toBe(false);
 ```
 
-- [ ] **Step 2: Run the focused tests to verify red**
+- [x] **Step 2: Run the focused tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/gateway.test.ts tests/will.test.ts`
 
 Expected: FAIL because `matchesAllowedChannel` and `allowedChannels` do not exist.
 
-- [ ] **Step 3: Implement the typed schema and pure matcher**
+- [x] **Step 3: Implement the typed schema and pure matcher**
 
 ```ts
 export function matchesAllowedChannel(scope: ChannelScope, rules: readonly ChannelAllowRule[] | undefined): boolean {
@@ -76,13 +76,13 @@ export function matchesAllowedChannel(scope: ChannelScope, rules: readonly Chann
 
 Add `allowedChannels?: ChannelAllowRule[]` to `Config` and a Koishi `Schema.array(Schema.object(...)).default([])` using only `string` and optional `boolean` fields.
 
-- [ ] **Step 4: Run the focused tests to verify green**
+- [x] **Step 4: Run the focused tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/gateway.test.ts tests/will.test.ts`
 
 Expected: PASS with exact, wildcard, omitted-directness, direct-only, shared-only, and empty-list cases.
 
-- [ ] **Step 5: Inspect and commit only this contract slice**
+- [x] **Step 5: Inspect and commit only this contract slice**
 
 Run: `rtk git status --short`
 
@@ -102,7 +102,7 @@ Run: `rtk git add core/src/config.ts core/src/gateway/allowlist.ts core/tests/ga
 - Consumes: `matchesAllowedChannel(scope, config.allowedChannels)` from Task 1.
 - Produces: Gateway rejection immediately after `scopeFromSession(session)`; `delivery.failed` continues via `RuntimeManager.Delivery.fail()` and does not call Gateway admission.
 
-- [ ] **Step 1: Write deny-before-side-effect tests**
+- [x] **Step 1: Write deny-before-side-effect tests**
 
 ```ts
 const ready = vi.fn(async () => undefined);
@@ -117,23 +117,23 @@ expect(runtime.route).not.toHaveBeenCalled();
 
 Cover matching direct/shared wildcard combinations and prove a matching session still reaches normal admission.
 
-- [ ] **Step 2: Run Gateway tests to verify red**
+- [x] **Step 2: Run Gateway tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/gateway.test.ts`
 
 Expected: FAIL because Gateway calls `ready()` before it checks the allowlist.
 
-- [ ] **Step 3: Add allowlist options and synchronous rejection**
+- [x] **Step 3: Add allowlist options and synchronous rejection**
 
 Extend `GatewayOptions` with `readonly allowedChannels: readonly ChannelAllowRule[]`; pass `config.allowedChannels ?? []` from `YesImBotService`; in `route()`, place `if (!matchesAllowedChannel(scope, this.opts.allowedChannels)) return;` directly after the null scope guard and before the first `await`.
 
-- [ ] **Step 4: Run Gateway tests to verify green**
+- [x] **Step 4: Run Gateway tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/gateway.test.ts tests/service.test.ts`
 
 Expected: PASS; unmatched sessions invoke none of readiness, database, resolver, freezer, storage, or runtime routing.
 
-- [ ] **Step 5: Inspect and commit only Gateway ownership**
+- [x] **Step 5: Inspect and commit only Gateway ownership**
 
 Run: `rtk git diff -- core/src/gateway/index.ts core/src/service.ts core/tests/gateway.test.ts core/tests/service.test.ts`
 
@@ -153,7 +153,7 @@ Run if commits are authorized: `rtk git add core/src/gateway/index.ts core/src/s
 - Produces: partial `ChatModelConfig.modalities.{input?,output?}`, immutable resolved copies, atomic `writeModelsConfig()`, and `ModelService.addChatModelInputModality(model, modality): Promise<"added" | "unchanged">`.
 - Produces: authority-4 `yesimbot.model.add-input-modality <model> <modality>` command accepting a full model ID or alias.
 
-- [ ] **Step 1: Write loader, persistence, service, and command tests**
+- [x] **Step 1: Write loader, persistence, service, and command tests**
 
 ```ts
 expect(loadResult.config.chat["openai:gpt-4o"].modalities?.input).toEqual(["image"]);
@@ -164,27 +164,27 @@ expect(modelService.resolveChatModel("openai:gpt-4o").entry.modalities?.input).t
 
 Cover partial input-only and output-only values, invalid arrays, nested clone isolation, alias/full-ID resolution, invalid model/modality, atomic-write failure, unrelated defaults/aliases/chat/embedding preservation, command authority 4, idempotent output, and immediate ModelService refresh. Assert active runtime reload is not attempted by this command.
 
-- [ ] **Step 2: Run model and service tests to verify red**
+- [x] **Step 2: Run model and service tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/model.test.ts tests/service.test.ts`
 
 Expected: FAIL because the loader ignores modalities, no atomic writer/mutation method exists, and the command is absent.
 
-- [ ] **Step 3: Implement models.json modality parsing and atomic persistence**
+- [x] **Step 3: Implement models.json modality parsing and atomic persistence**
 
 Make `ChatModelConfig.modalities.input` and `output` independently optional. Parse only arrays whose values belong to `CHAT_MODEL_MODALITIES`, preserve unrelated sections, clone nested arrays on registry storage and public resolution, and atomically write through a sibling temporary file plus rename. Do not modify `core/src/model/schema.ts` or any provider package.
 
-- [ ] **Step 4: Implement the service mutation and Core command**
+- [x] **Step 4: Implement the service mutation and Core command**
 
 Resolve aliases to the registered full model ID, clone the current `modelsConfig`, append one missing input modality, persist atomically, replace in-memory config only after success, and refresh models. Register `yesimbot.model.add-input-modality <model:string> <modality:string>` with authority 4 in `YesImBotService`; support multiple command disposers. Return recognizable added/no-op/error text and state that active ChannelRuntimes require reload.
 
-- [ ] **Step 5: Run model and service tests to verify green**
+- [x] **Step 5: Run model and service tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/model.test.ts tests/service.test.ts`
 
 Expected: PASS; only models.json controls built-in modality resolution, command writes are idempotent, and registry refresh is immediate.
 
-- [ ] **Step 6: Verify providers are untouched and inspect the model slice**
+- [x] **Step 6: Verify providers are untouched and inspect the model slice**
 
 Run: `rtk git diff -- core/src/model/types.ts core/src/model/config.ts core/src/model/service.ts core/src/service.ts core/tests/model.test.ts core/tests/service.test.ts`
 
@@ -202,7 +202,7 @@ Run if commits are authorized: `rtk git add core/src/model/types.ts core/src/mod
 **Interfaces:**
 - Produces: flat `ModelMessageContext.history: readonly AgentMessage[]` and `current: readonly AgentMessage[]`; no new hook or derived context type.
 
-- [ ] **Step 1: Write conversion-context tests**
+- [x] **Step 1: Write conversion-context tests**
 
 ```ts
 const contexts: ModelMessageContext[] = [];
@@ -214,23 +214,23 @@ expect(contexts[0].current).toEqual(current);
 
 Assert a fresh context identity per `buildModelMessages` call, frozen array copies, transformed history, untouched current input, history-then-current output order, current batches for initial/joined requests, and empty current on later tool steps without new input. Assert no active-turn identity appears.
 
-- [ ] **Step 2: Run message tests to verify red**
+- [x] **Step 2: Run message tests to verify red**
 
 Run: `rtk yarn workspace @yesimbot/agent-runtime exec vitest run tests/message.test.ts`
 
 Expected: FAIL because `ModelMessageContext` does not expose call history/current.
 
-- [ ] **Step 3: Extend the existing context only**
+- [x] **Step 3: Extend the existing context only**
 
 After applying compatibility `transformMessages` to history, freeze copies of transformed history and untouched current into one fresh context object and pass that same object to every `toModelMessages` call. Keep conversion/output order history then current. Do not add a PluginHost helper, modify `transformMessages`, or track turn input IDs.
 
-- [ ] **Step 4: Run message tests to verify green**
+- [x] **Step 4: Run message tests to verify green**
 
 Run: `rtk yarn workspace @yesimbot/agent-runtime exec vitest run tests/message.test.ts`
 
 Expected: PASS; existing plugin hooks remain unchanged and conversion sees one read-only call boundary.
 
-- [ ] **Step 5: Inspect and commit the context slice**
+- [x] **Step 5: Inspect and commit the context slice**
 
 Run: `rtk git diff -- packages/agent-runtime/src/types/plugin.ts packages/agent-runtime/src/message.ts packages/agent-runtime/tests/message.test.ts`
 
@@ -249,7 +249,7 @@ Run if commits are authorized: `rtk git add packages/agent-runtime/src/types/plu
 - Produces: internal `MediaPolicy { enabled: boolean; maxImages: number; maxImageBytes: number; maxTotalImageBytes: number; strategy: "current-first" | "fifo" | "lifo" }` from external `multimedia.image.{maxCountPerCall,maxBytesPerImage,maxBytesPerCall,selection}`.
 - Produces: `imageInput: boolean` derived as `resolved.entry.modalities?.input.includes("image") === true` and passed with a frozen `MediaPolicy` to ChannelRuntime.
 
-- [ ] **Step 1: Write config/default, snapshot, reload, and plugin-order tests**
+- [x] **Step 1: Write config/default, snapshot, reload, and plugin-order tests**
 
 ```ts
 expect(mediaPolicy).toEqual({ enabled: true, maxImages: 4, maxImageBytes: 5 * 1024 * 1024, maxTotalImageBytes: 10 * 1024 * 1024, strategy: "current-first" });
@@ -258,23 +258,23 @@ expect(channelRuntimeOptions.imageInput).toBe(false);
 
 Assert an existing runtime keeps its snapshot after models.json/config change, reload creates a replacement with the new snapshot without clearing history/assets, and the existing inline Core event converter precedes external plugins.
 
-- [ ] **Step 2: Run runtime tests to verify red**
+- [x] **Step 2: Run runtime tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/runtime-manager.test.ts tests/channel-runtime.test.ts`
 
 Expected: FAIL because Core has neither media config nor a resolved capability snapshot.
 
-- [ ] **Step 3: Add immutable policy and direct ChannelRuntime composition**
+- [x] **Step 3: Add immutable policy and direct ChannelRuntime composition**
 
 Define `multimedia.enabled` plus nested `multimedia.image.selection`, `maxCountPerCall`, `maxBytesPerImage`, and `maxBytesPerCall` separately from Gateway image freezing. Resolve the full `ChatModelRef` in `RuntimeManager.createRuntime()`, derive one boolean from the models.json-backed entry, freeze a value-copy internal policy, and pass only `LanguageModel`, boolean, and policy to ChannelRuntime. Keep the small Core event-format plugin object directly in ChannelRuntime before external plugins; put media logic under `core/src/event/` and do not add `core-plugins.ts`.
 
-- [ ] **Step 4: Run runtime tests to verify green**
+- [x] **Step 4: Run runtime tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/runtime-manager.test.ts tests/channel-runtime.test.ts`
 
 Expected: PASS; no agent-runtime interface receives the full model config.
 
-- [ ] **Step 5: Inspect and commit snapshot wiring**
+- [x] **Step 5: Inspect and commit snapshot wiring**
 
 Run: `rtk git diff -- core/src/config.ts core/src/runtime/manager.ts core/src/runtime/channel.ts core/tests/runtime-manager.test.ts core/tests/channel-runtime.test.ts`
 
@@ -293,7 +293,7 @@ Run if commits are authorized: `rtk git add core/src/config.ts core/src/runtime/
 - Produces: `export async function selectEventFiles(context: ModelMessageContext, options: MediaSelectionOptions): Promise<ReadonlyMap<Event["id"], readonly FilePart[]>>`.
 - Consumes: frozen `Event.data.content`, `AssetStore.readByAssetId(scope, assetId)`, `MediaPolicy`, and `imageInput`.
 
-- [ ] **Step 1: Write selection tests before implementation**
+- [x] **Step 1: Write selection tests before implementation**
 
 ```ts
 expect(selected.get("current")?.map((file) => file.mediaType)).toEqual(["image/png"]);
@@ -302,23 +302,23 @@ expect(selected.get("history")?.length ?? 0).toBe(0);
 
 Cover global/capability dual gating, 4/5 MiB/10 MiB defaults, current model-call batch then transformed history FIFO, FIFO, LIFO event visitation with per-event source order, duplicates charged twice, oversized-before-fitting candidate, and an empty current batch on a later tool step.
 
-- [ ] **Step 2: Run formatter tests to verify red**
+- [x] **Step 2: Run formatter tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/formatter.test.ts`
 
 Expected: FAIL because selection is absent and current formatting loads images one Event at a time.
 
-- [ ] **Step 3: Implement local candidate selection**
+- [x] **Step 3: Implement local candidate selection**
 
 Move the existing byte-signature detector from `shared/asset.ts` into `shared/image-mime.ts` and reuse it from AssetStore and media projection. Read candidate Events from the context's frozen current/history arrays in policy order and parse only copies of their frozen literals. For each reference independently, read only its scoped local asset when still eligible, detect JPEG/PNG/WebP/GIF from bytes, charge original bytes, skip unsupported/missing/read-failed/oversized candidates, and continue later candidates. Store `FilePart`s by top-level semantic `Event.id`; never call fetch, SessionResolver, or platform APIs.
 
-- [ ] **Step 4: Run formatter tests to verify green**
+- [x] **Step 4: Run formatter tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/formatter.test.ts tests/storage.test.ts`
 
 Expected: PASS; eligible files and budget accounting match every policy deterministically.
 
-- [ ] **Step 5: Inspect and commit the focused selector**
+- [x] **Step 5: Inspect and commit the focused selector**
 
 Run: `rtk git diff -- core/src/event/media.ts core/src/shared/image-mime.ts core/src/shared/asset.ts core/tests/formatter.test.ts core/tests/storage.test.ts`
 
@@ -336,7 +336,7 @@ Run if commits are authorized: `rtk git add core/src/event/media.ts core/src/sha
 - Produces: `appendModelFiles(content: UserModelMessage["content"], files: readonly FilePart[]): UserModelMessage["content"]` and `formatEvent(event, { includeMessageId, files?: readonly FilePart[] }): UserModelMessage` with no asset reads.
 - Consumes: call-local selected files from Task 6.
 
-- [ ] **Step 1: Write exact-preservation and notification tests**
+- [x] **Step 1: Write exact-preservation and notification tests**
 
 ```ts
 expect(result).toEqual({ role: "user", content: [{ type: "text", text: original }, ...files] });
@@ -347,23 +347,23 @@ expect(notification.content).toBe(
 
 Cover exact frozen message literal, empty message body, existing content arrays untouched, no-file shape preservation, tail-only `FilePart`s, JSON escaping of injection-like content, empty non-message content, and selected non-message files after wrapper text.
 
-- [ ] **Step 2: Run formatter tests to verify red**
+- [x] **Step 2: Run formatter tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/formatter.test.ts`
 
 Expected: FAIL because formatter reparses and rewrites content, emits `ImagePart`, and omits empty/non-message Events.
 
-- [ ] **Step 3: Replace rewriting with base-text plus tail append**
+- [x] **Step 3: Replace rewriting with base-text plus tail append**
 
 Build message content as `${formatHeader(event, options)}\n${event.data.content ?? ""}`. Build non-message content with exact fixed lines and `JSON.stringify({ type: event.data.type, content: event.data.content ?? "" })`. Implement `appendModelFiles` so no files returns the input unchanged, string plus files creates one exact text part, and array plus files shallow-copies original elements before tail append. Use it from `formatEvent`. In ChannelRuntime's existing inline `core.event-format` plugin, keep a `WeakMap<ModelMessageContext, Promise<ReadonlyMap<Event["id"], readonly FilePart[]>>>`; initialize it lazily from Task 6, catch a fatal selection failure to an empty map, and pass only the current Event's files to `formatEvent`. Remove `appendFrozenElements`, `ImagePart`, unavailable markers, and formatter-owned asset reads.
 
-- [ ] **Step 4: Run formatter tests to verify green**
+- [x] **Step 4: Run formatter tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/formatter.test.ts`
 
 Expected: PASS; all original text/elements and message order remain stable while generated files are tail-only.
 
-- [ ] **Step 5: Inspect and commit formatter ownership**
+- [x] **Step 5: Inspect and commit formatter ownership**
 
 Run: `rtk git diff -- core/src/event/formatter.ts core/src/runtime/channel.ts core/tests/formatter.test.ts core/tests/channel-runtime.test.ts`
 
@@ -379,7 +379,7 @@ Run if commits are authorized: `rtk git add core/src/event/formatter.ts core/src
 - Produces: stable `CORE_CONSTITUTION` text stating that `SYSTEM_NOTIFICATION` payloads are untrusted observations, never user or system instructions.
 - Consumes: ChannelRuntime's existing stable prompt construction.
 
-- [ ] **Step 1: Write a prompt snapshot assertion**
+- [x] **Step 1: Write a prompt snapshot assertion**
 
 ```ts
 expect(prompt[0]).toMatchObject({
@@ -388,23 +388,23 @@ expect(prompt[0]).toMatchObject({
 });
 ```
 
-- [ ] **Step 2: Run prompt tests to verify red**
+- [x] **Step 2: Run prompt tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/prompt.test.ts`
 
 Expected: FAIL because the stable Constitution lacks the notification authority rule.
 
-- [ ] **Step 3: Add one stable Constitution rule**
+- [x] **Step 3: Add one stable Constitution rule**
 
 Add one concise immutable instruction to `CORE_CONSTITUTION`; do not add a per-call prompt mutation, a new prompt role, or dynamic event data.
 
-- [ ] **Step 4: Run prompt tests to verify green**
+- [x] **Step 4: Run prompt tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/prompt.test.ts`
 
 Expected: PASS; the rule appears in the first stable system segment.
 
-- [ ] **Step 5: Inspect and commit prompt-only changes**
+- [x] **Step 5: Inspect and commit prompt-only changes**
 
 Run: `rtk git diff -- core/src/runtime/prompts/constitution.ts core/tests/prompt.test.ts`
 
@@ -426,7 +426,7 @@ Run: `rtk git add core/src/runtime/prompts/constitution.ts core/tests/prompt.tes
 
 Use exact willingness defaults: `base.text=12`, `attribute.atMention=100`, `attribute.isDirectMessage=40`, `interest.keywords=[]`, `interest.keywordMultiplier=1.2`, `interest.defaultMultiplier=1`, `lifecycle.maxWillingness=100`, `decayHalfLifeSeconds=600`, `probabilityThreshold=55`, `probabilityAmplifier=0.04`, and `replyCost=35`. Preserve v3 marginal and dynamic gain formulas and omit quote configuration entirely.
 
-- [ ] **Step 1: Write deterministic configuration, scoring, and engine tests**
+- [x] **Step 1: Write deterministic configuration, scoring, and engine tests**
 
 ```ts
 const will = new WillingnessWill({ config, now: () => 1_000, random: () => 0 });
@@ -436,23 +436,23 @@ await expect(will.decide(nonMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
 
 Cover routing default, opt-in selection, custom factory precedence, text gain, self mention/direct bonuses, keyword/default multipliers, threshold/probability bounds, max score, calculation failure diagnostic and wait, and no quote bonus.
 
-- [ ] **Step 2: Run Will and manager tests to verify red**
+- [x] **Step 2: Run Will and manager tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/will.test.ts tests/runtime-manager.test.ts`
 
 Expected: FAIL because only `DefaultWill` and routing-only configuration exist.
 
-- [ ] **Step 3: Implement the isolated engine and selection**
+- [x] **Step 3: Implement the isolated engine and selection**
 
 Keep score and timestamps in one Will instance. Make non-message Events return `wait`; catch invalid calculation and log a distinct diagnostic before returning `wait`. In RuntimeManager, retain a custom `Will.Factory` override and otherwise construct `DefaultWill` for routing or `WillingnessWill` only when explicitly configured.
 
-- [ ] **Step 4: Run Will and manager tests to verify green**
+- [x] **Step 4: Run Will and manager tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/will.test.ts tests/runtime-manager.test.ts`
 
 Expected: PASS; default deployments keep deterministic routing.
 
-- [ ] **Step 5: Inspect and commit Will engine files**
+- [x] **Step 5: Inspect and commit Will engine files**
 
 Run: `rtk git diff -- core/src/will/willingness.ts core/src/will/index.ts core/src/config.ts core/src/runtime/manager.ts core/tests/will.test.ts core/tests/runtime-manager.test.ts`
 
@@ -471,7 +471,7 @@ Run: `rtk git add core/src/will/willingness.ts core/src/will/index.ts core/src/c
 - Produces: optional `Will.onReply?(): Awaitable<void>` and pure `decayScore(score, lastDecayAt, lastMessageAt, now, config): number` with injected time.
 - Consumes: agent-runtime `onTurnFinish(result, context)`.
 
-- [ ] **Step 1: Write decay and reply notification tests**
+- [x] **Step 1: Write decay and reply notification tests**
 
 ```ts
 expect(decayScore(8, halfLifeMs, config)).toBeCloseTo(4);
@@ -481,23 +481,23 @@ expect(scoreAfterReply).toBe(Math.max(0, scoreBeforeReply - config.replyCost));
 
 Cover high-score and hot/warm/cold rate modifiers, long-idle zero clamp, no timer creation, done plus non-empty renderable assistant output, empty output, failed/aborted output, exactly once, and callback errors reported without failing the turn.
 
-- [ ] **Step 2: Run Will and ChannelRuntime tests to verify red**
+- [x] **Step 2: Run Will and ChannelRuntime tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/will.test.ts tests/channel-runtime.test.ts`
 
 Expected: FAIL because Will has no reply callback and no lazy decay implementation.
 
-- [ ] **Step 3: Implement O(1) decay and Core finish plugin**
+- [x] **Step 3: Implement O(1) decay and Core finish plugin**
 
 Integrate elapsed time with silence weights `0.3` before 15 seconds, `0.7` from 15 through 60 seconds, and `1.0` afterward. For weighted seconds `w`, decay at `score * 0.5^(w / halfLife)` at or below threshold. Above threshold, use half rate until crossing: `wToThreshold = 2 * halfLife * log2(score / threshold)`; consume that portion at half rate and any remainder at normal rate. Treat threshold zero as no high-score branch and clamp results below `0.01` to zero. Add `onReply` to the Will contract. Compose a small inline `core.will-reply` plugin directly in ChannelRuntime after `core.event-format` and before external plugins; use `onTurnFinish` to call it only when `result.status === "done"` and `result.messages` includes non-empty renderable assistant content, and catch/report callback failure without modifying the completed turn.
 
-- [ ] **Step 4: Run Will and ChannelRuntime tests to verify green**
+- [x] **Step 4: Run Will and ChannelRuntime tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/will.test.ts tests/channel-runtime.test.ts`
 
 Expected: PASS; reply cost never waits for passive delivery and never charges failed, aborted, or empty turns.
 
-- [ ] **Step 5: Inspect and commit reply-cost behavior**
+- [x] **Step 5: Inspect and commit reply-cost behavior**
 
 Run: `rtk git diff -- core/src/will/willingness.ts core/src/will/index.ts core/src/runtime/channel.ts core/tests/will.test.ts core/tests/channel-runtime.test.ts`
 
@@ -515,7 +515,7 @@ Run if commits are authorized: `rtk git add core/src/will/willingness.ts core/sr
 - Consumes: Tasks 1-10 contracts.
 - Produces: regression tests for cache-prefix stability, call-scoped-only attachment variation, internal delivery failure routing, Core-first plugin precedence, and no Session leakage.
 
-- [ ] **Step 1: Write cross-module regression tests**
+- [x] **Step 1: Write cross-module regression tests**
 
 ```ts
 expect(laterMessages.slice(0, persistedPrefix.length)).toEqual(persistedPrefix);
@@ -524,7 +524,7 @@ expect(laterMessages.map(stripGeneratedFiles)).toEqual(firstMessages.map(stripGe
 
 Prove FIFO preserves deterministic oldest-first generated files, current-first prioritizes only the request's new batch, a later empty-current tool step falls back to historical FIFO, LIFO varies only generated `FilePart`s, internal `delivery.failed` remains inside the admitted runtime, and the two inline Core plugins stay ahead of external plugins.
 
-- [ ] **Step 2: Run focused regression tests to verify red**
+- [x] **Step 2: Run focused regression tests to verify red**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/channel-runtime.test.ts tests/runtime-manager.test.ts tests/gateway-delivery.test.ts`
 
@@ -532,11 +532,11 @@ Run: `rtk yarn workspace @yesimbot/agent-runtime exec vitest run tests/message.t
 
 Expected: FAIL until all integration wiring uses the new selection and snapshot contracts.
 
-- [ ] **Step 3: Make only integration corrections exposed by the tests**
+- [x] **Step 3: Make only integration corrections exposed by the tests**
 
 Wire lazy call-local selection into the existing inline `core.event-format` converter, retain first-converter behavior and diagnostic policy, and keep file state keyed by model-message context. Compose `core.will-reply` inline next to it. Do not add a preparation hook, Core plugin aggregator, storage fields, Session references, or retry paths.
 
-- [ ] **Step 4: Run focused regression tests to verify green**
+- [x] **Step 4: Run focused regression tests to verify green**
 
 Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/channel-runtime.test.ts tests/runtime-manager.test.ts tests/gateway-delivery.test.ts`
 
@@ -544,7 +544,7 @@ Run: `rtk yarn workspace @yesimbot/agent-runtime exec vitest run tests/message.t
 
 Expected: PASS; persisted text/order/elements remain equivalent and only generated files vary by call policy.
 
-- [ ] **Step 5: Inspect and commit only verified integration fixes**
+- [x] **Step 5: Inspect and commit only verified integration fixes**
 
 Run: `rtk git diff -- core/src/runtime/channel.ts core/src/runtime/manager.ts core/tests/channel-runtime.test.ts core/tests/runtime-manager.test.ts core/tests/gateway-delivery.test.ts packages/agent-runtime/tests/message.test.ts`
 
@@ -560,7 +560,7 @@ Run if commits are authorized: `rtk git add core/src/runtime/channel.ts core/src
 - Consumes: final Config/model-command semantics from Tasks 1, 3, 5, 9, and 10.
 - Produces: operator migration guidance with exact allowlist, wildcard, direct-only, shared-only, allow-all, models.json modality syntax and command, default budgets, model-call-batch strategy trade-offs, text-only degradation, reload behavior, and routing/willingness rollback examples.
 
-- [ ] **Step 1: Write documentation examples and verification checklist**
+- [x] **Step 1: Write documentation examples and verification checklist**
 
 ```yaml
 allowedChannels:
@@ -582,13 +582,13 @@ will:
 
 Add a `models.json` example with `chat["provider:model"].modalities.input: ["image"]` and the command `yesimbot.model.add-input-modality provider:model image`. State that `allowedChannels: []` admits nothing, `{ platform: "*", channelId: "*" }` admits all external scopes, providers remain modality-agnostic, unknown image capability is text-only, active runtimes require reload, and rollback selects `will.engine: routing` or disables multimedia.
 
-- [ ] **Step 2: Inspect documentation diff before validation**
+- [x] **Step 2: Inspect documentation diff before validation**
 
 Run: `rtk git diff -- core/README.md README.md`
 
 Expected: only migration and configuration behavior from this change; no generated output or unrelated work.
 
-- [ ] **Step 3: Run all focused test suites**
+- [x] **Step 3: Run all focused test suites**
 
 Run: `rtk yarn workspace @yesimbot/agent-runtime exec vitest run tests/message.test.ts`
 
@@ -596,7 +596,7 @@ Run: `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/gateway.te
 
 Expected: PASS. If a failure predates this change, record its command and output class, do not alter unrelated user work.
 
-- [ ] **Step 4: Run package and root quality gates**
+- [x] **Step 4: Run package and root quality gates**
 
 Run: `rtk yarn turbo run check-types --filter=@yesimbot/agent-runtime`
 
@@ -618,7 +618,7 @@ Run: `rtk yarn test`
 
 Expected: all commands exit 0, or documented unrelated pre-existing failures remain unmodified.
 
-- [ ] **Step 5: Inspect, stage, and commit only migration documentation**
+- [x] **Step 5: Inspect, stage, and commit only migration documentation**
 
 Run: `rtk git status --short`
 
@@ -628,9 +628,9 @@ Run: `rtk git add core/README.md README.md && rtk git commit -m "docs(core): exp
 
 ## Plan Self-Review
 
-- [ ] **Spec coverage:** Tasks 1-2 cover `platform-message-ingestion`; Tasks 3 and 5 cover model capability and `core-runtime-integration`; Task 4 covers `agent-plugin-system` and `agent-runtime-core`; Tasks 6-7 cover `model-input-media-budgeting` and `platform-message-formatting`; Task 8 covers `system-prompt-composition`; Tasks 9-10 cover `channel-will-evaluation`; Task 11 verifies cross-module behavior; Task 12 covers migration and all requested gates.
-- [ ] **Placeholder scan:** Read every task for an unspecified implementation, unnamed path, or ungrounded test expectation; replace each with the exact code, file, command, and expected result before execution.
-- [ ] **Type consistency:** Confirm `ChannelAllowRule`, `MediaPolicy`, the extended `ModelMessageContext`, `selectEventFiles`, `WillingnessWill`, and `Will.onReply` match their use sites before the first implementation patch.
+- [x] **Spec coverage:** Tasks 1-2 cover `platform-message-ingestion`; Tasks 3 and 5 cover model capability and `core-runtime-integration`; Task 4 covers `agent-plugin-system` and `agent-runtime-core`; Tasks 6-7 cover `model-input-media-budgeting` and `platform-message-formatting`; Task 8 covers `system-prompt-composition`; Tasks 9-10 cover `channel-will-evaluation`; Task 11 verifies cross-module behavior; Task 12 covers migration and all requested gates.
+- [x] **Placeholder scan:** Read every task for an unspecified implementation, unnamed path, or ungrounded test expectation; replace each with the exact code, file, command, and expected result before execution.
+- [x] **Type consistency:** Confirm `ChannelAllowRule`, `MediaPolicy`, the extended `ModelMessageContext`, `selectEventFiles`, `WillingnessWill`, and `Will.onReply` match their use sites before the first implementation patch.
 
 Plan complete and saved to `openspec/changes/harden-agent-input-pipeline/plan.md`. Two execution options:
 
