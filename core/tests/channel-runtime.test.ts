@@ -396,7 +396,7 @@ describe("ChannelRuntime", () => {
     ]);
   });
 
-  it("notifies Will once for done turns with renderable string or text-part assistant output", async () => {
+  it("notifies Will once for a done turn with multiple renderable assistant messages", async () => {
     const onReply = vi.fn(async () => undefined);
     createRuntime({ decide: async () => "trigger", onReply });
     const plugin = coreWillReplyPlugin();
@@ -404,11 +404,6 @@ describe("ChannelRuntime", () => {
     await plugin.onTurnFinish?.(
       turnResult("done", [
         { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
-      ]),
-      turnFinishContext(),
-    );
-    await plugin.onTurnFinish?.(
-      turnResult("done", [
         {
           id: "assistant-2",
           timestamp: 2,
@@ -419,7 +414,7 @@ describe("ChannelRuntime", () => {
       turnFinishContext(),
     );
 
-    expect(onReply).toHaveBeenCalledTimes(2);
+    expect(onReply).toHaveBeenCalledOnce();
   });
 
   it("does not notify Will for empty, failed, aborted, or assistant-free turn results", async () => {
@@ -438,14 +433,40 @@ describe("ChannelRuntime", () => {
       turnResult("done", [{ ...emptyAssistant, content: [{ type: "text", text: " " }] }]),
       turnFinishContext(),
     );
-    await plugin.onTurnFinish?.(turnResult("failed", []), turnFinishContext());
-    await plugin.onTurnFinish?.(turnResult("aborted", []), turnFinishContext());
+    await plugin.onTurnFinish?.(
+      turnResult("failed", [
+        { id: "assistant-failed", timestamp: 2, role: "assistant", content: "reply" },
+      ]),
+      turnFinishContext(),
+    );
+    await plugin.onTurnFinish?.(
+      turnResult("aborted", [
+        { id: "assistant-aborted", timestamp: 3, role: "assistant", content: "reply" },
+      ]),
+      turnFinishContext(),
+    );
     await plugin.onTurnFinish?.(
       turnResult("done", [{ id: "tool-1", timestamp: 1, role: "tool", content: [] }]),
       turnFinishContext(),
     );
 
     expect(onReply).not.toHaveBeenCalled();
+  });
+
+  it("accepts a done renderable reply when Will has no reply callback", async () => {
+    const { logger } = createRuntime({ decide: async () => "trigger" });
+    const plugin = coreWillReplyPlugin();
+
+    await expect(
+      plugin.onTurnFinish?.(
+        turnResult("done", [
+          { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
+        ]),
+        turnFinishContext(),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(logger.warn).not.toHaveBeenCalledWith(expect.objectContaining({ event: "will_reply_failed" }));
   });
 
   it("reports reply callback rejection without changing a completed turn", async () => {
