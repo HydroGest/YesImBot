@@ -36,6 +36,136 @@ persisted data never retain a Koishi Session.
 `reload(scope)` drains an active runtime for that channel, preserves persisted
 channel data, and recreates the runtime lazily on the next accepted event.
 
+## Configuration migration
+
+### Channel allowlist
+
+`allowedChannels` is a breaking, deny-by-default Gateway boundary. Rules are
+ORed; fields in one rule are ANDed. `platform` and `channelId` accept exact
+strings or `*`. Omitting `isDirect` matches both direct and shared channels;
+use an explicit boolean when the rule must select one kind of channel.
+
+An omitted `allowedChannels` value and `allowedChannels: []` both admit no
+external Sessions. Add at least one rule before upgrading. These examples are
+independent rules for common scopes:
+
+```yaml
+# One exact channel, directness is intentionally unrestricted.
+allowedChannels:
+  - platform: onebot
+    channelId: "123456"
+
+# One platform wildcard for a specific channel.
+allowedChannels:
+  - platform: "*"
+    channelId: "123456"
+
+# One channel wildcard for a specific platform.
+allowedChannels:
+  - platform: discord
+    channelId: "*"
+
+# Direct-only and shared-only rules.
+allowedChannels:
+  - platform: discord
+    channelId: "dm-123"
+    isDirect: true
+  - platform: onebot
+    channelId: "group-456"
+    isDirect: false
+
+# Explicit allow-all for every external platform and channel scope.
+allowedChannels:
+  - platform: "*"
+    channelId: "*"
+```
+
+The final rule admits all external channel scopes. It does not affect
+internal completion events produced by an already admitted Runtime.
+
+### Model image input and multimedia
+
+Providers are modality-agnostic. Image capability belongs to the per-model
+override in `models.json`, not to provider configuration. Declare it like this:
+
+```json
+{
+  "chat": {
+    "provider:model": {
+      "modalities": {
+        "input": ["image"]
+      }
+    }
+  }
+}
+```
+
+The authority-4 command writes the same model override and refreshes the model
+registry:
+
+```text
+yesimbot.model.add-input-modality provider:model image
+```
+
+The command accepts a full model ID or alias and is idempotent. A model can
+receive image files only when both `multimedia.enabled` and its explicit
+`modalities.input` capability allow them. An absent or unknown image
+capability degrades to unchanged text. The provider does not supply this
+capability.
+
+Model-call media settings are separate from Gateway image-freeze limits. The
+defaults are enabled, 4 images per call, 5 MiB per image, 10 MiB total per
+call, and `current-first` selection:
+
+```yaml
+multimedia:
+  enabled: true
+  image:
+    selection: current-first
+    maxCountPerCall: 4
+    maxBytesPerImage: 5242880
+    maxBytesPerCall: 10485760
+```
+
+Selection is scoped to each model call and does not rewrite persisted history.
+`current-first` visits the current request batch first, then transformed
+history in FIFO order; when the batch is empty it falls back to historical
+FIFO. `fifo` visits Events in model-boundary order. `lifo` visits Events from
+newest to oldest. Both strategies preserve source-reference order inside each
+Event. Generated file parts remain call-scoped.
+
+ChannelRuntimes snapshot model capability, multimedia policy, and Will engine
+when they start. `yesimbot.model.add-input-modality` therefore needs an
+explicit non-destructive reload or Runtime replacement for an active channel:
+
+```ts
+await ctx.yesimbot.reload({
+  platform: "onebot",
+  selfId: "bot-1",
+  channelId: "123456",
+  isDirect: false,
+});
+```
+
+Reload preserves history, assets, and workspace. The default Will engine is
+`routing`; `willingness` is opt-in. To roll back the temporary willingness
+engine, select routing and reload the affected channels:
+
+```yaml
+will:
+  engine: routing
+```
+
+To roll back multimedia input without changing model metadata, disable it and
+reload the affected channels:
+
+```yaml
+multimedia:
+  enabled: false
+```
+
+Both rollback switches leave persisted message content unchanged.
+
 ## Channel Key
 
 Core defines one deterministic 26-character lowercase Base32 Channel Key for

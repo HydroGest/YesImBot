@@ -46,6 +46,65 @@ npm install koishi-plugin-yesimbot
 > [!TIP]
 > 想了解详细的配置与使用方式？请查阅[官方文档站](https://docs.yesimbot.chat/)。
 
+### 升级配置迁移
+
+新版本的 `allowedChannels` 采用严格的默认拒绝策略。未配置或配置为
+`allowedChannels: []` 时，不接收任何外部 Session；至少配置一条规则后再
+启动。规则按 OR 合并，`platform` 和 `channelId` 支持精确值或 `*`，省略
+`isDirect` 表示同时匹配私聊和群聊。需要限定类型时必须显式写布尔值：
+
+```yaml
+# 精确频道；不限制私聊/群聊
+allowedChannels:
+  - platform: onebot
+    channelId: "123456"
+
+# 仅私聊、仅群聊
+allowedChannels:
+  - platform: discord
+    channelId: "dm-123"
+    isDirect: true
+  - platform: onebot
+    channelId: "group-456"
+    isDirect: false
+
+# 明确允许所有外部平台和频道范围
+allowedChannels:
+  - platform: "*"
+    channelId: "*"
+```
+
+模型图片能力只在 `models.json` 的模型覆盖项中声明，Provider 本身不声明
+模态能力。缺少或未知图片能力时，模型调用降级为纯文本。启用一个模型的
+图片输入：
+
+```json
+{
+  "chat": {
+    "provider:model": {
+      "modalities": { "input": ["image"] }
+    }
+  }
+}
+```
+
+也可以使用四级权限命令：
+
+```text
+yesimbot.model.add-input-modality provider:model image
+```
+
+多媒体模型调用默认启用，每次最多 4 张图片、单张 5 MiB、单次 10 MiB，
+选择策略为 `current-first`。该策略先访问本次请求的新消息批次，再按 FIFO
+访问历史；批次为空时回退到历史 FIFO。`fifo` 和 `lifo` 是 Event 访问顺序，
+其中 `lifo` 从新到旧；每个 Event 内的图片引用仍保持源顺序。图片选择和文件
+part 只属于本次模型调用，不会改写持久化历史。
+
+活动 Runtime 会快照模型能力、多媒体策略和 Will 引擎。配置或模型能力变更后，
+使用非破坏性的 `ctx.yesimbot.reload(scope)` 应用新快照；它保留历史、assets
+和 workspace。回滚时将 `will.engine` 设为 `routing`，或将
+`multimedia.enabled` 设为 `false`，再 reload 受影响频道。
+
 ## Plugins
 
 YesImBot 的能力通过插件系统按需加载。
