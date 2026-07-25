@@ -57,3 +57,18 @@ The requested consolidated subagent review was not dispatched because the task e
 - Variant handling: assertions distinguish `yesimbot.message` and `yesimbot.event` by their current discriminants and fields.
 - Escape hatches and defensive layers: no production escape hatch or compatibility fallback was added; the changed test files pass the no-excuse audit.
 - Regression coverage: the stale service directory expectation failed before correction, and the new end-to-end scenario exercises message/event persistence, restart, projection, Manifest indexing, absence of `channels.json`, and old-directory preservation.
+
+## Correction Round: Asset Storage Expectations
+
+Controller verification found two blocking stale assertions in `core/tests/asset.test.ts`. The first hard-coded the former 26-character identity directory instead of following the `ChannelStorage` Manifest record. The second used `room?a` and `room/a`, which deliberately encode to the same readable directory and now correctly fail with a storage integrity mismatch.
+
+The correction keeps production code unchanged. The asset round-trip now obtains the current `ChannelRecord`, verifies its stable identity and readable `v1-shared-onebot-room_42` directory, then checks the asset beneath that Manifest-backed directory. The isolation case now uses non-colliding sibling `room-42` and `room-43` scopes.
+
+- `rtk yarn workspace koishi-plugin-yesimbot exec vitest run tests/asset.test.ts`: 2 passed.
+- `rtk yarn test`: 294 passed and exactly the three accepted stale OneBot reaction failures remain in `core/tests/platform/onebot.test.ts`:
+  - `produces a typed reaction event from a valid reactions-updated notice`
+  - `preserves numeric protocol identifiers and zero reaction counts`
+  - `resolves a supported notice before considering the optional message base`
+- `rtk yarn exec oxfmt --check core/tests/asset.test.ts`: exited 0.
+- TypeScript LSP diagnostics remain unavailable because the server is not installed and prior user policy declined installation.
+- The TypeScript no-excuse audit for `core/tests/asset.test.ts` reported no violations.

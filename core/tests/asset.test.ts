@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { type ChannelScope } from "../src/channel/index.js";
+import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
 import { AssetStore } from "../src/shared/asset.js";
 import { ChannelStorage } from "../src/storage/index.js";
 
@@ -16,17 +16,18 @@ const scope: ChannelScope = {
   channelId: "room-42",
   isDirect: false,
 };
-const otherScope: ChannelScope = { ...scope, channelId: "room?a" };
-const collidingScope: ChannelScope = { ...scope, channelId: "room/a" };
+const otherScope: ChannelScope = { ...scope, channelId: "room-43" };
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 describe("AssetStore", () => {
   let basePath: string;
+  let storage: ChannelStorage;
   let assets: AssetStore;
 
   beforeEach(async () => {
     basePath = await mkdtemp(join(tmpdir(), "yesimbot-assets-"));
-    assets = new AssetStore({ storage: new ChannelStorage(basePath), maxFileBytes: 16 });
+    storage = new ChannelStorage(basePath);
+    assets = new AssetStore({ storage, maxFileBytes: 16 });
   });
 
   afterEach(async () => {
@@ -36,23 +37,29 @@ describe("AssetStore", () => {
   it("round-trips a private image and rejects an invalid asset id", async () => {
     const stored = await assets.put(scope, PNG_BYTES);
     const hash = stored.assetId.slice("asset_".length);
+    const [channel] = storage.list();
+    if (!channel) throw new Error("Expected a channel Manifest");
 
     await expect(assets.readByAssetId(scope, stored.assetId)).resolves.toEqual(PNG_BYTES);
     await expect(
-      readFile(join(basePath, "channels", "j4bccwhe5a72utwrwgtk4gvf5e", "assets", hash)),
+      readFile(join(basePath, "channels", channel.directoryName, "assets", hash)),
     ).resolves.toEqual(Buffer.from(PNG_BYTES));
+    expect(channel).toMatchObject({
+      identity: channelIdentity(scope),
+      directoryName: "v1-shared-onebot-room_42",
+    });
     await expect(assets.readByAssetId(scope, "asset_invalid")).rejects.toThrow(
       "Invalid platform asset id",
     );
   });
 
   it("clears only assets from the requested channel", async () => {
-    const stored = await assets.put(collidingScope, PNG_BYTES);
+    const stored = await assets.put(scope, PNG_BYTES);
     const other = await assets.put(otherScope, PNG_BYTES);
 
-    await assets.clear(collidingScope);
+    await assets.clear(scope);
 
-    await expect(assets.readByAssetId(collidingScope, stored.assetId)).rejects.toThrow();
+    await expect(assets.readByAssetId(scope, stored.assetId)).rejects.toThrow();
     await expect(assets.readByAssetId(otherScope, other.assetId)).resolves.toEqual(PNG_BYTES);
   });
 });
