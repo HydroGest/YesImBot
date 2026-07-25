@@ -1,22 +1,23 @@
 # koishi-plugin-yesimbot
 
 The core package provides YesImBot's Koishi facade, Session Gateway, model
-registry, canonical EventRecord routing, channel storage, and Runtime ownership.
+registry, split input routing, channel storage, and Runtime ownership.
 
 ## Public API
 
 Platform plugins register one `SessionResolver` per Koishi platform through
 `ctx.yesimbot.registerResolver()`. The resolver receives the live Session only
-inside Gateway handling and returns a Session-free `EventRecord`.
+inside Gateway handling and returns a Session-free `InputRecord`. Ordinary
+messages become `yesimbot.message`; non-message inputs become `yesimbot.event`.
 
 The public facade exposes:
 
 - `model`
 - `registerResolver()`, `registerWill()`, and `registerAgentPlugin()`
-- `channelKey()`, `registerStorage()`, `ensureStorage()`, and `listChannels()`
+- `channelIdentity()`, `registerStorage()`, `ensureStorage()`, and `listChannels()`
 - `reload(scope)`, `reset()`, and `stop()`
 
-The package root exports `ChannelScope`, `channelKey`, Event contracts,
+The package root exports `ChannelScope`, `channelIdentity`, Input contracts,
 `SessionResolver`, `ChannelFilter`, `ChannelRecord`, and Will contracts. Gateway,
 RuntimeManager, ChannelRuntime, ChannelStorage, AssetStore, and assignee helpers
 remain internal. The only supported code subpath is `./model`.
@@ -27,7 +28,7 @@ Gateway owns the live Session, Resolver invocation, bounded image freezing, and
 passive `Session.send()`. A failed passive delivery appends one same-channel
 `delivery.failed` Event and does not stop later outputs.
 
-RuntimeManager owns one Runtime entry per Channel Key and coordinates reload,
+RuntimeManager owns one Runtime entry per `channelIdentity` and coordinates reload,
 reset, global stop, Will generations, and shared-channel assignee handover.
 ChannelRuntime owns one channel FIFO, Agent, Will, JSONL storage, model stream,
 delivery leases, and delivery-failure completion lane. Runtime modules and
@@ -166,9 +167,9 @@ multimedia:
 
 Both rollback switches leave persisted message content unchanged.
 
-## Channel Key
+## Channel identity
 
-Core defines one deterministic 26-character lowercase Base32 Channel Key for
+Core defines one deterministic 26-character lowercase Base32 `channelIdentity` for
 every `ChannelScope`. Shared channels derive identity from
 `platform + channelId`; direct channels also include `selfId`.
 
@@ -178,10 +179,15 @@ shared tuple  = ["yesimbot.channel", 1, "shared", platform, null, channelId]
 direct tuple  = ["yesimbot.channel", 1, "direct", platform, selfId, channelId]
 ```
 
-The Key is SHA-256 of the canonical UTF-8 JSON tuple, first 16 bytes, RFC 4648
+The identity is SHA-256 of the canonical UTF-8 JSON tuple, first 16 bytes, RFC 4648
 lowercase Base32 (unpadded). Matches `^[a-z2-7]{25}[aeimquy4]$`.
 
-Export: `YesImBotService.channelKey(scope)` or `channelKey` from package root.
+Export: `YesImBotService.channelIdentity(scope)` or `channelIdentity` from package root.
+
+The identity is a logical ID, not a filesystem path. Ordinary inputs persist as
+`yesimbot.message` with `elements`, frozen `text`, and `messageId`; `elements`
+is the sole structured message field. Non-message inputs persist as
+`yesimbot.event` with `eventType` and frozen `text`.
 
 ## Storage layout
 
@@ -189,8 +195,8 @@ All Core-managed local resources for one channel live beneath one directory:
 
 ```
 <basePath>/
-  channels.json               — rebuildable Catalog (sorted by Key, UTF-8 JSON)
-  channels/<26-char-key>/
+  channels/v1-shared-<platform>-<channelId>/
+  channels/v1-direct-<platform>-<channelId>-<selfId>/
     channel.json               — authoritative Manifest
     sessions/messages.jsonl    — Agent history (append-only JSONL)
     assets/                    — frozen image blobs by content hash
@@ -198,15 +204,15 @@ All Core-managed local resources for one channel live beneath one directory:
     <registered-namespace>/   — other module data
 ```
 
-- `channel.json` is the only commit point. The Catalog is a derived index
-  rebuilt at startup or on failure.
+- `channel.json` is the only authority and commit point. Startup scans valid
+  Manifests into the in-memory index; Core never creates `channels.json`.
 - `ChannelRecord` and `ChannelFilter` are public types exported from the
   package root.
 - `YesImBotService.registerStorage(namespace)` registers a module namespace.
 - `YesImBotService.ensureStorage(scope, namespace, ...segments)` returns a
   validated path beneath that namespace root.
 - `YesImBotService.listChannels(filter?)` returns matching records from the
-  in-memory Catalog.
+  in-memory Manifest index.
 
 ## Shared-channel admission
 
@@ -217,11 +223,10 @@ rows, empty assignees, query errors, and non-assignee events fail closed.
 Direct events skip assignee lookup.
 
 Online handover drains the old Runtime and creates a new one for the new
-assignee without changing the Channel Key, JSONL, or workspace data.
+assignee without changing the channel identity, JSONL, or workspace data.
 
 ## Legacy data
 
-This release uses a new canonical Key format and channel-first directory layout.
-Core does not read, migrate, map, rename, or delete legacy data
-(`channel_v2_*`, `workspace_v2_*`, `ch_v1_*`, or old JSONL files). No legacy
-path or hash helpers are exposed from the package root.
+This release is a clean break. Core preserves but does not read, migrate, map,
+rename, or delete old hash directories, old JSONL payloads, old Manifests, or
+`channels.json`. No legacy fallback or compatibility alias exists.

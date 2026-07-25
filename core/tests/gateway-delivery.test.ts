@@ -1,12 +1,20 @@
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { Context } from "@koishijs/core";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import type { InputRecord, MessageRecord } from "../src/event/index.js";
-import { Gateway } from "../src/gateway/index.js";
-import { ChannelStorage } from "../src/storage/index.js";
-
 import { h } from "koishi";
+
+import { formatInput } from "../src/event/formatter.js";
+import { isInput, type InputRecord, type MessageRecord } from "../src/event/index.js";
+import { Gateway } from "../src/gateway/index.js";
+import { RuntimeManager } from "../src/runtime/manager.js";
+import { createJsonlStorage } from "../src/runtime/storage.js";
+import { ChannelStorage } from "../src/storage/index.js";
 
 function session(send = vi.fn(async () => ["receipt-1"])) {
   return {
@@ -74,7 +82,103 @@ function createGateway(route: ReturnType<typeof vi.fn>, logger = { warn: vi.fn()
   };
 }
 
+function createIntegratedGateway(basePath: string) {
+  const ctx = new Context();
+  const storage = new ChannelStorage(basePath);
+  const assets = { clear: vi.fn(async () => undefined), put: vi.fn(), readByAssetId: vi.fn() };
+  const model = { modelId: "test-model" };
+  const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
+  Object.assign(ctx, {
+    database,
+    "yesimbot.model": { resolveChatModel: vi.fn(() => ({ model, entry: {} })) },
+  });
+  ctx.bots.push({ platform: "test", selfId: "bot-1", sendMessage: vi.fn() } as never);
+  const manager = new RuntimeManager({
+    ctx,
+    config: { basePath, chatModel: "test:model" },
+    logger: { debug: vi.fn(), warn: vi.fn() } as never,
+    assets: assets as never,
+    storage,
+    getAgentPluginFactories: () => [],
+  });
+  manager.setWill(async () => ({ decide: async () => "wait" as const }));
+  const gateway = new Gateway({
+    ctx,
+    runtime: manager,
+    assets: assets as never,
+    storage,
+    allowedChannels: [{ platform: "test", channelId: "room-1" }],
+    ready: () => storage.start(),
+    logger: { warn: vi.fn() } as never,
+  });
+  return { gateway, manager, storage };
+}
+
 describe("Gateway passive delivery", () => {
+  it("persists current messages and sibling events through restart without reading old storage", async () => {
+    const basePath = await mkdtemp(join(tmpdir(), "yesimbot-gateway-integration-"));
+    const oldDirectory = join(basePath, "channels", "a5vnf2ijd75c2ibyo2s5czdir4");
+    const oldJsonl = join(oldDirectory, "sessions", "messages.jsonl");
+    const oldPayload = '{"type":"yesimbot.event","data":{"message":{"content":"old"}}}\n';
+    await mkdir(join(oldDirectory, "sessions"), { recursive: true });
+    await writeFile(oldJsonl, oldPayload, "utf8");
+
+    const first = createIntegratedGateway(basePath);
+    await first.gateway.handle(session() as never);
+    await first.manager.route({
+      schemaVersion: 1,
+      eventType: "delivery.failed",
+      platform: "test",
+      selfId: "bot-1",
+      timestamp: 2,
+      channel: { id: "room-1", type: 0 },
+      delivery: {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        error: { name: "Error", message: "offline" },
+      },
+      text: "Delivery failed",
+    });
+    await first.manager.stop();
+
+    const readableDirectory = join(basePath, "channels", "v1-shared-test-room_1");
+    const currentJsonl = join(readableDirectory, "sessions", "messages.jsonl");
+    const firstEntries = await createJsonlStorage(currentJsonl).read();
+    const firstInput = firstEntries[0]?.type === "message" ? firstEntries[0].data : undefined;
+    const eventInput = firstEntries[1]?.type === "message" ? firstEntries[1].data : undefined;
+
+    expect(firstInput).toMatchObject({
+      type: "yesimbot.message",
+      data: { messageId: "message-1", elements: expect.any(Array), text: "hello" },
+    });
+    expect(eventInput).toMatchObject({
+      type: "yesimbot.event",
+      data: { eventType: "delivery.failed", text: "Delivery failed" },
+    });
+    expect(eventInput?.data).not.toHaveProperty("messageId");
+    expect(eventInput?.data).not.toHaveProperty("elements");
+    expect(await readFile(oldJsonl, "utf8")).toBe(oldPayload);
+    expect(first.storage.list()).toHaveLength(1);
+    await expect(readFile(join(basePath, "channels.json"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    const restarted = createIntegratedGateway(basePath);
+    await restarted.gateway.handle(session() as never);
+    const replay = await createJsonlStorage(currentJsonl).read();
+    const persistedMessage = replay[0]?.type === "message" ? replay[0].data : undefined;
+    if (!persistedMessage || !isInput(persistedMessage))
+      throw new Error("Expected persisted input");
+
+    expect(formatInput(persistedMessage, { includeMessageId: true }).content).toBe(
+      '[time="1970/1/1 08:00" sender="user-1" id="message-1"]\nhello',
+    );
+    expect(replay).toHaveLength(3);
+    expect(await readFile(oldJsonl, "utf8")).toBe(oldPayload);
+    await restarted.manager.stop();
+    await rm(basePath, { recursive: true, force: true });
+  });
+
   it("sends complete outputs in yield order and accepts empty receipts", async () => {
     const binding = delivery();
     const route = vi.fn(async () => ({

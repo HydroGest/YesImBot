@@ -191,10 +191,14 @@ describe("YesImBotService facade", () => {
     const dispose = service.registerStorage("workspace");
     expect(service.channelIdentity(scope)).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
     await expect(service.ensureStorage(scope, "workspace")).resolves.toContain(
-      "channels/a5vnf2ijd75c2ibyo2s5czdir4/workspace",
+      "channels/v1-shared-onebot-123456/workspace",
     );
     expect(service.listChannels()).toEqual([
-      expect.objectContaining({ key: "a5vnf2ijd75c2ibyo2s5czdir4", selfId: null }),
+      expect.objectContaining({
+        identity: "a5vnf2ijd75c2ibyo2s5czdir4",
+        directoryName: "v1-shared-onebot-123456",
+        selfId: null,
+      }),
     ]);
     dispose();
   });

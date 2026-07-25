@@ -271,6 +271,12 @@ ChannelRuntime 在发布前一次性冻结 prompt、tools、model、provider 和
 
 MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结果区分已完成检索、已持久化写入、仅被异步接受和失败，模型不再获得选择其他原始频道的 debug tool。
 
+### 2026-07-26：消息真相与本地目录协议分离
+
+证据：`docs/superpowers/specs/2026-07-25-message-storage-channel-identity-design.md` `[D]`。
+
+普通消息改为 `yesimbot.message`，以原始 `elements` 作为唯一结构化事实，并在准入时保存冻结 `text`；非消息输入保留给带 `eventType` 的 `yesimbot.event`。同一时期，26 字符 `channelIdentity` 明确只承担逻辑身份，可读 `v1-shared-*` / `v1-direct-*` 目录由 `channel.json` 绑定，启动扫描 Manifest 而不再维护 `channels.json`。这接受了旧 hash 目录和旧 JSONL 保留但不可达的 clean break，避免身份哈希、目录名和历史格式再次相互承担兼容责任。
+
 ## 4. 决策索引
 
 ### 当前有效

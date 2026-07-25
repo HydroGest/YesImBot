@@ -24,8 +24,8 @@ _让 AI 更像人类，让聊天更有温度_
 - **消息优先的运行时** — `@yesimbot/agent-runtime` 将"观察"与"发言"分离：普通消息进入频道历史，Will 决定等待或触发模型回合；忙时事件加入当前 turn，不创建第二个流消费者。
 - **多模型即插即用** — 通过 provider 插件接入 OpenAI、Anthropic、DeepSeek、Google 等模型，并通过 `models.json` 管理模型注册与默认值。
 - **强大的插件体系** — 工具、提示词、消息转换、生命周期钩子，每个维度都可扩展。插件按 `pre` / normal / `post` 顺序编排，互不干扰。
-- **上下文持久化** — Core 为每个频道生成 26 字符 Channel Key，并把 Manifest、JSONL、assets、workspace 和插件 namespace 统一放在 `<basePath>/channels/<key>/`。运行时可加载 `AGENTS.md` 与 `PERSONA.md`。
-- **平台输入边界** — 平台插件注册 `SessionResolver`，Gateway 在 Session 生命周期内完成解析、图片冻结和被动回复，再把 Session-free EventRecord 交给频道 Runtime。
+- **上下文持久化** — Core 以稳定的 26 字符 `channelIdentity` 识别频道，并将 Manifest、JSONL、assets、workspace 和插件 namespace 放在可读的 `<basePath>/channels/v1-shared-*/` 或 `v1-direct-*/` 目录。`channel.json` 是唯一权威来源，启动时扫描 Manifest，不创建 `channels.json`。
+- **平台输入边界** — 平台插件注册 `SessionResolver`，Gateway 在 Session 生命周期内完成解析、图片冻结和被动回复。普通消息以 `yesimbot.message` 持久化唯一结构化 `elements`、冻结的 `text` 和 `messageId`；非消息输入以 `yesimbot.event` 及 `eventType`、冻结的 `text` 持久化。
 - **丰富的能力插件** — 虚拟文件系统与 Bash 沙箱、MCP 客户端、Skill 加载、Web 搜索、MemOS Cloud 记忆、OneBot 工具、贴纸处理等。
 - **Koishi 原生集成** — 作为 `koishi-plugin-yesimbot` 运行，复用 Koishi 生态的适配器、中间件和插件体系。
 
