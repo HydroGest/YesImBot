@@ -1,6 +1,6 @@
 import type { Context, Element } from "koishi";
 import type {} from "koishi-plugin-adapter-onebot";
-import type { EventRecord, ResolveContext, SessionResolver } from "koishi-plugin-yesimbot";
+import type { InputRecord, MessageRecord, ResolveContext, SessionResolver } from "koishi-plugin-yesimbot";
 
 import { resolveOneBotEvent } from "./events.js";
 import { freezeOneBotImages } from "./image.js";
@@ -23,20 +23,23 @@ async function resolveOneBotMessage({
   freezeImage,
 }: {
   readonly ctx: Context;
-  readonly base: Omit<EventRecord<"message">, "content">;
+  readonly base: Omit<MessageRecord, "text">;
   readonly freezeImage: ResolveContext["freezeImage"];
-}): Promise<EventRecord<"message">> {
-  const elements = await freezeOneBotImages(
+}): Promise<MessageRecord> {
+  // Create a separate working tree for image freezing and text derivation
+  const workingElements = [...base.elements];
+  const frozenElements = await freezeOneBotImages(
     ctx,
-    (base.message.elements ?? []) as readonly Element[],
+    workingElements as readonly Element[],
     freezeImage,
   );
-  const content = elements.map((element) => element.toString()).join("");
+  // Serialize the frozen working tree into text
+  const text = frozenElements.map((element) => element.toString()).join("");
   return {
     ...base,
-    message: { ...base.message, content, elements },
-    content,
-  } as EventRecord<"message">;
+    elements: base.elements, // Original source elements preserved
+    text,
+  };
 }
 
 export { resolveOneBotEvent } from "./events.js";

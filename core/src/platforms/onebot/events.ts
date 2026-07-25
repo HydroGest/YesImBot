@@ -43,19 +43,23 @@ export function resolveOneBotEvent(session: Session): EventRecord<"notice.poke">
   const { event } = session;
   if (event.type === "notice") {
     switch (event.subtype) {
-      case "poke":
+      case "poke": {
+        const channel: Universal.Channel = event.channel ?? { id: session.channelId ?? "", type: 0 };
+        const user: Universal.User = event.user ?? { id: session.userId ?? "" };
+        const target: Universal.User = { id: String(event._data.target_id) };
         return {
-          type: "notice.poke",
+          schemaVersion: 1,
+          eventType: "notice.poke",
           platform: session.platform,
           selfId: session.selfId,
-          channel: event.channel,
-          user: event.user,
-          target: {
-            id: event._data.target_id,
-          },
+          channel,
+          user,
+          target,
           action: "拍了拍",
-          content: `${event._data.user_id} 拍了拍 ${event._data.target_id}`,
+          text: `${event._data.user_id} 拍了拍 ${event._data.target_id}`,
+          timestamp: session.timestamp ?? Date.now(),
         } as EventRecord<"notice.poke">;
+      }
       default:
         return null;
     }

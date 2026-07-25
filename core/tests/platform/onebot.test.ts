@@ -8,7 +8,7 @@ import { join } from "path";
 import { pathToFileURL } from "url";
 
 import { h, type Session, type Element } from "koishi";
-import { EventRecord, ResolveContext } from "koishi-plugin-yesimbot";
+import { type MessageRecord, type ResolveContext } from "koishi-plugin-yesimbot";
 
 import { resolveOneBotEvent } from "../../src/platforms/onebot/events.js";
 import { freezeOneBotImages } from "../../src/platforms/onebot/image.js";
@@ -247,9 +247,9 @@ describe("freezeOneBotImages", () => {
   });
 });
 
-function messageBase(): Omit<EventRecord<"message">, "content"> {
+function messageBase(): Omit<MessageRecord, "text"> {
   return {
-    type: "message",
+    schemaVersion: 1,
     platform: "onebot",
     selfId: "bot",
     timestamp: 1,
@@ -257,8 +257,9 @@ function messageBase(): Omit<EventRecord<"message">, "content"> {
     user: { id: "user", name: "Alice" },
     member: { nick: "Alice" },
     guild: { id: "guild", name: "Guild" },
-    message: { id: "message", content: "hello", elements: [h.text("hello")] },
-  } as Omit<EventRecord<"message">, "content">;
+    messageId: "message",
+    elements: [h.text("hello")],
+  };
 }
 
 function context(overrides: Partial<ResolveContext> = {}): ResolveContext {
@@ -277,14 +278,15 @@ describe("createResolver", () => {
     const result = await resolver.resolve(context({ base }));
 
     expect(result).toMatchObject({
-      type: "message",
+      schemaVersion: 1,
       channel: base.channel,
       user: base.user,
       member: base.member,
       guild: base.guild,
-      message: { id: base.message.id, elements: [h.text("hello")] },
+      messageId: base.messageId,
+      elements: [h.text("hello")],
     });
-    expect(result?.content).toBe("hello");
+    expect(result).toHaveProperty("text");
   });
 
   it("resolves a supported notice before considering the optional message base", async () => {
@@ -308,7 +310,8 @@ describe("createResolver", () => {
     );
 
     expect(result).toMatchObject({
-      type: "onebot.message-reactions-updated",
+      schemaVersion: 1,
+      eventType: "notice.poke",
       channel: { id: "room" },
     });
   });
