@@ -50,11 +50,12 @@ vi.mock("../src/runtime/channel.js", () => ({
 }));
 
 import type { ChannelScope } from "../src/channel/index.js";
+import type { Config } from "../src/config.js";
 import type { EventRecord } from "../src/event/index.js";
 import { ChannelRuntimeDrainingError } from "../src/runtime/channel.js";
 import { RuntimeManager } from "../src/runtime/manager.js";
 import { ChannelStorage } from "../src/storage/index.js";
-import type { Will } from "../src/will/index.js";
+import { DefaultWill, type Will, WillingnessWill } from "../src/will/index.js";
 
 function record(
   channelId: string,
@@ -73,7 +74,7 @@ function record(
   } as EventRecord<"message">;
 }
 
-function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
+function createManager(basePath = "/tmp/yesimbot-runtime-manager", will?: Config["will"]) {
   const ctx = new Context();
   const matchingBot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn() };
   const otherBot = { platform: "test", selfId: "other", sendMessage: vi.fn() };
@@ -86,7 +87,7 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager") {
   const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
   const getAgentPluginFactories = vi.fn(() => []);
   const storage = new ChannelStorage(basePath);
-  const config = { basePath, chatModel: "test:model" };
+  const config: Config = { basePath, chatModel: "test:model", will };
   const manager = new RuntimeManager({
     ctx,
     config,
@@ -145,6 +146,30 @@ describe("RuntimeManager", () => {
     await routing;
     expect(state.runtimes[0]?.init).toHaveBeenCalledOnce();
     expect(state.runtimes[0]?.handle).toHaveBeenCalledOnce();
+  });
+
+  it("uses routing by default and willingness only when explicitly selected", async () => {
+    const routing = createManager();
+    const willingness = createManager("/tmp/yesimbot-willingness", {
+      engine: "willingness",
+      base: { text: 12 },
+    });
+
+    await routing.manager.route(record("routing"));
+    await willingness.manager.route(record("willingness"));
+
+    expect(state.runtimes[0]?.options.will).toBeInstanceOf(DefaultWill);
+    expect(state.runtimes[1]?.options.will).toBeInstanceOf(WillingnessWill);
+  });
+
+  it("keeps a custom Will factory authoritative over willingness configuration", async () => {
+    const { manager } = createManager("/tmp/yesimbot-custom-will", { engine: "willingness" });
+    const custom = { decide: async () => "wait" as const } satisfies Will;
+    manager.setWill(() => custom);
+
+    await manager.route(record("room"));
+
+    expect(state.runtimes[0]?.options.will).toBe(custom);
   });
 
   it("stops an unpublished runtime when initialization fails", async () => {

@@ -2,6 +2,14 @@ import type { Awaitable, Element, Universal } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
 import type { Event } from "../event/index.js";
+import type { WillingnessConfigInput } from "./willingness.js";
+
+export {
+  createWillingnessConfig,
+  WillingnessWill,
+  type WillingnessConfig,
+  type WillingnessConfigInput,
+} from "./willingness.js";
 
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 
@@ -32,6 +40,10 @@ export interface DefaultWillConfig {
   readonly direct: Will.Decision;
   readonly mention: Will.Decision;
   readonly group: Will.Decision;
+}
+
+export interface WillConfig extends Partial<DefaultWillConfig>, WillingnessConfigInput {
+  readonly engine?: "routing" | "willingness";
 }
 
 const DEFAULT_CONFIG: DefaultWillConfig = {

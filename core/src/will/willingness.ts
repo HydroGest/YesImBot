@@ -1,0 +1,165 @@
+import type { Element, Universal } from "koishi";
+
+import type { Event, EventRecord } from "../event/index.js";
+import type { Will } from "./index.js";
+
+const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
+
+export interface WillingnessConfig {
+  readonly base: { readonly text: number };
+  readonly attribute: { readonly atMention: number; readonly isDirectMessage: number };
+  readonly interest: {
+    readonly keywords: readonly string[];
+    readonly keywordMultiplier: number;
+    readonly defaultMultiplier: number;
+  };
+  readonly lifecycle: {
+    readonly maxWillingness: number;
+    readonly decayHalfLifeSeconds: number;
+    readonly probabilityThreshold: number;
+    readonly probabilityAmplifier: number;
+    readonly replyCost: number;
+  };
+}
+
+export interface WillingnessConfigInput {
+  readonly base?: Partial<WillingnessConfig["base"]>;
+  readonly attribute?: Partial<WillingnessConfig["attribute"]>;
+  readonly interest?: Partial<WillingnessConfig["interest"]>;
+  readonly lifecycle?: Partial<WillingnessConfig["lifecycle"]>;
+}
+
+export interface WillingnessWillOptions {
+  readonly config: WillingnessConfig;
+  readonly now: () => number;
+  readonly random: () => number;
+  readonly warn: (event: string, fields: Record<string, unknown>) => void;
+}
+
+export class WillingnessWill implements Will {
+  private readonly config: WillingnessConfig;
+  private score = 0;
+  private lastMessageAt: number | null = null;
+  private lastDecayAt: number | null = null;
+
+  constructor(private readonly options: WillingnessWillOptions) {
+    this.config = snapshotConfig(options.config);
+  }
+
+  async decide(event: Event, _state: Will.State): Promise<Will.Decision> {
+    const record = event.data;
+    if (record.type !== "message") return "wait";
+
+    try {
+      const now = this.options.now();
+      const nextScore = calculateScore(this.score, record, this.config);
+      const probability = calculateProbability(nextScore, this.config.lifecycle);
+      const decision = this.options.random() < probability ? "trigger" : "wait";
+
+      this.score = nextScore;
+      this.lastMessageAt = now;
+      this.lastDecayAt ??= now;
+      return decision;
+    } catch (cause) {
+      this.warn(cause);
+      return "wait";
+    }
+  }
+
+  private warn(cause: unknown): void {
+    try {
+      this.options.warn("will.willingness.calculation_failed", {
+        cause: cause instanceof Error ? cause.message : String(cause),
+      });
+    } catch {}
+  }
+}
+
+export function createWillingnessConfig(config: WillingnessConfigInput = {}): WillingnessConfig {
+  return snapshotConfig({
+    base: { text: 12, ...config.base },
+    attribute: { atMention: 100, isDirectMessage: 40, ...config.attribute },
+    interest: {
+      keywords: [],
+      keywordMultiplier: 1.2,
+      defaultMultiplier: 1,
+      ...config.interest,
+    },
+    lifecycle: {
+      maxWillingness: 100,
+      decayHalfLifeSeconds: 600,
+      probabilityThreshold: 55,
+      probabilityAmplifier: 0.04,
+      replyCost: 35,
+      ...config.lifecycle,
+    },
+  });
+}
+
+function snapshotConfig(config: WillingnessConfig): WillingnessConfig {
+  return Object.freeze({
+    base: Object.freeze({ ...config.base }),
+    attribute: Object.freeze({ ...config.attribute }),
+    interest: Object.freeze({ ...config.interest, keywords: Object.freeze([...config.interest.keywords]) }),
+    lifecycle: Object.freeze({ ...config.lifecycle }),
+  });
+}
+
+function calculateScore(current: number, data: EventRecord<"message">, config: WillingnessConfig): number {
+  assertValidConfig(config);
+  const multiplier = config.interest.keywords.some((keyword) =>
+    (data.content ?? "").includes(keyword),
+  )
+    ? config.interest.keywordMultiplier
+    : config.interest.defaultMultiplier;
+  const attributes =
+    (isSelfMention(data.selfId, data.message.elements) ? config.attribute.atMention : 0) +
+    (data.channel.type === DIRECT_CHANNEL_TYPE ? config.attribute.isDirectMessage : 0);
+  const rawGain = (config.base.text + attributes) * multiplier;
+  const ratio = current / config.lifecycle.maxWillingness;
+  const marginalGain = Math.max(0, 1 - ratio ** 2);
+  const dynamicGain = dynamicGainMultiplier(ratio);
+
+  return Math.min(config.lifecycle.maxWillingness, Math.max(0, current + rawGain * marginalGain * dynamicGain));
+}
+
+function calculateProbability(
+  score: number,
+  lifecycle: WillingnessConfig["lifecycle"],
+): number {
+  if (score <= lifecycle.probabilityThreshold) return 0;
+  return Math.min(1, Math.max(0, (score - lifecycle.probabilityThreshold) * lifecycle.probabilityAmplifier));
+}
+
+function dynamicGainMultiplier(ratio: number): number {
+  if (ratio < 0.2) return 1;
+  if (ratio < 0.8) return Math.max(1, -(((ratio - 0.5) * 2) ** 2) + 2);
+  return 1 - (ratio - 0.8) / 0.2;
+}
+
+function isSelfMention(selfId: string, elements: readonly Element[] | undefined): boolean {
+  return elements?.some((element) => element.type === "at" && String(element.attrs.id) === selfId) ?? false;
+}
+
+function assertValidConfig(config: WillingnessConfig): void {
+  const values = [
+    config.base.text,
+    config.attribute.atMention,
+    config.attribute.isDirectMessage,
+    config.interest.keywordMultiplier,
+    config.interest.defaultMultiplier,
+    config.lifecycle.maxWillingness,
+    config.lifecycle.decayHalfLifeSeconds,
+    config.lifecycle.probabilityThreshold,
+    config.lifecycle.probabilityAmplifier,
+    config.lifecycle.replyCost,
+  ];
+  if (
+    values.some((value) => !Number.isFinite(value)) ||
+    config.lifecycle.maxWillingness <= 0 ||
+    config.lifecycle.probabilityThreshold < 0 ||
+    config.lifecycle.probabilityAmplifier < 0
+  ) {
+    throw new TypeError("Invalid willingness configuration");
+  }
+}

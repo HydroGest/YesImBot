@@ -7,7 +7,7 @@ import type { EventRecord } from "../event/index.js";
 import type { AssetStore } from "../shared/asset.js";
 import { assertAssignee } from "../shared/assignee.js";
 import type { ChannelStorage } from "../storage/index.js";
-import { DefaultWill, type Will } from "../will/index.js";
+import { createWillingnessConfig, DefaultWill, WillingnessWill, type Will } from "../will/index.js";
 import {
   ChannelRuntime,
   ChannelRuntimeDrainingError,
@@ -42,13 +42,11 @@ export class RuntimeManager {
   private handovers = new Map<string, Promise<void>>();
   private handoverWaiters = new Map<string, number>();
   private gen = 0;
-  private makeWill: Will.Factory;
+  private customWill: Will.Factory | undefined;
   private stopped = false;
   private stopTask: Promise<void> | undefined;
 
-  constructor(private readonly opts: RuntimeManagerOptions) {
-    this.makeWill = () => new DefaultWill(opts.config.will);
-  }
+  constructor(private readonly opts: RuntimeManagerOptions) {}
 
   async route(record: EventRecord): Promise<RuntimeManager.Result> {
     this.assertOpen();
@@ -75,7 +73,7 @@ export class RuntimeManager {
   }
 
   setWill(factory: Will.Factory): void {
-    this.makeWill = factory;
+    this.customWill = factory;
     this.gen += 1;
   }
 
@@ -244,7 +242,16 @@ export class RuntimeManager {
       await Promise.all(factories.map((factory) => factory({ channel: scope, bot })))
     ).filter((plugin): plugin is AgentPlugin => plugin !== null);
     const includeMessageId = factories.some((factory) => factory.requiresMessageId === true);
-    const will = await this.makeWill(scope);
+    const will = this.customWill
+      ? await this.customWill(scope)
+      : this.opts.config.will?.engine === "willingness"
+          ? new WillingnessWill({
+            config: createWillingnessConfig(this.opts.config.will),
+            now: Date.now,
+            random: Math.random,
+            warn: (event, fields) => this.opts.logger.warn({ event, ...fields }),
+          })
+        : new DefaultWill(this.opts.config.will);
     const storagePath = await this.opts.storage.ensure(scope, "sessions", "messages.jsonl");
     const runtime = new ChannelRuntime({
       ctx: this.opts.ctx,

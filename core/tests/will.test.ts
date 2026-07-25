@@ -5,7 +5,10 @@ import type { Config as ConfigType } from "../src/config.js";
 import { createEvent, type Event, type EventRecord } from "../src/event/index.js";
 import {
   DefaultWill,
+  createWillingnessConfig,
   type DefaultWillConfig,
+  WillingnessWill,
+  type WillingnessConfig,
   type Will,
   type WillObservation,
 } from "../src/will/index.js";
@@ -29,6 +32,7 @@ const EMPTY_STATE: Will.State = {
 function messageEvent(options: {
   readonly channelType: Universal.Channel.Type;
   readonly elements?: Universal.Message["elements"];
+  readonly content?: string;
 }): Event<"message"> {
   return createEvent({
     id: "event-1",
@@ -38,7 +42,8 @@ function messageEvent(options: {
     timestamp: 123,
     channel: { id: "channel-1", type: options.channelType },
     user: { id: "user-1" },
-    message: { id: "message-1", elements: options.elements },
+    message: { id: "message-1", content: options.content, elements: options.elements },
+    content: options.content,
   });
 }
 
@@ -60,6 +65,24 @@ function ordinaryGroupMessageEvent(): Event<"message"> {
   });
 }
 
+function quotedGroupMessageEvent(): Event<"message"> {
+  return createEvent({
+    id: "event-quote",
+    type: "message",
+    platform: "test",
+    selfId: "bot-1",
+    timestamp: 123,
+    channel: { id: "channel-1", type: 0 },
+    user: { id: "user-1" },
+    message: {
+      id: "message-quote",
+      content: "quoted",
+      quote: { user: { id: "bot-1" } },
+    },
+    content: "quoted",
+  } as EventRecord<"message">);
+}
+
 function nonMessageEvent(): Event<"test.notice"> {
   return createEvent({
     id: "event-2",
@@ -71,6 +94,19 @@ function nonMessageEvent(): Event<"test.notice"> {
     notice: { value: "notice" },
   });
 }
+
+const willingnessConfig: WillingnessConfig = {
+  base: { text: 12 },
+  attribute: { atMention: 100, isDirectMessage: 40 },
+  interest: { keywords: [], keywordMultiplier: 1.2, defaultMultiplier: 1 },
+  lifecycle: {
+    maxWillingness: 100,
+    decayHalfLifeSeconds: 600,
+    probabilityThreshold: 55,
+    probabilityAmplifier: 0.04,
+    replyCost: 35,
+  },
+};
 
 function deliveryFailedEvent(): Event<"delivery.failed"> {
   return createEvent({
@@ -125,6 +161,164 @@ describe("DefaultWill", () => {
   });
 });
 
+describe("WillingnessWill", () => {
+  it("applies the v3 dynamic gain curve before sampling", async () => {
+    const will = new WillingnessWill({
+      config: {
+        ...willingnessConfig,
+        base: { text: 20 },
+        lifecycle: { ...willingnessConfig.lifecycle, probabilityThreshold: 30, probabilityAmplifier: 0.1 },
+      },
+      now: () => 1_000,
+      random: () => 0.95,
+      warn: vi.fn(),
+    });
+
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+  });
+
+  it("adds self-mention and direct bonuses from frozen message data", async () => {
+    const mention = new WillingnessWill({
+      config: { ...willingnessConfig, base: { text: 0 } },
+      now: () => 1_000,
+      random: () => 0,
+      warn: vi.fn(),
+    });
+    const direct = new WillingnessWill({
+      config: { ...willingnessConfig, base: { text: 20 } },
+      now: () => 1_000,
+      random: () => 0,
+      warn: vi.fn(),
+    });
+
+    await expect(mention.decide(mentionedGroupEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(direct.decide(directMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+  });
+
+  it("uses keyword or default multipliers", async () => {
+    const keyword = new WillingnessWill({
+      config: {
+        ...willingnessConfig,
+        base: { text: 40 },
+        interest: { keywords: ["yes"], keywordMultiplier: 1.5, defaultMultiplier: 1 },
+      },
+      now: () => 1_000,
+      random: () => 0,
+      warn: vi.fn(),
+    });
+    const plain = new WillingnessWill({
+      config: { ...willingnessConfig, base: { text: 40 } },
+      now: () => 1_000,
+      random: () => 0,
+      warn: vi.fn(),
+    });
+
+    await expect(
+      keyword.decide(messageEvent({ channelType: 0, content: "yes" }), EMPTY_STATE),
+    ).resolves.toBe("trigger");
+    await expect(plain.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+  });
+
+  it("does not award a bonus for quote elements", async () => {
+    const will = new WillingnessWill({
+      config: {
+        ...willingnessConfig,
+        base: { text: 40 },
+        lifecycle: { ...willingnessConfig.lifecycle, probabilityThreshold: 50, probabilityAmplifier: 0.1 },
+      },
+      now: () => 1_000,
+      random: () => 0,
+      warn: vi.fn(),
+    });
+
+    await expect(will.decide(quotedGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+  });
+
+  it("clamps the score and probability at their maximums", async () => {
+    const will = new WillingnessWill({
+      config: {
+        ...willingnessConfig,
+        base: { text: 1_000 },
+        lifecycle: { ...willingnessConfig.lifecycle, probabilityThreshold: 99, probabilityAmplifier: 1 },
+      },
+      now: () => 1_000,
+      random: () => 0.999,
+      warn: vi.fn(),
+    });
+
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+  });
+
+  it("waits without sampling or changing state for non-message events", async () => {
+    const random = vi.fn(() => 0);
+    const will = new WillingnessWill({ config: willingnessConfig, now: () => 1_000, random, warn: vi.fn() });
+
+    await expect(will.decide(nonMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    expect(random).not.toHaveBeenCalled();
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+  });
+
+  it("fails closed and reports calculation failures without retaining partial state", async () => {
+    const warn = vi.fn();
+    const will = new WillingnessWill({
+      config: willingnessConfig,
+      now: () => {
+        throw new Error("clock unavailable");
+      },
+      random: () => 0,
+      warn,
+    });
+
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    expect(warn).toHaveBeenCalledWith(
+      "will.willingness.calculation_failed",
+      expect.objectContaining({ cause: "clock unavailable" }),
+    );
+  });
+
+  it("does not retain score when random sampling fails", async () => {
+    const random = vi.fn<() => number>()
+      .mockImplementationOnce(() => {
+        throw new Error("random unavailable");
+      })
+      .mockReturnValue(0.9);
+    const will = new WillingnessWill({
+      config: {
+        ...willingnessConfig,
+        base: { text: 20 },
+        lifecycle: { ...willingnessConfig.lifecycle, probabilityThreshold: 30, probabilityAmplifier: 0.1 },
+      },
+      now: () => 1_000,
+      random,
+      warn: vi.fn(),
+    });
+
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+  });
+
+  it("snapshots nested configuration at construction", async () => {
+    const config = {
+      base: { text: 100 },
+      attribute: { atMention: 100, isDirectMessage: 40 },
+      interest: { keywords: [], keywordMultiplier: 1.2, defaultMultiplier: 1 },
+      lifecycle: {
+        maxWillingness: 100,
+        decayHalfLifeSeconds: 600,
+        probabilityThreshold: 55,
+        probabilityAmplifier: 0.04,
+        replyCost: 35,
+      },
+    };
+    const will = new WillingnessWill({ config, now: () => 1_000, random: () => 0, warn: vi.fn() });
+    config.base.text = 0;
+
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+  });
+});
+
 describe("Will contract", () => {
   it("types allowed channel rules with exact and optional fields", () => {
     const config = {
@@ -137,6 +331,32 @@ describe("Will contract", () => {
     } satisfies ConfigType;
 
     expect(config.allowedChannels).toHaveLength(2);
+  });
+
+  it("keeps routing compatible while allowing a static willingness engine", () => {
+    const config = {
+      basePath: "data/yesimbot",
+      chatModel: "test-model",
+      will: { engine: "willingness", group: "trigger", base: { text: 12 } },
+    } satisfies ConfigType;
+
+    expect(config.will?.engine).toBe("willingness");
+    expect(config.will?.group).toBe("trigger");
+  });
+
+  it("uses the v3 static willingness defaults without quote configuration", () => {
+    expect(createWillingnessConfig()).toEqual({
+      base: { text: 12 },
+      attribute: { atMention: 100, isDirectMessage: 40 },
+      interest: { keywords: [], keywordMultiplier: 1.2, defaultMultiplier: 1 },
+      lifecycle: {
+        maxWillingness: 100,
+        decayHalfLifeSeconds: 600,
+        probabilityThreshold: 55,
+        probabilityAmplifier: 0.04,
+        replyCost: 35,
+      },
+    });
   });
 
   it("represents the Event and completed decision in one typed observation", () => {
