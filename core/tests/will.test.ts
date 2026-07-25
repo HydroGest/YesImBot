@@ -1,6 +1,9 @@
 import type { Universal } from "koishi";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
+vi.mock("koishi", async () => import("@koishijs/core"));
+
+import { Config } from "../src/config.js";
 import type { Config as ConfigType } from "../src/config.js";
 import { createEvent, type Event, type EventRecord } from "../src/event/index.js";
 import {
@@ -320,6 +323,43 @@ describe("WillingnessWill", () => {
 });
 
 describe("Will contract", () => {
+  it("materializes routing and static willingness defaults through the Config schema", () => {
+    const config = Config({ basePath: "data/yesimbot", chatModel: "test-model" });
+
+    expect(config.will).toEqual({
+      engine: "routing",
+      direct: "trigger",
+      mention: "trigger",
+      group: "wait",
+      base: { text: 12 },
+      attribute: { atMention: 100, isDirectMessage: 40 },
+      interest: { keywords: [], keywordMultiplier: 1.2, defaultMultiplier: 1 },
+      lifecycle: {
+        maxWillingness: 100,
+        decayHalfLifeSeconds: 600,
+        probabilityThreshold: 55,
+        probabilityAmplifier: 0.04,
+        replyCost: 35,
+      },
+    });
+    expect(config.will).not.toHaveProperty("attribute.quote");
+  });
+
+  it("preserves explicit routing overrides through the Config schema", () => {
+    const config = Config({
+      basePath: "data/yesimbot",
+      chatModel: "test-model",
+      will: { engine: "routing", direct: "wait", mention: "wait", group: "trigger" },
+    });
+
+    expect(config.will).toMatchObject({
+      engine: "routing",
+      direct: "wait",
+      mention: "wait",
+      group: "trigger",
+    });
+  });
+
   it("types allowed channel rules with exact and optional fields", () => {
     const config = {
       basePath: "data/yesimbot",
