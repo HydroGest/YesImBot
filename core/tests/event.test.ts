@@ -12,6 +12,7 @@ import {
   type Event,
   type EventMap,
   type EventRecord,
+  type EventPayload,
   type Input,
   type InputRecord,
   type Message,
@@ -172,10 +173,30 @@ describe("Event", () => {
   });
 
   it("Event data excludes timestamp from persisted payload", () => {
-    // Regression: timestamp must not appear in the persisted Event payload.
-    // If timestamp were a key, the conditional resolves to never and the test does not compile.
+    // Prove "timestamp" is not a key of Event["data"].
     type _Assert = "timestamp" extends keyof Event["data"] ? never : true;
     expect(true as _Assert).toBe(true);
+  });
+
+  it("delivery.failed variant retains delivery field in persisted data", () => {
+    type DeliveryData = EventPayload<"delivery.failed">;
+    expectTypeOf<DeliveryData["delivery"]["turnId"]>().toBeString();
+    expectTypeOf<DeliveryData["delivery"]["messageId"]>().toBeString();
+    expectTypeOf<DeliveryData["eventType"]>().toEqualTypeOf<"delivery.failed">();
+  });
+
+  it("declaration-merged test.variant retains test.value in persisted data", () => {
+    type TestData = EventPayload<"test.variant">;
+    expectTypeOf<TestData["test"]["value"]>().toBeNumber();
+    expectTypeOf<TestData["channel"]["id"]>().toBeString();
+    expectTypeOf<TestData["eventType"]>().toEqualTypeOf<"test.variant">();
+  });
+
+  it("createEvent returns variant-specific Event type", () => {
+    const event = createEvent(deliveryFailureRecord());
+    expectTypeOf(event.data.eventType).toEqualTypeOf<"delivery.failed">();
+    expectTypeOf(event.data.delivery.turnId).toBeString();
+    expectTypeOf(event.data.text).toBeString();
   });
 
   it("EventMap no longer contains a message variant", () => {

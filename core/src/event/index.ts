@@ -42,13 +42,17 @@ export type EventRecord<K extends keyof EventMap = keyof EventMap> = {
   } & EventMap[P];
 }[K];
 
-export type EventPayload = Omit<EventRecord, "timestamp">;
+export type EventPayload<K extends keyof EventMap = keyof EventMap> =
+  K extends K ? Omit<EventRecord<K>, "timestamp"> : never;
 
 export type InputRecord = MessageRecord | EventRecord;
 
 export type Message = CustomMessageBase<"yesimbot.message", MessageData>;
 
-export type Event = CustomMessageBase<"yesimbot.event", EventPayload>;
+export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<
+  "yesimbot.event",
+  K extends K ? Omit<EventRecord<K>, "timestamp"> : never
+>;
 
 export type Input = Message | Event;
 
@@ -65,11 +69,14 @@ export function createMessage(record: MessageRecord): Message {
   });
 }
 
-export function createEvent(record: EventRecord): Event {
+export function createEvent<K extends keyof EventMap>(record: EventRecord<K>): Event<K> {
   const { timestamp: _timestamp, ...data } = record;
-  return createCustomMessage("yesimbot.event", data, {
+  // data is Omit<EventRecord<K>, "timestamp"> which equals Event<K>["data"] for the inferred K.
+  // createCustomMessage expects Event<keyof EventMap>["data"] (the full distributive union);
+  // the assertion to Event<K>["data"] is a same-type identity cast for the inferred K.
+  return createCustomMessage("yesimbot.event", data as Event<K>["data"], {
     timestamp: record.timestamp,
-  });
+  }) as Event<K>;
 }
 
 export function createInput(record: InputRecord): Input {
