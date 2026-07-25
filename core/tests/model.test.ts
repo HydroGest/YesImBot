@@ -64,7 +64,9 @@ async function createModelService(
 }
 
 afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })));
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })),
+  );
 });
 
 describe("models.json modalities", () => {
@@ -151,10 +153,9 @@ describe("models.json modalities", () => {
       "image",
       "audio",
     ]);
-    expect(JSON.parse(await readFile(path, "utf8")).chat["openai:gpt-4o"].modalities.input).toEqual([
-      "image",
-      "audio",
-    ]);
+    expect(JSON.parse(await readFile(path, "utf8")).chat["openai:gpt-4o"].modalities.input).toEqual(
+      ["image", "audio"],
+    );
   });
 
   it("keeps resolved modality arrays isolated from callers", async () => {
@@ -189,7 +190,9 @@ describe("models.json modalities", () => {
     const directory = await mkdtemp(join(tmpdir(), "yesimbot-model-directory-"));
     temporaryDirectories.push(directory);
 
-    await expect(modelConfig.writeModelsConfig(directory, config)).rejects.toMatchObject({ code: "EISDIR" });
+    await expect(modelConfig.writeModelsConfig(directory, config)).rejects.toMatchObject({
+      code: "EISDIR",
+    });
     expect(config).toEqual({
       defaults: {},
       aliases: { vision: "openai:gpt-4o" },
@@ -241,10 +244,7 @@ describe("models.json modalities", () => {
   it("keeps later input modality additions usable after an atomic write failure", async () => {
     const models = { chat: { "openai:gpt-4o": { name: "GPT-4o" } } };
     const path = await createModelsPath(models);
-    const service = await createModelService(
-      models,
-      path.slice(0, -"/models.json".length),
-    );
+    const service = await createModelService(models, path.slice(0, -"/models.json".length));
 
     expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toBeUndefined();
 
@@ -258,10 +258,12 @@ describe("models.json modalities", () => {
 
     await rm(path, { recursive: true });
     await writeFile(path, `${JSON.stringify(models)}\n`, "utf8");
-    await expect(service.addChatModelInputModality("openai:gpt-4o", "audio")).resolves.toBe("added");
+    await expect(service.addChatModelInputModality("openai:gpt-4o", "audio")).resolves.toBe(
+      "added",
+    );
     expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toEqual(["audio"]);
-    expect(JSON.parse(await readFile(path, "utf8")).chat["openai:gpt-4o"].modalities.input).toEqual([
-      "audio",
-    ]);
+    expect(JSON.parse(await readFile(path, "utf8")).chat["openai:gpt-4o"].modalities.input).toEqual(
+      ["audio"],
+    );
   });
 });

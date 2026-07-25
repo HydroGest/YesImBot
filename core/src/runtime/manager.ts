@@ -8,11 +8,7 @@ import type { AssetStore } from "../shared/asset.js";
 import { assertAssignee } from "../shared/assignee.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { createWillingnessConfig, DefaultWill, WillingnessWill, type Will } from "../will/index.js";
-import {
-  ChannelRuntime,
-  ChannelRuntimeDrainingError,
-  type MediaPolicy,
-} from "./channel.js";
+import { ChannelRuntime, ChannelRuntimeDrainingError, type MediaPolicy } from "./channel.js";
 import { createJsonlStorage } from "./storage.js";
 
 export interface RuntimeManagerOptions {
@@ -246,7 +242,7 @@ export class RuntimeManager {
     const will = this.customWill
       ? await this.customWill(scope)
       : this.opts.config.will?.engine === "willingness"
-          ? new WillingnessWill({
+        ? new WillingnessWill({
             config: createWillingnessConfig(this.opts.config.will),
             now: Date.now,
             random: Math.random,

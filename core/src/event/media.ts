@@ -1,10 +1,10 @@
+import type { ModelMessageContext } from "@yesimbot/agent-runtime";
 import type { FilePart } from "ai";
 import { h, type Element } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
 import type { AssetStore } from "../shared/asset.js";
 import { detectImageMime } from "../shared/image-mime.js";
-import type { ModelMessageContext } from "@yesimbot/agent-runtime";
 import { isEvent, type Event } from "./index.js";
 
 export interface MediaSelectionPolicy {
@@ -39,7 +39,10 @@ function reportAssetFailure(options: MediaSelectionOptions, assetId: string, cau
   }
 }
 
-function eventSources(context: ModelMessageContext, strategy: MediaSelectionPolicy["strategy"]): Event[] {
+function eventSources(
+  context: ModelMessageContext,
+  strategy: MediaSelectionPolicy["strategy"],
+): Event[] {
   const history = context.history.filter(isEvent);
   const current = context.current.filter(isEvent);
 
@@ -81,7 +84,10 @@ export async function selectEventFiles(
   for (const event of eventSources(context, options.policy.strategy)) {
     const files: FilePart[] = [];
     for (const assetId of imageAssetIds(event.data.content)) {
-      if (imageCount >= options.policy.maxImages || totalBytes >= options.policy.maxTotalImageBytes) {
+      if (
+        imageCount >= options.policy.maxImages ||
+        totalBytes >= options.policy.maxTotalImageBytes
+      ) {
         if (files.length > 0) selected.set(event.id, files);
         return selected;
       }

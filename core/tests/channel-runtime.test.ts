@@ -3,9 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentChannel, createStateManager, orderPlugins } from "@yesimbot/agent-runtime";
-import type { AgentPlugin, ModelMessageContext, TurnFinishContext, TurnResult } from "@yesimbot/agent-runtime";
+import type {
+  AgentPlugin,
+  ModelMessageContext,
+  TurnFinishContext,
+  TurnResult,
+} from "@yesimbot/agent-runtime";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
@@ -137,7 +142,9 @@ function turnFinishContext(): TurnFinishContext {
   return {
     runtime: { id: "channel-test" },
     channel: createAgentChannel(),
-    state: createStateManager({ storage: createJsonlStorage("/tmp/yesimbot-turn-finish/messages.jsonl") }),
+    state: createStateManager({
+      storage: createJsonlStorage("/tmp/yesimbot-turn-finish/messages.jsonl"),
+    }),
     turnId: "turn-1",
   };
 }
@@ -485,7 +492,9 @@ describe("ChannelRuntime", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(logger.warn).not.toHaveBeenCalledWith(expect.objectContaining({ event: "will_reply_failed" }));
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: "will_reply_failed" }),
+    );
   });
 
   it("reports reply callback rejection without changing a completed turn", async () => {
@@ -519,7 +528,12 @@ describe("ChannelRuntime", () => {
     );
     const file = { type: "file" as const, data: new Uint8Array([1]), mediaType: "image/png" };
     const context = { history: [first, second], current: [] } as ModelMessageContext;
-    state.selectEventFiles.mockResolvedValue(new Map([[first.id, [file]], [second.id, [file]]]));
+    state.selectEventFiles.mockResolvedValue(
+      new Map([
+        [first.id, [file]],
+        [second.id, [file]],
+      ]),
+    );
 
     await runtime.handle(record());
     const [firstResult, secondResult] = await Promise.all([
@@ -549,8 +563,16 @@ describe("ChannelRuntime", () => {
     const current = createEvent(
       record({ message: { id: "message-current", content: "current" }, content: "current" }),
     );
-    const historyFile = { type: "file" as const, data: new Uint8Array([1]), mediaType: "image/png" };
-    const currentFile = { type: "file" as const, data: new Uint8Array([2]), mediaType: "image/png" };
+    const historyFile = {
+      type: "file" as const,
+      data: new Uint8Array([1]),
+      mediaType: "image/png",
+    };
+    const currentFile = {
+      type: "file" as const,
+      data: new Uint8Array([2]),
+      mediaType: "image/png",
+    };
     const firstContext = { history: [historical], current: [current] } as ModelMessageContext;
     const laterContext = { history: [historical, current], current: [] } as ModelMessageContext;
     state.selectEventFiles.mockImplementation(async (context: ModelMessageContext) =>
@@ -570,7 +592,9 @@ describe("ChannelRuntime", () => {
       formatter?.toModelMessages(current, laterContext),
     ]);
 
-    expect(firstHistorical[0].content).toBe('[time="1970/1/1 08:00" sender="User (user-1)"]\nhistory');
+    expect(firstHistorical[0].content).toBe(
+      '[time="1970/1/1 08:00" sender="User (user-1)"]\nhistory',
+    );
     expect(laterHistorical[0].content).toEqual([
       { type: "text", text: '[time="1970/1/1 08:00" sender="User (user-1)"]\nhistory' },
       historyFile,

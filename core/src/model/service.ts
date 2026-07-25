@@ -335,7 +335,9 @@ export class ModelService extends Service<ModelServiceConfig> {
   }
 
   addChatModelInputModality(model: string, modality: string): Promise<"added" | "unchanged"> {
-    const task = this.modalityMutation.then(() => this.addChatModelInputModalityInternal(model, modality));
+    const task = this.modalityMutation.then(() =>
+      this.addChatModelInputModalityInternal(model, modality),
+    );
     this.modalityMutation = task.then(
       () => undefined,
       () => undefined,

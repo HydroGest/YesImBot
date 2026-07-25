@@ -99,21 +99,17 @@ describe("Channel allowlist", () => {
   });
 
   it("matches exact platform and channel values", () => {
-    expect(
-      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "room-1" }]),
-    ).toBe(true);
-    expect(
-      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "room-2" }]),
-    ).toBe(false);
+    expect(matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "room-1" }])).toBe(
+      true,
+    );
+    expect(matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "room-2" }])).toBe(
+      false,
+    );
   });
 
   it("matches platform and channel wildcards", () => {
-    expect(
-      matchesAllowedChannel(sharedScope, [{ platform: "*", channelId: "room-1" }]),
-    ).toBe(true);
-    expect(
-      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "*" }]),
-    ).toBe(true);
+    expect(matchesAllowedChannel(sharedScope, [{ platform: "*", channelId: "room-1" }])).toBe(true);
+    expect(matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "*" }])).toBe(true);
   });
 
   it("matches omitted directness for both channel scopes", () => {
@@ -178,17 +174,20 @@ describe("Gateway", () => {
   it.each([
     [[{ platform: "*", channelId: "room-1", isDirect: false }], {}, 0],
     [[{ platform: "test", channelId: "*", isDirect: true }], { isDirect: true }, 1],
-  ])("admits Sessions matching a directness-specific wildcard rule", async (allowedChannels, overrides, type) => {
-    const { gateway, runtime } = createGateway({ allowedChannels });
-    gateway.register({
-      platform: "test",
-      resolve: async () => ({ ...record(), channel: { ...record().channel, type } }),
-    });
+  ])(
+    "admits Sessions matching a directness-specific wildcard rule",
+    async (allowedChannels, overrides, type) => {
+      const { gateway, runtime } = createGateway({ allowedChannels });
+      gateway.register({
+        platform: "test",
+        resolve: async () => ({ ...record(), channel: { ...record().channel, type } }),
+      });
 
-    await gateway.handle(session(overrides) as never);
+      await gateway.handle(session(overrides) as never);
 
-    expect(runtime.route).toHaveBeenCalledOnce();
-  });
+      expect(runtime.route).toHaveBeenCalledOnce();
+    },
+  );
 
   it("waits for storage readiness before shared admission and later side effects", async () => {
     let release!: () => void;

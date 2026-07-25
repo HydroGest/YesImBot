@@ -235,7 +235,8 @@ export class ChannelRuntime {
           onTurnFinish: async (result) => {
             const hasRenderableReply = result.messages.some(
               (message) =>
-                message.role === "assistant" && renderAssistantContent(message.content) !== undefined,
+                message.role === "assistant" &&
+                renderAssistantContent(message.content) !== undefined,
             );
             if (result.status !== "done" || !hasRenderableReply) return;
             try {

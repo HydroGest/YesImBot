@@ -1,5 +1,5 @@
-import type { FilePart } from "ai";
 import type { UserModelMessage } from "@ai-sdk/provider-utils";
+import type { FilePart } from "ai";
 
 import type { Event } from "./index.js";
 

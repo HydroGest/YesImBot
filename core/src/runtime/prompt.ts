@@ -24,10 +24,10 @@ async function readPromptFile(
     return content.length > 0 ? content : undefined;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      logger?.debug?.(`Prompt file ${fileName} not found under ${basePath}.`);
+      logger?.debug(`Prompt file ${fileName} not found under ${basePath}`);
       return undefined;
     }
-    logger?.warn?.(
+    logger?.warn(
       `Unable to read prompt file ${fileName}: ${
         error instanceof Error ? error.message : String(error)
       }`,

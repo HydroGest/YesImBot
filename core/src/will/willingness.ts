@@ -135,7 +135,10 @@ function snapshotConfig(config: WillingnessConfig): WillingnessConfig {
   return Object.freeze({
     base: Object.freeze({ ...config.base }),
     attribute: Object.freeze({ ...config.attribute }),
-    interest: Object.freeze({ ...config.interest, keywords: Object.freeze([...config.interest.keywords]) }),
+    interest: Object.freeze({
+      ...config.interest,
+      keywords: Object.freeze([...config.interest.keywords]),
+    }),
     lifecycle: Object.freeze({ ...config.lifecycle }),
   });
 }
@@ -153,15 +156,24 @@ function weightedSilenceSeconds(lastDecayAt: number, lastMessageAt: number, now:
   );
 }
 
-function decayHighScore(score: number, weightedSeconds: number, threshold: number, halfLife: number): number {
+function decayHighScore(
+  score: number,
+  weightedSeconds: number,
+  threshold: number,
+  halfLife: number,
+): number {
   const weightedSecondsToThreshold = 2 * halfLife * Math.log2(score / threshold);
   if (weightedSeconds <= weightedSecondsToThreshold) {
-    return score * 0.5 ** (0.5 * weightedSeconds / halfLife);
+    return score * 0.5 ** ((0.5 * weightedSeconds) / halfLife);
   }
   return threshold * 0.5 ** ((weightedSeconds - weightedSecondsToThreshold) / halfLife);
 }
 
-function calculateScore(current: number, data: EventRecord<"message">, config: WillingnessConfig): number {
+function calculateScore(
+  current: number,
+  data: EventRecord<"message">,
+  config: WillingnessConfig,
+): number {
   assertValidConfig(config);
   const multiplier = config.interest.keywords.some((keyword) =>
     (data.content ?? "").includes(keyword),
@@ -176,15 +188,18 @@ function calculateScore(current: number, data: EventRecord<"message">, config: W
   const marginalGain = Math.max(0, 1 - ratio ** 2);
   const dynamicGain = dynamicGainMultiplier(ratio);
 
-  return Math.min(config.lifecycle.maxWillingness, Math.max(0, current + rawGain * marginalGain * dynamicGain));
+  return Math.min(
+    config.lifecycle.maxWillingness,
+    Math.max(0, current + rawGain * marginalGain * dynamicGain),
+  );
 }
 
-function calculateProbability(
-  score: number,
-  lifecycle: WillingnessConfig["lifecycle"],
-): number {
+function calculateProbability(score: number, lifecycle: WillingnessConfig["lifecycle"]): number {
   if (score <= lifecycle.probabilityThreshold) return 0;
-  return Math.min(1, Math.max(0, (score - lifecycle.probabilityThreshold) * lifecycle.probabilityAmplifier));
+  return Math.min(
+    1,
+    Math.max(0, (score - lifecycle.probabilityThreshold) * lifecycle.probabilityAmplifier),
+  );
 }
 
 function dynamicGainMultiplier(ratio: number): number {
@@ -194,7 +209,10 @@ function dynamicGainMultiplier(ratio: number): number {
 }
 
 function isSelfMention(selfId: string, elements: readonly Element[] | undefined): boolean {
-  return elements?.some((element) => element.type === "at" && String(element.attrs.id) === selfId) ?? false;
+  return (
+    elements?.some((element) => element.type === "at" && String(element.attrs.id) === selfId) ??
+    false
+  );
 }
 
 function assertValidConfig(config: WillingnessConfig): void {

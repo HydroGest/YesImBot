@@ -132,7 +132,9 @@ describe("YesImBotService facade", () => {
   it("registers the authority-4 modality command without replacing active runtimes", async () => {
     const addChatModelInputModality = vi.fn(async () => "added" as const);
     const { commands } = createService(config, { addChatModelInputModality });
-    const command = commands.find(({ name }) => name.startsWith("yesimbot.model.add-input-modality"));
+    const command = commands.find(({ name }) =>
+      name.startsWith("yesimbot.model.add-input-modality"),
+    );
 
     expect(command?.options).toEqual({ authority: 4 });
     const action = command?.action.mock.calls[0]?.[0];
@@ -147,7 +149,9 @@ describe("YesImBotService facade", () => {
       .mockResolvedValueOnce("unchanged")
       .mockRejectedValueOnce(new Error("invalid modality"));
     const { commands } = createService(config, { addChatModelInputModality });
-    const command = commands.find(({ name }) => name.startsWith("yesimbot.model.add-input-modality"));
+    const command = commands.find(({ name }) =>
+      name.startsWith("yesimbot.model.add-input-modality"),
+    );
     const action = command?.action.mock.calls[0]?.[0];
 
     await expect(action({}, "vision", "image")).resolves.toContain("unchanged");

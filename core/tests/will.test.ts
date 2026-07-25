@@ -249,7 +249,11 @@ describe("WillingnessWill", () => {
       config: {
         ...willingnessConfig,
         base: { text: 20 },
-        lifecycle: { ...willingnessConfig.lifecycle, probabilityThreshold: 30, probabilityAmplifier: 0.1 },
+        lifecycle: {
+          ...willingnessConfig.lifecycle,
+          probabilityThreshold: 30,
+          probabilityAmplifier: 0.1,
+        },
       },
       now: () => 1_000,
       random: () => 0.95,
@@ -307,7 +311,11 @@ describe("WillingnessWill", () => {
       config: {
         ...willingnessConfig,
         base: { text: 40 },
-        lifecycle: { ...willingnessConfig.lifecycle, probabilityThreshold: 50, probabilityAmplifier: 0.1 },
+        lifecycle: {
+          ...willingnessConfig.lifecycle,
+          probabilityThreshold: 50,
+          probabilityAmplifier: 0.1,
+        },
       },
       now: () => 1_000,
       random: () => 0,
@@ -322,7 +330,11 @@ describe("WillingnessWill", () => {
       config: {
         ...willingnessConfig,
         base: { text: 1_000 },
-        lifecycle: { ...willingnessConfig.lifecycle, probabilityThreshold: 99, probabilityAmplifier: 1 },
+        lifecycle: {
+          ...willingnessConfig.lifecycle,
+          probabilityThreshold: 99,
+          probabilityAmplifier: 1,
+        },
       },
       now: () => 1_000,
       random: () => 0.999,
@@ -335,7 +347,12 @@ describe("WillingnessWill", () => {
 
   it("waits without sampling or changing state for non-message events", async () => {
     const random = vi.fn(() => 0);
-    const will = new WillingnessWill({ config: willingnessConfig, now: () => 1_000, random, warn: vi.fn() });
+    const will = new WillingnessWill({
+      config: willingnessConfig,
+      now: () => 1_000,
+      random,
+      warn: vi.fn(),
+    });
 
     await expect(will.decide(nonMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
     expect(random).not.toHaveBeenCalled();
@@ -361,7 +378,8 @@ describe("WillingnessWill", () => {
   });
 
   it("does not retain score when random sampling fails", async () => {
-    const random = vi.fn<() => number>()
+    const random = vi
+      .fn<() => number>()
       .mockImplementationOnce(() => {
         throw new Error("random unavailable");
       })
@@ -370,7 +388,11 @@ describe("WillingnessWill", () => {
       config: {
         ...willingnessConfig,
         base: { text: 20 },
-        lifecycle: { ...willingnessConfig.lifecycle, probabilityThreshold: 30, probabilityAmplifier: 0.1 },
+        lifecycle: {
+          ...willingnessConfig.lifecycle,
+          probabilityThreshold: 30,
+          probabilityAmplifier: 0.1,
+        },
       },
       now: () => 1_000,
       random,
