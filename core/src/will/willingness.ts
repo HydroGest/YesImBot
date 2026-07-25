@@ -52,17 +52,30 @@ export class WillingnessWill implements Will {
 
     try {
       const now = this.options.now();
-      const nextScore = calculateScore(this.score, record, this.config);
+      const decayedScore =
+        this.lastDecayAt === null || this.lastMessageAt === null
+          ? this.score
+          : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.config);
+      const nextScore = calculateScore(decayedScore, record, this.config);
       const probability = calculateProbability(nextScore, this.config.lifecycle);
       const decision = this.options.random() < probability ? "trigger" : "wait";
 
       this.score = nextScore;
       this.lastMessageAt = now;
-      this.lastDecayAt ??= now;
+      this.lastDecayAt = now;
       return decision;
     } catch (cause) {
       this.warn(cause);
       return "wait";
+    }
+  }
+
+  async onReply(): Promise<void> {
+    try {
+      assertValidConfig(this.config);
+      this.score = Math.max(0, this.score - this.config.lifecycle.replyCost);
+    } catch (cause) {
+      this.warn(cause);
     }
   }
 
@@ -96,6 +109,28 @@ export function createWillingnessConfig(config: WillingnessConfigInput = {}): Wi
   });
 }
 
+export function decayScore(
+  score: number,
+  lastDecayAt: number,
+  lastMessageAt: number,
+  now: number,
+  config: WillingnessConfig,
+): number {
+  assertValidConfig(config);
+  if (![score, lastDecayAt, lastMessageAt, now].every(Number.isFinite) || now < lastDecayAt) {
+    throw new TypeError("Invalid willingness decay state");
+  }
+
+  const weightedSeconds = weightedSilenceSeconds(lastDecayAt, lastMessageAt, now);
+  const { decayHalfLifeSeconds, probabilityThreshold } = config.lifecycle;
+  const decayed =
+    score > probabilityThreshold && probabilityThreshold > 0
+      ? decayHighScore(score, weightedSeconds, probabilityThreshold, decayHalfLifeSeconds)
+      : score * 0.5 ** (weightedSeconds / decayHalfLifeSeconds);
+
+  return decayed < 0.01 ? 0 : Math.max(0, decayed);
+}
+
 function snapshotConfig(config: WillingnessConfig): WillingnessConfig {
   return Object.freeze({
     base: Object.freeze({ ...config.base }),
@@ -103,6 +138,27 @@ function snapshotConfig(config: WillingnessConfig): WillingnessConfig {
     interest: Object.freeze({ ...config.interest, keywords: Object.freeze([...config.interest.keywords]) }),
     lifecycle: Object.freeze({ ...config.lifecycle }),
   });
+}
+
+function weightedSilenceSeconds(lastDecayAt: number, lastMessageAt: number, now: number): number {
+  const hotEnd = lastMessageAt + 15_000;
+  const warmEnd = lastMessageAt + 60_000;
+  const overlapSeconds = (start: number, end: number) =>
+    Math.max(0, Math.min(now, end) - Math.max(lastDecayAt, start)) / 1_000;
+
+  return (
+    overlapSeconds(lastMessageAt, hotEnd) * 0.3 +
+    overlapSeconds(hotEnd, warmEnd) * 0.7 +
+    Math.max(0, now - Math.max(lastDecayAt, warmEnd)) / 1_000
+  );
+}
+
+function decayHighScore(score: number, weightedSeconds: number, threshold: number, halfLife: number): number {
+  const weightedSecondsToThreshold = 2 * halfLife * Math.log2(score / threshold);
+  if (weightedSeconds <= weightedSecondsToThreshold) {
+    return score * 0.5 ** (0.5 * weightedSeconds / halfLife);
+  }
+  return threshold * 0.5 ** ((weightedSeconds - weightedSecondsToThreshold) / halfLife);
 }
 
 function calculateScore(current: number, data: EventRecord<"message">, config: WillingnessConfig): number {
@@ -157,6 +213,7 @@ function assertValidConfig(config: WillingnessConfig): void {
   if (
     values.some((value) => !Number.isFinite(value)) ||
     config.lifecycle.maxWillingness <= 0 ||
+    config.lifecycle.decayHalfLifeSeconds <= 0 ||
     config.lifecycle.probabilityThreshold < 0 ||
     config.lifecycle.probabilityAmplifier < 0
   ) {

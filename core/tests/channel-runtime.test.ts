@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelMessageContext } from "@yesimbot/agent-runtime";
+import { createAgentChannel, createStateManager } from "@yesimbot/agent-runtime";
+import type { AgentPlugin, ModelMessageContext, TurnFinishContext, TurnResult } from "@yesimbot/agent-runtime";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
@@ -112,6 +113,33 @@ function streamFrom(events: readonly unknown[]): AsyncIterable<unknown> {
   return (async function* () {
     yield* events;
   })();
+}
+
+function coreWillReplyPlugin(): AgentPlugin {
+  const plugins = state.options?.plugins;
+  if (!Array.isArray(plugins)) throw new Error("Agent plugins are unavailable");
+  const plugin = plugins.find(
+    (candidate): candidate is AgentPlugin =>
+      typeof candidate === "object" &&
+      candidate !== null &&
+      "name" in candidate &&
+      candidate.name === "core.will-reply",
+  );
+  if (!plugin) throw new Error("Core Will reply plugin is unavailable");
+  return plugin;
+}
+
+function turnResult(status: TurnResult["status"], messages: TurnResult["messages"]): TurnResult {
+  return { turnId: "turn-1", status, messages };
+}
+
+function turnFinishContext(): TurnFinishContext {
+  return {
+    runtime: { id: "channel-test" },
+    channel: createAgentChannel(),
+    state: createStateManager({ storage: createJsonlStorage("/tmp/yesimbot-turn-finish/messages.jsonl") }),
+    turnId: "turn-1",
+  };
 }
 
 function deferred<T = void>() {
@@ -363,8 +391,79 @@ describe("ChannelRuntime", () => {
 
     expect((state.options?.plugins as Array<{ name: string }>).map((plugin) => plugin.name)).toEqual([
       "core.event-format",
+      "core.will-reply",
       "external.formatter",
     ]);
+  });
+
+  it("notifies Will once for done turns with renderable string or text-part assistant output", async () => {
+    const onReply = vi.fn(async () => undefined);
+    createRuntime({ decide: async () => "trigger", onReply });
+    const plugin = coreWillReplyPlugin();
+
+    await plugin.onTurnFinish?.(
+      turnResult("done", [
+        { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
+      ]),
+      turnFinishContext(),
+    );
+    await plugin.onTurnFinish?.(
+      turnResult("done", [
+        {
+          id: "assistant-2",
+          timestamp: 2,
+          role: "assistant",
+          content: [{ type: "text", text: "second reply" }],
+        },
+      ]),
+      turnFinishContext(),
+    );
+
+    expect(onReply).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not notify Will for empty, failed, aborted, or assistant-free turn results", async () => {
+    const onReply = vi.fn(async () => undefined);
+    createRuntime({ decide: async () => "trigger", onReply });
+    const plugin = coreWillReplyPlugin();
+    const emptyAssistant = {
+      id: "assistant-empty",
+      timestamp: 1,
+      role: "assistant",
+      content: "   ",
+    } satisfies TurnResult["messages"][number];
+
+    await plugin.onTurnFinish?.(turnResult("done", [emptyAssistant]), turnFinishContext());
+    await plugin.onTurnFinish?.(
+      turnResult("done", [{ ...emptyAssistant, content: [{ type: "text", text: " " }] }]),
+      turnFinishContext(),
+    );
+    await plugin.onTurnFinish?.(turnResult("failed", []), turnFinishContext());
+    await plugin.onTurnFinish?.(turnResult("aborted", []), turnFinishContext());
+    await plugin.onTurnFinish?.(
+      turnResult("done", [{ id: "tool-1", timestamp: 1, role: "tool", content: [] }]),
+      turnFinishContext(),
+    );
+
+    expect(onReply).not.toHaveBeenCalled();
+  });
+
+  it("reports reply callback rejection without changing a completed turn", async () => {
+    const onReply = vi.fn(async () => {
+      throw new Error("reply charge failed");
+    });
+    const { logger } = createRuntime({ decide: async () => "trigger", onReply });
+    const plugin = coreWillReplyPlugin();
+    const result = turnResult("done", [
+      { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
+    ]);
+
+    await expect(plugin.onTurnFinish?.(result, turnFinishContext())).resolves.toBeUndefined();
+
+    expect(onReply).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "will_reply_failed", cause: expect.any(Error) }),
+    );
   });
 
   it("selects files once for multiple Event conversions in the same model context", async () => {

@@ -228,6 +228,21 @@ export class ChannelRuntime {
             return [formatted];
           },
         },
+        {
+          name: "core.will-reply",
+          onTurnFinish: async (result) => {
+            const hasRenderableReply = result.messages.some(
+              (message) =>
+                message.role === "assistant" && renderAssistantContent(message.content) !== undefined,
+            );
+            if (result.status !== "done" || !hasRenderableReply) return;
+            try {
+              await opts.will.onReply?.();
+            } catch (cause) {
+              this.warn("will_reply_failed", { cause });
+            }
+          },
+        },
         ...plugins,
       ],
       terminalTool: true,

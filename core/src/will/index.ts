@@ -6,6 +6,7 @@ import type { WillingnessConfigInput } from "./willingness.js";
 
 export {
   createWillingnessConfig,
+  decayScore,
   WillingnessWill,
   type WillingnessConfig,
   type WillingnessConfigInput,
@@ -15,6 +16,7 @@ const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 
 export interface Will {
   decide(event: Event, state: Will.State): Awaitable<Will.Decision>;
+  onReply?(): Awaitable<void>;
   stop?(): Awaitable<void>;
 }
 

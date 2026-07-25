@@ -9,6 +9,7 @@ import { createEvent, type Event, type EventRecord } from "../src/event/index.js
 import {
   DefaultWill,
   createWillingnessConfig,
+  decayScore,
   type DefaultWillConfig,
   WillingnessWill,
   type WillingnessConfig,
@@ -165,6 +166,84 @@ describe("DefaultWill", () => {
 });
 
 describe("WillingnessWill", () => {
+  it("integrates hot, warm, and cold silence decay with injected timestamps", () => {
+    const config = createWillingnessConfig({
+      lifecycle: { decayHalfLifeSeconds: 10, probabilityThreshold: 100 },
+    });
+
+    expect(decayScore(8, 0, 0, 10_000, config)).toBeCloseTo(8 * 0.5 ** 0.3);
+    expect(decayScore(8, 0, 0, 30_000, config)).toBeCloseTo(8 * 0.5 ** 1.5);
+    expect(decayScore(8, 0, 0, 90_000, config)).toBeCloseTo(8 * 0.5 ** 6.6);
+    expect(decayScore(8, 0, 0, 1_000_000, config)).toBe(0);
+  });
+
+  it("uses half-rate decay above threshold only until the threshold crossing", () => {
+    const config = createWillingnessConfig({
+      lifecycle: { decayHalfLifeSeconds: 10, probabilityThreshold: 5 },
+    });
+    const weightedSecondsToThreshold = 20 * Math.log2(8 / 5);
+
+    expect(decayScore(5, 0, -60_000, 10_000, config)).toBeCloseTo(2.5);
+    expect(decayScore(8, 0, -60_000, 10_000, config)).toBeCloseTo(8 * 0.5 ** 0.5);
+    expect(decayScore(8, 0, -60_000, 20_000, config)).toBeCloseTo(
+      5 * 0.5 ** ((20 - weightedSecondsToThreshold) / 10),
+    );
+  });
+
+  it("skips high-score decay at a zero threshold and clamps negligible scores", () => {
+    const zeroThreshold = createWillingnessConfig({
+      lifecycle: { decayHalfLifeSeconds: 10, probabilityThreshold: 0 },
+    });
+    const normalThreshold = createWillingnessConfig({
+      lifecycle: { decayHalfLifeSeconds: 10, probabilityThreshold: 100 },
+    });
+
+    expect(decayScore(8, 0, -60_000, 10_000, zeroThreshold)).toBeCloseTo(4);
+    expect(decayScore(0.01, 0, -60_000, 10_000, normalThreshold)).toBe(0);
+  });
+
+  it("decays before applying message gain without scheduling a timer", async () => {
+    let now = 0;
+    const will = new WillingnessWill({
+      config: createWillingnessConfig({
+        base: { text: 10 },
+        lifecycle: { probabilityThreshold: 100, decayHalfLifeSeconds: 10 },
+      }),
+      now: () => now,
+      random: () => 1,
+      warn: vi.fn(),
+    });
+    will["score"] = 8;
+    will["lastDecayAt"] = 0;
+    will["lastMessageAt"] = -60_000;
+    now = 10_000;
+    vi.useFakeTimers();
+
+    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+
+    expect(will["score"]).toBeCloseTo(13.984);
+    expect(will["lastDecayAt"]).toBe(10_000);
+    expect(will["lastMessageAt"]).toBe(10_000);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it("charges reply cost with a zero floor", async () => {
+    const will = new WillingnessWill({
+      config: willingnessConfig,
+      now: () => 1_000,
+      random: () => 0,
+      warn: vi.fn(),
+    });
+    will["score"] = 50;
+
+    await expect(will.onReply?.()).resolves.toBeUndefined();
+    expect(will["score"]).toBe(15);
+
+    await expect(will.onReply?.()).resolves.toBeUndefined();
+    expect(will["score"]).toBe(0);
+  });
+
   it("applies the v3 dynamic gain curve before sampling", async () => {
     const will = new WillingnessWill({
       config: {
