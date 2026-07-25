@@ -268,6 +268,8 @@ describe("RuntimeManager", () => {
       strategy: "current-first",
     });
     expect(Object.isFrozen(first?.mediaPolicy)).toBe(true);
+    expect(first?.will).toBeInstanceOf(DefaultWill);
+    expect(first).not.toHaveProperty("session");
 
     setEntry({ modalities: { input: ["image"] } });
     config.multimedia = {
@@ -279,6 +281,7 @@ describe("RuntimeManager", () => {
         maxBytesPerCall: 2048,
       },
     };
+    config.will = { engine: "willingness", base: { text: 12 } };
 
     await manager.route(record("room"));
     expect(state.runtimes).toHaveLength(1);
@@ -297,6 +300,8 @@ describe("RuntimeManager", () => {
       maxTotalImageBytes: 2048,
       strategy: "fifo",
     });
+    expect(replacement?.will).toBeInstanceOf(WillingnessWill);
+    expect(replacement).not.toHaveProperty("session");
     expect(assets.clear).not.toHaveBeenCalled();
   });
 

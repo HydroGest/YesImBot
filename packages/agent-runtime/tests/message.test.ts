@@ -247,6 +247,43 @@ describe("model conversion", () => {
     expect(contexts[1]?.current).toEqual([]);
   });
 
+  it("keeps persisted custom projections as a later model-request prefix", async () => {
+    streamTextMock.mockClear();
+    const contexts: Array<Parameters<NonNullable<AgentPlugin["toModelMessages"]>>[1]> = [];
+    const agent = createAgent({
+      model: {} as never,
+      plugins: [
+        {
+          name: "visible-custom-message",
+          toModelMessages(message, context) {
+            contexts.push(context);
+            if (message.role !== "custom" || message.type !== "custom.visible") {
+              return undefined;
+            }
+
+            return { role: "user", content: message.data.text };
+          },
+        },
+      ],
+    });
+    const first = createCustomMessage("custom.visible", { text: "first persisted" });
+    const second = createCustomMessage("custom.visible", { text: "second current" });
+
+    agent.send(first);
+    await agent.wait();
+    agent.send(second);
+    await agent.wait();
+
+    const firstRequest = streamTextMock.mock.calls[0]?.[0].messages;
+    const laterRequest = streamTextMock.mock.calls[1]?.[0].messages;
+    expect(firstRequest).toEqual([{ role: "user", content: "first persisted" }]);
+    expect(laterRequest?.slice(0, firstRequest?.length)).toEqual(firstRequest);
+    expect(laterRequest?.at(-1)).toEqual({ role: "user", content: "second current" });
+    expect(contexts[1]?.history).toEqual([first]);
+    expect(contexts[1]?.current).toEqual([second]);
+    expect(contexts[1]).not.toHaveProperty("session");
+  });
+
   it("transforms history before adding current turn messages", async () => {
     const history = [createUserMessage("old")];
     const current = [createUserMessage("current")];

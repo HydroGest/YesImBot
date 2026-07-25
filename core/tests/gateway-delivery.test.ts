@@ -63,6 +63,7 @@ function createGateway(route: ReturnType<typeof vi.fn>, logger = { warn: vi.fn()
       runtime: { route } as never,
       assets: { put: vi.fn() },
       storage,
+      allowedChannels: [{ platform: "*", channelId: "*" }],
       ready: () => storage.start(),
       logger,
     }),
@@ -83,7 +84,8 @@ describe("Gateway passive delivery", () => {
     const send = vi.fn().mockResolvedValueOnce(["receipt-1"]).mockResolvedValueOnce([]);
     const { gateway } = createGateway(route);
 
-    await gateway.handle(session(send) as never);
+    const inbound = session(send);
+    await gateway.handle(inbound as never);
 
     expect(send).toHaveBeenNthCalledWith(1, "first");
     expect(send).toHaveBeenNthCalledWith(2, "second");
@@ -104,11 +106,14 @@ describe("Gateway passive delivery", () => {
     const send = vi.fn().mockRejectedValueOnce(offline).mockResolvedValueOnce(["receipt-2"]);
     const { gateway } = createGateway(route);
 
-    await gateway.handle(session(send) as never);
+    const inbound = session(send);
+    await gateway.handle(inbound as never);
 
     expect(send).toHaveBeenNthCalledWith(1, "first");
     expect(send).toHaveBeenNthCalledWith(2, "second");
     expect(route).toHaveBeenCalledOnce();
+    expect(route.mock.calls[0]?.[0]).not.toHaveProperty("send");
+    expect(route.mock.calls[0]?.[0]).not.toBe(inbound);
     expect(binding.fail.mock.calls[0]?.[0]).toMatchObject({
       type: "delivery.failed",
       platform: "test",

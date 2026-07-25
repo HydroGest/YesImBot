@@ -519,6 +519,51 @@ describe("ChannelRuntime", () => {
     ]);
   });
 
+  it("keeps generated files call-scoped while preserving historical event projection", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" });
+    const formatter = (
+      state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
+    ).find((plugin) => plugin.name === "core.event-format");
+    const historical = createEvent(
+      record({ message: { id: "message-history", content: "history" }, content: "history" }),
+    );
+    const current = createEvent(
+      record({ message: { id: "message-current", content: "current" }, content: "current" }),
+    );
+    const historyFile = { type: "file" as const, data: new Uint8Array([1]), mediaType: "image/png" };
+    const currentFile = { type: "file" as const, data: new Uint8Array([2]), mediaType: "image/png" };
+    const firstContext = { history: [historical], current: [current] } as ModelMessageContext;
+    const laterContext = { history: [historical, current], current: [] } as ModelMessageContext;
+    state.selectEventFiles.mockImplementation(async (context: ModelMessageContext) =>
+      context.current.length === 0
+        ? new Map([[historical.id, [historyFile]]])
+        : new Map([[current.id, [currentFile]]]),
+    );
+
+    await runtime.handle(record());
+    expect(state.options).not.toHaveProperty("session");
+    const [firstHistorical, firstCurrent] = await Promise.all([
+      formatter?.toModelMessages(historical, firstContext),
+      formatter?.toModelMessages(current, firstContext),
+    ]);
+    const [laterHistorical, laterCurrent] = await Promise.all([
+      formatter?.toModelMessages(historical, laterContext),
+      formatter?.toModelMessages(current, laterContext),
+    ]);
+
+    expect(firstHistorical[0].content).toBe('[time="1970/1/1 08:00" sender="User (user-1)"]\nhistory');
+    expect(laterHistorical[0].content).toEqual([
+      { type: "text", text: '[time="1970/1/1 08:00" sender="User (user-1)"]\nhistory' },
+      historyFile,
+    ]);
+    expect(firstCurrent[0].content).toEqual([
+      { type: "text", text: '[time="1970/1/1 08:00" sender="User (user-1)"]\ncurrent' },
+      currentFile,
+    ]);
+    expect(laterCurrent[0].content).toBe('[time="1970/1/1 08:00" sender="User (user-1)"]\ncurrent');
+    expect(state.selectEventFiles).toHaveBeenCalledTimes(2);
+  });
+
   it("degrades a fatal selection failure once per context and retries for a fresh context", async () => {
     const { logger } = createRuntime({ decide: async () => "wait" });
     const formatter = (
