@@ -3,7 +3,7 @@ import type { Awaitable, Bot, Context, Logger } from "koishi";
 
 import { channelIdentity, fromEvent, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
-import type { EventRecord } from "../event/index.js";
+import type { EventRecord, InputRecord } from "../event/index.js";
 import type { AssetStore } from "../shared/asset.js";
 import { assertAssignee } from "../shared/assignee.js";
 import type { ChannelStorage } from "../storage/index.js";
@@ -44,7 +44,7 @@ export class RuntimeManager {
 
   constructor(private readonly opts: RuntimeManagerOptions) {}
 
-  async route(record: EventRecord): Promise<RuntimeManager.Result> {
+  async route(record: InputRecord): Promise<RuntimeManager.Result> {
     this.assertOpen();
     const scope = fromEvent(record);
     if (!scope) throw new Error("Accepted event requires a channel");

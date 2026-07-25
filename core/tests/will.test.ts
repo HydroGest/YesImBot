@@ -5,7 +5,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { Config } from "../src/config.js";
 import type { Config as ConfigType } from "../src/config.js";
-import { createEvent, type Event, type EventRecord } from "../src/event/index.js";
+import { createInput, type Event, type EventRecord, type Input, type Message, type MessageRecord } from "../src/event/index.js";
 import {
   DefaultWill,
   createWillingnessConfig,
@@ -33,69 +33,66 @@ const EMPTY_STATE: Will.State = {
   lastActivityAt: null,
 };
 
-function messageEvent(options: {
+function messageInput(options: {
   readonly channelType: Universal.Channel.Type;
   readonly elements?: Universal.Message["elements"];
-  readonly content?: string;
-}): Event<"message"> {
-  return createEvent({
-    id: "event-1",
-    type: "message",
+  readonly text?: string;
+}): Message {
+  return createInput({
+    schemaVersion: 1,
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
     channel: { id: "channel-1", type: options.channelType },
     user: { id: "user-1" },
-    message: { id: "message-1", content: options.content, elements: options.elements },
-    content: options.content,
+    messageId: "message-1",
+    elements: options.elements ?? [],
+    text: options.text ?? "",
   });
 }
 
-function directMessageEvent(): Event<"message"> {
-  return messageEvent({ channelType: 1 });
+function directMessageInput(): Message {
+  return messageInput({ channelType: 1 });
 }
 
-function mentionedGroupEvent(): Event<"message"> {
-  return messageEvent({
+function mentionedGroupInput(): Message {
+  return messageInput({
     channelType: 0,
     elements: [{ type: "at", attrs: { id: "bot-1" }, children: [] }],
   });
 }
 
-function ordinaryGroupMessageEvent(): Event<"message"> {
-  return messageEvent({
+function ordinaryGroupMessageInput(): Message {
+  return messageInput({
     channelType: 0,
     elements: [{ type: "text", attrs: { content: "hello" }, children: [] }],
   });
 }
 
-function quotedGroupMessageEvent(): Event<"message"> {
-  return createEvent({
-    id: "event-quote",
-    type: "message",
+function quotedGroupMessageInput(): Message {
+  return createInput({
+    schemaVersion: 1,
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
     channel: { id: "channel-1", type: 0 },
     user: { id: "user-1" },
-    message: {
-      id: "message-quote",
-      content: "quoted",
-      quote: { user: { id: "bot-1" } },
-    },
-    content: "quoted",
-  } as EventRecord<"message">);
+    messageId: "message-quote",
+    elements: [{ type: "quote", attrs: { user: { id: "bot-1" } }, children: [] }],
+    text: "quoted",
+  });
 }
 
 function nonMessageEvent(): Event<"test.notice"> {
-  return createEvent({
-    id: "event-2",
-    type: "test.notice",
+  return createInput({
+    schemaVersion: 1,
+    eventType: "test.notice",
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
-    channel: { id: "channel-1" },
+    channel: { id: "channel-1", type: 0 },
     notice: { value: "notice" },
+    text: "notice",
   });
 }
 
@@ -113,18 +110,19 @@ const willingnessConfig: WillingnessConfig = {
 };
 
 function deliveryFailedEvent(): Event<"delivery.failed"> {
-  return createEvent({
-    id: "event-3",
-    type: "delivery.failed",
+  return createInput({
+    schemaVersion: 1,
+    eventType: "delivery.failed",
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
-    channel: { id: "channel-1" },
+    channel: { id: "channel-1", type: 0 },
     delivery: {
       turnId: "turn-1",
       messageId: "message-1",
       error: { name: "Error", message: "offline" },
     },
+    text: "Delivery failed",
   });
 }
 
@@ -132,9 +130,9 @@ describe("DefaultWill", () => {
   it("triggers direct messages and mentions but waits on ordinary group messages", async () => {
     const will = new DefaultWill({ direct: "trigger", mention: "trigger", group: "wait" });
 
-    await expect(will.decide(directMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
-    await expect(will.decide(mentionedGroupEvent(), EMPTY_STATE)).resolves.toBe("trigger");
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(directMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(will.decide(mentionedGroupInput(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
   });
 
   it("waits for non-message and delivery-failed events", async () => {
@@ -156,11 +154,11 @@ describe("DefaultWill", () => {
       group: "wait",
     };
 
-    await expect(new DefaultWill().decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe(
+    await expect(new DefaultWill().decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe(
       defaultConfig.group,
     );
     await expect(
-      new DefaultWill(config.will).decide(ordinaryGroupMessageEvent(), EMPTY_STATE),
+      new DefaultWill(config.will).decide(ordinaryGroupMessageInput(), EMPTY_STATE),
     ).resolves.toBe("trigger");
   });
 });
@@ -219,7 +217,7 @@ describe("WillingnessWill", () => {
     now = 10_000;
     vi.useFakeTimers();
 
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
 
     expect(will["score"]).toBeCloseTo(13.984);
     expect(will["lastDecayAt"]).toBe(10_000);
@@ -260,8 +258,8 @@ describe("WillingnessWill", () => {
       warn: vi.fn(),
     });
 
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
   });
 
   it("adds self-mention and direct bonuses from frozen message data", async () => {
@@ -278,8 +276,8 @@ describe("WillingnessWill", () => {
       warn: vi.fn(),
     });
 
-    await expect(mention.decide(mentionedGroupEvent(), EMPTY_STATE)).resolves.toBe("trigger");
-    await expect(direct.decide(directMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(mention.decide(mentionedGroupInput(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(direct.decide(directMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
   });
 
   it("uses keyword or default multipliers", async () => {
@@ -301,9 +299,9 @@ describe("WillingnessWill", () => {
     });
 
     await expect(
-      keyword.decide(messageEvent({ channelType: 0, content: "yes" }), EMPTY_STATE),
+      keyword.decide(messageInput({ channelType: 0, text: "yes" }), EMPTY_STATE),
     ).resolves.toBe("trigger");
-    await expect(plain.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(plain.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
   });
 
   it("does not award a bonus for quote elements", async () => {
@@ -322,7 +320,7 @@ describe("WillingnessWill", () => {
       warn: vi.fn(),
     });
 
-    await expect(will.decide(quotedGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(quotedGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
   });
 
   it("clamps the score and probability at their maximums", async () => {
@@ -341,8 +339,8 @@ describe("WillingnessWill", () => {
       warn: vi.fn(),
     });
 
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
   });
 
   it("waits without sampling or changing state for non-message events", async () => {
@@ -356,7 +354,7 @@ describe("WillingnessWill", () => {
 
     await expect(will.decide(nonMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
     expect(random).not.toHaveBeenCalled();
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
   });
 
   it("fails closed and reports calculation failures without retaining partial state", async () => {
@@ -370,7 +368,7 @@ describe("WillingnessWill", () => {
       warn,
     });
 
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
     expect(warn).toHaveBeenCalledWith(
       "will.willingness.calculation_failed",
       expect.objectContaining({ cause: "clock unavailable" }),
@@ -399,8 +397,8 @@ describe("WillingnessWill", () => {
       warn: vi.fn(),
     });
 
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
   });
 
   it("snapshots nested configuration at construction", async () => {
@@ -419,7 +417,7 @@ describe("WillingnessWill", () => {
     const will = new WillingnessWill({ config, now: () => 1_000, random: () => 0, warn: vi.fn() });
     config.base.text = 0;
 
-    await expect(will.decide(ordinaryGroupMessageEvent(), EMPTY_STATE)).resolves.toBe("trigger");
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
   });
 });
 
@@ -501,7 +499,7 @@ describe("Will contract", () => {
   });
 
   it("represents the Event and completed decision in one typed observation", () => {
-    const event = directMessageEvent();
+    const event = directMessageInput();
     const observation = { event, decision: "trigger" } satisfies WillObservation;
 
     expect(observation).toEqual({ event, decision: "trigger" });
@@ -516,11 +514,11 @@ describe("Will contract", () => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
-  it("accepts only readonly channel state and Event inputs", () => {
+  it("accepts only readonly channel state and Input values", () => {
     const state: Will.State = EMPTY_STATE;
-    const record = {} as EventRecord;
+    const input = messageInput({ channelType: 0 });
 
     expect(state).toBe(EMPTY_STATE);
-    expect(record).toBeDefined();
+    expectTypeOf(input).toEqualTypeOf<Input>();
   });
 });

@@ -1,6 +1,6 @@
 import type { Element, Universal } from "koishi";
 
-import type { Event, EventRecord } from "../event/index.js";
+import { isMessage, type Input, type Message } from "../event/index.js";
 import type { Will } from "./index.js";
 
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
@@ -46,9 +46,8 @@ export class WillingnessWill implements Will {
     this.config = snapshotConfig(options.config);
   }
 
-  async decide(event: Event, _state: Will.State): Promise<Will.Decision> {
-    const record = event.data;
-    if (record.type !== "message") return "wait";
+  async decide(input: Input, _state: Will.State): Promise<Will.Decision> {
+    if (!isMessage(input)) return "wait";
 
     try {
       const now = this.options.now();
@@ -56,7 +55,7 @@ export class WillingnessWill implements Will {
         this.lastDecayAt === null || this.lastMessageAt === null
           ? this.score
           : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.config);
-      const nextScore = calculateScore(decayedScore, record, this.config);
+      const nextScore = calculateScore(decayedScore, input.data, this.config);
       const probability = calculateProbability(nextScore, this.config.lifecycle);
       const decision = this.options.random() < probability ? "trigger" : "wait";
 
@@ -171,17 +170,17 @@ function decayHighScore(
 
 function calculateScore(
   current: number,
-  data: EventRecord<"message">,
+  data: Message["data"],
   config: WillingnessConfig,
 ): number {
   assertValidConfig(config);
   const multiplier = config.interest.keywords.some((keyword) =>
-    (data.content ?? "").includes(keyword),
+    data.text.includes(keyword),
   )
     ? config.interest.keywordMultiplier
     : config.interest.defaultMultiplier;
   const attributes =
-    (isSelfMention(data.selfId, data.message.elements) ? config.attribute.atMention : 0) +
+    (isSelfMention(data.selfId, data.elements) ? config.attribute.atMention : 0) +
     (data.channel.type === DIRECT_CHANNEL_TYPE ? config.attribute.isDirectMessage : 0);
   const rawGain = (config.base.text + attributes) * multiplier;
   const ratio = current / config.lifecycle.maxWillingness;

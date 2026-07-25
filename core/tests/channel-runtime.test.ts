@@ -1,9 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
-import { createAgentChannel, createStateManager, orderPlugins } from "@yesimbot/agent-runtime";
+import { createAgentChannel, createMessageEntry, createStateManager, orderPlugins } from "@yesimbot/agent-runtime";
 import type {
   AgentPlugin,
   ModelMessageContext,
@@ -20,7 +20,7 @@ const state = vi.hoisted(() => ({
   activeTurnId: null as string | null,
   stream: undefined as AsyncIterable<unknown> | undefined,
   resolvedSystem: undefined as unknown,
-  selectEventFiles: vi.fn(),
+  selectInputFiles: vi.fn(),
 }));
 
 vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
@@ -58,27 +58,28 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
 
 vi.mock("../src/event/media.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/event/media.js")>();
-  return { ...actual, selectEventFiles: state.selectEventFiles };
+  return { ...actual, selectInputFiles: state.selectInputFiles };
 });
 
-import { createEvent, type EventRecord } from "../src/event/index.js";
+import { createInput, isInput, type EventRecord, type Input, type MessageRecord } from "../src/event/index.js";
 import { type MediaSelectionOptions, UnsupportedImageMimeError } from "../src/event/media.js";
 import { ChannelRuntime, ChannelRuntimeDrainingError } from "../src/runtime/channel.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import type { Will } from "../src/will/index.js";
 
-function record(overrides: Partial<EventRecord<"message">> = {}): EventRecord<"message"> {
+function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
-    type: "message",
+    schemaVersion: 1,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
     channel: { id: "room-1", type: 0 },
     user: { id: "user-1", name: "User" },
-    message: { id: "message-1", content: "hello" },
-    content: "hello",
+    messageId: "message-1",
+    elements: [{ type: "text", attrs: { content: "hello" }, children: [] }],
+    text: "hello",
     ...overrides,
-  } as EventRecord<"message">;
+  };
 }
 
 function createRuntime(
@@ -88,7 +89,7 @@ function createRuntime(
   basePath = "/tmp/yesimbot-channel-runtime",
 ) {
   const ctx = new Context();
-  const logger = { warn: vi.fn() };
+  const logger = { debug: vi.fn(), warn: vi.fn() };
   const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
   const runtime = new ChannelRuntime({
     ctx,
@@ -164,8 +165,8 @@ describe("ChannelRuntime", () => {
     state.activeTurnId = null;
     state.stream = undefined;
     state.resolvedSystem = undefined;
-    state.selectEventFiles.mockReset();
-    state.selectEventFiles.mockResolvedValue(new Map());
+    state.selectInputFiles.mockReset();
+    state.selectInputFiles.mockResolvedValue(new Map());
   });
 
   it("initializes its Agent once", async () => {
@@ -225,7 +226,7 @@ describe("ChannelRuntime", () => {
     expect(state.options?.storage).toBe(storage);
   });
 
-  it("persists before event observation and Will evaluation", async () => {
+  it("persists ordinary messages before Input observation and Will evaluation", async () => {
     const order: string[] = [];
     const will: Will = {
       decide: vi.fn(async () => {
@@ -242,6 +243,37 @@ describe("ChannelRuntime", () => {
 
     expect(order).toEqual(["persist", "event", "will", "will-observation"]);
     expect(result.kind).toBe("wait");
+  });
+
+  it("persists non-message inputs before Input observation and Will evaluation", async () => {
+    const order: string[] = [];
+    const will: Will = {
+      decide: vi.fn(async () => {
+        order.push("will");
+        return "wait" as const;
+      }),
+    };
+    const { ctx, runtime } = createRuntime(will);
+    state.agent?.append.mockImplementation(async () => order.push("persist"));
+    ctx.on("yesimbot/event", () => order.push("event"));
+    ctx.on("yesimbot/will", () => order.push("will-observation"));
+    const notice: EventRecord<"delivery.failed"> = {
+      schemaVersion: 1,
+      eventType: "delivery.failed",
+      platform: "test",
+      selfId: "bot-1",
+      timestamp: 2,
+      channel: { id: "room-1", type: 0 },
+      text: "Delivery failed",
+      delivery: {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        error: { name: "Error", message: "offline" },
+      },
+    };
+
+    await expect(runtime.handle(notice)).resolves.toMatchObject({ kind: "wait" });
+    expect(order).toEqual(["persist", "event", "will", "will-observation"]);
   });
 
   it("does not run or join when Will waits", async () => {
@@ -273,7 +305,7 @@ describe("ChannelRuntime", () => {
     const { runtime } = createRuntime({ decide: async () => "trigger" });
 
     const first = await runtime.handle(record());
-    const second = await runtime.handle(record({ message: { id: "message-2", content: "next" } }));
+    const second = await runtime.handle(record({ messageId: "message-2", text: "next" }));
 
     expect(first).toMatchObject({ kind: "run", turnId: "turn-1" });
     expect(second).toMatchObject({ kind: "join", turnId: "turn-1" });
@@ -355,19 +387,87 @@ describe("ChannelRuntime", () => {
     ).find((plugin) => plugin.name === "core.event-format");
 
     await runtime.handle(record());
-    const event = {
-      id: "event-1",
-      timestamp: 1,
-      role: "custom",
-      type: "yesimbot.event",
-      data: record(),
-    };
+    const event = createInput(record());
     const messages = await formatter?.toModelMessages(event, {
       history: [event],
       current: [],
     } satisfies ModelMessageContext);
 
     expect(messages[0].content).toContain('id="message-1"');
+  });
+
+  it("replays current split inputs without projecting unsupported JSONL payloads", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "yesimbot-channel-replay-"));
+    const path = join(directory, "messages.jsonl");
+    const message = createInput(record());
+    const event = createInput({
+      schemaVersion: 1,
+      eventType: "delivery.failed",
+      platform: "test",
+      selfId: "bot-1",
+      timestamp: 2,
+      channel: { id: "room-1", type: 0 },
+      text: "Delivery failed",
+      delivery: {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        error: { name: "Error", message: "offline" },
+      },
+    });
+    const fixture = [
+      JSON.stringify(createMessageEntry(message, { id: "entry-message", timestamp: 1 })),
+      JSON.stringify(createMessageEntry(event, { id: "entry-event", timestamp: 2 })),
+      JSON.stringify({
+        id: "entry-unsupported",
+        type: "message",
+        timestamp: 3,
+        data: {
+          id: "unsupported",
+          timestamp: 3,
+          role: "custom",
+          type: "yesimbot.message",
+          data: { schemaVersion: 2, text: "unsupported" },
+        },
+      }),
+      JSON.stringify({
+        id: "entry-missing",
+        type: "message",
+        timestamp: 4,
+        data: {
+          id: "missing",
+          timestamp: 4,
+          role: "custom",
+          type: "yesimbot.event",
+          data: { eventType: "delivery.failed", text: "missing" },
+        },
+      }),
+    ].join("\n");
+    await writeFile(path, `${fixture}\n`);
+    const original = await readFile(path, "utf8");
+    const storage = createJsonlStorage(path);
+    const replay = await storage.read();
+    const inputs = replay.filter(
+      (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
+    ).map((entry) => entry.data).filter(isInput);
+    const unsupported = replay.filter(
+      (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
+    ).map((entry) => entry.data).filter((entry) => !isInput(entry));
+    const { runtime } = createRuntime({ decide: async () => "wait" });
+    const formatter = (
+      state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
+    ).find((plugin) => plugin.name === "core.event-format");
+    const context = { history: inputs, current: [] } satisfies ModelMessageContext;
+
+    const projected = await Promise.all(
+      inputs.map((input) => formatter?.toModelMessages(input, context)),
+    );
+
+    expect(runtime).toBeDefined();
+    expect(inputs.map((input) => input.type)).toEqual(["yesimbot.message", "yesimbot.event"]);
+    expect(projected).toHaveLength(2);
+    expect(unsupported).toHaveLength(2);
+    expect(await readFile(path, "utf8")).toBe(original);
+    await rm(directory, { recursive: true, force: true });
   });
 
   it("keeps Core event projection and Will reply hooks ahead of external pre plugins", () => {
@@ -520,15 +620,11 @@ describe("ChannelRuntime", () => {
     const formatter = (
       state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
     ).find((plugin) => plugin.name === "core.event-format");
-    const first = createEvent(
-      record({ message: { id: "message-1", content: "first" }, content: "first" }),
-    );
-    const second = createEvent(
-      record({ message: { id: "message-2", content: "second" }, content: "second" }),
-    );
+    const first = createInput(record({ messageId: "message-1", text: "first" }));
+    const second = createInput(record({ messageId: "message-2", text: "second" }));
     const file = { type: "file" as const, data: new Uint8Array([1]), mediaType: "image/png" };
     const context = { history: [first, second], current: [] } as ModelMessageContext;
-    state.selectEventFiles.mockResolvedValue(
+    state.selectInputFiles.mockResolvedValue(
       new Map([
         [first.id, [file]],
         [second.id, [file]],
@@ -541,7 +637,7 @@ describe("ChannelRuntime", () => {
       formatter?.toModelMessages(second, context),
     ]);
 
-    expect(state.selectEventFiles).toHaveBeenCalledOnce();
+    expect(state.selectInputFiles).toHaveBeenCalledOnce();
     expect(firstResult[0].content).toEqual([
       { type: "text", text: '[time="1970/1/1 08:00" sender="User (user-1)"]\nfirst' },
       file,
@@ -557,12 +653,8 @@ describe("ChannelRuntime", () => {
     const formatter = (
       state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
     ).find((plugin) => plugin.name === "core.event-format");
-    const historical = createEvent(
-      record({ message: { id: "message-history", content: "history" }, content: "history" }),
-    );
-    const current = createEvent(
-      record({ message: { id: "message-current", content: "current" }, content: "current" }),
-    );
+    const historical = createInput(record({ messageId: "message-history", text: "history" }));
+    const current = createInput(record({ messageId: "message-current", text: "current" }));
     const historyFile = {
       type: "file" as const,
       data: new Uint8Array([1]),
@@ -575,7 +667,7 @@ describe("ChannelRuntime", () => {
     };
     const firstContext = { history: [historical], current: [current] } as ModelMessageContext;
     const laterContext = { history: [historical, current], current: [] } as ModelMessageContext;
-    state.selectEventFiles.mockImplementation(async (context: ModelMessageContext) =>
+    state.selectInputFiles.mockImplementation(async (context: ModelMessageContext) =>
       context.current.length === 0
         ? new Map([[historical.id, [historyFile]]])
         : new Map([[current.id, [currentFile]]]),
@@ -604,7 +696,7 @@ describe("ChannelRuntime", () => {
       currentFile,
     ]);
     expect(laterCurrent[0].content).toBe('[time="1970/1/1 08:00" sender="User (user-1)"]\ncurrent');
-    expect(state.selectEventFiles).toHaveBeenCalledTimes(2);
+    expect(state.selectInputFiles).toHaveBeenCalledTimes(2);
   });
 
   it("degrades a fatal selection failure once per context and retries for a fresh context", async () => {
@@ -612,11 +704,11 @@ describe("ChannelRuntime", () => {
     const formatter = (
       state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
     ).find((plugin) => plugin.name === "core.event-format");
-    const event = createEvent(record());
+    const event = createInput(record());
     const firstContext = { history: [event], current: [] } as ModelMessageContext;
     const secondContext = { history: [event], current: [] } as ModelMessageContext;
-    state.selectEventFiles.mockRejectedValueOnce(new Error("selection failed"));
-    state.selectEventFiles.mockResolvedValueOnce(new Map());
+    state.selectInputFiles.mockRejectedValueOnce(new Error("selection failed"));
+    state.selectInputFiles.mockResolvedValueOnce(new Map());
 
     const first = await formatter?.toModelMessages(event, firstContext);
     const second = await formatter?.toModelMessages(event, firstContext);
@@ -624,7 +716,7 @@ describe("ChannelRuntime", () => {
 
     expect(first[0].content).toBe('[time="1970/1/1 08:00" sender="User (user-1)"]\nhello');
     expect(second[0].content).toBe('[time="1970/1/1 08:00" sender="User (user-1)"]\nhello');
-    expect(state.selectEventFiles).toHaveBeenCalledTimes(2);
+    expect(state.selectInputFiles).toHaveBeenCalledTimes(2);
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ event: "media_selection_failed" }),
     );
@@ -635,9 +727,9 @@ describe("ChannelRuntime", () => {
     const formatter = (
       state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
     ).find((plugin) => plugin.name === "core.event-format");
-    const event = createEvent(record());
+    const event = createInput(record());
     const context = { history: [event], current: [] } as ModelMessageContext;
-    state.selectEventFiles.mockImplementation(
+    state.selectInputFiles.mockImplementation(
       async (_context: ModelMessageContext, options: MediaSelectionOptions) => {
         options.onAssetFailure?.("asset_invalid", new UnsupportedImageMimeError());
         options.onAssetFailure?.("asset_missing", new Error("missing"));
@@ -663,8 +755,8 @@ describe("ChannelRuntime", () => {
         throw new Error("offline");
       }),
     );
-    const observed: EventRecord[] = [];
-    ctx.on("yesimbot/event", (event) => observed.push(event.data));
+    const observed: Input[] = [];
+    ctx.on("yesimbot/event", (input) => observed.push(input));
     const tool = (state.options?.tools as Array<{ name: string; execute: Function }>).find(
       (candidate) => candidate.name === "sendMessage",
     );
@@ -675,7 +767,7 @@ describe("ChannelRuntime", () => {
       error: { name: "Error", message: "offline" },
     });
     expect(observed).toHaveLength(1);
-    expect(observed[0]?.type).toBe("message");
+    expect(observed[0]?.type).toBe("yesimbot.message");
   });
 
   it("queues one shared stop task after committed channel work", async () => {
@@ -782,8 +874,10 @@ describe("ChannelRuntime", () => {
         messageId: "assistant-1",
         error: { name: "Error", message: "offline" },
       },
-      content: "Delivery failed",
-    } as EventRecord<"delivery.failed">;
+      text: "Delivery failed",
+      schemaVersion: 1,
+      eventType: "delivery.failed",
+    };
 
     runtime.beginDrain();
 
@@ -858,13 +952,15 @@ describe("ChannelRuntime", () => {
     const recent: string[][] = [];
     const { runtime } = createRuntime({
       decide: async (_event, state) => {
-        recent.push(state.recent.map((event) => event.data.message?.id ?? ""));
+        recent.push(
+          state.recent.map((input) => (input.type === "yesimbot.message" ? input.data.messageId : "")),
+        );
         return "wait";
       },
     });
 
     for (let index = 0; index < 33; index += 1) {
-      await runtime.handle(record({ message: { id: `message-${index}`, content: "hello" } }));
+      await runtime.handle(record({ messageId: `message-${index}` }));
     }
 
     expect(recent.at(-1)).toEqual(Array.from({ length: 32 }, (_, index) => `message-${index + 1}`));

@@ -15,9 +15,9 @@ import { z } from "zod";
 
 import { channelIdentity, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
-import { formatEvent } from "../event/formatter.js";
-import { createEvent, type Event, type EventRecord } from "../event/index.js";
-import { selectEventFiles, UnsupportedImageMimeError } from "../event/media.js";
+import { formatInput } from "../event/formatter.js";
+import { createInput, isInput, type EventRecord, type Input, type InputRecord } from "../event/index.js";
+import { selectInputFiles, UnsupportedImageMimeError } from "../event/media.js";
 import type { AssetStore } from "../shared/asset.js";
 import type { Will, WillObservation } from "../will/index.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
@@ -145,8 +145,8 @@ export class ChannelRuntime {
   private deliveryWaiters = new Set<() => void>();
   private drainTask: Promise<void> | undefined;
   private streams = new Set<Promise<void>>();
-  private pending: Event[] = [];
-  private recent: Event[] = [];
+  private pending: Input[] = [];
+  private recent: Input[] = [];
   private lastAt: number | null = null;
   private readonly agent: Agent;
   private initTask: Promise<void> | undefined;
@@ -157,7 +157,7 @@ export class ChannelRuntime {
     const includeMessageId = opts.includeMessageId;
     const selectedFilesByContext = new WeakMap<
       ModelMessageContext,
-      Promise<ReadonlyMap<Event["id"], readonly FilePart[]>>
+      Promise<ReadonlyMap<Input["id"], readonly FilePart[]>>
     >();
     const basePath = isAbsolute(opts.config.basePath)
       ? opts.config.basePath
@@ -200,11 +200,10 @@ export class ChannelRuntime {
           name: "core.event-format",
           enforce: "pre",
           toModelMessages: async (message, context) => {
-            if (message.role !== "custom" || message.type !== "yesimbot.event") return [];
-            const event = message as Event;
+            if (!isInput(message)) return [];
             let selectedFiles = selectedFilesByContext.get(context);
             if (!selectedFiles) {
-              selectedFiles = selectEventFiles(context, {
+              selectedFiles = selectInputFiles(context, {
                 scope: this.scope,
                 assetStore: opts.assets,
                 imageInput: opts.imageInput,
@@ -222,9 +221,9 @@ export class ChannelRuntime {
               });
               selectedFilesByContext.set(context, selectedFiles);
             }
-            const formatted = formatEvent(event, {
+            const formatted = formatInput(message, {
               includeMessageId,
-              files: (await selectedFiles).get(event.id),
+              files: (await selectedFiles).get(message.id),
             });
             return [formatted];
           },
@@ -257,7 +256,7 @@ export class ChannelRuntime {
     return this.initTask;
   }
 
-  handle(record: EventRecord): Promise<ChannelRuntime.Result> {
+  handle(record: InputRecord): Promise<ChannelRuntime.Result> {
     return this.handleRecord(record, false);
   }
 
@@ -300,27 +299,27 @@ export class ChannelRuntime {
     return this.drainTask;
   }
 
-  private handleRecord(record: EventRecord, internal: boolean): Promise<ChannelRuntime.Result> {
+  private handleRecord(record: InputRecord, internal: boolean): Promise<ChannelRuntime.Result> {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
     if (this.draining && !internal) return Promise.reject(new ChannelRuntimeDrainingError());
     return this.enqueue(async () => {
       this.assertOpen();
       if (this.draining && !internal) throw new ChannelRuntimeDrainingError();
-      const event = createEvent(record);
-      await this.agent.append(event);
-      this.remember(event);
-      this.emit("yesimbot/event", event);
-      const decision = await this.opts.will.decide(event, this.readState());
-      this.emit("yesimbot/will", { event, decision } satisfies WillObservation);
-      if (decision === "wait") return { kind: "wait", eventId: event.id };
+      const input = createInput(record);
+      await this.agent.append(input);
+      this.remember(input);
+      this.emit("yesimbot/event", input);
+      const decision = await this.opts.will.decide(input, this.readState());
+      this.emit("yesimbot/will", { event: input, decision } satisfies WillObservation);
+      if (decision === "wait") return { kind: "wait", eventId: input.id };
 
       const activeTurnId = this.agent.getActiveTurnId();
       if (activeTurnId !== null) {
-        this.agent.send(event, { ifBusy: "join" });
+        this.agent.send(input, { ifBusy: "join" });
         this.consumePending();
-        return { kind: "join", eventId: event.id, turnId: activeTurnId };
+        return { kind: "join", eventId: input.id, turnId: activeTurnId };
       }
-      return this.startRun(event);
+      return this.startRun(input);
     });
   }
 
@@ -380,9 +379,9 @@ export class ChannelRuntime {
     return new Promise((resolve) => this.deliveryWaiters.add(resolve));
   }
 
-  private startRun(event: Event): ChannelRuntime.Result {
+  private startRun(input: Input): ChannelRuntime.Result {
     const output = new OutputQueue<ChannelRuntime.Output>();
-    const stream = this.agent.run(event);
+    const stream = this.agent.run(input);
     const turnId = this.agent.getActiveTurnId();
     if (turnId === null) {
       throw new Error("Agent did not expose an active turn after run");
@@ -391,7 +390,7 @@ export class ChannelRuntime {
     const task = this.consumeStream(stream, output);
     this.streams.add(task);
     void task.finally(() => this.streams.delete(task));
-    return { kind: "run", eventId: event.id, turnId, output };
+    return { kind: "run", eventId: input.id, turnId, output };
   }
 
   private async consumeStream(
@@ -424,11 +423,11 @@ export class ChannelRuntime {
     });
   }
 
-  private remember(event: Event): void {
-    this.pending.push(event);
-    this.recent.push(event);
+  private remember(input: Input): void {
+    this.pending.push(input);
+    this.recent.push(input);
     if (this.recent.length > MAX_RECENT_EVENTS) this.recent.shift();
-    this.lastAt = event.timestamp;
+    this.lastAt = input.timestamp;
   }
 
   private consumePending(): void {

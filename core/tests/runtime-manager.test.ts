@@ -51,7 +51,7 @@ vi.mock("../src/runtime/channel.js", () => ({
 
 import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
 import type { Config } from "../src/config.js";
-import type { EventRecord } from "../src/event/index.js";
+import type { EventRecord, MessageRecord } from "../src/event/index.js";
 import { ChannelRuntimeDrainingError } from "../src/runtime/channel.js";
 import { RuntimeManager } from "../src/runtime/manager.js";
 import { ChannelStorage } from "../src/storage/index.js";
@@ -59,19 +59,20 @@ import { DefaultWill, type Will, WillingnessWill } from "../src/will/index.js";
 
 function record(
   channelId: string,
-  overrides: Partial<EventRecord<"message">> = {},
-): EventRecord<"message"> {
+  overrides: Partial<MessageRecord> = {},
+): MessageRecord {
   return {
-    type: "message",
+    schemaVersion: 1,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
     channel: { id: channelId, type: 0 },
     user: { id: "user-1", name: "User" },
-    message: { id: `message-${channelId}`, content: "hello" },
-    content: "hello",
+    messageId: `message-${channelId}`,
+    elements: [{ type: "text", attrs: { content: "hello" }, children: [] }],
+    text: "hello",
     ...overrides,
-  } as EventRecord<"message">;
+  };
 }
 
 function createManager(basePath = "/tmp/yesimbot-runtime-manager", will?: Config["will"]) {
@@ -465,7 +466,7 @@ describe("RuntimeManager", () => {
     expect(storage.list()).toHaveLength(1);
     expect(state.runtimes).toHaveLength(1);
 
-    await manager.route(record("room", { message: { id: "message-2", content: "again" } }));
+    await manager.route(record("room", { messageId: "message-2", text: "again" }));
     expect(state.runtimes).toHaveLength(2);
     expect(state.runtimes[1]?.init).toHaveBeenCalledOnce();
   });
@@ -532,7 +533,7 @@ describe("RuntimeManager", () => {
     old?.drainAndStop.mockImplementation(async () => releaseDrain.promise);
 
     const racing = manager.route(
-      record("room", { message: { id: "message-race", content: "race" } }),
+      record("room", { messageId: "message-race", text: "race" }),
     );
     await handleEntered.promise;
     const reloading = manager.reload({
@@ -548,7 +549,7 @@ describe("RuntimeManager", () => {
     await Promise.all([racing, reloading]);
     expect(state.runtimes).toHaveLength(2);
     expect(state.runtimes[1]?.handle).toHaveBeenCalledWith(
-      expect.objectContaining({ message: expect.objectContaining({ id: "message-race" }) }),
+      expect.objectContaining({ messageId: "message-race" }),
     );
   });
 
@@ -747,8 +748,10 @@ describe("RuntimeManager", () => {
         messageId: "assistant-1",
         error: { name: "Error", message: "offline" },
       },
-      content: "Delivery failed",
-    } as EventRecord<"delivery.failed">);
+      text: "Delivery failed",
+      schemaVersion: 1,
+      eventType: "delivery.failed",
+    });
     expect(state.runtimes[0]?.handleInternal).toHaveBeenCalledOnce();
     expect(state.runtimes[1]).toBeUndefined();
 
@@ -765,7 +768,7 @@ describe("RuntimeManager", () => {
     database.get.mockResolvedValue([{ assignee: "other" }]);
     const waiting = Array.from({ length: 5 }, (_, index) =>
       manager.route(
-        record("room", { selfId: "other", message: { id: `message-${index}`, content: "hello" } }),
+        record("room", { selfId: "other", messageId: `message-${index}` }),
       ),
     );
     await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
@@ -829,7 +832,7 @@ describe("RuntimeManager", () => {
 
     // Send 4 more routes — they reserve slots 1-4 (total 5: routing + 4 = 5)
     const waiters = Array.from({ length: 4 }, (_, i) =>
-      manager.route(record("room", { message: { id: `m-${i}`, content: "hello" } })),
+      manager.route(record("room", { messageId: `m-${i}` })),
     );
 
     // 6th event is excess and rejected before entering the lifecycle queue
@@ -883,7 +886,7 @@ describe("RuntimeManager", () => {
     // (5 total), and the 6th excess event is rejected by the pre-check.
     const waiters = Array.from({ length: 4 }, (_, i) =>
       manager.route(
-        record("room", { selfId: "other", message: { id: `m-${i}`, content: "hello" } }),
+        record("room", { selfId: "other", messageId: `m-${i}` }),
       ),
     );
 

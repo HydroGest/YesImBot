@@ -1,7 +1,7 @@
 import type { Awaitable, Element, Universal } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
-import type { Event } from "../event/index.js";
+import { isMessage, type Input } from "../event/index.js";
 import type { WillingnessConfigInput } from "./willingness.js";
 
 export {
@@ -15,7 +15,7 @@ export {
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 
 export interface Will {
-  decide(event: Event, state: Will.State): Awaitable<Will.Decision>;
+  decide(input: Input, state: Will.State): Awaitable<Will.Decision>;
   onReply?(): Awaitable<void>;
   stop?(): Awaitable<void>;
 }
@@ -25,8 +25,8 @@ export namespace Will {
 
   export interface State {
     readonly activeTurnId: string | null;
-    readonly pending: readonly Event[];
-    readonly recent: readonly Event[];
+    readonly pending: readonly Input[];
+    readonly recent: readonly Input[];
     readonly lastActivityAt: number | null;
   }
 
@@ -34,7 +34,7 @@ export namespace Will {
 }
 
 export interface WillObservation {
-  readonly event: Event;
+  readonly event: Input;
   readonly decision: Will.Decision;
 }
 
@@ -61,10 +61,10 @@ export class DefaultWill implements Will {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  async decide(event: Event, _state: Will.State): Promise<Will.Decision> {
-    if (event.data.type !== "message") return "wait";
-    if (event.data.channel.type === DIRECT_CHANNEL_TYPE) return this.config.direct;
-    if (event.data.message.elements?.some(isSelfMention.bind(null, event.data.selfId))) {
+  async decide(input: Input, _state: Will.State): Promise<Will.Decision> {
+    if (!isMessage(input)) return "wait";
+    if (input.data.channel.type === DIRECT_CHANNEL_TYPE) return this.config.direct;
+    if (input.data.elements.some(isSelfMention.bind(null, input.data.selfId))) {
       return this.config.mention;
     }
     return this.config.group;
