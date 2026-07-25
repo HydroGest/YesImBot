@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import type { EventRecord } from "../src/event/index.js";
+import type { InputRecord, MessageRecord } from "../src/event/index.js";
 import { Gateway } from "../src/gateway/index.js";
 import { ChannelStorage } from "../src/storage/index.js";
+
+import { h } from "koishi";
 
 function session(send = vi.fn(async () => ["receipt-1"])) {
   return {
@@ -17,22 +19,23 @@ function session(send = vi.fn(async () => ["receipt-1"])) {
     messageId: "message-1",
     timestamp: 1,
     event: { type: "message" },
-    elements: "hello",
+    elements: [h.text("hello")],
     send,
   };
 }
 
-function record(): EventRecord<"message"> {
+function record(): MessageRecord {
   return {
-    type: "message",
+    schemaVersion: 1,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
     channel: { id: "room-1", type: 0 },
     user: { id: "user-1" },
-    message: { id: "message-1", content: "hello" },
-    content: "hello",
-  } as EventRecord<"message">;
+    messageId: "message-1",
+    elements: [h.text("hello")],
+    text: "hello",
+  };
 }
 
 function outputs(...content: string[]) {
@@ -115,7 +118,8 @@ describe("Gateway passive delivery", () => {
     expect(route.mock.calls[0]?.[0]).not.toHaveProperty("send");
     expect(route.mock.calls[0]?.[0]).not.toBe(inbound);
     expect(binding.fail.mock.calls[0]?.[0]).toMatchObject({
-      type: "delivery.failed",
+      schemaVersion: 1,
+      eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
       channel: { id: "room-1" },
@@ -124,7 +128,7 @@ describe("Gateway passive delivery", () => {
         messageId: "assistant-1",
         error: { name: "Error", message: "offline", code: "ECONNRESET" },
       },
-      content: expect.stringContaining("offline"),
+      text: expect.stringContaining("offline"),
     });
   });
 

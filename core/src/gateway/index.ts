@@ -2,18 +2,19 @@ import { Context, h, Logger, type Awaitable, type Element, type Session, Univers
 import { set } from "zod/v4";
 
 import type { ChannelScope } from "../channel/index.js";
-import type { EventRecord } from "../event/index.js";
+import type { EventRecord, InputRecord, MessageRecord } from "../event/index.js";
 import type { RuntimeManager } from "../runtime/manager.js";
 import type { AssetStore } from "../shared/asset.js";
 import { assertAssignee } from "../shared/assignee.js";
-import { normalizeElements, sealElements, unavailableImage } from "../shared/element.js";
+import { unavailableImage } from "../shared/element.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "./allowlist.js";
 import { createImageFreezer } from "./image.js";
+import { draftMessageBase, resolveFallbackMessage } from "./message.js";
 
 export interface ResolveContext {
   readonly session: Session;
-  readonly base?: Omit<EventRecord<"message">, "content">;
+  readonly base?: Omit<MessageRecord, "text">;
   readonly freezeImage: (
     element: Element,
     load: (signal: AbortSignal, maxBytes: number) => Promise<{ data: Uint8Array; mime?: string }>,
@@ -22,7 +23,7 @@ export interface ResolveContext {
 
 export interface SessionResolver {
   readonly platform: string;
-  resolve(context: ResolveContext): Awaitable<EventRecord | null>;
+  resolve(context: ResolveContext): Awaitable<InputRecord | null>;
 }
 
 export interface GatewayOptions {
@@ -112,7 +113,7 @@ export class Gateway {
       this.warn("gateway.assignee_rejected", cause, session.platform);
       return;
     }
-    let record: EventRecord | null;
+    let record: InputRecord | null;
     try {
       record = await this.resolve(session);
     } catch (cause) {
@@ -135,7 +136,7 @@ export class Gateway {
     }
     try {
       await this.opts.storage.updateName(scope, record.channel.name);
-      const result = await this.opts.runtime.route(record);
+      const result = await this.opts.runtime.route(record as EventRecord);
       if (result.kind === "run") {
         try {
           for await (const output of result.output) {
@@ -155,20 +156,25 @@ export class Gateway {
   }
 
   private async failDelivery(
-    record: EventRecord,
+    record: InputRecord,
     output: { readonly turnId: string; readonly messageId: string },
     cause: unknown,
     delivery: RuntimeManager.Delivery,
   ): Promise<void> {
     const error = normalizeDeliveryError(cause);
-    const failure = {
-      type: "delivery.failed",
-      platform: record.platform,
-      selfId: record.selfId,
+    // Extract extra Universal.Event fields (sn, login, referrer, etc.) from the record
+    const rec = record as unknown as Record<string, unknown>;
+    const { schemaVersion: _sv, eventType: _et, platform, selfId, timestamp: _ts, channel, text: _txt, delivery: _dl, ...extra } = rec;
+    const failure: EventRecord<"delivery.failed"> = {
+      ...extra,
+      schemaVersion: 1,
+      eventType: "delivery.failed",
+      platform: platform as string,
+      selfId: selfId as string,
       timestamp: Date.now(),
-      channel: record.channel,
+      channel: channel as Universal.Channel,
       delivery: { turnId: output.turnId, messageId: output.messageId, error },
-      content: `Delivery of assistant message ${output.messageId} failed: ${error.message}`,
+      text: `Delivery of assistant message ${output.messageId} failed: ${error.message}`,
     } as EventRecord<"delivery.failed">;
     try {
       await delivery.fail(failure);
@@ -177,8 +183,8 @@ export class Gateway {
     }
   }
 
-  private async resolve(session: Session): Promise<EventRecord | null> {
-    const base = draftMessageEventBase(session);
+  private async resolve(session: Session): Promise<InputRecord | null> {
+    const base = draftMessageBase(session);
     const resolver = this.resolvers.get(session.platform);
     if (!resolver) return base ? resolveFallbackMessage(base) : null;
     const scope = scopeFromSession(session);
@@ -213,55 +219,11 @@ function scopeFromSession(session: Session): ChannelScope | null {
   };
 }
 
-function draftMessageEventBase(session: Session): Omit<EventRecord<"message">, "content"> | null {
-  const scope = scopeFromSession(session);
-  if (!scope || !isMessageSession(session)) return null;
-  const elements = normalizeElements(h.normalize(session.elements ?? session.content ?? ""));
-  const event = objectValue(session.event);
-  const { type: _type, content: _content, ...resources } = event;
-  const channel = objectValue(resources.channel);
-  const user = objectValue(resources.user);
-  const message = objectValue(resources.message);
-  const timestamp =
-    numberValue(session.timestamp) ?? numberValue(resources.timestamp) ?? Date.now();
-  return {
-    ...resources,
-    type: "message",
-    platform: scope.platform,
-    selfId: scope.selfId,
-    timestamp,
-    channel: { ...channel, id: scope.channelId, type: channel.type ?? 0 },
-    user: {
-      ...user,
-      id: stringValue(user.id) ?? session.userId ?? session.author?.id ?? "",
-      ...(user.name === undefined && session.author?.name ? { name: session.author.name } : {}),
-    },
-    message: {
-      ...message,
-      id: stringValue(message.id) ?? String(session.messageId ?? ""),
-      content: elements.map((element) => element.toString()).join(""),
-      elements,
-    },
-  } as Omit<EventRecord<"message">, "content">;
+function isRecord(record: InputRecord): boolean {
+  return Boolean(record.schemaVersion === 1 && record.platform && record.selfId && record.channel?.id);
 }
 
-function resolveFallbackMessage(
-  base: Omit<EventRecord<"message">, "content">,
-): EventRecord<"message"> {
-  const elements = (base.message as { elements?: readonly Element[] }).elements ?? [];
-  return {
-    ...base,
-    content: sealElements(elements)
-      .map((element) => element.toString())
-      .join(""),
-  };
-}
-
-function isRecord(record: EventRecord): boolean {
-  return Boolean(record.type && record.platform && record.selfId && record.channel?.id);
-}
-
-function hasScope(record: EventRecord, scope: ChannelScope): boolean {
+function hasScope(record: InputRecord, scope: ChannelScope): boolean {
   return (
     record.platform === scope.platform &&
     record.selfId === scope.selfId &&
@@ -281,10 +243,6 @@ function containsReference(value: unknown, target: object, seen = new WeakSet<ob
   }
 }
 
-function objectValue(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-}
-
 function normalizeDeliveryError(cause: unknown): { name: string; message: string; code?: string } {
   const error = cause instanceof Error ? cause : new Error(String(cause));
   const code =
@@ -292,13 +250,4 @@ function normalizeDeliveryError(cause: unknown): { name: string; message: string
       ? (cause as { code: string }).code
       : undefined;
   return { name: error.name, message: error.message, ...(code === undefined ? {} : { code }) };
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value ? value : undefined;
-}
-
-function numberValue(value: unknown): number | undefined {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : undefined;
 }

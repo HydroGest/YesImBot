@@ -6,7 +6,7 @@ import { h, Universal } from "koishi";
 
 import type { ChannelScope } from "../src/channel/index.js";
 import { Config } from "../src/config.js";
-import type { EventRecord } from "../src/event/index.js";
+import type { InputRecord, MessageRecord } from "../src/event/index.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "../src/gateway/allowlist.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
 import { ChannelStorage } from "../src/storage/index.js";
@@ -22,22 +22,41 @@ function session(overrides: Record<string, unknown> = {}) {
     messageId: "message-1",
     timestamp: 1,
     event: { type: "message" },
-    elements: "hello",
+    elements: [h.text("hello")],
     ...overrides,
   };
 }
 
-function record(): EventRecord<"message"> {
+function record(): MessageRecord {
   return {
-    type: "message",
+    schemaVersion: 1,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
     channel: { id: "room-1", type: 0 },
     user: { id: "user-1", name: "User" },
-    message: { id: "message-1", content: "hello" },
-    content: "hello",
-  } as EventRecord<"message">;
+    messageId: "message-1",
+    elements: [h.text("hello")],
+    text: "hello",
+  };
+}
+
+function eventRecord(): InputRecord {
+  return {
+    schemaVersion: 1,
+    eventType: "delivery.failed",
+    platform: "test",
+    selfId: "bot-1",
+    timestamp: 1,
+    channel: { id: "room-1", type: 0 },
+    user: { id: "user-1" },
+    text: "Delivery failed",
+    delivery: {
+      turnId: "turn-1",
+      messageId: "message-1",
+      error: { name: "Error", message: "notice" },
+    },
+  };
 }
 
 function createGateway(
@@ -169,6 +188,40 @@ describe("Gateway", () => {
     expect(assets.put).not.toHaveBeenCalled();
     expect(updateName).not.toHaveBeenCalled();
     expect(runtime.route).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing elements", { elements: undefined, messageId: "m1" }],
+    ["missing message id", { elements: [h.text("hi")], messageId: undefined }],
+    ["empty message id", { elements: [h.text("hi")], messageId: "" }],
+  ])("skips message-created session with %s", async (_label, patch) => {
+    const { gateway, runtime } = createGateway();
+    // No resolver registered - admission rejection is tested on fallback path
+
+    await gateway.handle(session(patch) as never);
+
+    expect(runtime.route).not.toHaveBeenCalled();
+  });
+
+  it("admits a message session with empty elements and produces a complete MessageRecord", async () => {
+    const { gateway, runtime } = createGateway();
+    // No resolver registered - use fallback path
+
+    await gateway.handle(session({ elements: [] }) as never);
+
+    expect(runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schemaVersion: 1,
+        messageId: "message-1",
+        elements: [],
+        text: "",
+        timestamp: expect.any(Number),
+      }),
+    );
+    const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
+    expect(routed).not.toHaveProperty("type");
+    expect(routed).not.toHaveProperty("content");
+    expect(routed).not.toHaveProperty("message");
   });
 
   it.each([
@@ -325,7 +378,7 @@ describe("Gateway", () => {
     const { gateway, runtime } = createGateway();
     const resolve = vi.fn(async (context: Parameters<SessionResolver["resolve"]>[0]) => {
       expect(context.session).toMatchObject({ messageId: "message-1" });
-      expect(context.base).toMatchObject({ type: "message", message: { id: "message-1" } });
+      expect(context.base).toMatchObject({ schemaVersion: 1, messageId: "message-1" });
       expect(context).toHaveProperty("freezeImage");
       expect(context).not.toHaveProperty("putImage");
       return record();
@@ -358,20 +411,23 @@ describe("Gateway", () => {
     );
   });
 
-  it("creates a normalized and sealed fallback EventRecord for an unregistered message platform", async () => {
+  it("creates a normalized and sealed fallback MessageRecord for an unregistered message platform", async () => {
     const { gateway, runtime } = createGateway();
 
     await gateway.handle(
       session({ elements: h.parse('hello <img src="https://example.test/a.png"/>') }) as never,
     );
 
-    expect(runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "message",
-        message: expect.objectContaining({ elements: expect.any(Array) }),
-        content: 'hello <img unavailable="true"/>',
-      }),
-    );
+    const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
+    expect(routed).toMatchObject({
+      schemaVersion: 1,
+      messageId: "message-1",
+      elements: expect.any(Array),
+      text: 'hello <img unavailable="true"/>',
+    });
+    expect(routed).not.toHaveProperty("type");
+    expect(routed).not.toHaveProperty("content");
+    expect(routed).not.toHaveProperty("message");
   });
 
   it("preserves Satori resources while filling the fallback message identity from Session", async () => {
@@ -394,9 +450,9 @@ describe("Gateway", () => {
 
     await gateway.handle(input as never);
 
-    const routed = runtime.route.mock.calls[0]?.[0] as EventRecord<"message">;
+    const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
     expect(routed).toMatchObject({
-      type: "message",
+      schemaVersion: 1,
       platform: "test",
       selfId: "bot-1",
       timestamp: 1,
@@ -404,9 +460,9 @@ describe("Gateway", () => {
       guild: { id: "guild-1", name: "Guild" },
       member: { nick: "Member" },
       user: { id: "user-1", name: "Event user" },
-      message: { id: "message-1", content: 'hello <at id="bot-1"/>' },
+      messageId: "message-1",
     });
-    expect((routed.message as { elements?: unknown }).elements).toEqual(
+    expect(routed.elements).toEqual(
       h.parse('hello <at id="bot-1"/>'),
     );
     expect(routed).not.toBe(input);
@@ -432,11 +488,11 @@ describe("Gateway", () => {
   });
 
   it.each([
-    ["platform", (value: EventRecord<"message">) => ({ ...value, platform: "other" })],
-    ["selfId", (value: EventRecord<"message">) => ({ ...value, selfId: "other" })],
+    ["platform", (value: MessageRecord) => ({ ...value, platform: "other" })],
+    ["selfId", (value: MessageRecord) => ({ ...value, selfId: "other" })],
     [
       "channel.id",
-      (value: EventRecord<"message">) => ({ ...value, channel: { ...value.channel, id: "other" } }),
+      (value: MessageRecord) => ({ ...value, channel: { ...value.channel, id: "other" } }),
     ],
   ])("rejects a resolver record with a mismatched %s", async (_field, change) => {
     const { gateway, runtime, logger } = createGateway();
@@ -484,17 +540,7 @@ describe("Gateway", () => {
     const { gateway, runtime, middleware, internal } = createGateway();
     gateway.register({
       platform: "notice",
-      resolve: async () =>
-        ({
-          ...record(),
-          platform: "notice",
-          type: "delivery.failed",
-          delivery: {
-            turnId: "turn-1",
-            messageId: "message-1",
-            error: { name: "Error", message: "notice" },
-          },
-        }) as EventRecord,
+      resolve: async () => ({ ...eventRecord(), platform: "notice" }),
     });
     const message = session();
     await middleware()(message as never, async () => undefined);
