@@ -102,6 +102,7 @@ export class ModelService extends Service<ModelServiceConfig> {
   private embeddingModels = new Map<string, EmbeddingModelRecord>();
   private aliases = new Map<string, ModelId>();
   private modelsConfig = createEmptyModelsConfig();
+  private modalityMutation = Promise.resolve();
   private defaults: {
     chat?: ModelId;
     embedding?: ModelId;
@@ -333,7 +334,19 @@ export class ModelService extends Service<ModelServiceConfig> {
     };
   }
 
-  async addChatModelInputModality(model: string, modality: string): Promise<"added" | "unchanged"> {
+  addChatModelInputModality(model: string, modality: string): Promise<"added" | "unchanged"> {
+    const task = this.modalityMutation.then(() => this.addChatModelInputModalityInternal(model, modality));
+    this.modalityMutation = task.then(
+      () => undefined,
+      () => undefined,
+    );
+    return task;
+  }
+
+  private async addChatModelInputModalityInternal(
+    model: string,
+    modality: string,
+  ): Promise<"added" | "unchanged"> {
     if (!isChatModelModality(modality)) {
       throw new Error(`Unsupported chat model input modality: ${modality}`);
     }

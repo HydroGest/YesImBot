@@ -136,6 +136,27 @@ describe("models.json modalities", () => {
     });
   });
 
+  it("serializes concurrent input modality additions through persistence and resolution", async () => {
+    const path = await createModelsPath({});
+    const service = await createModelService({}, path.slice(0, -"/models.json".length));
+
+    await expect(
+      Promise.all([
+        service.addChatModelInputModality("openai:gpt-4o", "image"),
+        service.addChatModelInputModality("openai:gpt-4o", "audio"),
+      ]),
+    ).resolves.toEqual(["added", "added"]);
+
+    expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toEqual([
+      "image",
+      "audio",
+    ]);
+    expect(JSON.parse(await readFile(path, "utf8")).chat["openai:gpt-4o"].modalities.input).toEqual([
+      "image",
+      "audio",
+    ]);
+  });
+
   it("keeps resolved modality arrays isolated from callers", async () => {
     const service = await createModelService({
       chat: { "openai:gpt-4o": { modalities: { input: ["image"] } } },
@@ -217,7 +238,7 @@ describe("models.json modalities", () => {
     expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toBeUndefined();
   });
 
-  it("rejects addChatModelInputModality and preserves state when atomic write fails", async () => {
+  it("keeps later input modality additions usable after an atomic write failure", async () => {
     const models = { chat: { "openai:gpt-4o": { name: "GPT-4o" } } };
     const path = await createModelsPath(models);
     const service = await createModelService(
@@ -234,5 +255,13 @@ describe("models.json modalities", () => {
 
     expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toBeUndefined();
     expect(service.resolveChatModel("openai:gpt-4o").entry.name).toBe("GPT-4o");
+
+    await rm(path, { recursive: true });
+    await writeFile(path, `${JSON.stringify(models)}\n`, "utf8");
+    await expect(service.addChatModelInputModality("openai:gpt-4o", "audio")).resolves.toBe("added");
+    expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toEqual(["audio"]);
+    expect(JSON.parse(await readFile(path, "utf8")).chat["openai:gpt-4o"].modalities.input).toEqual([
+      "audio",
+    ]);
   });
 });
