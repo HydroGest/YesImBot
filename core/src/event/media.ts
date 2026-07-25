@@ -23,6 +23,22 @@ export interface MediaSelectionOptions {
   readonly onAssetFailure?: (assetId: string, cause: unknown) => void;
 }
 
+export class UnsupportedImageMimeError extends Error {
+  readonly name = "UnsupportedImageMimeError";
+
+  constructor() {
+    super("Stored asset bytes do not match an allowed image MIME type");
+  }
+}
+
+function reportAssetFailure(options: MediaSelectionOptions, assetId: string, cause: unknown): void {
+  try {
+    options.onAssetFailure?.(assetId, cause);
+  } catch (diagnosticFailure) {
+    if (diagnosticFailure instanceof Error) return;
+  }
+}
+
 function eventSources(context: ModelMessageContext, strategy: MediaSelectionPolicy["strategy"]): Event[] {
   const history = context.history.filter(isEvent);
   const current = context.current.filter(isEvent);
@@ -74,13 +90,16 @@ export async function selectEventFiles(
       try {
         data = await options.assetStore.readByAssetId(options.scope, assetId);
       } catch (cause) {
-        options.onAssetFailure?.(assetId, cause);
+        reportAssetFailure(options, assetId, cause);
         continue;
       }
 
       const mediaType = detectImageMime(data);
+      if (mediaType === undefined) {
+        reportAssetFailure(options, assetId, new UnsupportedImageMimeError());
+        continue;
+      }
       if (
-        mediaType === undefined ||
         data.byteLength > options.policy.maxImageBytes ||
         data.byteLength > options.policy.maxTotalImageBytes - totalBytes
       ) {

@@ -22,6 +22,7 @@ const scope: ChannelScope = {
   isDirect: false,
 };
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const FIVE_MIB = 5 * 1024 * 1024;
 
 function messageEvent(content?: string) {
   const record = {
@@ -40,6 +41,15 @@ function messageEvent(content?: string) {
 function assetStore() {
   return { readByAssetId: vi.fn<() => Promise<Uint8Array>>() };
 }
+
+function pngBytesOfLength(byteLength: number): Uint8Array {
+  const data = new Uint8Array(byteLength);
+  data.set(pngBytes);
+  return data;
+}
+
+const fiveMiBPngBytes = pngBytesOfLength(FIVE_MIB);
+const oversizedPngBytes = pngBytesOfLength(FIVE_MIB + 1);
 
 function selectionContext(
   history: readonly AgentMessage[],
@@ -165,6 +175,83 @@ describe("formatEvent", () => {
         "asset_3",
         "asset_4",
       ]);
+    });
+
+    it("accepts an image at the exact default five MiB per-image boundary", async () => {
+      const assets = assetStore();
+      assets.readByAssetId.mockResolvedValue(fiveMiBPngBytes);
+      const event = messageEvent('<img id="asset_boundary"/>');
+
+      const selected = await selectEventFiles(selectionContext([event]), selectionOptions(assets));
+
+      expect(selected.get(event.id)?.map((file) => file.data.byteLength)).toEqual([
+        FIVE_MIB,
+      ]);
+    });
+
+    it("skips an image above the default five MiB boundary and accepts a later fitting image", async () => {
+      const assets = assetStore();
+      assets.readByAssetId.mockImplementation(async (_scope, assetId) =>
+        assetId === "asset_oversized" ? oversizedPngBytes : fiveMiBPngBytes,
+      );
+      const event = messageEvent('<img id="asset_oversized"/><img id="asset_fitting"/>');
+
+      const selected = await selectEventFiles(selectionContext([event]), selectionOptions(assets));
+
+      expect(selected.get(event.id)?.[0]?.data).toBe(fiveMiBPngBytes);
+      expect(assets.readByAssetId.mock.calls.map((call) => call[1])).toEqual([
+        "asset_oversized",
+        "asset_fitting",
+      ]);
+    });
+
+    it("accepts the exact default ten MiB total boundary and stops before reading later candidates", async () => {
+      const assets = assetStore();
+      assets.readByAssetId.mockResolvedValue(fiveMiBPngBytes);
+      const event = messageEvent(
+        '<img id="asset_first"/><img id="asset_second"/><img id="asset_unread"/>',
+      );
+
+      const selected = await selectEventFiles(selectionContext([event]), selectionOptions(assets));
+
+      expect(selected.get(event.id)?.map((file) => file.data.byteLength)).toEqual([
+        FIVE_MIB,
+        FIVE_MIB,
+      ]);
+      expect(assets.readByAssetId.mock.calls.map((call) => call[1])).toEqual([
+        "asset_first",
+        "asset_second",
+      ]);
+    });
+
+    it("diagnoses invalid bytes and read failures without allowing diagnostic callbacks to interrupt selection", async () => {
+      const assets = assetStore();
+      const invalidBytes = new Uint8Array([0x3c, 0x73, 0x76, 0x67]);
+      const readFailure = new Error("missing");
+      assets.readByAssetId.mockImplementation(async (_scope, assetId) => {
+        if (assetId === "asset_invalid") return invalidBytes;
+        if (assetId === "asset_missing") throw readFailure;
+        return pngBytes;
+      });
+      const diagnostics = vi.fn(() => {
+        throw new Error("diagnostic failed");
+      });
+      const event = messageEvent(
+        '<img id="asset_invalid"/><img id="asset_missing"/><img id="asset_valid"/>',
+      );
+
+      const selected = await selectEventFiles(
+        selectionContext([event]),
+        selectionOptions(assets, { onAssetFailure: diagnostics }),
+      );
+
+      expect(selected.get(event.id)?.map((file) => file.data)).toEqual([pngBytes]);
+      expect(diagnostics).toHaveBeenCalledTimes(2);
+      expect(diagnostics.mock.calls[0]?.[0]).toBe("asset_invalid");
+      expect(diagnostics.mock.calls[0]?.[1]).toEqual(
+        expect.objectContaining({ name: "UnsupportedImageMimeError" }),
+      );
+      expect(diagnostics.mock.calls[1]).toEqual(["asset_missing", readFailure]);
     });
 
     it("charges duplicate references independently and skips failures or oversized candidates for later fitting files", async () => {
