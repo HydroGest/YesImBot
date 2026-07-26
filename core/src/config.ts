@@ -14,6 +14,38 @@ export const DEFAULT_MULTIMEDIA_IMAGE_POLICY: UnifiedImagePolicy = Object.freeze
   selection: "current-first",
 });
 
+export interface ReplySegmentationConfig {
+  maxSegments: number;
+}
+
+export interface PacingConfig {
+  minDelayMs: number;
+  maxSegmentDelayMs: number;
+  maxTotalDelayMs: number;
+  cjkCharactersPerSecond: number;
+  latinCharactersPerSecond: number;
+  randomFactorMin: number;
+  randomFactorMax: number;
+  firstSegmentResidualMinMs: number;
+  firstSegmentResidualMaxMs: number;
+}
+
+export const DEFAULT_REPLY_SEGMENTATION_CONFIG: ReplySegmentationConfig = Object.freeze({
+  maxSegments: 8,
+});
+
+export const DEFAULT_REPLY_PACING_CONFIG: PacingConfig = Object.freeze({
+  minDelayMs: 250,
+  maxSegmentDelayMs: 10_000,
+  maxTotalDelayMs: 60_000,
+  cjkCharactersPerSecond: 5,
+  latinCharactersPerSecond: 8,
+  randomFactorMin: 0.85,
+  randomFactorMax: 1.15,
+  firstSegmentResidualMinMs: 150,
+  firstSegmentResidualMaxMs: 450,
+});
+
 export interface Config {
   basePath: string;
   chatModel: string;
@@ -29,6 +61,10 @@ export interface Config {
     };
   };
   will?: WillConfig;
+  reply?: {
+    segmentation?: Partial<ReplySegmentationConfig>;
+    pacing?: Partial<PacingConfig>;
+  };
 }
 
 export function resolveMultimediaImagePolicy(multimedia: Config["multimedia"]): UnifiedImagePolicy {
@@ -100,4 +136,22 @@ export const Config: Schema<Config> = Schema.intersect([
       }),
     }) as Schema<WillConfig>,
   }).description("消息路由"),
+  Schema.object({
+    reply: Schema.object({
+      segmentation: Schema.object({
+        maxSegments: Schema.number().min(1).step(1).default(DEFAULT_REPLY_SEGMENTATION_CONFIG.maxSegments),
+      }),
+      pacing: Schema.object({
+        minDelayMs: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.minDelayMs),
+        maxSegmentDelayMs: Schema.number().min(1).default(DEFAULT_REPLY_PACING_CONFIG.maxSegmentDelayMs),
+        maxTotalDelayMs: Schema.number().min(1).default(DEFAULT_REPLY_PACING_CONFIG.maxTotalDelayMs),
+        cjkCharactersPerSecond: Schema.number().min(1).default(DEFAULT_REPLY_PACING_CONFIG.cjkCharactersPerSecond),
+        latinCharactersPerSecond: Schema.number().min(1).default(DEFAULT_REPLY_PACING_CONFIG.latinCharactersPerSecond),
+        randomFactorMin: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.randomFactorMin),
+        randomFactorMax: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.randomFactorMax),
+        firstSegmentResidualMinMs: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.firstSegmentResidualMinMs),
+        firstSegmentResidualMaxMs: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.firstSegmentResidualMaxMs),
+      }),
+    }),
+  }).description("回复分段与节奏"),
 ]) as Schema<Config>;
