@@ -195,6 +195,35 @@ describe("OCL reply parsing", () => {
       segments: [{ text: "visibletext", sleepHintMs: 0, index: 1, total: 1 }],
     });
   });
+
+  it("preserves varied reply content while stripping only active controls", () => {
+    const cases = [
+      { raw: "<inner_thought>private</inner_thought>好", visible: "好" },
+      {
+        raw: "这是一段较长的说明，保留所有事实、限定条件与结论，不因长度被运行时拆开。",
+        visible: "这是一段较长的说明，保留所有事实、限定条件与结论，不因长度被运行时拆开。",
+      },
+      { raw: "等等<sep/>我真的好开心！", visible: "等等我真的好开心！" },
+      { raw: "你好，hello world。<sep/>下次见！", visible: "你好，hello world。下次见！" },
+      {
+        raw: "```ts\nconst marker = '<sep/>';\n```\n<sep/>说明",
+        visible: "```ts\nconst marker = '<sep/>';\n```说明",
+      },
+      { raw: "Use `<skip/>` literally, please.", visible: "Use `<skip/>` literally, please." },
+      {
+        raw: "链接：https://example.invalid/path?<sep/>=literal <sep/>继续",
+        visible: "链接：https://example.invalid/path?<sep/>=literal继续",
+      },
+      { raw: "- 第一项\n- 第二项\n<sep/>总结", visible: "- 第一项\n- 第二项总结" },
+    ];
+
+    for (const entry of cases) {
+      const parsed = parseReply(entry.raw, limits);
+      const delivered = parsed.segments.map((segment) => segment.text).join("");
+      expect(delivered).toBe(entry.visible);
+      expect(delivered).not.toContain("private");
+    }
+  });
 });
 
 describe("reply defaults", () => {
