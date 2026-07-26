@@ -17,11 +17,11 @@
 
 ## 3. Implement Bounded Pacing
 
-- [ ] 3.1 Implement visible-character typing delay with separate CJK and Latin rates, bounded random factor, and floor and ceiling clamping, excluding inner-thought text from the character count.
-- [ ] 3.2 Implement first-segment elapsed-generation subtraction retaining a bounded random residual buffer.
-- [ ] 3.3 Implement additive sleep-hint composition with per-segment ceiling clamping.
-- [ ] 3.4 Implement total-delivery-ceiling accounting that switches remaining segments to minimum spacing instead of dropping them.
-- [ ] 3.5 Inject clock and randomness so tests assert bounds and ordering deterministically without asserting exact delays.
+- [x] 3.1 Implement visible-character typing delay with separate CJK and Latin rates, bounded random factor, and floor and ceiling clamping, excluding inner-thought text from the character count.
+- [x] 3.2 Implement first-segment elapsed-generation subtraction retaining a bounded random residual buffer.
+- [x] 3.3 Implement additive sleep-hint composition with per-segment ceiling clamping.
+- [x] 3.4 Implement total-delivery-ceiling accounting that switches remaining segments to minimum spacing instead of dropping them.
+- [x] 3.5 Inject clock and randomness so tests assert bounds and ordering deterministically without asserting exact delays.
 
 ## 4. Raise The Constitution To Version Two
 
