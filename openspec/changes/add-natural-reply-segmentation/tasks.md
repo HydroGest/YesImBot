@@ -8,12 +8,12 @@
 
 ## 2. Implement The Ordered Parse Pipeline
 
-- [ ] 2.1 Implement inner-thought extraction outside protection zones, returning removed regions as metadata without altering surrounding whitespace semantics.
-- [ ] 2.2 Implement skip evaluation so a skip element outside protection zones discards all visible content and yields zero delivered segments.
-- [ ] 2.3 Implement separator splitting, consecutive-separator collapsing, leading and trailing separator handling, trimming, and empty-segment discarding.
-- [ ] 2.4 Implement per-segment sleep-hint summation and marker removal, then assign segment index and total.
-- [ ] 2.5 Implement guardrails and degradation: segment-count truncation, zero-segment fallback to one message, parse-failure fallback, and the residual-control-element assertion that degrades the whole reply.
-- [ ] 2.6 Add tests proving determinism across repeated parses, no runtime-chosen segment count, and that every degradation path preserves the reply's visible content.
+- [x] 2.1 Implement inner-thought extraction outside protection zones, returning removed regions as metadata without altering surrounding whitespace semantics.
+- [x] 2.2 Implement skip evaluation so a skip element outside protection zones discards all visible content and yields zero delivered segments.
+- [x] 2.3 Implement separator splitting, consecutive-separator collapsing, leading and trailing separator handling, trimming, and empty-segment discarding.
+- [x] 2.4 Implement per-segment sleep-hint summation and marker removal, then assign segment index and total.
+- [x] 2.5 Implement guardrails and degradation: segment-count truncation, zero-segment fallback to one message, parse-failure fallback, and the residual-control-element assertion that degrades the whole reply.
+- [x] 2.6 Add tests proving determinism across repeated parses, no runtime-chosen segment count, and that every degradation path preserves the reply's visible content.
 
 ## 3. Implement Bounded Pacing
 
