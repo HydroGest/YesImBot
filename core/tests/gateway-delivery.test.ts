@@ -49,19 +49,36 @@ function record(): MessageRecord {
 function outputs(...content: string[]) {
   return (async function* () {
     for (const [index, value] of content.entries()) {
-      yield { turnId: "turn-1", messageId: `assistant-${index + 1}`, content: value };
+      yield {
+        turnId: "turn-1",
+        messageId: `assistant-${index + 1}`,
+        content: value,
+        segmentIndex: index + 1,
+        segmentTotal: content.length,
+        sleepHintMs: 0,
+      };
     }
   })();
 }
 
-function delivery() {
+function delivery(signal?: AbortSignal) {
   return {
     fail: vi.fn(async () => ({ kind: "wait" as const, eventId: "failure-1" })),
+    complete: vi.fn(async () => undefined),
     release: vi.fn(),
+    signal: signal ?? new AbortController().signal,
   };
 }
 
-function createGateway(route: ReturnType<typeof vi.fn>, logger = { warn: vi.fn() }) {
+function createGateway(
+  route: ReturnType<typeof vi.fn>,
+  logger = { warn: vi.fn() },
+  deliveryOptions: {
+    readonly now?: () => number;
+    readonly random?: () => number;
+    readonly wait?: (delayMs: number, signal: AbortSignal) => Promise<void>;
+  } = {},
+) {
   const ctx = {
     middleware: vi.fn(() => vi.fn()),
     on: vi.fn(() => vi.fn()),
@@ -77,7 +94,8 @@ function createGateway(route: ReturnType<typeof vi.fn>, logger = { warn: vi.fn()
       allowedChannels: [{ platform: "*", channelId: "*" }],
       ready: () => storage.start(),
       logger,
-    }),
+      ...deliveryOptions,
+    } as never),
     logger,
   };
 }
@@ -134,6 +152,8 @@ describe("Gateway passive delivery", () => {
       delivery: {
         turnId: "turn-1",
         messageId: "assistant-1",
+        segmentIndex: 1,
+        segmentTotal: 1,
         error: { name: "Error", message: "offline" },
       },
       text: "Delivery failed",
@@ -177,7 +197,7 @@ describe("Gateway passive delivery", () => {
     await rm(basePath, { recursive: true, force: true });
   });
 
-  it("sends complete outputs in yield order and accepts empty receipts", async () => {
+  it("sends complete outputs in yield order, acknowledges only the first success, and accepts empty receipts", async () => {
     const binding = delivery();
     const route = vi.fn(async () => ({
       kind: "run" as const,
@@ -195,10 +215,12 @@ describe("Gateway passive delivery", () => {
     expect(send).toHaveBeenNthCalledWith(1, "first");
     expect(send).toHaveBeenNthCalledWith(2, "second");
     expect(route).toHaveBeenCalledOnce();
+    expect(binding.complete).toHaveBeenCalledTimes(1);
+    expect(binding.complete).toHaveBeenCalledWith("turn-1");
     expect(binding.release).toHaveBeenCalledOnce();
   });
 
-  it("continues later outputs and persists one normalized failure through the bound delivery", async () => {
+  it("stops at the first rejected segment without retrying or duplicating later sends", async () => {
     const binding = delivery();
     const route = vi.fn(async () => ({
       kind: "run" as const,
@@ -215,7 +237,7 @@ describe("Gateway passive delivery", () => {
     await gateway.handle(inbound as never);
 
     expect(send).toHaveBeenNthCalledWith(1, "first");
-    expect(send).toHaveBeenNthCalledWith(2, "second");
+    expect(send).toHaveBeenCalledTimes(1);
     expect(route).toHaveBeenCalledOnce();
     expect(route.mock.calls[0]?.[0]).not.toHaveProperty("send");
     expect(route.mock.calls[0]?.[0]).not.toBe(inbound);
@@ -228,6 +250,8 @@ describe("Gateway passive delivery", () => {
       delivery: {
         turnId: "turn-1",
         messageId: "assistant-1",
+        segmentIndex: 1,
+        segmentTotal: 2,
         error: { name: "Error", message: "offline", code: "ECONNRESET" },
       },
       text: expect.stringContaining("offline"),
@@ -253,7 +277,7 @@ describe("Gateway passive delivery", () => {
     expect(binding.fail).toHaveBeenCalledOnce();
   });
 
-  it("keeps consuming later outputs when bound failure diagnostics fail", async () => {
+  it("stops remaining segments when failure persistence rejects", async () => {
     const binding = delivery();
     binding.fail.mockRejectedValueOnce(new Error("history unavailable"));
     const route = vi.fn(async () => ({
@@ -273,9 +297,104 @@ describe("Gateway passive delivery", () => {
     await expect(gateway.handle(session(send) as never)).resolves.toBeUndefined();
 
     expect(send).toHaveBeenNthCalledWith(1, "first");
-    expect(send).toHaveBeenNthCalledWith(2, "second");
+    expect(send).toHaveBeenCalledTimes(1);
     expect(route).toHaveBeenCalledOnce();
     expect(binding.release).toHaveBeenCalledOnce();
+  });
+
+  it("does not send when the runtime cancelled before the segment delay", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const binding = delivery(controller.signal);
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: outputs("first"),
+      delivery: binding,
+    }));
+    const send = vi.fn(async () => []);
+    const wait = vi.fn(async () => undefined);
+    const { gateway } = createGateway(route, undefined, { wait });
+
+    await gateway.handle(session(send) as never);
+
+    expect(wait).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    expect(binding.complete).not.toHaveBeenCalled();
+    expect(binding.fail).not.toHaveBeenCalled();
+    expect(binding.release).toHaveBeenCalledOnce();
+  });
+
+  it("abandons an in-progress delay when the runtime cancels the turn", async () => {
+    const controller = new AbortController();
+    const binding = delivery(controller.signal);
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: outputs("first", "second"),
+      delivery: binding,
+    }));
+    const send = vi.fn(async () => []);
+    const wait = vi.fn(
+      (_delayMs: number, signal: AbortSignal) =>
+        new Promise<void>((resolve) => signal.addEventListener("abort", resolve, { once: true })),
+    );
+    const { gateway } = createGateway(route, undefined, { wait });
+    const handling = gateway.handle(session(send) as never);
+
+    await vi.waitFor(() => expect(wait).toHaveBeenCalledOnce());
+    controller.abort();
+    await handling;
+
+    expect(send).not.toHaveBeenCalled();
+    expect(binding.complete).not.toHaveBeenCalled();
+    expect(binding.fail).not.toHaveBeenCalled();
+    expect(binding.release).toHaveBeenCalledOnce();
+  });
+
+  it("checks cancellation again after the delay and before sending", async () => {
+    const controller = new AbortController();
+    const binding = delivery(controller.signal);
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: outputs("first"),
+      delivery: binding,
+    }));
+    const send = vi.fn(async () => []);
+    const wait = vi.fn(async () => {
+      controller.abort();
+    });
+    const { gateway } = createGateway(route, undefined, { wait });
+
+    await gateway.handle(session(send) as never);
+
+    expect(wait).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+    expect(binding.complete).not.toHaveBeenCalled();
+    expect(binding.fail).not.toHaveBeenCalled();
+  });
+
+  it("keeps a no-control reply as one unchanged platform send", async () => {
+    const binding = delivery();
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: outputs("  ordinary reply\n"),
+      delivery: binding,
+    }));
+    const send = vi.fn(async () => []);
+    const { gateway } = createGateway(route, undefined, { wait: async () => undefined });
+
+    await gateway.handle(session(send) as never);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith("  ordinary reply\n");
+    expect(binding.complete).toHaveBeenCalledOnce();
   });
 
   it("retains the originating Session only while consuming its active output", async () => {

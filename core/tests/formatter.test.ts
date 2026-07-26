@@ -58,6 +58,8 @@ function deliveryFailureRecord(): EventRecord<"delivery.failed"> {
     delivery: {
       turnId: "turn-1",
       messageId: "assistant-1",
+      segmentIndex: 1,
+      segmentTotal: 1,
       error: { name: "Error", message: "offline" },
     },
     text: "failed",

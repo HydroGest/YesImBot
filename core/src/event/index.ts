@@ -11,6 +11,8 @@ export interface EventMap {
     delivery: {
       turnId: string;
       messageId: string;
+      segmentIndex: number;
+      segmentTotal: number;
       error: { name: string; message: string; code?: string };
     };
   };

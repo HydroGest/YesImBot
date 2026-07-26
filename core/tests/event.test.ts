@@ -53,6 +53,8 @@ function deliveryFailureRecord(
     delivery: {
       turnId: "turn-1",
       messageId: "assistant-1",
+      segmentIndex: 1,
+      segmentTotal: 1,
       error: { name: "Error", message: "offline" },
     },
     text: "failed",
@@ -183,6 +185,8 @@ describe("Event", () => {
     type D = Event<"delivery.failed">["data"];
     expectTypeOf<D["delivery"]["turnId"]>().toBeString();
     expectTypeOf<D["delivery"]["messageId"]>().toBeString();
+    expectTypeOf<D["delivery"]["segmentIndex"]>().toBeNumber();
+    expectTypeOf<D["delivery"]["segmentTotal"]>().toBeNumber();
     expectTypeOf<D["eventType"]>().toEqualTypeOf<"delivery.failed">();
   });
 

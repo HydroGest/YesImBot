@@ -13,6 +13,8 @@ import type { EventRecord, InputRecord, MessageRecord } from "../event/index.js"
 import { createImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
 import { assertAssignee, type RuntimeManager } from "../runtime/index.js";
 import type { ChannelStorage } from "../storage/index.js";
+import { resolveReplyPacingConfig, type PacingConfig } from "../config.js";
+import { nextSegmentDelayMs } from "../reply/pacing.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "./allowlist.js";
 
 export interface ResolveContext {
@@ -38,10 +40,15 @@ export interface GatewayOptions {
   readonly ready: () => Promise<void>;
   readonly logger: Logger;
   readonly mediaPolicy: UnifiedImagePolicy;
+  readonly pacing?: PacingConfig;
+  readonly now?: () => number;
+  readonly random?: () => number;
+  readonly wait?: (delayMs: number, signal: AbortSignal) => Promise<void>;
 }
 
 export class Gateway {
   private mediaPolicy: UnifiedImagePolicy;
+  private readonly pacing: PacingConfig;
   private resolvers = new Map<string, SessionResolver>();
   private sessions = new WeakSet<object>();
   private tasks = new Set<Promise<void>>();
@@ -50,6 +57,7 @@ export class Gateway {
 
   constructor(private readonly opts: GatewayOptions) {
     this.mediaPolicy = opts.mediaPolicy;
+    this.pacing = resolveReplyPacingConfig(opts.pacing);
     const middleware = opts.ctx.middleware(async (session, next) => {
       try {
         await new Promise((resolve, _reject) => {
@@ -146,14 +154,39 @@ export class Gateway {
     }
     try {
       await this.opts.storage.updateName(scope, record.channel.name);
+      const routeStartedAt = this.now();
       const result = await this.opts.runtime.route(record);
       if (result.kind === "run") {
         try {
+          let acknowledged = false;
+          let consumedDeliveryMs = 0;
           for await (const output of result.output) {
+            if (result.delivery.signal.aborted) break;
+            const delayMs = nextSegmentDelayMs({
+              segment: {
+                text: output.content.toString(),
+                index: output.segmentIndex,
+                total: output.segmentTotal,
+                sleepHintMs: output.sleepHintMs,
+              },
+              config: this.pacing,
+              elapsedGenerationMs: this.elapsedSince(routeStartedAt),
+              consumedDeliveryMs,
+              random: this.opts.random ?? Math.random,
+            });
+            const delayStartedAt = this.now();
+            await (this.opts.wait ?? waitForDelay)(delayMs, result.delivery.signal);
+            consumedDeliveryMs += Math.max(delayMs, this.elapsedSince(delayStartedAt));
+            if (result.delivery.signal.aborted) break;
             try {
               await session.send(output.content);
+              if (!acknowledged) {
+                acknowledged = true;
+                await result.delivery.complete(output.turnId);
+              }
             } catch (cause) {
               await this.failDelivery(record, output, cause, result.delivery);
+              break;
             }
           }
         } finally {
@@ -167,7 +200,12 @@ export class Gateway {
 
   private async failDelivery(
     record: InputRecord,
-    output: { readonly turnId: string; readonly messageId: string },
+    output: {
+      readonly turnId: string;
+      readonly messageId: string;
+      readonly segmentIndex: number;
+      readonly segmentTotal: number;
+    },
     cause: unknown,
     delivery: RuntimeManager.Delivery,
   ): Promise<void> {
@@ -182,7 +220,13 @@ export class Gateway {
       selfId: record.selfId,
       timestamp: Date.now(),
       channel: record.channel,
-      delivery: { turnId: output.turnId, messageId: output.messageId, error },
+      delivery: {
+        turnId: output.turnId,
+        messageId: output.messageId,
+        segmentIndex: output.segmentIndex,
+        segmentTotal: output.segmentTotal,
+        error,
+      },
       text: `Delivery of assistant message ${output.messageId} failed: ${error.message}`,
     };
     try {
@@ -213,6 +257,28 @@ export class Gateway {
       });
     } catch {}
   }
+
+  private now(): number {
+    return this.opts.now?.() ?? Date.now();
+  }
+
+  private elapsedSince(startedAt: number): number {
+    return Math.max(0, this.now() - startedAt);
+  }
+}
+
+function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(finish, delayMs);
+    const onAbort = () => finish();
+    function finish(): void {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function isMessageSession(session: Session): boolean {

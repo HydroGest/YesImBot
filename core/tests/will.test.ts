@@ -125,6 +125,8 @@ function deliveryFailedEvent(): Event<"delivery.failed"> {
     delivery: {
       turnId: "turn-1",
       messageId: "message-1",
+      segmentIndex: 1,
+      segmentTotal: 1,
       error: { name: "Error", message: "offline" },
     },
     text: "Delivery failed",
