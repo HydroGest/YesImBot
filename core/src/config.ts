@@ -98,7 +98,9 @@ export const Config: Schema<Config> = Schema.intersect([
         channelId: Schema.string(),
         isDirect: Schema.boolean(),
       }),
-    ).default([]),
+    )
+      .role("table")
+      .default([]),
   }).description("基础配置"),
   Schema.object({
     multimedia: Schema.object({
@@ -143,18 +145,37 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     reply: Schema.object({
       segmentation: Schema.object({
-        maxSegments: Schema.number().min(1).step(1).default(DEFAULT_REPLY_SEGMENTATION_CONFIG.maxSegments),
+        maxSegments: Schema.number()
+          .min(1)
+          .step(1)
+          .default(DEFAULT_REPLY_SEGMENTATION_CONFIG.maxSegments),
       }),
       pacing: Schema.object({
         minDelayMs: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.minDelayMs),
-        maxSegmentDelayMs: Schema.number().min(1).default(DEFAULT_REPLY_PACING_CONFIG.maxSegmentDelayMs),
-        maxTotalDelayMs: Schema.number().min(1).default(DEFAULT_REPLY_PACING_CONFIG.maxTotalDelayMs),
-        cjkCharactersPerSecond: Schema.number().min(1).default(DEFAULT_REPLY_PACING_CONFIG.cjkCharactersPerSecond),
-        latinCharactersPerSecond: Schema.number().min(1).default(DEFAULT_REPLY_PACING_CONFIG.latinCharactersPerSecond),
-        randomFactorMin: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.randomFactorMin),
-        randomFactorMax: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.randomFactorMax),
-        firstSegmentResidualMinMs: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.firstSegmentResidualMinMs),
-        firstSegmentResidualMaxMs: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.firstSegmentResidualMaxMs),
+        maxSegmentDelayMs: Schema.number()
+          .min(1)
+          .default(DEFAULT_REPLY_PACING_CONFIG.maxSegmentDelayMs),
+        maxTotalDelayMs: Schema.number()
+          .min(1)
+          .default(DEFAULT_REPLY_PACING_CONFIG.maxTotalDelayMs),
+        cjkCharactersPerSecond: Schema.number()
+          .min(1)
+          .default(DEFAULT_REPLY_PACING_CONFIG.cjkCharactersPerSecond),
+        latinCharactersPerSecond: Schema.number()
+          .min(1)
+          .default(DEFAULT_REPLY_PACING_CONFIG.latinCharactersPerSecond),
+        randomFactorMin: Schema.number()
+          .min(0)
+          .default(DEFAULT_REPLY_PACING_CONFIG.randomFactorMin),
+        randomFactorMax: Schema.number()
+          .min(0)
+          .default(DEFAULT_REPLY_PACING_CONFIG.randomFactorMax),
+        firstSegmentResidualMinMs: Schema.number()
+          .min(0)
+          .default(DEFAULT_REPLY_PACING_CONFIG.firstSegmentResidualMinMs),
+        firstSegmentResidualMaxMs: Schema.number()
+          .min(0)
+          .default(DEFAULT_REPLY_PACING_CONFIG.firstSegmentResidualMaxMs),
       }),
     }),
   }).description("回复分段与节奏"),

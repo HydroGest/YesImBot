@@ -13,7 +13,10 @@ import {
 describe("reply observability", () => {
   it("measures a repeated segment-count run while varied counts retain entropy", () => {
     const variedCounts = [1, 2, 1, 3, 2, 1, 2, 3];
-    const repeatedCounts = Array.from({ length: IDENTICAL_SEGMENT_COUNT_RUN_LENGTH_ALARM_THRESHOLD }, () => 2);
+    const repeatedCounts = Array.from(
+      { length: IDENTICAL_SEGMENT_COUNT_RUN_LENGTH_ALARM_THRESHOLD },
+      () => 2,
+    );
 
     expect(slidingWindowSegmentCountEntropy(variedCounts)).toBeCloseTo(
       REPLY_OBSERVABILITY_BASELINE.segmentCountEntropyBits,

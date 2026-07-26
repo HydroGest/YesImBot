@@ -9,14 +9,14 @@ import {
 } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
+import { resolveReplyPacingConfig, type PacingConfig } from "../config.js";
 import { normalizeElements, sealElements, unavailableImage } from "../event/element.js";
 import type { EventRecord, InputRecord, MessageRecord } from "../event/index.js";
 import { createImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
+import type { ReplyDeliveryStatus, ReplyObservation } from "../reply/observability.js";
+import { nextSegmentDelayMs } from "../reply/pacing.js";
 import { assertAssignee, type RuntimeManager } from "../runtime/index.js";
 import type { ChannelStorage } from "../storage/index.js";
-import { resolveReplyPacingConfig, type PacingConfig } from "../config.js";
-import { nextSegmentDelayMs } from "../reply/pacing.js";
-import type { ReplyDeliveryStatus, ReplyObservation } from "../reply/observability.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "./allowlist.js";
 
 export interface ResolveContext {
@@ -162,7 +162,10 @@ export class Gateway {
         try {
           let acknowledged = false;
           let consumedDeliveryMs = 0;
-          const pending = new Map<string, { readonly output: GatewayOutput; readonly startedAt: number }>();
+          const pending = new Map<
+            string,
+            { readonly output: GatewayOutput; readonly startedAt: number }
+          >();
           try {
             for await (const output of result.output) {
               const gatewayOutput = output;
@@ -173,7 +176,12 @@ export class Gateway {
                 });
               }
               if (result.delivery.signal.aborted) {
-                this.settleObservation(result.delivery, pending, gatewayOutput.messageId, "cancelled");
+                this.settleObservation(
+                  result.delivery,
+                  pending,
+                  gatewayOutput.messageId,
+                  "cancelled",
+                );
                 break;
               }
               const delayMs = nextSegmentDelayMs({
@@ -182,17 +190,22 @@ export class Gateway {
                   index: gatewayOutput.segmentIndex,
                   total: gatewayOutput.segmentTotal,
                   sleepHintMs: gatewayOutput.sleepHintMs,
-              },
-              config: this.pacing,
-              elapsedGenerationMs: this.elapsedSince(routeStartedAt),
-              consumedDeliveryMs,
-              random: this.opts.random ?? Math.random,
-            });
+                },
+                config: this.pacing,
+                elapsedGenerationMs: this.elapsedSince(routeStartedAt),
+                consumedDeliveryMs,
+                random: this.opts.random ?? Math.random,
+              });
               const delayStartedAt = this.now();
               await (this.opts.wait ?? waitForDelay)(delayMs, result.delivery.signal);
               consumedDeliveryMs += Math.max(delayMs, this.elapsedSince(delayStartedAt));
               if (result.delivery.signal.aborted) {
-                this.settleObservation(result.delivery, pending, gatewayOutput.messageId, "cancelled");
+                this.settleObservation(
+                  result.delivery,
+                  pending,
+                  gatewayOutput.messageId,
+                  "cancelled",
+                );
                 break;
               }
               try {
@@ -202,7 +215,12 @@ export class Gateway {
                   await result.delivery.complete(gatewayOutput.turnId);
                 }
                 if (gatewayOutput.segmentIndex === gatewayOutput.segmentTotal) {
-                  this.settleObservation(result.delivery, pending, gatewayOutput.messageId, "delivered");
+                  this.settleObservation(
+                    result.delivery,
+                    pending,
+                    gatewayOutput.messageId,
+                    "delivered",
+                  );
                 }
               } catch (cause) {
                 this.settleObservation(result.delivery, pending, gatewayOutput.messageId, "failed");
@@ -280,7 +298,9 @@ export class Gateway {
       skipped: false,
       totalDeliveryMs: this.elapsedSince(startedAt),
       deliveryStatus,
-      ...(output.degradationReason === undefined ? {} : { degradationReason: output.degradationReason }),
+      ...(output.degradationReason === undefined
+        ? {}
+        : { degradationReason: output.degradationReason }),
     };
     delivery.observe(observation);
   }

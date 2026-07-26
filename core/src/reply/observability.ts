@@ -122,7 +122,9 @@ function providerComplianceSnapshot(
 ): ProviderComplianceSnapshot {
   const totalReplies = observations.length;
   const controlElementAdoptionCount = observations.filter((entry) => entry.controlAdopted).length;
-  const degradationCount = observations.filter((entry) => entry.degradationReason !== undefined).length;
+  const degradationCount = observations.filter(
+    (entry) => entry.degradationReason !== undefined,
+  ).length;
   const skipCount = observations.filter((entry) => entry.skipped).length;
   return {
     provider,
@@ -137,7 +139,9 @@ function providerComplianceSnapshot(
 }
 
 function normalizedWindowSize(windowSize: number): number {
-  return Number.isSafeInteger(windowSize) && windowSize > 0 ? windowSize : REPLY_OBSERVABILITY_WINDOW_SIZE;
+  return Number.isSafeInteger(windowSize) && windowSize > 0
+    ? windowSize
+    : REPLY_OBSERVABILITY_WINDOW_SIZE;
 }
 
 function rate(count: number, total: number): number {

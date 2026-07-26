@@ -127,7 +127,9 @@ function buildSegmentCandidates(
 }
 
 function hasResidualControlElement(candidates: readonly SegmentCandidate[]): boolean {
-  return candidates.some(({ text }) => findControlElements(text, findProtectionZones(text)).length > 0);
+  return candidates.some(
+    ({ text }) => findControlElements(text, findProtectionZones(text)).length > 0,
+  );
 }
 
 function degradedReply(
@@ -225,7 +227,11 @@ function mergeExcessSegments(
 function withSegmentPositions(
   segments: readonly Pick<ReplySegment, "text" | "sleepHintMs">[],
 ): readonly ReplySegment[] {
-  return segments.map((segment, index) => ({ ...segment, index: index + 1, total: segments.length }));
+  return segments.map((segment, index) => ({
+    ...segment,
+    index: index + 1,
+    total: segments.length,
+  }));
 }
 
 function safeString(value: unknown): string {
@@ -268,9 +274,12 @@ export function findControlElements(
 }
 
 export function unescapeControlEntities(raw: string): string {
-  return raw.replace(/&lt;(\/?inner_thought|sep\s*\/|sleep\s+ms=&quot;\d+&quot;\s*\/|skip\s*\/)&gt;/g, (_, element: string) => {
-    return `<${element.replaceAll("&quot;", '"')}>`;
-  });
+  return raw.replace(
+    /&lt;(\/?inner_thought|sep\s*\/|sleep\s+ms=&quot;\d+&quot;\s*\/|skip\s*\/)&gt;/g,
+    (_, element: string) => {
+      return `<${element.replaceAll("&quot;", '"')}>`;
+    },
+  );
 }
 
 function addFencedCodeZones(raw: string, zones: ProtectionZone[]): void {
@@ -300,7 +309,12 @@ function addInlineCodeZones(raw: string, zones: ProtectionZone[]): void {
     }
 
     const delimiterLength = backtickRunLength(raw, index);
-    const closing = findInlineClosingDelimiter(raw, index + delimiterLength, delimiterLength, zones);
+    const closing = findInlineClosingDelimiter(
+      raw,
+      index + delimiterLength,
+      delimiterLength,
+      zones,
+    );
     if (closing === undefined) {
       index += delimiterLength;
       continue;
@@ -330,11 +344,17 @@ function addPlatformElementZones(raw: string, zones: ProtectionZone[]): void {
     const start = match.index;
     const openingTag = match[0];
     const name = match[1]?.toLowerCase();
-    if (name === undefined || isRecognizedControlTag(openingTag) || isProtected(start, start + openingTag.length, zones)) {
+    if (
+      name === undefined ||
+      isRecognizedControlTag(openingTag) ||
+      isProtected(start, start + openingTag.length, zones)
+    ) {
       continue;
     }
 
-    const end = openingTag.endsWith("/>") ? start + openingTag.length : platformElementEnd(raw, name, start, openingTag);
+    const end = openingTag.endsWith("/>")
+      ? start + openingTag.length
+      : platformElementEnd(raw, name, start, openingTag);
     addZone(zones, { start, end });
   }
 }
@@ -349,7 +369,11 @@ function fenceAtLineStart(raw: string, lineStart: number): { readonly length: nu
   return length >= 3 ? { length } : undefined;
 }
 
-function findClosingFence(raw: string, lineStart: number, delimiterLength: number): number | undefined {
+function findClosingFence(
+  raw: string,
+  lineStart: number,
+  delimiterLength: number,
+): number | undefined {
   let currentLineStart = lineStart;
   while (currentLineStart < raw.length) {
     const fence = fenceAtLineStart(raw, currentLineStart);

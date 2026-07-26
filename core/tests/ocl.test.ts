@@ -2,25 +2,25 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
+import { DEFAULT_REPLY_PACING_CONFIG, DEFAULT_REPLY_SEGMENTATION_CONFIG } from "../src/config.js";
 import {
   findControlElements,
   findProtectionZones,
   parseReply,
   unescapeControlEntities,
 } from "../src/reply/ocl.js";
-import { DEFAULT_REPLY_PACING_CONFIG, DEFAULT_REPLY_SEGMENTATION_CONFIG } from "../src/config.js";
 
 describe("OCL protection zones", () => {
   it("preserves language-tagged and unterminated fenced blocks as original ranges", () => {
     const fenced = "before\n```ts\nconst marker = '<sep/>'\n```\nafter";
     const unterminated = "before\n```ts\nconst marker = '<sep/>'";
 
-    expect(findProtectionZones(fenced).map((range) => fenced.slice(range.start, range.end))).toEqual([
-      "```ts\nconst marker = '<sep/>'\n```",
-    ]);
-    expect(findProtectionZones(unterminated).map((range) => unterminated.slice(range.start, range.end))).toEqual([
-      "```ts\nconst marker = '<sep/>'",
-    ]);
+    expect(
+      findProtectionZones(fenced).map((range) => fenced.slice(range.start, range.end)),
+    ).toEqual(["```ts\nconst marker = '<sep/>'\n```"]);
+    expect(
+      findProtectionZones(unterminated).map((range) => unterminated.slice(range.start, range.end)),
+    ).toEqual(["```ts\nconst marker = '<sep/>'"]);
   });
 
   it("preserves nested and doubled inline backticks", () => {
@@ -33,7 +33,8 @@ describe("OCL protection zones", () => {
   });
 
   it("keeps adjacent URLs and platform elements in separate original ranges", () => {
-    const raw = "https://example.invalid/path?<sep/>=<skip/><at id=\"user\"/><img src=\"x\"/><quote id=\"q\"><sep/></quote>";
+    const raw =
+      'https://example.invalid/path?<sep/>=<skip/><at id="user"/><img src="x"/><quote id="q"><sep/></quote>';
 
     expect(findProtectionZones(raw).map((range) => raw.slice(range.start, range.end))).toEqual([
       "https://example.invalid/path?<sep/>=<skip/>",
@@ -44,25 +45,34 @@ describe("OCL protection zones", () => {
   });
 
   it("preserves arbitrary non-control platform elements with balanced and unclosed bodies", () => {
-    const balanced = '<message id="outer"><message id="inner"><sep/></message><skip/></message><face id="smile"/>';
+    const balanced =
+      '<message id="outer"><message id="inner"><sep/></message><skip/></message><face id="smile"/>';
     const unclosed = '<message id="partial"><sep/>';
 
-    expect(findProtectionZones(balanced).map((range) => balanced.slice(range.start, range.end))).toEqual([
+    expect(
+      findProtectionZones(balanced).map((range) => balanced.slice(range.start, range.end)),
+    ).toEqual([
       '<message id="outer"><message id="inner"><sep/></message><skip/></message>',
       '<face id="smile"/>',
     ]);
     expect(findControlElements(balanced, findProtectionZones(balanced))).toEqual([]);
-    expect(findProtectionZones(unclosed).map((range) => unclosed.slice(range.start, range.end))).toEqual([unclosed]);
+    expect(
+      findProtectionZones(unclosed).map((range) => unclosed.slice(range.start, range.end)),
+    ).toEqual([unclosed]);
     expect(findControlElements(unclosed, findProtectionZones(unclosed))).toEqual([]);
   });
 });
 
 describe("OCL control elements", () => {
   it("recognizes exactly the four host controls outside protection zones", () => {
-    const raw = '<inner_thought>plan</inner_thought><sep/><sleep ms="250"/><skip/><plugin_control/><sleep/><sleep ms="bad"/>';
+    const raw =
+      '<inner_thought>plan</inner_thought><sep/><sleep ms="250"/><skip/><plugin_control/><sleep/><sleep ms="bad"/>';
 
     expect(
-      findControlElements(raw, findProtectionZones(raw)).map(({ type, raw: element }) => ({ type, raw: element })),
+      findControlElements(raw, findProtectionZones(raw)).map(({ type, raw: element }) => ({
+        type,
+        raw: element,
+      })),
     ).toEqual([
       { type: "inner_thought", raw: "<inner_thought>plan</inner_thought>" },
       { type: "sep", raw: "<sep/>" },
@@ -72,13 +82,14 @@ describe("OCL control elements", () => {
   });
 
   it("leaves unrecognized look-alikes visible and controls inside zones literal", () => {
-    const raw = "<separator/> <sep></sep> `<skip/>` <at id=\"u\"><sep/></at>";
+    const raw = '<separator/> <sep></sep> `<skip/>` <at id="u"><sep/></at>';
 
     expect(findControlElements(raw, findProtectionZones(raw))).toEqual([]);
   });
 
   it("unescapes only escaped control elements without rewriting unrelated entities", () => {
-    const raw = "&lt;sep/&gt; &lt;sleep ms=&quot;250&quot;/&gt; &lt;skip/&gt; &lt;inner_thought&gt;note&lt;/inner_thought&gt; &amp; &apos; &quot; &lt;tag&gt;";
+    const raw =
+      "&lt;sep/&gt; &lt;sleep ms=&quot;250&quot;/&gt; &lt;skip/&gt; &lt;inner_thought&gt;note&lt;/inner_thought&gt; &amp; &apos; &quot; &lt;tag&gt;";
 
     expect(findControlElements(raw, findProtectionZones(raw))).toEqual([]);
     expect(unescapeControlEntities(raw)).toBe(
@@ -109,18 +120,23 @@ describe("OCL reply parsing", () => {
   it("preserves surrounding whitespace semantics while removing an inner thought", () => {
     const parsed = parseReply("before <inner_thought>private</inner_thought> after", limits);
 
-    expect(parsed.segments).toEqual([{ text: "before  after", sleepHintMs: 0, index: 1, total: 1 }]);
+    expect(parsed.segments).toEqual([
+      { text: "before  after", sleepHintMs: 0, index: 1, total: 1 },
+    ]);
   });
 
   it("skips visible delivery after extracting inner thoughts", () => {
-    const parsed = parseReply('<inner_thought>decline</inner_thought>visible<skip/>content', limits);
+    const parsed = parseReply(
+      "<inner_thought>decline</inner_thought>visible<skip/>content",
+      limits,
+    );
 
     expect(parsed).toEqual({ innerThoughts: ["decline"], skipped: true, segments: [] });
   });
 
   it("keeps protected and escaped controls literal while normalizing marked separators", () => {
     const parsed = parseReply(
-      ' <sep/> first <sep/><sep/> `literal <sep/>` <sep/> https://example.invalid/?x=<sep/> &lt;sep/&gt; <sep/> ',
+      " <sep/> first <sep/><sep/> `literal <sep/>` <sep/> https://example.invalid/?x=<sep/> &lt;sep/&gt; <sep/> ",
       limits,
     );
 
@@ -164,7 +180,7 @@ describe("OCL reply parsing", () => {
   });
 
   it("degrades an empty normalized reply to one sanitized segment", () => {
-    const parsed = parseReply(" <sep/> <sleep ms=\"20\"/> ", limits);
+    const parsed = parseReply(' <sep/> <sleep ms="20"/> ', limits);
 
     expect(parsed).toEqual({
       innerThoughts: [],

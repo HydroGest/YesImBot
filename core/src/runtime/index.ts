@@ -32,11 +32,16 @@ import {
   type UnifiedImagePolicy,
 } from "../media/index.js";
 import { resolveBasePath } from "../path.js";
+import { ReplyObservability, type ReplyObservation } from "../reply/observability.js";
+import {
+  findControlElements,
+  findProtectionZones,
+  parseReply,
+  type DegradationReason,
+} from "../reply/ocl.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { createWillEngine } from "../will/index.js";
 import type { WillEngine, WillEngineObservation } from "../will/index.js";
-import { findControlElements, findProtectionZones, parseReply, type DegradationReason } from "../reply/ocl.js";
-import { ReplyObservability, type ReplyObservation } from "../reply/observability.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
 import { createJsonlStorage } from "./storage.js";
 
@@ -488,9 +493,7 @@ function isAssistantMessage(event: AgentInternalEvent): event is AgentInternalEv
   message: { id: string; role: "assistant"; content: unknown };
 } {
   return (
-    event.type === "message.appended" &&
-    "turnId" in event &&
-    event.message.role === "assistant"
+    event.type === "message.appended" && "turnId" in event && event.message.role === "assistant"
   );
 }
 
@@ -521,7 +524,9 @@ function parseAssistantContent(content: unknown, maxSegments: number) {
 
 function hasRenderableSegment(content: unknown, maxSegments: number): boolean {
   return (
-    parseAssistantContent(content, maxSegments)?.parsed.segments.some((segment) => segment.text.length > 0) === true
+    parseAssistantContent(content, maxSegments)?.parsed.segments.some(
+      (segment) => segment.text.length > 0,
+    ) === true
   );
 }
 
@@ -863,7 +868,8 @@ export class ChannelRuntime {
 
   private recordReplyCompletion(result: TurnResult): Promise<void> {
     return this.enqueueReplyCompletion(async () => {
-      if (result.status === "failed" || result.status === "aborted") this.abortDelivery(result.turnId);
+      if (result.status === "failed" || result.status === "aborted")
+        this.abortDelivery(result.turnId);
       const completion = this.replyCompletions.get(result.turnId);
       if (!completion) return;
       completion.eligibility =
@@ -878,7 +884,10 @@ export class ChannelRuntime {
     });
   }
 
-  private async reconcileReplyCompletion(turnId: string, completion: ReplyCompletion): Promise<void> {
+  private async reconcileReplyCompletion(
+    turnId: string,
+    completion: ReplyCompletion,
+  ): Promise<void> {
     if (completion.eligibility === "ineligible") {
       this.replyCompletions.delete(turnId);
       return;
