@@ -66,6 +66,7 @@ type ChannelOutput = {
   readonly content: Fragment;
   readonly segmentIndex: number;
   readonly segmentTotal: number;
+  readonly sleepHintMs: number;
 };
 
 type ChannelRuntimeResult =
@@ -81,6 +82,7 @@ type ChannelRuntimeResult =
 type RuntimeDelivery = {
   readonly fail: (record: EventRecord<"delivery.failed">) => Promise<ChannelRuntimeResult>;
   readonly complete: (turnId: string) => Promise<void>;
+  readonly signal: AbortSignal;
   readonly release: () => void;
 };
 
@@ -158,6 +160,7 @@ export class RuntimeManager {
       delivery: {
         fail: (failure) => runtime.handleInternal(failure),
         complete: (turnId) => runtime.completeDelivery(turnId),
+        signal: runtime.deliverySignal(result.turnId),
         release: () => {
           runtime.releaseDelivery(result.turnId);
           release();
@@ -531,6 +534,7 @@ export class ChannelRuntime {
   private readonly agent: Agent;
   private readonly maxSegments: number;
   private replyCompletions = new Map<string, ReplyCompletion>();
+  private deliveryAborts = new Map<string, AbortController>();
   private replyCompletionTail = Promise.resolve();
   private initTask: Promise<void> | undefined;
 
@@ -670,6 +674,12 @@ export class ChannelRuntime {
     });
   }
 
+  deliverySignal(turnId: string): AbortSignal {
+    const controller = this.deliveryAborts.get(turnId);
+    if (!controller) throw new Error(`Delivery signal is unavailable for turn ${turnId}`);
+    return controller.signal;
+  }
+
   drainAndStop(): Promise<void> {
     if (this.drainTask) return this.drainTask;
     this.beginDrain();
@@ -754,6 +764,7 @@ export class ChannelRuntime {
       deliveryReleased: false,
       eligibility: "pending",
     });
+    this.deliveryAborts.set(turnId, new AbortController());
     const task = this.consumeStream(stream, output);
     this.streams.add(task);
     void task.finally(() => this.streams.delete(task));
@@ -776,13 +787,20 @@ export class ChannelRuntime {
                 messageId: event.message.id,
                 content: segment.text,
                 segmentIndex: segment.index,
-                segmentTotal: segment.total,
+              segmentTotal: segment.total,
+              sleepHintMs: segment.sleepHintMs,
               });
             }
           }
         }
-        if (event.type === "turn.failed") throw new Error(event.error.message);
-        if (event.type === "turn.aborted") throw new Error("Agent turn aborted");
+        if (event.type === "turn.failed") {
+          this.abortDelivery(event.turnId);
+          throw new Error(event.error.message);
+        }
+        if (event.type === "turn.aborted") {
+          this.abortDelivery(event.turnId);
+          throw new Error("Agent turn aborted");
+        }
       }
       output.close();
     } catch (cause) {
@@ -795,12 +813,14 @@ export class ChannelRuntime {
       const completion = this.replyCompletions.get(turnId);
       if (!completion) return;
       completion.deliveryReleased = true;
+      this.deliveryAborts.delete(turnId);
       await this.reconcileReplyCompletion(turnId, completion);
     });
   }
 
   private recordReplyCompletion(result: TurnResult): Promise<void> {
     return this.enqueueReplyCompletion(async () => {
+      if (result.status === "failed" || result.status === "aborted") this.abortDelivery(result.turnId);
       const completion = this.replyCompletions.get(result.turnId);
       if (!completion) return;
       completion.eligibility =
@@ -840,6 +860,10 @@ export class ChannelRuntime {
       () => undefined,
     );
     return next;
+  }
+
+  private abortDelivery(turnId: string): void {
+    this.deliveryAborts.get(turnId)?.abort();
   }
 
   private readState(): WillEngine.State {

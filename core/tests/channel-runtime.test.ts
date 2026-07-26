@@ -284,6 +284,8 @@ describe("ChannelRuntime", () => {
       delivery: {
         turnId: "turn-1",
         messageId: "assistant-1",
+        segmentIndex: 1,
+        segmentTotal: 1,
         error: { name: "Error", message: "offline" },
       },
     };
@@ -363,6 +365,7 @@ describe("ChannelRuntime", () => {
         content: "first",
         segmentIndex: 1,
         segmentTotal: 1,
+        sleepHintMs: 0,
       },
       {
         turnId: "turn-1",
@@ -370,6 +373,7 @@ describe("ChannelRuntime", () => {
         content: "second",
         segmentIndex: 1,
         segmentTotal: 1,
+        sleepHintMs: 0,
       },
     ]);
   });
@@ -403,6 +407,7 @@ describe("ChannelRuntime", () => {
         content: "first",
         segmentIndex: 1,
         segmentTotal: 2,
+        sleepHintMs: 120,
       },
       {
         turnId: "turn-1",
@@ -410,6 +415,7 @@ describe("ChannelRuntime", () => {
         content: "second",
         segmentIndex: 2,
         segmentTotal: 2,
+        sleepHintMs: 0,
       },
     ]);
   });
@@ -531,6 +537,8 @@ describe("ChannelRuntime", () => {
       delivery: {
         turnId: "turn-1",
         messageId: "assistant-1",
+        segmentIndex: 1,
+        segmentTotal: 1,
         error: { name: "Error", message: "offline" },
       },
     });
@@ -1107,6 +1115,8 @@ describe("ChannelRuntime", () => {
       delivery: {
         turnId: "turn-1",
         messageId: "assistant-1",
+        segmentIndex: 1,
+        segmentTotal: 1,
         error: { name: "Error", message: "offline" },
       },
       text: "Delivery failed",
