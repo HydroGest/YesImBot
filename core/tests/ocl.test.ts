@@ -5,6 +5,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import {
   findControlElements,
   findProtectionZones,
+  parseReply,
   unescapeControlEntities,
 } from "../src/reply/ocl.js";
 import { DEFAULT_REPLY_PACING_CONFIG, DEFAULT_REPLY_SEGMENTATION_CONFIG } from "../src/config.js";
@@ -83,6 +84,116 @@ describe("OCL control elements", () => {
     expect(unescapeControlEntities(raw)).toBe(
       '<sep/> <sleep ms="250"/> <skip/> <inner_thought>note</inner_thought> &amp; &apos; &quot; &lt;tag&gt;',
     );
+  });
+});
+
+describe("OCL reply parsing", () => {
+  const limits = { maxSegments: 3 };
+
+  it("extracts inner thoughts before splitting and sums sleep hints within each visible segment", () => {
+    const parsed = parseReply(
+      '<inner_thought>private plan</inner_thought> first <sleep ms="120"/><sep/> second <sleep ms="80"/><sleep ms="20"/>',
+      limits,
+    );
+
+    expect(parsed).toEqual({
+      innerThoughts: ["private plan"],
+      skipped: false,
+      segments: [
+        { text: "first", sleepHintMs: 120, index: 1, total: 2 },
+        { text: "second", sleepHintMs: 100, index: 2, total: 2 },
+      ],
+    });
+  });
+
+  it("preserves surrounding whitespace semantics while removing an inner thought", () => {
+    const parsed = parseReply("before <inner_thought>private</inner_thought> after", limits);
+
+    expect(parsed.segments).toEqual([{ text: "before  after", sleepHintMs: 0, index: 1, total: 1 }]);
+  });
+
+  it("skips visible delivery after extracting inner thoughts", () => {
+    const parsed = parseReply('<inner_thought>decline</inner_thought>visible<skip/>content', limits);
+
+    expect(parsed).toEqual({ innerThoughts: ["decline"], skipped: true, segments: [] });
+  });
+
+  it("keeps protected and escaped controls literal while normalizing marked separators", () => {
+    const parsed = parseReply(
+      ' <sep/> first <sep/><sep/> `literal <sep/>` <sep/> https://example.invalid/?x=<sep/> &lt;sep/&gt; <sep/> ',
+      limits,
+    );
+
+    expect(parsed.segments).toEqual([
+      { text: "first", sleepHintMs: 0, index: 1, total: 3 },
+      { text: "`literal <sep/>`", sleepHintMs: 0, index: 2, total: 3 },
+      {
+        text: "https://example.invalid/?x=<sep/> <sep/>",
+        sleepHintMs: 0,
+        index: 3,
+        total: 3,
+      },
+    ]);
+  });
+
+  it("is deterministic and never adds semantic split points", () => {
+    const raw = "One sentence. Another sentence! No model separator here?";
+
+    expect(parseReply(raw, limits)).toEqual(parseReply(raw, limits));
+    expect(parseReply(raw, limits).segments).toEqual([
+      { text: raw, sleepHintMs: 0, index: 1, total: 1 },
+    ]);
+  });
+
+  it("merges excess segments at the configured maximum without losing text or sleep hints", () => {
+    const parsed = parseReply(
+      'one<sleep ms="10"/><sep/>two<sleep ms="20"/><sep/>three<sleep ms="30"/><sep/>four<sleep ms="40"/>',
+      { maxSegments: 3 },
+    );
+
+    expect(parsed).toEqual({
+      innerThoughts: [],
+      skipped: false,
+      degraded: "segment_limit_exceeded",
+      segments: [
+        { text: "one", sleepHintMs: 10, index: 1, total: 3 },
+        { text: "two", sleepHintMs: 20, index: 2, total: 3 },
+        { text: "threefour", sleepHintMs: 70, index: 3, total: 3 },
+      ],
+    });
+  });
+
+  it("degrades an empty normalized reply to one sanitized segment", () => {
+    const parsed = parseReply(" <sep/> <sleep ms=\"20\"/> ", limits);
+
+    expect(parsed).toEqual({
+      innerThoughts: [],
+      skipped: false,
+      degraded: "no_segments",
+      segments: [{ text: "", sleepHintMs: 0, index: 1, total: 1 }],
+    });
+  });
+
+  it("degrades reconstructed residual controls without leaking the control element", () => {
+    const parsed = parseReply("before<<inner_thought>private</inner_thought>sep/>after", limits);
+
+    expect(parsed).toEqual({
+      innerThoughts: ["private"],
+      skipped: false,
+      degraded: "residual_control_element",
+      segments: [{ text: "beforeafter", sleepHintMs: 0, index: 1, total: 1 }],
+    });
+  });
+
+  it("degrades parse failures to sanitized visible text", () => {
+    const malformed = { toString: () => "visible<sep/>text" } as unknown as string;
+
+    expect(parseReply(malformed, limits)).toEqual({
+      innerThoughts: [],
+      skipped: false,
+      degraded: "parse_failed",
+      segments: [{ text: "visibletext", sleepHintMs: 0, index: 1, total: 1 }],
+    });
   });
 });
 
