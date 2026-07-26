@@ -10,6 +10,7 @@ import {
   isMessage,
   isMessageRecord,
   type Event,
+  type EventBase,
   type EventMap,
   type EventRecord,
   type Input,
@@ -29,7 +30,7 @@ declare module "koishi-plugin-yesimbot" {
 
 function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     platform: "test",
     selfId: "bot-1",
     channel: { id: "channel-1" },
@@ -45,7 +46,7 @@ function deliveryFailureRecord(
   overrides: { timestamp?: number } = {},
 ): EventRecord<"delivery.failed"> {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     eventType: "delivery.failed",
     platform: "test",
     selfId: "bot-1",
@@ -69,7 +70,7 @@ describe("Event", () => {
       role: "custom",
       type: "yesimbot.message",
       timestamp: 1234,
-      data: { schemaVersion: 1, messageId: "m1", text: "hello" },
+      data: { schemaVersion: 2, messageId: "m1", text: "hello" },
     });
     expect("timestamp" in message.data).toBe(false);
   });
@@ -79,7 +80,7 @@ describe("Event", () => {
     expect(event).toMatchObject({
       type: "yesimbot.event",
       timestamp: 5678,
-      data: { schemaVersion: 1, eventType: "delivery.failed" },
+      data: { schemaVersion: 2, eventType: "delivery.failed" },
     });
     expect("timestamp" in event.data).toBe(false);
   });
@@ -195,6 +196,48 @@ describe("Event", () => {
     expectTypeOf<T["test"]["value"]>().toBeNumber();
     expectTypeOf<T["channel"]["id"]>().toBeString();
     expectTypeOf<T["eventType"]>().toEqualTypeOf<"test.variant">();
+  });
+
+  it("constructs a declaration-merged event from the closed host base", () => {
+    const event = createEvent({
+      schemaVersion: 2,
+      eventType: "test.variant",
+      platform: "test",
+      selfId: "bot-1",
+      channel: { id: "channel-1" },
+      timestamp: 5678,
+      text: "variant",
+      test: { value: 42 },
+    });
+
+    expect(event.data).toMatchObject({
+      schemaVersion: 2,
+      eventType: "test.variant",
+      platform: "test",
+      selfId: "bot-1",
+      channel: { id: "channel-1" },
+      text: "variant",
+      test: { value: 42 },
+    });
+  });
+
+  it("keeps message and event host records free of Universal.Event residue", () => {
+    expectTypeOf<MessageRecord>().toHaveProperty("messageId");
+    expectTypeOf<MessageRecord>().toHaveProperty("elements");
+    expectTypeOf<MessageRecord>().toHaveProperty("text");
+    expectTypeOf<MessageRecord>().not.toHaveProperty("guild");
+    expectTypeOf<MessageRecord>().not.toHaveProperty("member");
+    expectTypeOf<EventBase>().toHaveProperty("eventType");
+    expectTypeOf<EventBase>().toHaveProperty("text");
+    expectTypeOf<EventBase>().not.toHaveProperty("guild");
+    expectTypeOf<EventBase>().not.toHaveProperty("member");
+  });
+
+  it("rejects inherited Universal.Event resources from a message record", () => {
+    // @ts-expect-error MessageRecord must not admit Universal.Event residue.
+    const record: MessageRecord = { ...messageRecord(), guild: { id: "guild-1" } };
+
+    expect(record.messageId).toBe("m1");
   });
 
   it("createEvent returns variant-specific Event type", () => {

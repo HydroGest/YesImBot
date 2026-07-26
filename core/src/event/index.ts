@@ -18,10 +18,8 @@ export interface EventMap {
   };
 }
 
-export interface MessageData extends Readonly<
-  Omit<Universal.Event, "type" | "timestamp" | "message" | "content">
-> {
-  readonly schemaVersion: 1;
+export type MessageRecord = Readonly<{
+  readonly schemaVersion: 2;
   readonly platform: string;
   readonly selfId: string;
   readonly channel: Universal.Channel;
@@ -29,25 +27,39 @@ export interface MessageData extends Readonly<
   readonly messageId: string;
   readonly elements: readonly Element[];
   readonly text: string;
-}
+  readonly timestamp: number;
+}>;
 
-export type MessageRecord = Readonly<MessageData & { readonly timestamp: number }>;
+export type EventBase = Readonly<{
+  readonly schemaVersion: 2;
+  readonly platform: string;
+  readonly selfId: string;
+  readonly channel: Universal.Channel;
+  readonly timestamp: number;
+  readonly eventType: string;
+  readonly text: string;
+}>;
 
-export type EventRecord<K extends keyof EventMap = keyof EventMap> = {
-  [P in K]: Readonly<Omit<Universal.Event, "type" | "timestamp" | "message" | "content">> & {
-    readonly schemaVersion: 1;
-    readonly eventType: P;
-    readonly text: string;
-    readonly platform: string;
-    readonly selfId: string;
-    readonly channel: Universal.Channel;
-    readonly timestamp: number;
-  } & EventMap[P];
-}[K];
+export type EventRecord<K extends keyof EventMap = keyof EventMap> = K extends K
+  ? Readonly<EventBase & { readonly eventType: K } & EventMap[K]>
+  : never;
+
+export type ResolvedMessageDraft = Readonly<{
+  readonly kind: "message";
+  readonly messageId: string;
+  readonly elements: readonly Element[];
+  readonly text?: string;
+  readonly user?: { readonly id?: string; readonly name?: string };
+  readonly channel?: { readonly name?: string };
+}>;
+
+export type ResolvedEventDraft<K extends keyof EventMap = keyof EventMap> = Readonly<
+  { readonly kind: "event"; readonly eventType: K; readonly text: string } & EventMap[K]
+>;
 
 export type InputRecord = MessageRecord | EventRecord;
 
-export type Message = CustomMessageBase<"yesimbot.message", MessageData>;
+export type Message = CustomMessageBase<"yesimbot.message", Omit<MessageRecord, "timestamp">>;
 
 export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<
   "yesimbot.event",
@@ -86,7 +98,15 @@ export function isMessage(message: AgentMessage): message is Message {
   if (message.role !== "custom" || message.type !== "yesimbot.message") return false;
   const data = message.data;
   return (
-    typeof data === "object" && data !== null && "schemaVersion" in data && data.schemaVersion === 1
+    isRecord(data) &&
+    data.schemaVersion === 2 &&
+    typeof data.platform === "string" &&
+    typeof data.selfId === "string" &&
+    hasId(data.channel) &&
+    hasId(data.user) &&
+    typeof data.messageId === "string" &&
+    Array.isArray(data.elements) &&
+    typeof data.text === "string"
   );
 }
 
@@ -94,12 +114,26 @@ export function isEvent(message: AgentMessage): message is Event {
   if (message.role !== "custom" || message.type !== "yesimbot.event") return false;
   const data = message.data;
   return (
-    typeof data === "object" && data !== null && "schemaVersion" in data && data.schemaVersion === 1
+    isRecord(data) &&
+    data.schemaVersion === 2 &&
+    typeof data.platform === "string" &&
+    typeof data.selfId === "string" &&
+    hasId(data.channel) &&
+    typeof data.eventType === "string" &&
+    typeof data.text === "string"
   );
 }
 
 export function isInput(message: AgentMessage): message is Input {
   return isMessage(message) || isEvent(message);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function hasId(value: unknown): value is { id: string } {
+  return isRecord(value) && typeof value.id === "string";
 }
 
 declare module "@yesimbot/agent-runtime" {

@@ -38,7 +38,7 @@ function formatMessageHeader(
     minute: "2-digit",
     hour12: false,
   }).format(new Date(input.timestamp));
-  const displayName = input.data.member?.name ?? input.data.user.name;
+  const displayName = input.data.user.name;
   const sender = displayName ? `${displayName} (${input.data.user.id})` : input.data.user.id;
   const fields = [
     `time=${JSON.stringify(time)}`,

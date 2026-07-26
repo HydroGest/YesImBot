@@ -15,6 +15,14 @@ import {
 } from "../src/event/index.js";
 import { selectInputFiles, type MediaSelectionOptions } from "../src/media/index.js";
 
+declare module "koishi-plugin-yesimbot" {
+  interface EventMap {
+    "formatter.variant": {
+      extra: { secret: string };
+    };
+  }
+}
+
 const scope: ChannelScope = {
   platform: "onebot",
   selfId: "bot-1",
@@ -26,7 +34,7 @@ const FIVE_MIB = 5 * 1024 * 1024;
 
 function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     platform: scope.platform,
     selfId: scope.selfId,
     channel: { id: scope.channelId },
@@ -50,7 +58,7 @@ function messageRecordWithText(
 
 function deliveryFailureRecord(): EventRecord<"delivery.failed"> {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     eventType: "delivery.failed",
     platform: scope.platform,
     selfId: scope.selfId,
@@ -63,6 +71,19 @@ function deliveryFailureRecord(): EventRecord<"delivery.failed"> {
       error: { name: "Error", message: "offline" },
     },
     text: "failed",
+    timestamp: Date.parse("2026-07-18T12:34:00.000Z"),
+  };
+}
+
+function formatterVariantRecord(): EventRecord<"formatter.variant"> {
+  return {
+    schemaVersion: 2,
+    eventType: "formatter.variant",
+    platform: scope.platform,
+    selfId: scope.selfId,
+    channel: { id: scope.channelId },
+    extra: { secret: "do-not-project" },
+    text: "variant",
     timestamp: Date.parse("2026-07-18T12:34:00.000Z"),
   };
 }
@@ -133,6 +154,17 @@ describe("formatInput", () => {
     }).content;
     expect(content).toContain('"eventType":"delivery.failed"');
     expect(content).toContain('"text":"failed"');
+  });
+
+  it("projects no declaration-merged event fields into the model notification", () => {
+    const content = formatInput(createEvent(formatterVariantRecord()), {
+      includeMessageId: false,
+    }).content;
+
+    expect(content).toContain('"eventType":"formatter.variant"');
+    expect(content).toContain('"text":"variant"');
+    expect(content).not.toContain("extra");
+    expect(content).not.toContain("do-not-project");
   });
 
   describe("selectInputFiles", () => {
