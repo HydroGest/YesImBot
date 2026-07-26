@@ -11,7 +11,13 @@ import {
 import type { ChannelScope } from "../channel/index.js";
 import { resolveReplyPacingConfig, type PacingConfig } from "../config.js";
 import { normalizeElements, sealElements, unavailableImage } from "../event/element.js";
-import type { EventRecord, InputRecord, MessageRecord } from "../event/index.js";
+import type {
+  EventRecord,
+  InputRecord,
+  MessageRecord,
+  ResolvedEventDraft,
+  ResolvedMessageDraft,
+} from "../event/index.js";
 import { createImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
 import type { ReplyDeliveryStatus, ReplyObservation } from "../reply/observability.js";
 import { nextSegmentDelayMs } from "../reply/pacing.js";
@@ -21,7 +27,6 @@ import { matchesAllowedChannel, type ChannelAllowRule } from "./allowlist.js";
 
 export interface ResolveContext {
   readonly session: Session;
-  readonly base?: Omit<MessageRecord, "text">;
   readonly freezeImage: (
     element: Element,
     load: (signal: AbortSignal, maxBytes: number) => Promise<{ data: Uint8Array; mime?: string }>,
@@ -30,7 +35,7 @@ export interface ResolveContext {
 
 export interface SessionResolver {
   readonly platform: string;
-  resolve(context: ResolveContext): Awaitable<InputRecord | null>;
+  resolve(context: ResolveContext): Awaitable<ResolvedMessageDraft | ResolvedEventDraft | null>;
 }
 
 export interface GatewayOptions {
@@ -135,7 +140,7 @@ export class Gateway {
     }
     let record: InputRecord | null;
     try {
-      record = await this.resolve(session);
+      record = await this.resolve(session, scope);
     } catch (cause) {
       this.warn("gateway.resolver_failed", cause, session.platform);
       return;
@@ -255,10 +260,7 @@ export class Gateway {
   ): Promise<void> {
     const error = normalizeDeliveryError(cause);
     const failure: EventRecord<"delivery.failed"> = {
-      sn: record.sn,
-      login: record.login,
-      referrer: record.referrer,
-      schemaVersion: 1,
+      schemaVersion: 2,
       eventType: "delivery.failed",
       platform: record.platform,
       selfId: record.selfId,
@@ -305,16 +307,15 @@ export class Gateway {
     delivery.observe(observation);
   }
 
-  private async resolve(session: Session): Promise<InputRecord | null> {
-    const base = draftMessageBase(session);
+  private async resolve(session: Session, scope: ChannelScope): Promise<InputRecord | null> {
     const resolver = this.resolvers.get(session.platform);
-    if (!resolver) return base ? resolveFallbackMessage(base) : null;
-    const scope = scopeFromSession(session);
+    if (!resolver) return resolveFallbackMessage(session, scope);
     const freezeImage = scope
       ? createImageFreezer({ scope, assets: this.opts.assets, policy: this.mediaPolicy })
           .freezeImage
       : async () => unavailableImage();
-    return resolver.resolve({ session, ...(base ? { base } : {}), freezeImage });
+    const draft = await resolver.resolve({ session, freezeImage });
+    return draft ? normalizeDraft(session, scope, draft) : null;
   }
 
   private warn(code: string, cause: unknown, platform: string): void {
@@ -377,9 +378,8 @@ function scopeFromSession(session: Session): ChannelScope | null {
   };
 }
 
-function draftMessageBase(session: Session): Omit<MessageRecord, "text"> | null {
-  const scope = scopeFromSession(session);
-  if (!scope || session.type !== "message-created") return null;
+function resolveFallbackMessage(session: Session, scope: ChannelScope): MessageRecord | null {
+  if (session.type !== "message-created") return null;
 
   const elements = session.elements;
   if (!Array.isArray(elements)) return null;
@@ -387,42 +387,72 @@ function draftMessageBase(session: Session): Omit<MessageRecord, "text"> | null 
   const messageId = session.messageId;
   if (typeof messageId !== "string" || messageId.length === 0) return null;
 
-  const {
-    type: _type,
-    timestamp: eventTimestamp,
-    message: _message,
-    channel,
-    user,
-    ...resources
-  } = session.event;
-  const timestamp = numberValue(session.timestamp) ?? numberValue(eventTimestamp) ?? Date.now();
+  const timestamp = numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
+  const sealedElements = sealElements(normalizeElements([...elements]));
 
   return {
-    ...resources,
-    schemaVersion: 1,
+    schemaVersion: 2,
     platform: scope.platform,
     selfId: scope.selfId,
-    channel: {
-      ...channel,
-      id: scope.channelId,
-      type: channel?.type ?? Universal.Channel.Type.TEXT,
-    },
-    user: {
-      ...user,
-      id: user?.id ?? session.userId ?? session.author?.id ?? "",
-      ...(user?.name === undefined && session.author?.name ? { name: session.author.name } : {}),
-    },
+    channel: normalizeChannel(session, scope),
+    user: normalizeUser(session),
     messageId,
     elements,
     timestamp,
-  } satisfies Omit<MessageRecord, "text">;
+    text: sealedElements.map((element) => element.toString()).join(""),
+  };
 }
 
-function resolveFallbackMessage(base: Omit<MessageRecord, "text">): MessageRecord {
-  const sealedElements = sealElements(normalizeElements([...base.elements]));
+function normalizeDraft(
+  session: Session,
+  scope: ChannelScope,
+  draft: ResolvedMessageDraft | ResolvedEventDraft,
+): InputRecord {
+  const timestamp = numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
+  const channel = normalizeChannel(session, scope, draft.kind === "message" ? draft.channel?.name : undefined);
+  if (draft.kind === "message") {
+    const sealedElements = sealElements(normalizeElements([...draft.elements]));
+    return {
+      schemaVersion: 2,
+      platform: scope.platform,
+      selfId: scope.selfId,
+      timestamp,
+      channel,
+      user: normalizeUser(session, draft.user),
+      messageId: draft.messageId,
+      elements: draft.elements,
+      text: draft.text ?? sealedElements.map((element) => element.toString()).join(""),
+    };
+  }
+  const { kind: _kind, eventType, text, ...variant } = draft;
   return {
-    ...base,
-    text: sealedElements.map((element) => element.toString()).join(""),
+    schemaVersion: 2,
+    platform: scope.platform,
+    selfId: scope.selfId,
+    timestamp,
+    channel,
+    eventType,
+    text,
+    ...variant,
+  } as EventRecord;
+}
+
+function normalizeChannel(session: Session, scope: ChannelScope, draftName?: string): Universal.Channel {
+  const source = session.event.channel;
+  const name = draftName ?? source?.name;
+  return {
+    id: scope.channelId,
+    type: source?.type ?? (scope.isDirect ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
+    ...(name === undefined ? {} : { name }),
+  };
+}
+
+function normalizeUser(session: Session, draft?: ResolvedMessageDraft["user"]): Universal.User {
+  const source = session.event.user;
+  const name = draft?.name ?? source?.name ?? session.author?.name;
+  return {
+    id: draft?.id ?? session.userId ?? source?.id ?? session.author?.id ?? "",
+    ...(name === undefined ? {} : { name }),
   };
 }
 
@@ -432,7 +462,7 @@ function numberValue(value: unknown): number | undefined {
 
 function isRecord(record: InputRecord): boolean {
   return Boolean(
-    record.schemaVersion === 1 && record.platform && record.selfId && record.channel?.id,
+    record.schemaVersion === 2 && record.platform && record.selfId && record.channel?.id,
   );
 }
 

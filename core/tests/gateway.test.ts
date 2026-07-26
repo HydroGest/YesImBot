@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { h, Universal } from "koishi";
+import { h } from "koishi";
 
 import type { ChannelScope } from "../src/channel/index.js";
 import { Config } from "../src/config.js";
-import type { InputRecord, MessageRecord } from "../src/event/index.js";
+import type { InputRecord, MessageRecord, ResolvedEventDraft, ResolvedMessageDraft } from "../src/event/index.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "../src/gateway/allowlist.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
 import type { UnifiedImagePolicy } from "../src/media/index.js";
@@ -28,13 +28,9 @@ function session(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function record(): MessageRecord {
+function record(): ResolvedMessageDraft {
   return {
-    schemaVersion: 1,
-    platform: "test",
-    selfId: "bot-1",
-    timestamp: 1,
-    channel: { id: "room-1", type: 0 },
+    kind: "message",
     user: { id: "user-1", name: "User" },
     messageId: "message-1",
     elements: [h.text("hello")],
@@ -42,15 +38,10 @@ function record(): MessageRecord {
   };
 }
 
-function eventRecord(): InputRecord {
+function eventRecord(): ResolvedEventDraft<"delivery.failed"> {
   return {
-    schemaVersion: 1,
+    kind: "event",
     eventType: "delivery.failed",
-    platform: "test",
-    selfId: "bot-1",
-    timestamp: 1,
-    channel: { id: "room-1", type: 0 },
-    user: { id: "user-1" },
     text: "Delivery failed",
     delivery: {
       turnId: "turn-1",
@@ -236,7 +227,7 @@ describe("Gateway", () => {
 
     expect(runtime.route).toHaveBeenCalledWith(
       expect.objectContaining({
-        schemaVersion: 1,
+        schemaVersion: 2,
         messageId: "message-1",
         elements: [],
         text: "",
@@ -271,7 +262,7 @@ describe("Gateway", () => {
       const { gateway, runtime } = createGateway({ allowedChannels });
       gateway.register({
         platform: "test",
-        resolve: async () => ({ ...record(), channel: { ...record().channel, type } }),
+      resolve: async () => record(),
       });
 
       await gateway.handle(session(overrides) as never);
@@ -365,7 +356,7 @@ describe("Gateway", () => {
     const { gateway, runtime, database } = createGateway();
     gateway.register({
       platform: "test",
-      resolve: async () => ({ ...record(), channel: { ...record().channel, type: 1 } }),
+      resolve: async () => record(),
     });
 
     await gateway.handle(session({ isDirect: true }) as never);
@@ -379,7 +370,7 @@ describe("Gateway", () => {
     const updateName = vi.spyOn(storage, "updateName");
     gateway.register({
       platform: "test",
-      resolve: async () => ({ ...record(), channel: { ...record().channel, name: "Room" } }),
+      resolve: async () => ({ ...record(), channel: { name: "Room" } }),
     });
 
     await gateway.handle(session() as never);
@@ -425,12 +416,12 @@ describe("Gateway", () => {
     expect(runtime.route).not.toHaveBeenCalled();
   });
 
-  it("calls the registered resolver once with the optional Satori message base", async () => {
+  it("calls the registered resolver once and normalizes its message draft", async () => {
     const { gateway, runtime } = createGateway();
     const resolve = vi.fn(async (context: Parameters<SessionResolver["resolve"]>[0]) => {
       expect(context.session).toMatchObject({ messageId: "message-1" });
-      expect(context.base).toMatchObject({ schemaVersion: 1, messageId: "message-1" });
       expect(context).toHaveProperty("freezeImage");
+      expect(context).not.toHaveProperty("base");
       expect(context).not.toHaveProperty("putImage");
       return record();
     });
@@ -439,7 +430,9 @@ describe("Gateway", () => {
     await gateway.handle(session() as never);
 
     expect(resolve).toHaveBeenCalledOnce();
-    expect(runtime.route).toHaveBeenCalledWith(record());
+    expect(runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({ schemaVersion: 2, platform: "test", selfId: "bot-1" }),
+    );
   });
 
   it("freezes eligible ingress images when multimedia projection is disabled", async () => {
@@ -471,23 +464,21 @@ describe("Gateway", () => {
     );
   });
 
-  it("rejects a resolver that changes direct classification", async () => {
-    const { gateway, logger, runtime } = createGateway();
+  it("derives direct classification from the active Session", async () => {
+    const { gateway, runtime } = createGateway();
     const resolver = {
       platform: "test",
       resolve: vi.fn(async () => ({
         ...record(),
-        channel: { ...record().channel, type: Universal.Channel.Type.TEXT },
-        content: "mismatch",
+        channel: { name: "Direct room" },
       })),
     } satisfies SessionResolver;
     gateway.register(resolver);
 
     await gateway.handle(session({ isDirect: true, type: "message-created" }) as never);
 
-    expect(runtime.route).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "gateway.invalid_record" }),
+    expect(runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: { id: "room-1", type: 1, name: "Direct room" } }),
     );
   });
 
@@ -499,7 +490,7 @@ describe("Gateway", () => {
 
     const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
     expect(routed).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       messageId: "message-1",
       elements: expect.any(Array),
       text: 'hello <img unavailable="true"/>',
@@ -532,17 +523,17 @@ describe("Gateway", () => {
 
     const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
     expect(routed).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       platform: "test",
       selfId: "bot-1",
       timestamp: 1,
       channel: { id: "room-1", type: 1, name: "Direct channel" },
-      guild: { id: "guild-1", name: "Guild" },
-      member: { nick: "Member" },
       user: { id: "user-1", name: "Event user" },
       messageId: "message-1",
     });
     expect(routed.elements).toEqual(h.parse('hello <at id="bot-1"/>'));
+    expect(routed).not.toHaveProperty("guild");
+    expect(routed).not.toHaveProperty("member");
     expect(routed).not.toBe(input);
   });
 
@@ -565,22 +556,21 @@ describe("Gateway", () => {
     );
   });
 
-  it.each([
-    ["platform", (value: MessageRecord) => ({ ...value, platform: "other" })],
-    ["selfId", (value: MessageRecord) => ({ ...value, selfId: "other" })],
-    [
-      "channel.id",
-      (value: MessageRecord) => ({ ...value, channel: { ...value.channel, id: "other" } }),
-    ],
-  ])("rejects a resolver record with a mismatched %s", async (_field, change) => {
+  it("uses Gateway scope fields instead of resolver-supplied envelope facts", async () => {
     const { gateway, runtime, logger } = createGateway();
-    gateway.register({ platform: "test", resolve: async () => change(record()) });
+    gateway.register({
+      platform: "test",
+      resolve: async () => ({ ...record(), platform: "other", selfId: "other" } as never),
+    });
 
     await gateway.handle(session() as never);
 
-    expect(runtime.route).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "gateway.invalid_record" }),
+    expect(runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "test",
+        selfId: "bot-1",
+        channel: expect.objectContaining({ id: "room-1" }),
+      }),
     );
   });
 
@@ -636,7 +626,7 @@ describe("Gateway", () => {
 
     await gateway.handle(input as never);
 
-    expect(runtime.route).toHaveBeenCalledWith(record());
+    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ schemaVersion: 2 }));
     expect(Object.values(gateway)).not.toContain(input);
   });
 });

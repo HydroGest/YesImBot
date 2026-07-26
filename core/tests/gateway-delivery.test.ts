@@ -34,7 +34,7 @@ function session(send = vi.fn(async () => ["receipt-1"])) {
 
 function record(): MessageRecord {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
@@ -144,7 +144,7 @@ describe("Gateway passive delivery", () => {
     const first = createIntegratedGateway(basePath);
     await first.gateway.handle(session() as never);
     await first.manager.route({
-      schemaVersion: 1,
+      schemaVersion: 2,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -243,7 +243,7 @@ describe("Gateway passive delivery", () => {
     expect(route.mock.calls[0]?.[0]).not.toHaveProperty("send");
     expect(route.mock.calls[0]?.[0]).not.toBe(inbound);
     expect(binding.fail.mock.calls[0]?.[0]).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
