@@ -11,12 +11,16 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { createMessageEntry } from "@yesimbot/agent-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
+import { createEvent, createMessage } from "../src/event/index.js";
 import { detectImageMime } from "../src/media/index.js";
+import { parseReply } from "../src/reply/parse.js";
+import { createJsonlStorage } from "../src/runtime/storage.js";
 import { ChannelStorage } from "../src/storage/index.js";
 
 const shared: ChannelScope = {
@@ -255,6 +259,53 @@ describe("ChannelStorage", () => {
     expect(warn).toHaveBeenCalledWith("storage.directory_invalid", {
       entry: "a5vnf2ijd75c2ibyo2s5czdir4",
     });
+  });
+
+  it("retains closed input payloads and raw private reply text in JSONL", async () => {
+    const sessions = await storage.ensure(shared, "sessions");
+    const jsonl = createJsonlStorage(join(sessions, "messages.jsonl"));
+    const rawReply = "<inner_thought>private reasoning</inner_thought>first<sep/>second";
+    const message = createMessage({
+      schemaVersion: 2,
+      platform: shared.platform,
+      selfId: shared.selfId,
+      channel: { id: shared.channelId },
+      user: { id: "user-1" },
+      messageId: "message-1",
+      elements: [],
+      text: "hello",
+      timestamp: 1,
+    });
+    const event = createEvent({
+      schemaVersion: 2,
+      platform: shared.platform,
+      selfId: shared.selfId,
+      channel: { id: shared.channelId },
+      eventType: "delivery.failed",
+      text: "Delivery failed",
+      timestamp: 2,
+      delivery: {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        segmentIndex: 1,
+        segmentTotal: 1,
+        error: { name: "Error", message: "offline" },
+      },
+    });
+    const assistant = { id: "assistant-1", timestamp: 3, role: "assistant" as const, content: rawReply };
+
+    await jsonl.append(createMessageEntry(message, { id: "entry-message", timestamp: 1 }));
+    await jsonl.append(createMessageEntry(event, { id: "entry-event", timestamp: 2 }));
+    await jsonl.append(createMessageEntry(assistant, { id: "entry-assistant", timestamp: 3 }));
+
+    const entries = await jsonl.read();
+    const storedMessage = entries[0]?.type === "message" ? entries[0].data : undefined;
+    const storedEvent = entries[1]?.type === "message" ? entries[1].data : undefined;
+    const storedAssistant = entries[2]?.type === "message" ? entries[2].data : undefined;
+    expect(storedMessage).toMatchObject({ type: "yesimbot.message", data: { messageId: "message-1" } });
+    expect(storedEvent).toMatchObject({ type: "yesimbot.event", data: { eventType: "delivery.failed" } });
+    expect(storedAssistant).toMatchObject({ content: rawReply });
+    expect(parseReply(rawReply, 8).segments).toEqual([{ text: "first" }, { text: "second" }]);
   });
 
   it("preserves and reports unknown namespace directories during startup", async () => {

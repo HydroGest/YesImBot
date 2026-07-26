@@ -66,34 +66,27 @@ describe("buildCoreSystemPrompt", () => {
     ]);
   });
 
-  it("uses a version-two identity-neutral constitution with the required structural sections", () => {
+  it("uses the version-two constitution and two-control reply grammar", () => {
     expect(CORE_CONSTITUTION_VERSION).toBe(2);
-    expect(CORE_CONSTITUTION).toContain("# Role and authority");
-    expect(CORE_CONSTITUTION).toContain("# Authority and trust");
-    expect(CORE_CONSTITUTION).toContain("# Truth and uncertainty");
-    expect(CORE_CONSTITUTION).toContain("# Capabilities and action");
+    expect(CORE_CONSTITUTION).toContain("<base_instructions>");
+    expect(CORE_CONSTITUTION).toContain("<style>");
+    expect(CORE_CONSTITUTION).toContain("<basic_functions>");
     expect(CORE_CONSTITUTION).toContain("# Memory and context");
     expect(CORE_CONSTITUTION).toContain("# Deliberation and communication");
     expect(CORE_CONSTITUTION).toContain("# Voice and inner thought");
     expect(CORE_CONSTITUTION).toContain("# Message shape");
-    expect(CORE_CONSTITUTION).toContain("# Declining to reply");
     expect(CORE_CONSTITUTION).toContain("# Output protocol");
     expect(CORE_CONSTITUTION).toContain("<inner_thought>");
     expect(CORE_CONSTITUTION).toContain("</inner_thought>");
     expect(CORE_CONSTITUTION).toContain("<sep/>");
-    expect(CORE_CONSTITUTION).toContain('<sleep ms="N"/>');
-    expect(CORE_CONSTITUTION).toContain("<skip/>");
-    expect(CORE_CONSTITUTION).not.toMatch(/YesImBot|digital subject|software nature/);
+    expect(CORE_CONSTITUTION).not.toContain("<skip/>");
+    expect(CORE_CONSTITUTION).not.toContain("<sleep");
   });
 
-  it("retains action-truthfulness and missing-capability markers", () => {
-    expect(CORE_CONSTITUTION).toContain("tool call");
-    expect(CORE_CONSTITUTION).toContain("external observation");
-    expect(CORE_CONSTITUTION).toContain("message delivery");
-    expect(CORE_CONSTITUTION).toContain("memory operation");
-    expect(CORE_CONSTITUTION).toContain("persistent change");
-    expect(CORE_CONSTITUTION).toContain("successful result");
-    expect(CORE_CONSTITUTION).toContain("missing tool");
+  it("keeps inner thought private and explains literal control escaping", () => {
+    expect(CORE_CONSTITUTION).toContain("Inner thought is yours alone and is never shown to anyone.");
+    expect(CORE_CONSTITUTION).toContain("Write &lt;sep/&gt; or &lt;inner_thought&gt;");
+    expect(CORE_CONSTITUTION).toContain("These elements control delivery. They never appear");
   });
 
   it.each([

@@ -6,11 +6,25 @@ import { h } from "koishi";
 
 import type { ChannelScope } from "../src/channel/index.js";
 import { Config } from "../src/config.js";
-import type { InputRecord, MessageRecord, ResolvedEventDraft, ResolvedMessageDraft } from "../src/event/index.js";
+import {
+  createInput,
+  type InputRecord,
+  type MessageRecord,
+  type ResolvedEventDraft,
+  type ResolvedMessageDraft,
+} from "../src/event/index.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "../src/gateway/allowlist.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
 import type { UnifiedImagePolicy } from "../src/media/index.js";
 import { ChannelStorage } from "../src/storage/index.js";
+
+declare module "koishi-plugin-yesimbot" {
+  interface EventMap {
+    "test.notice": {
+      targetId: string;
+    };
+  }
+}
 
 function session(overrides: Record<string, unknown> = {}) {
   return {
@@ -75,6 +89,7 @@ function createGateway(
       return vi.fn();
     }),
     database,
+    emit: vi.fn(),
   };
   const assets = { put: vi.fn(async () => ({ assetId: "asset_image", mime: "image/png" })) };
   const storage = new ChannelStorage("/tmp/yesimbot-gateway-test");
@@ -100,6 +115,7 @@ function createGateway(
     database,
     storage,
     logger,
+    ctx,
     middleware: () => middleware!,
     internal: () => internal!,
   };
@@ -515,6 +531,17 @@ describe("Gateway", () => {
         channel: { type: 1, name: "Direct channel" },
         guild: { id: "guild-1", name: "Guild" },
         member: { nick: "Member" },
+        _data: { platform: "test" },
+        _type: "raw-message",
+        sn: 1,
+        login: { platform: "test", selfId: "bot-1" },
+        referrer: { id: "referrer" },
+        argv: { name: "command" },
+        friend: { id: "friend-1" },
+        operator: { id: "operator-1" },
+        emoji: { id: "emoji-1" },
+        role: { id: "role-1" },
+        button: { id: "button-1" },
         user: { name: "Event user" },
       },
     });
@@ -534,7 +561,87 @@ describe("Gateway", () => {
     expect(routed.elements).toEqual(h.parse('hello <at id="bot-1"/>'));
     expect(routed).not.toHaveProperty("guild");
     expect(routed).not.toHaveProperty("member");
+    for (const key of [
+      "_data",
+      "_type",
+      "sn",
+      "login",
+      "referrer",
+      "guild",
+      "member",
+      "argv",
+      "friend",
+      "operator",
+      "emoji",
+      "role",
+      "button",
+    ]) {
+      expect(routed).not.toHaveProperty(key);
+    }
+    const persisted = createInput(routed);
+    expect(persisted.type).toBe("yesimbot.message");
+    expect(Object.keys(persisted.data).sort()).toEqual([
+      "channel",
+      "elements",
+      "messageId",
+      "platform",
+      "schemaVersion",
+      "selfId",
+      "text",
+      "user",
+    ]);
     expect(routed).not.toBe(input);
+  });
+
+  it("normalizes a declaration-merged event draft without platform residue", async () => {
+    const { gateway, runtime } = createGateway();
+    gateway.register({
+      platform: "test",
+      resolve: async () => ({
+        kind: "event",
+        eventType: "test.notice",
+        text: "Target was notified",
+        targetId: "target-1",
+      }),
+    });
+
+    await gateway.handle(
+      session({
+        type: "notice",
+        messageId: undefined,
+        event: {
+          type: "notice",
+          _data: { raw: true },
+          guild: { id: "guild-1" },
+          member: { id: "member-1" },
+        },
+      }) as never,
+    );
+
+    const routed = runtime.route.mock.calls[0]?.[0];
+    expect(routed).toMatchObject({
+      schemaVersion: 2,
+      platform: "test",
+      selfId: "bot-1",
+      channel: { id: "room-1" },
+      eventType: "test.notice",
+      text: "Target was notified",
+      targetId: "target-1",
+    });
+    expect(routed).not.toHaveProperty("_data");
+    expect(routed).not.toHaveProperty("guild");
+    expect(routed).not.toHaveProperty("member");
+    const persisted = createInput(routed as never);
+    expect(persisted.type).toBe("yesimbot.event");
+    expect(Object.keys(persisted.data).sort()).toEqual([
+      "channel",
+      "eventType",
+      "platform",
+      "schemaVersion",
+      "selfId",
+      "targetId",
+      "text",
+    ]);
   });
 
   it("uses the Session channel id while preserving the Satori channel resources", async () => {
@@ -589,6 +696,7 @@ describe("Gateway", () => {
     skipped.gateway.register({ platform: "test", resolve: async () => null });
     await skipped.gateway.handle(session() as never);
     expect(skipped.runtime.route).not.toHaveBeenCalled();
+    expect(skipped.ctx.emit).not.toHaveBeenCalled();
 
     const failed = createGateway();
     failed.gateway.register({

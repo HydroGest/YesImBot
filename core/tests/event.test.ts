@@ -219,6 +219,18 @@ describe("Event", () => {
       text: "variant",
       test: { value: 42 },
     });
+    expect(Object.keys(event.data).sort()).toEqual([
+      "channel",
+      "eventType",
+      "platform",
+      "schemaVersion",
+      "selfId",
+      "test",
+      "text",
+    ]);
+    expect(event.data).not.toHaveProperty("message");
+    expect(event.data).not.toHaveProperty("content");
+    expect(event.data).not.toHaveProperty("type");
   });
 
   it("keeps message and event host records free of Universal.Event residue", () => {

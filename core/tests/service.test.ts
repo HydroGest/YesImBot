@@ -231,7 +231,12 @@ describe("YesImBotService facade", () => {
     });
     const resolver = {
       platform: "test",
-      resolve: vi.fn(async ({ base }) => (base ? { ...base, text: "hello" } : null)),
+      resolve: vi.fn(async () => ({
+        kind: "message" as const,
+        messageId: "message-1",
+        elements: [],
+        text: "hello",
+      })),
     };
     const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
     const assets = { readByAssetId: vi.fn(), clear: vi.fn() };

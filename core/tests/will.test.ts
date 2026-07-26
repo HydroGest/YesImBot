@@ -44,7 +44,7 @@ function messageInput(options: {
   readonly text?: string;
 }): Message {
   return createInput({
-    schemaVersion: 1,
+    schemaVersion: 2,
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
@@ -76,7 +76,7 @@ function ordinaryGroupMessageInput(): Message {
 
 function quotedGroupMessageInput(): Message {
   return createInput({
-    schemaVersion: 1,
+    schemaVersion: 2,
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
@@ -90,7 +90,7 @@ function quotedGroupMessageInput(): Message {
 
 function nonMessageEvent(): Event<"test.notice"> {
   return createInput({
-    schemaVersion: 1,
+    schemaVersion: 2,
     eventType: "test.notice",
     platform: "test",
     selfId: "bot-1",
@@ -116,7 +116,7 @@ const willingnessConfig: WillingnessConfig = {
 
 function deliveryFailedEvent(): Event<"delivery.failed"> {
   return createInput({
-    schemaVersion: 1,
+    schemaVersion: 2,
     eventType: "delivery.failed",
     platform: "test",
     selfId: "bot-1",
