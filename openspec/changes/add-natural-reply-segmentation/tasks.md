@@ -35,11 +35,11 @@
 
 ## 5. Integrate Segmentation Into ChannelRuntime
 
-- [ ] 5.1 Replace the single-fragment text egress with OCL parsing so one assistant message pushes ordered outputs carrying segment index and total.
-- [ ] 5.2 Represent a skip decision as zero outputs while keeping the turn successful and emitting no delivery failure.
-- [ ] 5.3 Verify raw assistant output including control elements persists unchanged to channel JSONL and replays unchanged in historical projection.
-- [ ] 5.4 Suppress the successful-reply will notification for skipped turns and for turns that delivered no platform message, and invoke it exactly once for a multi-segment reply.
-- [ ] 5.5 Add tests proving output ordering, delivery-lease behavior, and that no control element or inner-thought text reaches any output.
+- [x] 5.1 Replace the single-fragment text egress with OCL parsing so one assistant message pushes ordered outputs carrying segment index and total.
+- [x] 5.2 Represent a skip decision as zero outputs while keeping the turn successful and emitting no delivery failure.
+- [x] 5.3 Verify raw assistant output including control elements persists unchanged to channel JSONL and replays unchanged in historical projection.
+- [x] 5.4 Suppress the successful-reply will notification for skipped turns and for turns that delivered no platform message, and invoke it exactly once for a multi-segment reply.
+- [x] 5.5 Add tests proving output ordering, delivery-lease behavior, and that no control element or inner-thought text reaches any output.
 
 ## 6. Integrate Pacing And Failure Handling Into Gateway
 
