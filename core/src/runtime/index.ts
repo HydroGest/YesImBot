@@ -9,6 +9,7 @@ import {
   type AgentTool,
   type AgentToolSet,
   type ModelMessageContext,
+  type TurnResult,
 } from "@yesimbot/agent-runtime";
 import type { FilePart, LanguageModel } from "ai";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
@@ -16,7 +17,11 @@ import type { Fragment } from "koishi";
 import { z } from "zod";
 
 import { channelIdentity, fromEvent, type ChannelScope } from "../channel/index.js";
-import { resolveMultimediaImagePolicy, type Config } from "../config.js";
+import {
+  DEFAULT_REPLY_SEGMENTATION_CONFIG,
+  resolveMultimediaImagePolicy,
+  type Config,
+} from "../config.js";
 import { formatInput } from "../event/formatter.js";
 import type { EventRecord, InputRecord } from "../event/index.js";
 import { createInput, isInput, type Input } from "../event/index.js";
@@ -30,6 +35,7 @@ import { resolveBasePath } from "../path.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { createWillEngine } from "../will/index.js";
 import type { WillEngine, WillEngineObservation } from "../will/index.js";
+import { parseReply } from "../reply/ocl.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
 import { createJsonlStorage } from "./storage.js";
 
@@ -58,6 +64,8 @@ type ChannelOutput = {
   readonly turnId: string;
   readonly messageId: string;
   readonly content: Fragment;
+  readonly segmentIndex: number;
+  readonly segmentTotal: number;
 };
 
 type ChannelRuntimeResult =
@@ -72,6 +80,7 @@ type ChannelRuntimeResult =
 
 type RuntimeDelivery = {
   readonly fail: (record: EventRecord<"delivery.failed">) => Promise<ChannelRuntimeResult>;
+  readonly complete: (turnId: string) => Promise<void>;
   readonly release: () => void;
 };
 
@@ -148,7 +157,11 @@ export class RuntimeManager {
       ...result,
       delivery: {
         fail: (failure) => runtime.handleInternal(failure),
-        release,
+        complete: (turnId) => runtime.completeDelivery(turnId),
+        release: () => {
+          runtime.releaseDelivery(result.turnId);
+          release();
+        },
       },
     };
   }
@@ -457,7 +470,7 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-function isRenderableAssistant(event: AgentInternalEvent): event is AgentInternalEvent & {
+function isAssistantMessage(event: AgentInternalEvent): event is AgentInternalEvent & {
   type: "message.appended";
   turnId: string;
   message: { id: string; role: "assistant"; content: unknown };
@@ -465,12 +478,11 @@ function isRenderableAssistant(event: AgentInternalEvent): event is AgentInterna
   return (
     event.type === "message.appended" &&
     "turnId" in event &&
-    event.message.role === "assistant" &&
-    renderAssistantContent(event.message.content) !== undefined
+    event.message.role === "assistant"
   );
 }
 
-function renderAssistantContent(content: unknown): Fragment | undefined {
+function renderAssistantText(content: unknown): string | undefined {
   if (typeof content === "string") return content.trim().length > 0 ? content : undefined;
   if (!Array.isArray(content)) return undefined;
   const text = content
@@ -486,6 +498,25 @@ function renderAssistantContent(content: unknown): Fragment | undefined {
   return text.trim().length > 0 ? text : undefined;
 }
 
+function parseAssistantContent(content: unknown, maxSegments: number) {
+  const text = renderAssistantText(content);
+  return text === undefined ? undefined : parseReply(text, { maxSegments });
+}
+
+function hasRenderableSegment(content: unknown, maxSegments: number): boolean {
+  return (
+    parseAssistantContent(content, maxSegments)?.segments.some((segment) => segment.text.length > 0) === true
+  );
+}
+
+type ReplyEligibility = "pending" | "eligible" | "ineligible";
+
+type ReplyCompletion = {
+  acknowledged: boolean;
+  deliveryReleased: boolean;
+  eligibility: ReplyEligibility;
+};
+
 export class ChannelRuntime {
   readonly scope: ChannelScope;
 
@@ -498,12 +529,18 @@ export class ChannelRuntime {
   private drainTask: Promise<void> | undefined;
   private streams = new Set<Promise<void>>();
   private readonly agent: Agent;
+  private readonly maxSegments: number;
+  private replyCompletions = new Map<string, ReplyCompletion>();
+  private replyCompletionTail = Promise.resolve();
   private initTask: Promise<void> | undefined;
 
   constructor(private readonly opts: ChannelRuntimeOptions) {
     this.scope = Object.freeze({ ...opts.scope });
     const plugins = opts.agentPlugins;
     const includeMessageId = opts.includeMessageId;
+    const maxSegments =
+      opts.config.reply?.segmentation?.maxSegments ?? DEFAULT_REPLY_SEGMENTATION_CONFIG.maxSegments;
+    this.maxSegments = maxSegments;
     const selectedFilesByContext = new WeakMap<
       ModelMessageContext,
       Promise<ReadonlyMap<Input["id"], readonly FilePart[]>>
@@ -583,19 +620,7 @@ export class ChannelRuntime {
         {
           name: "core.will-reply",
           enforce: "pre",
-          onTurnFinish: async (result) => {
-            const hasRenderableReply = result.messages.some(
-              (message) =>
-                message.role === "assistant" &&
-                renderAssistantContent(message.content) !== undefined,
-            );
-            if (result.status !== "done" || !hasRenderableReply) return;
-            try {
-              await opts.will.onReply?.();
-            } catch (cause) {
-              this.warn("will_reply_failed", { cause });
-            }
-          },
+          onTurnFinish: async (result) => this.recordReplyCompletion(result),
         },
         ...plugins,
       ],
@@ -636,6 +661,15 @@ export class ChannelRuntime {
     };
   }
 
+  completeDelivery(turnId: string): Promise<void> {
+    return this.enqueueReplyCompletion(async () => {
+      const completion = this.replyCompletions.get(turnId);
+      if (!completion) return;
+      completion.acknowledged = true;
+      await this.reconcileReplyCompletion(turnId, completion);
+    });
+  }
+
   drainAndStop(): Promise<void> {
     if (this.drainTask) return this.drainTask;
     this.beginDrain();
@@ -647,6 +681,7 @@ export class ChannelRuntime {
       this.stopped = true;
       await this.agent.stop();
       await this.opts.will.stop?.();
+      this.replyCompletions.clear();
     })();
     return this.drainTask;
   }
@@ -699,6 +734,7 @@ export class ChannelRuntime {
       this.warn("will_stop_failed", { cause, reason });
     }
     await Promise.allSettled([...this.streams]);
+    this.replyCompletions.clear();
   }
 
   private waitForDeliveries(): Promise<void> {
@@ -713,6 +749,11 @@ export class ChannelRuntime {
     if (turnId === null) {
       throw new Error("Agent did not expose an active turn after run");
     }
+    this.replyCompletions.set(turnId, {
+      acknowledged: false,
+      deliveryReleased: false,
+      eligibility: "pending",
+    });
     const task = this.consumeStream(stream, output);
     this.streams.add(task);
     void task.finally(() => this.streams.delete(task));
@@ -725,10 +766,19 @@ export class ChannelRuntime {
   ): Promise<void> {
     try {
       for await (const event of stream) {
-        if (isRenderableAssistant(event)) {
-          const content = renderAssistantContent(event.message.content);
-          if (content !== undefined) {
-            output.push({ turnId: event.turnId, messageId: event.message.id, content });
+        if (isAssistantMessage(event)) {
+          const parsed = parseAssistantContent(event.message.content, this.maxSegments);
+          if (parsed !== undefined) {
+            for (const segment of parsed.segments) {
+              if (segment.text.length === 0) continue;
+              output.push({
+                turnId: event.turnId,
+                messageId: event.message.id,
+                content: segment.text,
+                segmentIndex: segment.index,
+                segmentTotal: segment.total,
+              });
+            }
           }
         }
         if (event.type === "turn.failed") throw new Error(event.error.message);
@@ -738,6 +788,58 @@ export class ChannelRuntime {
     } catch (cause) {
       output.close(cause);
     }
+  }
+
+  releaseDelivery(turnId: string): void {
+    void this.enqueueReplyCompletion(async () => {
+      const completion = this.replyCompletions.get(turnId);
+      if (!completion) return;
+      completion.deliveryReleased = true;
+      await this.reconcileReplyCompletion(turnId, completion);
+    });
+  }
+
+  private recordReplyCompletion(result: TurnResult): Promise<void> {
+    return this.enqueueReplyCompletion(async () => {
+      const completion = this.replyCompletions.get(result.turnId);
+      if (!completion) return;
+      completion.eligibility =
+        result.status === "done" &&
+        result.messages.some(
+          (message) =>
+            message.role === "assistant" && hasRenderableSegment(message.content, this.maxSegments),
+        )
+          ? "eligible"
+          : "ineligible";
+      await this.reconcileReplyCompletion(result.turnId, completion);
+    });
+  }
+
+  private async reconcileReplyCompletion(turnId: string, completion: ReplyCompletion): Promise<void> {
+    if (completion.eligibility === "ineligible") {
+      this.replyCompletions.delete(turnId);
+      return;
+    }
+    if (completion.eligibility === "pending") return;
+    if (!completion.acknowledged) {
+      if (completion.deliveryReleased) this.replyCompletions.delete(turnId);
+      return;
+    }
+    this.replyCompletions.delete(turnId);
+    try {
+      await this.opts.will.onReply?.();
+    } catch (cause) {
+      this.warn("will_reply_failed", { cause });
+    }
+  }
+
+  private enqueueReplyCompletion(operation: () => Promise<void>): Promise<void> {
+    const next = this.replyCompletionTail.then(operation, operation);
+    this.replyCompletionTail = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
   }
 
   private readState(): WillEngine.State {
