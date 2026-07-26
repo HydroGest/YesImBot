@@ -25,13 +25,13 @@
 
 ## 4. Raise The Constitution To Version Two
 
-- [ ] 4.1 Remove the competing runtime identity from the constitution: delete the digital-subject opening assertion and the host-runtime software-nature paragraph, and replace the section with authority-only framing that names no identity.
-- [ ] 4.2 Add the voice and inner-thought section, preserving persona immersion, persona-voiced inner monologue, example-dialogue adherence, the prohibition on announcing being an AI, persona ownership of diegetic life, the narrow sincere-inquiry floor, and the prohibition on generic service phrases.
-- [ ] 4.3 Add the message-shape section stating that meaning precedes shape, one message is a normal outcome, and shape follows content without any count, length, or punctuation target.
-- [ ] 4.4 Add the sequential-reader rule requiring each split point to leave a harmless partial reply, with integrity priority for facts, instructions, code, links, structured content, and quoted text.
-- [ ] 4.5 Add the protocol rules covering escaping, protection zones, non-leakage, and the prohibition on restating inner-thought content in visible messages.
-- [ ] 4.6 Verify the action-truthfulness rules survive the edit: no fabricated tool call, observation, delivery, memory operation, persistent change, or successful result, and a missing tool remains a missing capability.
-- [ ] 4.7 Bump the constitution version constant to 2 and add tests asserting the version, section presence, and absence of any runtime identity assertion, without asserting prose wording.
+- [x] 4.1 Remove the competing runtime identity from the constitution: delete the digital-subject opening assertion and the host-runtime software-nature paragraph, and replace the section with authority-only framing that names no identity.
+- [x] 4.2 Add the voice and inner-thought section, preserving persona immersion, persona-voiced inner monologue, example-dialogue adherence, the prohibition on announcing being an AI, persona ownership of diegetic life, the narrow sincere-inquiry floor, and the prohibition on generic service phrases.
+- [x] 4.3 Add the message-shape section stating that meaning precedes shape, one message is a normal outcome, and shape follows content without any count, length, or punctuation target.
+- [x] 4.4 Add the sequential-reader rule requiring each split point to leave a harmless partial reply, with integrity priority for facts, instructions, code, links, structured content, and quoted text.
+- [x] 4.5 Add the protocol rules covering escaping, protection zones, non-leakage, and the prohibition on restating inner-thought content in visible messages.
+- [x] 4.6 Verify the action-truthfulness rules survive the edit: no fabricated tool call, observation, delivery, memory operation, persistent change, or successful result, and a missing tool remains a missing capability.
+- [x] 4.7 Bump the constitution version constant to 2 and add tests asserting the version, section presence, and absence of any runtime identity assertion, without asserting prose wording.
 
 ## 5. Integrate Segmentation Into ChannelRuntime
 
