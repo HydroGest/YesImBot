@@ -1,8 +1,8 @@
 import type { PacingConfig } from "../config.js";
-import type { ReplySegment } from "./ocl.js";
 
 export interface PacingInput {
-  readonly segment: ReplySegment;
+  readonly segment: { readonly text: string };
+  readonly isFirst: boolean;
   readonly config: PacingConfig;
   readonly elapsedGenerationMs: number;
   readonly consumedDeliveryMs: number;
@@ -28,14 +28,14 @@ export function nextSegmentDelayMs(input: PacingInput): number {
   const random = unitRandom(input.random);
   const typingDelayMs = visibleTypingDelayMs(input.segment.text, limits, random);
   const initialDelayMs =
-    input.segment.index === 1
+    input.isFirst
       ? Math.max(
           residualDelayMs(limits, random),
           typingDelayMs - nonNegative(input.elapsedGenerationMs, 0),
         )
       : typingDelayMs;
   const delayMs = clamp(
-    initialDelayMs + nonNegative(input.segment.sleepHintMs, 0),
+    initialDelayMs,
     limits.minDelayMs,
     limits.maxSegmentDelayMs,
   );
