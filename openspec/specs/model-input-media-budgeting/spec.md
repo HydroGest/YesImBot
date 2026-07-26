@@ -4,11 +4,12 @@
 TBD - created by archiving change harden-agent-input-pipeline. Update Purpose after archive.
 ## Requirements
 ### Requirement: Explicit Model Media Enablement
-Core MUST embed an image only when the global multimedia switch is enabled and the model's `models.json` chat override explicitly includes `image` in `modalities.input`. Missing input-modality metadata MUST be treated as unsupported. Built-in provider plugins MUST remain modality-agnostic and MUST NOT supply image capability for this gate.
+Core MUST embed an image only when the global multimedia switch is enabled and the model's `models.json` chat override explicitly includes `image` in `modalities.input`. Missing input-modality metadata MUST be treated as unsupported. Built-in provider plugins MUST remain modality-agnostic and MUST NOT supply image capability for this gate. `multimedia.enabled` MUST gate only model projection and MUST NOT disable ingress image freezing or durable image persistence.
 
 #### Scenario: Global multimedia is disabled
 - **WHEN** a resolved model declares image input but `multimedia.enabled` is false
 - **THEN** Core MUST project unchanged text without reading or appending image files
+- **AND** Gateway MUST continue to freeze eligible ingress images under the configured numeric image budget
 
 #### Scenario: Model capability is missing
 - **WHEN** multimedia is globally enabled but the resolved model does not explicitly declare image input
@@ -16,12 +17,11 @@ Core MUST embed an image only when the global multimedia switch is enabled and t
 
 #### Scenario: Model override declares image input
 - **WHEN** `models.json` explicitly includes `image` in one chat model's input modalities
-- **THEN** newly created or reloaded ChannelRuntimes using that model MAY embed images under the global switch and budget
+- **THEN** newly created or reloaded ChannelRuntimes using that model MAY embed images under the global switch and unified numeric image budget
 
 #### Scenario: Provider plugin registers a model
 - **WHEN** a built-in provider registers a chat model without a matching modalities override in `models.json`
 - **THEN** Core MUST treat that model as not supporting image input
-
 ### Requirement: Single-Model Input Modality Command
 Core MUST provide the authority-4 command `yesimbot.model.add-input-modality <model> <modality>`. The command MUST accept a registered full model ID or alias, validate the modality against `CHAT_MODEL_MODALITIES`, idempotently add it to only that model's `models.json` input modalities through an atomic write, and refresh ModelService after a successful write. It MUST NOT edit provider configuration or automatically replace active ChannelRuntimes.
 
@@ -43,21 +43,32 @@ Core MUST provide the authority-4 command `yesimbot.model.add-input-modality <mo
 - **WHEN** the command refreshes ModelService while a ChannelRuntime using that model already exists
 - **THEN** the active runtime MUST keep its immutable capability snapshot until explicit reload or replacement
 
-### Requirement: Independent Model-Call Image Budget
-Core MUST enforce a model-call image budget independently from Gateway freeze limits. Defaults MUST allow at most 4 image references, 5 MiB of original bytes per image, and 10 MiB of original image bytes per model call. The budget MUST reset for every actual model request, including later tool-loop steps.
+### Requirement: Unified Image Budget
+Core MUST expose one unified numeric image budget with `maxCount`, `maxBytesPerImage`, and `maxTotalBytes`. A separate Gateway freeze budget or call-scoped image-limit contract MUST NOT exist. The same values MUST limit image freezing for one admitted message, AssetStore acceptance, and selection for every model request. Image download timeout MUST remain 10 seconds and download concurrency MUST remain 2 as ingress execution controls, not configurable image-budget fields.
+
+#### Scenario: One admitted message reaches its image count or total-byte limit
+- **WHEN** Gateway freezes eligible images for one admitted message
+- **AND** accepting another image would exceed `maxCount` or `maxTotalBytes`
+- **THEN** Gateway MUST replace that image with the permanent unavailable form
+- **AND** it MUST NOT exceed the unified budget while freezing that message
+
+#### Scenario: AssetStore receives an oversized image
+- **WHEN** Gateway attempts to store image bytes larger than `maxBytesPerImage`
+- **THEN** AssetStore MUST reject those bytes
+- **AND** resolution MUST retain the permanent unavailable form without retrying the remote resource
 
 #### Scenario: Call reaches image count limit
-- **WHEN** four eligible references have been selected for one model request
+- **WHEN** `maxCount` eligible references have been selected for one model request
 - **THEN** Core MUST append no additional image file for that request
 
 #### Scenario: One image exceeds its byte limit
-- **WHEN** a candidate's original bytes exceed the configured per-image limit
+- **WHEN** a candidate's original bytes exceed `maxBytesPerImage`
 - **THEN** Core MUST skip that candidate and continue considering later candidates
 
 #### Scenario: Tool loop prepares another request
 - **WHEN** AI SDK prepares a later model step in the same Agent turn
-- **THEN** Core MUST create a fresh call budget and reapply the configured deterministic selection strategy
-
+- **THEN** Core MUST create a fresh `maxCount` and `maxTotalBytes` selection budget
+- **AND** it MUST reapply the configured deterministic selection strategy
 ### Requirement: Deterministic Image Selection Strategies
 Core MUST support `current-first`, `fifo`, and `lifo` model-call image selection. `current-first` MUST be the default and MUST visit only the new current batch for that model request in FIFO order before transformed history in FIFO order. `fifo` MUST visit all source messages in final model-boundary order. `lifo` MUST visit source Events from newest to oldest. Every strategy MUST preserve image-reference order within one source message.
 

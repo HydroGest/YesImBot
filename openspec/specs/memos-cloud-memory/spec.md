@@ -181,12 +181,11 @@ Runtime tools and historical imports MUST use one deterministic MemOS identity s
 - **THEN** `channel_hash` MUST equal `YesImBotService.channelIdentity(scope)`
 - **AND** the plugin MUST NOT serialize or hash Channel coordinates itself
 
-#### Scenario: Shared channel changes assignee
+#### Scenario: Shared channel assignee reload
 
-- **WHEN** Koishi changes a shared Channel's assignee
+- **WHEN** Koishi changes a shared Channel's assignee, an operator reloads that channel, and a later admitted event creates a runtime for the current assignee
 - **THEN** memos-client MUST continue emitting the same `channel_hash`
-- **AND** it MUST continue deriving `agent_id` from the real current bot `selfId`
-
+- **AND** it MUST derive `agent_id` from the current bot `selfId`
 #### Scenario: Identity uses stable hash versioning
 
 - **WHEN** the plugin derives MemOS-owned identity fields

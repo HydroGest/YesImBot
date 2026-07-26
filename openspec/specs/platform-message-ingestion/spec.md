@@ -5,13 +5,13 @@
 Define Session Gateway entry points, per-platform SessionResolver registration, atomic Session resolution, Satori message fallback, resolver-owned bounded image freezing, fixed forward/quote forms, and shared scoped asset ownership.
 ## Requirements
 ### Requirement: Database-Backed Shared Channel Admission
-
-Core MUST declare Koishi Database as a required dependency and MUST use the Koishi Channel row as the only assignee authority for shared Sessions.
+Core MUST declare Koishi Database as a required dependency and MUST use the Koishi Channel row as the only assignee authority for shared Sessions. Gateway MUST query that row exactly once for each shared external Session, before Resolver selection, image freezing, persistence, Runtime creation, or other Runtime work. A successful Gateway check establishes the event's assignee snapshot.
 
 #### Scenario: Current assignee sends an event
 - **WHEN** Gateway receives a shared Session
 - **AND** the database Channel identified by `platform` and `channelId` has `assignee` equal to `session.selfId`
 - **THEN** Gateway MUST allow the Session to proceed to Resolver selection
+- **AND** it MUST retain that successful check as the event's assignee snapshot
 
 #### Scenario: Non-assignee sends an event
 - **WHEN** the database assignee differs from `session.selfId`
@@ -21,7 +21,6 @@ Core MUST declare Koishi Database as a required dependency and MUST use the Kois
 #### Scenario: Assignee cannot be resolved
 - **WHEN** the Channel row is missing, assignee is empty, or the database query fails
 - **THEN** Gateway MUST reject the shared Session without side effects
-
 ### Requirement: Direct Channel Admission
 
 Gateway MUST isolate direct Sessions by their real `selfId` and MUST NOT use Koishi shared-channel assignee state for them.
@@ -32,18 +31,17 @@ Gateway MUST isolate direct Sessions by their real `selfId` and MUST NOT use Koi
 - **AND** it MUST preserve `session.selfId` in `ChannelScope`
 
 ### Requirement: Assignee Revalidation
+Core MUST use Gateway admission as the assignee snapshot for an ordinary admitted event and MUST NOT query shared-channel assignee state again before that event reaches Runtime submission or persistence. Reload, reset, and any other shared-channel lifecycle mutation MUST query current database assignee state inside the per-identity lifecycle operation before changing a Runtime or persisted state.
 
-Core MUST revalidate shared-channel assignee state at the point where a resolved input enters the per-identity Runtime lifecycle coordinator.
-
-#### Scenario: Assignment changes while event waits
-- **WHEN** Gateway admitted a Session but the database assignee changes before Runtime submission
-- **THEN** Core MUST reject the stale event
-- **AND** it MUST NOT append the event or create a Runtime for the old assignee
+#### Scenario: Assignment changes after Gateway admission
+- **WHEN** Gateway admitted a shared Session
+- **AND** the database assignee changes before Runtime submission
+- **THEN** Core MUST continue to use the Gateway admission snapshot for that event
+- **AND** it MUST NOT issue a second assignee query for that event
 
 #### Scenario: State-changing command runs
-- **WHEN** a Koishi command attempts to reset or otherwise mutate YesImBot shared-channel state
-- **THEN** Core MUST apply the same database assignee check before the mutation
-
+- **WHEN** a Koishi command attempts to reload, reset, or otherwise mutate YesImBot shared-channel state
+- **THEN** Core MUST apply a current database assignee check inside the lifecycle operation before the mutation
 ### Requirement: Session Gateway Entry Points
 Core MUST admit ordinary messages through Koishi middleware and non-message Satori Sessions through `internal/session`. Gateway MUST ensure that one Session is resolved at most once and MUST NOT cache a resolved result for later lookup by Session identity.
 
@@ -170,3 +168,17 @@ Core MUST expose `allowedChannels` as a strict Gateway allowlist. Each rule MUST
 #### Scenario: Internal delivery feedback is created
 - **WHEN** an admitted ChannelRuntime reports same-channel `delivery.failed` feedback
 - **THEN** Core MUST complete that internal Event through the producing Runtime without applying external Session allowlist admission again
+
+### Requirement: Cached Runtime Assignee Mismatch
+Core MUST fail closed when an admitted shared event's `selfId` differs from the cached Runtime's `selfId`. Core MUST detect that mismatch before persistence, MUST NOT automatically drain, replace, retry, or create a Runtime from the event route, and MUST require an explicit reload for the channel.
+
+#### Scenario: Admitted event reaches a Runtime for another self ID
+- **WHEN** Gateway admitted a shared event under its assignee snapshot
+- **AND** a cached Runtime for the same `channelIdentity` has a different `selfId`
+- **THEN** Runtime routing MUST reject the event with a reload-required error before persistence
+- **AND** it MUST preserve the cached Runtime and persisted channel data
+
+#### Scenario: Operator reloads after an assignee change
+- **WHEN** an operator explicitly reloads the shared channel
+- **THEN** Core MUST validate the current database assignee before changing the cached Runtime
+- **AND** the next admitted event MUST lazily create a Runtime with the reloaded scope's `selfId`
