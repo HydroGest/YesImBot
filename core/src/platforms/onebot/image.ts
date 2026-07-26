@@ -3,7 +3,8 @@ import type { ReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
 import { h, type Context, type Element } from "koishi";
-import type { ResolveContext } from "koishi-plugin-yesimbot";
+
+import type { ResolveContext } from "../../gateway/index.js";
 
 const DATA_URL = /^data:([^;,]+)(;base64)?,([\s\S]*)$/;
 

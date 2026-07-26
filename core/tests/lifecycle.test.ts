@@ -8,9 +8,8 @@ const state = vi.hoisted(() => ({
   stop: vi.fn(async () => undefined),
 }));
 
-vi.mock("../src/runtime/manager.js", () => ({
+vi.mock("../src/runtime/index.js", () => ({
   RuntimeManager: class {
-    setWill = vi.fn();
     reset = vi.fn(async () => undefined);
     stop = vi.fn(async () => {
       state.order.push("runtime.stop");

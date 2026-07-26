@@ -1,7 +1,7 @@
 import type { Element, Universal } from "koishi";
 
 import { isMessage, type Input, type Message } from "../event/index.js";
-import type { Will } from "./index.js";
+import type { WillEngine } from "./index.js";
 
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 
@@ -36,7 +36,7 @@ export interface WillingnessWillOptions {
   readonly warn: (event: string, fields: Record<string, unknown>) => void;
 }
 
-export class WillingnessWill implements Will {
+export class WillingnessWillEngine implements WillEngine {
   private readonly config: WillingnessConfig;
   private score = 0;
   private lastMessageAt: number | null = null;
@@ -46,7 +46,7 @@ export class WillingnessWill implements Will {
     this.config = snapshotConfig(options.config);
   }
 
-  async decide(input: Input, _state: Will.State): Promise<Will.Decision> {
+  async decide(input: Input, _state: WillEngine.State): Promise<WillEngine.Decision> {
     if (!isMessage(input)) return "wait";
 
     try {
@@ -168,15 +168,9 @@ function decayHighScore(
   return threshold * 0.5 ** ((weightedSeconds - weightedSecondsToThreshold) / halfLife);
 }
 
-function calculateScore(
-  current: number,
-  data: Message["data"],
-  config: WillingnessConfig,
-): number {
+function calculateScore(current: number, data: Message["data"], config: WillingnessConfig): number {
   assertValidConfig(config);
-  const multiplier = config.interest.keywords.some((keyword) =>
-    data.text.includes(keyword),
-  )
+  const multiplier = config.interest.keywords.some((keyword) => data.text.includes(keyword))
     ? config.interest.keywordMultiplier
     : config.interest.defaultMultiplier;
   const attributes =

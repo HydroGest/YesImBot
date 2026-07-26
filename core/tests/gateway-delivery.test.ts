@@ -12,7 +12,7 @@ import { h } from "koishi";
 import { formatInput } from "../src/event/formatter.js";
 import { isInput, type InputRecord, type MessageRecord } from "../src/event/index.js";
 import { Gateway } from "../src/gateway/index.js";
-import { RuntimeManager } from "../src/runtime/manager.js";
+import { RuntimeManager } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import { ChannelStorage } from "../src/storage/index.js";
 
@@ -101,7 +101,6 @@ function createIntegratedGateway(basePath: string) {
     storage,
     getAgentPluginFactories: () => [],
   });
-  manager.setWill(async () => ({ decide: async () => "wait" as const }));
   const gateway = new Gateway({
     ctx,
     runtime: manager,
@@ -158,7 +157,6 @@ describe("Gateway passive delivery", () => {
     expect(eventInput?.data).not.toHaveProperty("messageId");
     expect(eventInput?.data).not.toHaveProperty("elements");
     expect(await readFile(oldJsonl, "utf8")).toBe(oldPayload);
-    expect(first.storage.list()).toHaveLength(1);
     await expect(readFile(join(basePath, "channels.json"), "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -278,22 +276,6 @@ describe("Gateway passive delivery", () => {
     expect(send).toHaveBeenNthCalledWith(2, "second");
     expect(route).toHaveBeenCalledOnce();
     expect(binding.release).toHaveBeenCalledOnce();
-  });
-
-  it("releases the Session when a handover queue is full and logs the rejection", async () => {
-    const route = vi.fn(async () => {
-      throw new Error("Channel handover queue is full");
-    });
-    const logger = { warn: vi.fn() };
-    const send = vi.fn(async () => []);
-    const { gateway } = createGateway(route, logger);
-
-    await gateway.handle(session(send) as never);
-
-    expect(send).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "gateway.route_failed" }),
-    );
   });
 
   it("retains the originating Session only while consuming its active output", async () => {

@@ -15,8 +15,6 @@ export * from "./event/index.js";
 export type { ResolveContext, SessionResolver } from "./gateway/index.js";
 export type { AgentPluginFactory } from "./runtime/index.js";
 export type { YesImBotService } from "./service.js";
-export type { ChannelFilter, ChannelRecord } from "./storage/index.js";
-export { DefaultWill, type Will, type WillObservation } from "./will/index.js";
 
 export function apply(ctx: Context, config: Config) {
   ctx.plugin(ModelService, config);

@@ -41,7 +41,9 @@ function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   };
 }
 
-function deliveryFailureRecord(overrides: { timestamp?: number } = {}): EventRecord<"delivery.failed"> {
+function deliveryFailureRecord(
+  overrides: { timestamp?: number } = {},
+): EventRecord<"delivery.failed"> {
   return {
     schemaVersion: 1,
     eventType: "delivery.failed",

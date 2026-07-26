@@ -1,17 +1,13 @@
-import { isAbsolute, resolve } from "node:path";
-
 import { Service, type Context } from "koishi";
 
 import { channelIdentity, type ChannelScope } from "./channel/index.js";
-import type { Config } from "./config.js";
-import { IMAGE_BUDGET } from "./gateway/image.js";
+import { resolveMultimediaImagePolicy, type Config } from "./config.js";
 import { Gateway, type SessionResolver } from "./gateway/index.js";
+import { AssetStore } from "./media/index.js";
 import type { ModelService } from "./model/service.js";
-import { RuntimeManager, type AgentPluginFactory } from "./runtime/manager.js";
-import { AssetStore } from "./shared/asset.js";
-import { assertAssignee } from "./shared/assignee.js";
-import { ChannelStorage, type ChannelFilter, type ChannelRecord } from "./storage/index.js";
-import type { Will } from "./will/index.js";
+import { resolveBasePath } from "./path.js";
+import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
+import { ChannelStorage } from "./storage/index.js";
 
 declare module "koishi" {
   interface Context {
@@ -28,7 +24,6 @@ export class YesImBotService extends Service<Config> {
   private readonly rt: RuntimeManager;
   private readonly gate: Gateway;
   private readonly plugins = new Set<{ readonly factory: AgentPluginFactory }>();
-  private readonly wills = new Set<{ readonly factory: Will.Factory }>();
   private readonly commandDisposers = new Set<() => unknown>();
   private stopTask: Promise<void> | undefined;
 
@@ -45,7 +40,7 @@ export class YesImBotService extends Service<Config> {
     );
     this.asset = new AssetStore({
       storage: this.storage,
-      maxFileBytes: IMAGE_BUDGET.maxBytesPerImage,
+      policy: resolveMultimediaImagePolicy(config.multimedia),
     });
     this.rt = new RuntimeManager({
       ctx,
@@ -63,6 +58,7 @@ export class YesImBotService extends Service<Config> {
       allowedChannels: config.allowedChannels ?? [],
       ready: () => this.storage.start(),
       logger: this.logger,
+      mediaPolicy: resolveMultimediaImagePolicy(config.multimedia),
     });
 
     const resetCommand = ctx.command("yesimbot.reset", { authority: 4 });
@@ -113,23 +109,6 @@ export class YesImBotService extends Service<Config> {
     return this.storage.ensure(scope, namespace, ...segments);
   }
 
-  listChannels(filter?: ChannelFilter): readonly ChannelRecord[] {
-    return this.storage.list(filter);
-  }
-
-  registerWill(factory: Will.Factory): () => void {
-    const registration = { factory };
-    this.wills.add(registration);
-    this.rt.setWill(factory);
-    return () => {
-      const active = this.activeWill();
-      this.wills.delete(registration);
-      const replacement = this.activeWill();
-      if (active === replacement) return;
-      this.rt.setWill(replacement);
-    };
-  }
-
   registerAgentPlugin(factory: AgentPluginFactory): () => void {
     const registration = { factory };
     this.plugins.add(registration);
@@ -137,13 +116,14 @@ export class YesImBotService extends Service<Config> {
   }
 
   async reset(scope: ChannelScope): Promise<void> {
-    await assertAssignee(this.ctx, scope);
     return this.rt.reset(scope);
   }
 
   async reload(scope: ChannelScope): Promise<void> {
-    await assertAssignee(this.ctx, scope);
-    return this.rt.reload(scope);
+    await this.rt.reload(scope);
+    const mediaPolicy = resolveMultimediaImagePolicy(this.config.multimedia);
+    this.gate.refreshMediaPolicy(mediaPolicy);
+    this.asset.refreshPolicy(mediaPolicy);
   }
 
   override stop(): Promise<void> {
@@ -170,10 +150,6 @@ export class YesImBotService extends Service<Config> {
     }
   }
 
-  private activeWill(): Will.Factory | undefined {
-    return [...this.wills].at(-1)?.factory;
-  }
-
   private disposeCommand(): void {
     for (const dispose of this.commandDisposers) {
       try {
@@ -194,8 +170,4 @@ export class YesImBotService extends Service<Config> {
       this.logger.warn({ event, cause: cause instanceof Error ? cause.message : String(cause) });
     } catch {}
   }
-}
-
-function resolveBasePath(basePath: string, ctxBaseDir: string): string {
-  return isAbsolute(basePath) ? basePath : resolve(ctxBaseDir, basePath);
 }

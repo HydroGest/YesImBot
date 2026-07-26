@@ -1,9 +1,18 @@
 import { Schema } from "koishi";
 
 import type { ChannelAllowRule } from "./gateway/allowlist.js";
+import type { UnifiedImagePolicy } from "./media/index.js";
 import type { WillConfig } from "./will/index.js";
 
 export type { DefaultWillConfig, WillConfig } from "./will/index.js";
+
+export const DEFAULT_MULTIMEDIA_IMAGE_POLICY: UnifiedImagePolicy = Object.freeze({
+  enabled: true,
+  maxCount: 4,
+  maxBytesPerImage: 5 * 1024 * 1024,
+  maxTotalBytes: 10 * 1024 * 1024,
+  selection: "current-first",
+});
 
 export interface Config {
   basePath: string;
@@ -14,12 +23,23 @@ export interface Config {
     enabled?: boolean;
     image?: {
       selection?: "current-first" | "fifo" | "lifo";
-      maxCountPerCall?: number;
+      maxCount?: number;
       maxBytesPerImage?: number;
-      maxBytesPerCall?: number;
+      maxTotalBytes?: number;
     };
   };
   will?: WillConfig;
+}
+
+export function resolveMultimediaImagePolicy(multimedia: Config["multimedia"]): UnifiedImagePolicy {
+  const image = multimedia?.image;
+  return Object.freeze({
+    enabled: multimedia?.enabled ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.enabled,
+    maxCount: image?.maxCount ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxCount,
+    maxBytesPerImage: image?.maxBytesPerImage ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxBytesPerImage,
+    maxTotalBytes: image?.maxTotalBytes ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxTotalBytes,
+    selection: image?.selection ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.selection,
+  });
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -42,12 +62,14 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description("基础配置"),
   Schema.object({
     multimedia: Schema.object({
-      enabled: Schema.boolean().default(true),
+      enabled: Schema.boolean().default(DEFAULT_MULTIMEDIA_IMAGE_POLICY.enabled),
       image: Schema.object({
-        selection: Schema.union(["current-first", "fifo", "lifo"]).default("current-first"),
-        maxCountPerCall: Schema.number().default(4),
-        maxBytesPerImage: Schema.number().default(5 * 1024 * 1024),
-        maxBytesPerCall: Schema.number().default(10 * 1024 * 1024),
+        selection: Schema.union(["current-first", "fifo", "lifo"]).default(
+          DEFAULT_MULTIMEDIA_IMAGE_POLICY.selection,
+        ),
+        maxCount: Schema.number().default(DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxCount),
+        maxBytesPerImage: Schema.number().default(DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxBytesPerImage),
+        maxTotalBytes: Schema.number().default(DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxTotalBytes),
       }),
     }),
   }).description("模型多媒体输入"),

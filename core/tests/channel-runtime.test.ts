@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
-import { createAgentChannel, createMessageEntry, createStateManager, orderPlugins } from "@yesimbot/agent-runtime";
+import {
+  createAgentChannel,
+  createMessageEntry,
+  createStateManager,
+  orderPlugins,
+} from "@yesimbot/agent-runtime";
 import type {
   AgentPlugin,
   ModelMessageContext,
@@ -56,16 +61,22 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
   };
 });
 
-vi.mock("../src/event/media.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/event/media.js")>();
+vi.mock("../src/media/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/media/index.js")>();
   return { ...actual, selectInputFiles: state.selectInputFiles };
 });
 
-import { createInput, isInput, type EventRecord, type Input, type MessageRecord } from "../src/event/index.js";
-import { type MediaSelectionOptions, UnsupportedImageMimeError } from "../src/event/media.js";
-import { ChannelRuntime, ChannelRuntimeDrainingError } from "../src/runtime/channel.js";
+import {
+  createInput,
+  isInput,
+  type EventRecord,
+  type Input,
+  type MessageRecord,
+} from "../src/event/index.js";
+import { type MediaSelectionOptions, UnsupportedImageMimeError } from "../src/media/index.js";
+import { ChannelRuntime, ChannelRuntimeDrainingError } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
-import type { Will } from "../src/will/index.js";
+import type { WillEngine } from "../src/will/index.js";
 
 function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
@@ -83,7 +94,7 @@ function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
 }
 
 function createRuntime(
-  will: Will,
+  will: WillEngine,
   sendMessage = vi.fn(async () => ["sent-1"]),
   includeMessageId = false,
   basePath = "/tmp/yesimbot-channel-runtime",
@@ -103,10 +114,10 @@ function createRuntime(
     imageInput: false,
     mediaPolicy: Object.freeze({
       enabled: true,
-      maxImages: 4,
-      maxImageBytes: 5 * 1024 * 1024,
-      maxTotalImageBytes: 10 * 1024 * 1024,
-      strategy: "current-first" as const,
+      maxCount: 4,
+      maxBytesPerImage: 5 * 1024 * 1024,
+      maxTotalBytes: 10 * 1024 * 1024,
+      selection: "current-first" as const,
     }),
     agentPlugins: [],
     includeMessageId,
@@ -213,10 +224,10 @@ describe("ChannelRuntime", () => {
       imageInput: false,
       mediaPolicy: Object.freeze({
         enabled: true,
-        maxImages: 4,
-        maxImageBytes: 5 * 1024 * 1024,
-        maxTotalImageBytes: 10 * 1024 * 1024,
-        strategy: "current-first" as const,
+        maxCount: 4,
+        maxBytesPerImage: 5 * 1024 * 1024,
+        maxTotalBytes: 10 * 1024 * 1024,
+        selection: "current-first" as const,
       }),
       agentPlugins: [],
       includeMessageId: false,
@@ -228,7 +239,7 @@ describe("ChannelRuntime", () => {
 
   it("persists ordinary messages before Input observation and Will evaluation", async () => {
     const order: string[] = [];
-    const will: Will = {
+    const will: WillEngine = {
       decide: vi.fn(async () => {
         order.push("will");
         return "wait" as const;
@@ -247,7 +258,7 @@ describe("ChannelRuntime", () => {
 
   it("persists non-message inputs before Input observation and Will evaluation", async () => {
     const order: string[] = [];
-    const will: Will = {
+    const will: WillEngine = {
       decide: vi.fn(async () => {
         order.push("will");
         return "wait" as const;
@@ -446,12 +457,18 @@ describe("ChannelRuntime", () => {
     const original = await readFile(path, "utf8");
     const storage = createJsonlStorage(path);
     const replay = await storage.read();
-    const inputs = replay.filter(
-      (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
-    ).map((entry) => entry.data).filter(isInput);
-    const unsupported = replay.filter(
-      (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
-    ).map((entry) => entry.data).filter((entry) => !isInput(entry));
+    const inputs = replay
+      .filter(
+        (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
+      )
+      .map((entry) => entry.data)
+      .filter(isInput);
+    const unsupported = replay
+      .filter(
+        (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
+      )
+      .map((entry) => entry.data)
+      .filter((entry) => !isInput(entry));
     const { runtime } = createRuntime({ decide: async () => "wait" });
     const formatter = (
       state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
@@ -491,10 +508,10 @@ describe("ChannelRuntime", () => {
       imageInput: false,
       mediaPolicy: Object.freeze({
         enabled: true,
-        maxImages: 4,
-        maxImageBytes: 5 * 1024 * 1024,
-        maxTotalImageBytes: 10 * 1024 * 1024,
-        strategy: "current-first" as const,
+        maxCount: 4,
+        maxBytesPerImage: 5 * 1024 * 1024,
+        maxTotalBytes: 10 * 1024 * 1024,
+        selection: "current-first" as const,
       }),
       agentPlugins: [externalPlugin],
       includeMessageId: false,
@@ -774,7 +791,7 @@ describe("ChannelRuntime", () => {
     const entered = deferred();
     const release = deferred();
     const order: string[] = [];
-    const will: Will = {
+    const will: WillEngine = {
       decide: async () => {
         order.push("will");
         entered.resolve();
@@ -898,7 +915,7 @@ describe("ChannelRuntime", () => {
     state.stream = (async function* () {
       await release.promise;
     })();
-    const will: Will = {
+    const will: WillEngine = {
       decide: async () => "trigger",
       stop: vi.fn(async () => {
         throw new Error("will stop failed");
@@ -917,52 +934,19 @@ describe("ChannelRuntime", () => {
     expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 
-  it("resets in teardown order before clearing persisted channel state", async () => {
-    const order: string[] = [];
-    const will: Will = {
-      decide: async () => "wait",
-      stop: async () => order.push("will.stop"),
-    };
-    const { runtime, assets } = createRuntime(will);
-    state.agent?.interrupt.mockImplementation(async () => order.push("interrupt"));
-    state.agent?.stop.mockImplementation(async () => order.push("agent.stop"));
-    state.agent?.clear.mockImplementation(async () => order.push("storage.clear"));
-    assets.clear.mockImplementation(async () => order.push("assets.clear"));
-
-    await runtime.reset();
-
-    expect(order).toEqual([
-      "interrupt",
-      "agent.stop",
-      "will.stop",
-      "storage.clear",
-      "assets.clear",
-    ]);
-  });
-
-  it("attempts scoped asset clearing and clears in-memory state after storage clearing fails", async () => {
-    const { assets, runtime } = createRuntime({ decide: async () => "wait" });
-    state.agent?.clear.mockRejectedValueOnce(new Error("storage failed"));
-
-    await expect(runtime.reset()).rejects.toThrow("storage failed");
-    expect(assets.clear).toHaveBeenCalledOnce();
-  });
-
-  it("keeps only the most recent bounded ordered events visible to Will state", async () => {
-    const recent: string[][] = [];
+  it("passes the current active turn id as the complete WillEngine state", async () => {
+    const states: WillEngine.State[] = [];
     const { runtime } = createRuntime({
       decide: async (_event, state) => {
-        recent.push(
-          state.recent.map((input) => (input.type === "yesimbot.message" ? input.data.messageId : "")),
-        );
+        states.push(state);
         return "wait";
       },
     });
 
-    for (let index = 0; index < 33; index += 1) {
-      await runtime.handle(record({ messageId: `message-${index}` }));
-    }
+    await runtime.handle(record());
+    state.activeTurnId = "turn-active";
+    await runtime.handle(record({ messageId: "message-2" }));
 
-    expect(recent.at(-1)).toEqual(Array.from({ length: 32 }, (_, index) => `message-${index + 1}`));
+    expect(states).toEqual([{ activeTurnId: null }, { activeTurnId: "turn-active" }]);
   });
 });

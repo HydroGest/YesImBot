@@ -64,7 +64,12 @@ function createMockCtx(baseDir: string) {
   );
   const ensureStorage = vi.fn(
     async (scope: { platform: string; selfId: string; channelId: string }) => {
-      const path = join(baseDir, "channels", `v1-shared-${scope.platform}-${scope.channelId}`, "workspace");
+      const path = join(
+        baseDir,
+        "channels",
+        `v1-shared-${scope.platform}-${scope.channelId}`,
+        "workspace",
+      );
       await mkdir(path, { recursive: true });
       return path;
     },

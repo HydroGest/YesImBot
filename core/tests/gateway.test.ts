@@ -9,6 +9,7 @@ import { Config } from "../src/config.js";
 import type { InputRecord, MessageRecord } from "../src/event/index.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "../src/gateway/allowlist.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
+import type { UnifiedImagePolicy } from "../src/media/index.js";
 import { ChannelStorage } from "../src/storage/index.js";
 
 function session(overrides: Record<string, unknown> = {}) {
@@ -63,6 +64,7 @@ function createGateway(
   options: {
     readonly ready?: () => Promise<void>;
     readonly allowedChannels?: readonly ChannelAllowRule[];
+    readonly mediaPolicy?: UnifiedImagePolicy;
   } = {},
 ) {
   const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
@@ -92,6 +94,13 @@ function createGateway(
       ready: options.ready ?? (() => storage.start()),
       allowedChannels: options.allowedChannels ?? [{ platform: "*", channelId: "*" }],
       logger,
+      mediaPolicy: options.mediaPolicy ?? {
+        enabled: true,
+        maxCount: 4,
+        maxBytesPerImage: 5 * 1024 * 1024,
+        maxTotalBytes: 10 * 1024 * 1024,
+        selection: "current-first",
+      },
     }),
     runtime,
     assets,
@@ -292,6 +301,19 @@ describe("Gateway", () => {
     await handling;
   });
 
+  it("queries the shared assignee once before resolver work", async () => {
+    const { gateway, database } = createGateway();
+    const resolve = vi.fn(async () => record());
+    gateway.register({ platform: "test", resolve });
+
+    await gateway.handle(session() as never);
+
+    expect(database.get).toHaveBeenCalledOnce();
+    expect(database.get.mock.invocationCallOrder[0]).toBeLessThan(
+      resolve.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
   it.each([
     [[], "missing"],
     [[{ assignee: "" }], "empty"],
@@ -416,6 +438,35 @@ describe("Gateway", () => {
 
     expect(resolve).toHaveBeenCalledOnce();
     expect(runtime.route).toHaveBeenCalledWith(record());
+  });
+
+  it("freezes eligible ingress images when multimedia projection is disabled", async () => {
+    const { gateway, assets } = createGateway({
+      mediaPolicy: {
+        enabled: false,
+        maxCount: 1,
+        maxBytesPerImage: 8,
+        maxTotalBytes: 8,
+        selection: "current-first",
+      },
+    });
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    gateway.register({
+      platform: "test",
+      resolve: async ({ freezeImage }) => {
+        await freezeImage(h("img", { src: "https://example.test/image.png" }), async () => ({
+          data: png,
+        }));
+        return record();
+      },
+    });
+
+    await gateway.handle(session() as never);
+
+    expect(assets.put).toHaveBeenCalledWith(
+      { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
+      png,
+    );
   });
 
   it("rejects a resolver that changes direct classification", async () => {

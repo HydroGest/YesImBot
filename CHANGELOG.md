@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **onebot-utils**: Channel platform context extraction and platform-aware message handling
 - **sticker**: New `koishi-plugin-yesimbot-sticker` plugin for sticker message handling
 - **core**: Added canonical 26-character Channel Keys, authoritative channel Manifests, a rebuildable Catalog, and registered per-channel storage namespaces
-- **core**: Added Database-backed shared-channel admission and bounded online Runtime handover when the Koishi assignee changes
+- **core**: Added Database-backed shared-channel admission and explicit `reload(scope)` workflow for assignee changes and config updates
 
 ### Changed
 
@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **core**: Moved per-channel FIFO, Agent/Will ownership, JSONL, stream consumption, delivery completion, reset, and stop behind internal RuntimeManager and ChannelRuntime modules
 - **core**: Added independent direct, group-mention, and ordinary-group routing policies while keeping self-message ignore fixed
 - **core**: Stores only verified, channel-local inbound image assets; preparation permits four images, 5 MiB per image, 10 MiB per message, two concurrent downloads, and a 10-second timeout
+- **core**: Unified multimedia image budget with `multimedia.image.maxCount`, `maxBytesPerImage`, and `maxTotalBytes` config keys; removed old `maxCountPerCall` and `maxBytesPerCall` aliases
 - **onebot-utils**: `onebot_get_forward_message` now returns sanitized, bounded, paginated text from raw or structured OneBot forward payloads without URLs, raw fields, child IDs, media bytes, or asset IDs
 - **core**: Migrated from legacy `packages/agent/` to `@yesimbot/agent-runtime` as the foundation; rebuilt `service.ts` as slim Koishi wrapper; removed `internal/` and `services/extension/` legacy modules
 - **workspace**: Replaced custom tool implementations (`edit-file`, `execute-command`, `glob`, `grep`, `read-file`, `write-file`) with just-bash sandbox
@@ -49,3 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **core**: Removed legacy `core/src/internal/`, `core/src/services/extension/`, `core/src/shared/platform-event.ts`
 - **workspace**: Removed legacy custom tools directory and associated tests
 - **docs**: Removed `CONTEXT.md`, `NOTICE`, `ROADMAP.md`
+- **core**: Removed `registerWill()` and Will factory registration from public facade; Will engine is configured via `will.engine` config key
+- **core**: Removed `listChannels()` from public facade
+- **core**: Removed automatic online Runtime handover; use explicit `reload(scope)` after shared assignee changes

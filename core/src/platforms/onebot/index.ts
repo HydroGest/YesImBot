@@ -1,7 +1,8 @@
 import type { Context } from "koishi";
 import type {} from "koishi-plugin-adapter-onebot";
-import type { MessageRecord, ResolveContext, SessionResolver } from "koishi-plugin-yesimbot";
 
+import type { MessageRecord } from "../../event/index.js";
+import type { ResolveContext, SessionResolver } from "../../gateway/index.js";
 import { resolveOneBotEvent } from "./events.js";
 import { freezeOneBotImages } from "./image.js";
 

@@ -1,47 +1,47 @@
 import type { Awaitable, Element, Universal } from "koishi";
 
-import type { ChannelScope } from "../channel/index.js";
+import type { Config } from "../config.js";
 import { isMessage, type Input } from "../event/index.js";
-import type { WillingnessConfigInput } from "./willingness.js";
+import {
+  createWillingnessConfig,
+  WillingnessWillEngine,
+  type WillingnessConfigInput,
+  type WillingnessWillOptions,
+} from "./willingness.js";
 
 export {
   createWillingnessConfig,
   decayScore,
-  WillingnessWill,
+  WillingnessWillEngine,
   type WillingnessConfig,
   type WillingnessConfigInput,
 } from "./willingness.js";
 
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 
-export interface Will {
-  decide(input: Input, state: Will.State): Awaitable<Will.Decision>;
+export interface WillEngine {
+  decide(input: Input, state: WillEngine.State): Awaitable<WillEngine.Decision>;
   onReply?(): Awaitable<void>;
   stop?(): Awaitable<void>;
 }
 
-export namespace Will {
+export namespace WillEngine {
   export type Decision = "wait" | "trigger";
 
   export interface State {
     readonly activeTurnId: string | null;
-    readonly pending: readonly Input[];
-    readonly recent: readonly Input[];
-    readonly lastActivityAt: number | null;
   }
-
-  export type Factory = (channel: ChannelScope) => Awaitable<Will>;
 }
 
-export interface WillObservation {
+export interface WillEngineObservation {
   readonly event: Input;
-  readonly decision: Will.Decision;
+  readonly decision: WillEngine.Decision;
 }
 
 export interface DefaultWillConfig {
-  readonly direct: Will.Decision;
-  readonly mention: Will.Decision;
-  readonly group: Will.Decision;
+  readonly direct: WillEngine.Decision;
+  readonly mention: WillEngine.Decision;
+  readonly group: WillEngine.Decision;
 }
 
 export interface WillConfig extends Partial<DefaultWillConfig>, WillingnessConfigInput {
@@ -54,14 +54,32 @@ const DEFAULT_CONFIG: DefaultWillConfig = {
   group: "wait",
 };
 
-export class DefaultWill implements Will {
+export interface WillEngineDiagnostics extends Pick<
+  WillingnessWillOptions,
+  "now" | "random" | "warn"
+> {}
+
+export function createWillEngine(
+  config: Config["will"] | undefined,
+  diagnostics: WillEngineDiagnostics,
+): WillEngine {
+  if (config?.engine === "willingness") {
+    return new WillingnessWillEngine({
+      config: createWillingnessConfig(config),
+      ...diagnostics,
+    });
+  }
+  return new RoutingWillEngine(config);
+}
+
+export class RoutingWillEngine implements WillEngine {
   private readonly config: DefaultWillConfig;
 
   constructor(config: Partial<DefaultWillConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  async decide(input: Input, _state: Will.State): Promise<Will.Decision> {
+  async decide(input: Input, _state: WillEngine.State): Promise<WillEngine.Decision> {
     if (!isMessage(input)) return "wait";
     if (input.data.channel.type === DIRECT_CHANNEL_TYPE) return this.config.direct;
     if (input.data.elements.some(isSelfMention.bind(null, input.data.selfId))) {
@@ -77,6 +95,6 @@ function isSelfMention(selfId: string, element: Element): boolean {
 
 declare module "koishi" {
   interface Events {
-    "yesimbot/will": (observation: WillObservation) => void;
+    "yesimbot/will": (observation: WillEngineObservation) => void;
   }
 }

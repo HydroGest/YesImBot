@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import fs from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { ChannelScope } from "../channel/index.js";
@@ -13,18 +13,8 @@ import {
   type ChannelRecord,
 } from "./manifest.js";
 
-export type { ChannelRecord } from "./manifest.js";
-
 const NAMESPACE_PATTERN = /^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
-
-export type ChannelFilter = Partial<ChannelRecord>;
-
-function matchesFilter(record: ChannelRecord, filter: ChannelFilter): boolean {
-  return (Object.keys(filter) as Array<keyof ChannelFilter>).every(
-    (key) => filter[key] === undefined || record[key] === filter[key],
-  );
-}
 
 function isMissingPath(cause: unknown): boolean {
   return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
@@ -33,17 +23,20 @@ function isMissingPath(cause: unknown): boolean {
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   const temporary = `${path}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
-    await rename(temporary, path);
+    await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    await fs.rename(temporary, path);
   } finally {
-    await rm(temporary, { force: true });
+    await fs.rm(temporary, { force: true });
   }
 }
 
 export class ChannelStorage {
   private readonly channelsPath: string;
   private readonly records = new Map<string, ChannelRecord>();
-  private readonly namespaces = new Map<string, object>();
+  private readonly namespaces = new Map<string, symbol>();
   private tail: Promise<void> = Promise.resolve();
   private startTask: Promise<void> | undefined;
 
@@ -52,8 +45,8 @@ export class ChannelStorage {
     private readonly warn: (code: string, fields: Record<string, unknown>) => void = () => {},
   ) {
     this.channelsPath = resolve(basePath, "channels");
-    this.namespaces.set("sessions", {});
-    this.namespaces.set("assets", {});
+    this.namespaces.set("sessions", Symbol("sessions"));
+    this.namespaces.set("assets", Symbol("assets"));
   }
 
   start(): Promise<void> {
@@ -65,8 +58,9 @@ export class ChannelStorage {
     if (!NAMESPACE_PATTERN.test(namespace) || WINDOWS_RESERVED.test(namespace)) {
       throw new TypeError(`Invalid storage namespace: ${JSON.stringify(namespace)}`);
     }
-    if (this.namespaces.has(namespace)) throw new Error(`Storage namespace already registered: ${namespace}`);
-    const owner = {};
+    if (this.namespaces.has(namespace))
+      throw new Error(`Storage namespace already registered: ${namespace}`);
+    const owner = Symbol(namespace);
     this.namespaces.set(namespace, owner);
     return () => {
       if (this.namespaces.get(namespace) === owner) this.namespaces.delete(namespace);
@@ -76,7 +70,8 @@ export class ChannelStorage {
   async ensure(scope: ChannelScope, namespace: string, ...segments: string[]): Promise<string> {
     await this.start();
     for (const segment of segments) this.assertSegment(segment);
-    if (!this.namespaces.has(namespace)) throw new Error(`Storage namespace is not registered: ${namespace}`);
+    if (!this.namespaces.has(namespace))
+      throw new Error(`Storage namespace is not registered: ${namespace}`);
     const record = await this.enqueue(() => this.ensureChannel(scope));
     const channelRoot = resolve(this.channelsPath, record.directoryName);
     const root = resolve(channelRoot, namespace);
@@ -84,24 +79,25 @@ export class ChannelStorage {
     await this.assertChannelRoot(channelRoot);
     let rootExists = false;
     try {
-      const namespaceStat = await lstat(root);
+      const namespaceStat = await fs.lstat(root);
       if (namespaceStat.isSymbolicLink()) throw new Error("Namespace root is a symbolic link");
       rootExists = true;
     } catch (cause) {
       if (!isMissingPath(cause)) throw cause;
     }
-    if (!rootExists) await mkdir(root, { recursive: true });
+    if (!rootExists) await fs.mkdir(root, { recursive: true });
     await this.assertChannelRoot(channelRoot);
-    const namespaceStat = await lstat(root);
+    const namespaceStat = await fs.lstat(root);
     if (namespaceStat.isSymbolicLink()) throw new Error("Namespace root is a symbolic link");
-    const realRoot = await realpath(root);
+    const realRoot = await fs.realpath(root);
     this.assertContained(channelRoot, realRoot);
     const path = resolve(root, ...segments);
     let check = root;
     for (const segment of segments) {
       check = resolve(check, segment);
       try {
-        if ((await lstat(check)).isSymbolicLink()) throw new Error("Storage path segment is a symbolic link");
+        if ((await fs.lstat(check)).isSymbolicLink())
+          throw new Error("Storage path segment is a symbolic link");
       } catch (cause) {
         if (!isMissingPath(cause)) throw cause;
         break;
@@ -111,13 +107,6 @@ export class ChannelStorage {
     return path;
   }
 
-  list(filter: ChannelFilter = {}): readonly ChannelRecord[] {
-    return [...this.records.values()]
-      .filter((record) => matchesFilter(record, filter))
-      .sort((left, right) => (left.identity < right.identity ? -1 : left.identity > right.identity ? 1 : 0))
-      .map((record) => Object.freeze({ ...record }));
-  }
-
   async updateName(scope: ChannelScope, name: string | undefined): Promise<void> {
     if (!name) return;
     await this.start();
@@ -125,14 +114,17 @@ export class ChannelStorage {
       const record = await this.ensureChannel(scope);
       if (record.name === name) return;
       const manifest = this.toManifest(channelRecord(scope, name));
-      await writeJsonAtomic(join(this.channelsPath, record.directoryName, "channel.json"), manifest);
+      await writeJsonAtomic(
+        join(this.channelsPath, record.directoryName, "channel.json"),
+        manifest,
+      );
       this.records.set(record.identity, channelRecord(scope, name));
     });
   }
 
   private async startInternal(): Promise<void> {
-    await mkdir(this.channelsPath, { recursive: true });
-    const entries = await readdir(this.channelsPath, { withFileTypes: true });
+    await fs.mkdir(this.channelsPath, { recursive: true });
+    const entries = await fs.readdir(this.channelsPath, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory() || !entry.name.startsWith("v1-")) {
         this.warn("storage.directory_invalid", { entry: entry.name });
@@ -140,9 +132,12 @@ export class ChannelStorage {
       }
       try {
         const manifest = parseChannelManifest(
-          JSON.parse(await readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")),
+          JSON.parse(
+            await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8"),
+          ),
         );
-        if (manifest.directoryName !== entry.name) throw new Error("Manifest directory name does not match directory");
+        if (manifest.directoryName !== entry.name)
+          throw new Error("Manifest directory name does not match directory");
         const record = this.toRecord(manifest);
         this.records.set(record.identity, record);
         await this.reportUnregisteredNamespaces(entry.name);
@@ -161,11 +156,15 @@ export class ChannelStorage {
     }
     const destination = join(this.channelsPath, expected.directoryName);
     try {
-      const destinationStat = await stat(destination);
-      if (!destinationStat.isDirectory()) throw new Error("Channel storage destination is not a directory");
+      const destinationStat = await fs.stat(destination);
+      if (!destinationStat.isDirectory())
+        throw new Error("Channel storage destination is not a directory");
       await this.assertChannelRoot(destination);
-      const manifest = parseChannelManifest(JSON.parse(await readFile(join(destination, "channel.json"), "utf8")));
-      if (!this.sameIdentity(manifest, expected)) throw new Error("Channel storage integrity mismatch");
+      const manifest = parseChannelManifest(
+        JSON.parse(await fs.readFile(join(destination, "channel.json"), "utf8")),
+      );
+      if (!this.sameIdentity(manifest, expected))
+        throw new Error("Channel storage integrity mismatch");
       const record = this.toRecord(manifest);
       this.records.set(record.identity, record);
       return record;
@@ -181,20 +180,23 @@ export class ChannelStorage {
     const destination = join(this.channelsPath, manifest.directoryName);
     const temporary = join(this.channelsPath, `.${manifest.directoryName}.${randomUUID()}.tmp`);
     try {
-      await mkdir(temporary);
+      await fs.mkdir(temporary);
       await writeJsonAtomic(join(temporary, "channel.json"), manifest);
-      await rename(temporary, destination);
+      await fs.rename(temporary, destination);
     } finally {
-      await rm(temporary, { recursive: true, force: true });
+      await fs.rm(temporary, { recursive: true, force: true });
     }
   }
 
   private async assertChannelRoot(channelRoot: string): Promise<void> {
-    if ((await lstat(channelRoot)).isSymbolicLink()) throw new Error("Channel directory is a symbolic link");
+    if ((await fs.lstat(channelRoot)).isSymbolicLink())
+      throw new Error("Channel directory is a symbolic link");
   }
 
   private async reportUnregisteredNamespaces(directoryName: string): Promise<void> {
-    const entries = await readdir(join(this.channelsPath, directoryName), { withFileTypes: true });
+    const entries = await fs.readdir(join(this.channelsPath, directoryName), {
+      withFileTypes: true,
+    });
     for (const entry of entries) {
       if (entry.isDirectory() && !this.namespaces.has(entry.name)) {
         this.warn("storage.namespace_unregistered", { directoryName, namespace: entry.name });
@@ -204,7 +206,10 @@ export class ChannelStorage {
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.tail.then(operation);
-    this.tail = result.then(() => undefined, () => undefined);
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
   }
 
@@ -218,7 +223,12 @@ export class ChannelStorage {
   }
 
   private toRecord(manifest: ChannelManifest): ChannelRecord {
-    const { formatVersion: _formatVersion, identityVersion: _identityVersion, directoryVersion: _directoryVersion, ...record } = manifest;
+    const {
+      formatVersion: _formatVersion,
+      identityVersion: _identityVersion,
+      directoryVersion: _directoryVersion,
+      ...record
+    } = manifest;
     return record;
   }
 

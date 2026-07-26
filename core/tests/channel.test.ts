@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
+import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
 import * as core from "../src/index.js";
-import { channelIdentity, sameChannel, type ChannelScope } from "../src/channel/index.js";
 
 const shared = (selfId: string): ChannelScope => ({
   platform: "onebot",
@@ -23,13 +23,11 @@ describe("channelIdentity", () => {
   it("matches the shared conformance vector and ignores selfId", () => {
     expect(channelIdentity(shared("10000"))).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
     expect(channelIdentity(shared("20000"))).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
-    expect(sameChannel(shared("10000"), shared("20000"))).toBe(true);
   });
 
   it("matches direct conformance vectors and retains selfId", () => {
     expect(channelIdentity(direct("10000"))).toBe("ymdz53gzamgvzjzrtf6vesoal4");
     expect(channelIdentity(direct("20000"))).toBe("3fdpuhlm2tmzybzrlgxotmtmxq");
-    expect(sameChannel(direct("10000"), direct("20000"))).toBe(false);
   });
 
   it("matches the Unicode vector without normalization", () => {

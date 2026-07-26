@@ -16,8 +16,9 @@ export interface EventMap {
   };
 }
 
-export interface MessageData
-  extends Readonly<Omit<Universal.Event, "type" | "timestamp" | "message" | "content">> {
+export interface MessageData extends Readonly<
+  Omit<Universal.Event, "type" | "timestamp" | "message" | "content">
+> {
   readonly schemaVersion: 1;
   readonly platform: string;
   readonly selfId: string;
@@ -48,6 +49,7 @@ export type Message = CustomMessageBase<"yesimbot.message", MessageData>;
 
 export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<
   "yesimbot.event",
+  // Keep this distributive conditional so declaration-merged event variants narrow by eventType.
   K extends K ? Omit<EventRecord<K>, "timestamp"> : never
 >;
 
@@ -82,10 +84,7 @@ export function isMessage(message: AgentMessage): message is Message {
   if (message.role !== "custom" || message.type !== "yesimbot.message") return false;
   const data = message.data;
   return (
-    typeof data === "object" &&
-    data !== null &&
-    "schemaVersion" in data &&
-    data.schemaVersion === 1
+    typeof data === "object" && data !== null && "schemaVersion" in data && data.schemaVersion === 1
   );
 }
 
@@ -93,10 +92,7 @@ export function isEvent(message: AgentMessage): message is Event {
   if (message.role !== "custom" || message.type !== "yesimbot.event") return false;
   const data = message.data;
   return (
-    typeof data === "object" &&
-    data !== null &&
-    "schemaVersion" in data &&
-    data.schemaVersion === 1
+    typeof data === "object" && data !== null && "schemaVersion" in data && data.schemaVersion === 1
   );
 }
 

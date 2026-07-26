@@ -9,10 +9,11 @@ import { appendModelFiles, formatInput } from "../src/event/formatter.js";
 import {
   createEvent,
   createMessage,
+  type Event,
   type EventRecord,
   type MessageRecord,
 } from "../src/event/index.js";
-import { selectInputFiles, type MediaSelectionOptions } from "../src/event/media.js";
+import { selectInputFiles, type MediaSelectionOptions } from "../src/media/index.js";
 
 const scope: ChannelScope = {
   platform: "onebot",
@@ -37,7 +38,10 @@ function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   };
 }
 
-function messageRecordWithText(text: string, overrides: { timestamp?: number } = {}): MessageRecord {
+function messageRecordWithText(
+  text: string,
+  overrides: { timestamp?: number } = {},
+): MessageRecord {
   return {
     ...messageRecord(overrides),
     text,
@@ -91,20 +95,30 @@ function selectionOptions(
     imageInput: true,
     policy: {
       enabled: true,
-      maxImages: 4,
-      maxImageBytes: 5 * 1024 * 1024,
-      maxTotalImageBytes: 10 * 1024 * 1024,
-      strategy: "current-first",
+      maxCount: 4,
+      maxBytesPerImage: 5 * 1024 * 1024,
+      maxTotalBytes: 10 * 1024 * 1024,
+      selection: "current-first",
     },
     ...overrides,
   };
 }
 
 describe("formatInput", () => {
+  it("narrows declaration-merged Event data by eventType", () => {
+    const event: Event = createEvent(deliveryFailureRecord());
+
+    if (event.data.eventType !== "delivery.failed") throw new Error("Unexpected event type");
+
+    expect(event.data.delivery.messageId).toBe("assistant-1");
+  });
+
   it("formats a message from stored text and resources", () => {
-    const input = createMessage(messageRecord({
-      timestamp: new Date("2026-07-25T12:34:00.000Z").valueOf(),
-    }));
+    const input = createMessage(
+      messageRecord({
+        timestamp: new Date("2026-07-25T12:34:00.000Z").valueOf(),
+      }),
+    );
     expect(formatInput(input, { includeMessageId: true })).toEqual({
       role: "user",
       content: '[time="2026/7/25 20:34" sender="Alice (10001)" id="m-1"]\nhello',
@@ -122,7 +136,9 @@ describe("formatInput", () => {
   describe("selectInputFiles", () => {
     it("does not read assets when either global or model image input is disabled", async () => {
       const assets = assetStore();
-      const context = selectionContext([createMessage(messageRecordWithText('<img id="asset_disabled"/>'))]);
+      const context = selectionContext([
+        createMessage(messageRecordWithText('<img id="asset_disabled"/>')),
+      ]);
 
       await expect(
         selectInputFiles(context, selectionOptions(assets, { imageInput: false })),
@@ -147,13 +163,13 @@ describe("formatInput", () => {
       const initial = await selectInputFiles(
         selectionContext([history], [current]),
         selectionOptions(assets, {
-          policy: { ...selectionOptions(assets).policy, maxImages: 1 },
+          policy: { ...selectionOptions(assets).policy, maxCount: 1 },
         }),
       );
       const later = await selectInputFiles(
         selectionContext([history]),
         selectionOptions(assets, {
-          policy: { ...selectionOptions(assets).policy, maxImages: 1 },
+          policy: { ...selectionOptions(assets).policy, maxCount: 1 },
         }),
       );
 
@@ -166,22 +182,52 @@ describe("formatInput", () => {
       ]);
     });
 
+    it("uses a fresh unified budget for each model context", async () => {
+      const assets = assetStore();
+      assets.readByAssetId.mockResolvedValue(pngBytes);
+      const first = createMessage(
+        messageRecordWithText('<img id="asset_first"/><img id="asset_second"/>'),
+      );
+      const second = createMessage(messageRecordWithText('<img id="asset_later"/>'));
+      const policy = {
+        enabled: true,
+        maxCount: 1,
+        maxBytesPerImage: 8,
+        maxTotalBytes: 8,
+        selection: "current-first" as const,
+      };
+
+      const initial = await selectInputFiles(
+        selectionContext([first]),
+        selectionOptions(assets, { policy }),
+      );
+      const later = await selectInputFiles(
+        selectionContext([second]),
+        selectionOptions(assets, { policy }),
+      );
+
+      expect(initial.get(first.id)).toHaveLength(1);
+      expect(later.get(second.id)).toHaveLength(1);
+    });
+
     it("uses FIFO and LIFO event visitation while retaining source order within one Input", async () => {
       const assets = assetStore();
       assets.readByAssetId.mockResolvedValue(pngBytes);
-      const first = createMessage(messageRecordWithText('<img id="asset_first_a"/><img id="asset_first_b"/>'));
+      const first = createMessage(
+        messageRecordWithText('<img id="asset_first_a"/><img id="asset_first_b"/>'),
+      );
       const second = createMessage(messageRecordWithText('<img id="asset_second"/>'));
 
       await selectInputFiles(
         selectionContext([first, second]),
         selectionOptions(assets, {
-          policy: { ...selectionOptions(assets).policy, strategy: "fifo" },
+          policy: { ...selectionOptions(assets).policy, selection: "fifo" },
         }),
       );
       await selectInputFiles(
         selectionContext([first, second]),
         selectionOptions(assets, {
-          policy: { ...selectionOptions(assets).policy, strategy: "lifo" },
+          policy: { ...selectionOptions(assets).policy, selection: "lifo" },
         }),
       );
 
@@ -201,9 +247,11 @@ describe("formatInput", () => {
       assets.readByAssetId.mockImplementation(async (_scope, assetId) =>
         assetId === "asset_svg" ? unsupported : pngBytes,
       );
-      const input = createMessage(messageRecordWithText(
-        '<img id="asset_svg"/><img id="asset_1"/><img id="asset_2"/><img id="asset_3"/><img id="asset_4"/><img id="asset_5"/>',
-      ));
+      const input = createMessage(
+        messageRecordWithText(
+          '<img id="asset_svg"/><img id="asset_1"/><img id="asset_2"/><img id="asset_3"/><img id="asset_4"/><img id="asset_5"/>',
+        ),
+      );
 
       const selected = await selectInputFiles(selectionContext([input]), selectionOptions(assets));
 
@@ -237,7 +285,9 @@ describe("formatInput", () => {
       assets.readByAssetId.mockImplementation(async (_scope, assetId) =>
         assetId === "asset_oversized" ? oversizedPngBytes : fiveMiBPngBytes,
       );
-      const input = createMessage(messageRecordWithText('<img id="asset_oversized"/><img id="asset_fitting"/>'));
+      const input = createMessage(
+        messageRecordWithText('<img id="asset_oversized"/><img id="asset_fitting"/>'),
+      );
 
       const selected = await selectInputFiles(selectionContext([input]), selectionOptions(assets));
 
@@ -251,9 +301,11 @@ describe("formatInput", () => {
     it("accepts the exact default ten MiB total boundary and stops before reading later candidates", async () => {
       const assets = assetStore();
       assets.readByAssetId.mockResolvedValue(fiveMiBPngBytes);
-      const input = createMessage(messageRecordWithText(
-        '<img id="asset_first"/><img id="asset_second"/><img id="asset_unread"/>',
-      ));
+      const input = createMessage(
+        messageRecordWithText(
+          '<img id="asset_first"/><img id="asset_second"/><img id="asset_unread"/>',
+        ),
+      );
 
       const selected = await selectInputFiles(selectionContext([input]), selectionOptions(assets));
 
@@ -279,9 +331,11 @@ describe("formatInput", () => {
       const diagnostics = vi.fn(() => {
         throw new Error("diagnostic failed");
       });
-      const input = createMessage(messageRecordWithText(
-        '<img id="asset_invalid"/><img id="asset_missing"/><img id="asset_valid"/>',
-      ));
+      const input = createMessage(
+        messageRecordWithText(
+          '<img id="asset_invalid"/><img id="asset_missing"/><img id="asset_valid"/>',
+        ),
+      );
 
       const selected = await selectInputFiles(
         selectionContext([input]),
@@ -304,18 +358,20 @@ describe("formatInput", () => {
         if (assetId === "asset_missing") throw new Error("missing");
         return assetId === "asset_large" ? oversized : pngBytes;
       });
-      const input = createMessage(messageRecordWithText(
-        '<img id="asset_missing"/><img id="asset_large"/><img id="asset_duplicate"/><img id="asset_duplicate"/><img id="asset_svg"/>',
-      ));
+      const input = createMessage(
+        messageRecordWithText(
+          '<img id="asset_missing"/><img id="asset_large"/><img id="asset_duplicate"/><img id="asset_duplicate"/><img id="asset_svg"/>',
+        ),
+      );
 
       const selected = await selectInputFiles(
         selectionContext([input]),
         selectionOptions(assets, {
           policy: {
             ...selectionOptions(assets).policy,
-            maxImages: 2,
-            maxImageBytes: 8,
-            maxTotalImageBytes: 16,
+            maxCount: 2,
+            maxBytesPerImage: 8,
+            maxTotalBytes: 16,
           },
         }),
       );
@@ -357,7 +413,9 @@ describe("formatInput", () => {
     const files: readonly FilePart[] = [{ type: "file", data: pngBytes, mediaType: "image/png" }];
     const literal = '<p>  <img id="asset_1"/>\n</p>';
 
-    expect(formatInput(createMessage(messageRecordWithText(literal)), { includeMessageId: true, files })).toEqual({
+    expect(
+      formatInput(createMessage(messageRecordWithText(literal)), { includeMessageId: true, files }),
+    ).toEqual({
       role: "user",
       content: [
         {
@@ -398,9 +456,9 @@ describe("formatInput", () => {
     expect(result.role).toBe("user");
     expect(Array.isArray(result.content)).toBe(true);
     const textPart = (result.content as Array<{ type: string; text: string }>)[0];
-    expect(textPart.text).toContain('[SYSTEM_NOTIFICATION]');
+    expect(textPart.text).toContain("[SYSTEM_NOTIFICATION]");
     expect(textPart.text).toContain('"eventType":"delivery.failed"');
     expect(textPart.text).toContain('"text":"failed"');
-    expect(textPart.text).toContain('[/SYSTEM_NOTIFICATION]');
+    expect(textPart.text).toContain("[/SYSTEM_NOTIFICATION]");
   });
 });

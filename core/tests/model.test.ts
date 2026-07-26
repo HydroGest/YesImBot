@@ -70,6 +70,37 @@ afterEach(async () => {
 });
 
 describe("models.json modalities", () => {
+  it("preserves configured embedding defaults through provider registration, resolution, listing, and query", async () => {
+    const embedding = {};
+    const provider: ModelProvider = {
+      id: "openai",
+      capabilities: { chat: true, embedding: true },
+      chatModels: () => [{ id: "gpt-4o" }],
+      embeddingModels: () => [{ id: "text-embedding-3-small", dimension: 1536 }],
+      chat: () => ({}) as never,
+      embedding: vi.fn(() => embedding as never),
+    };
+    const service = await createModelService(
+      {
+        defaults: { embedding: "openai:text-embedding-3-small" },
+        aliases: { semantic: "openai:text-embedding-3-small" },
+        embedding: { "openai:text-embedding-3-small": { name: "Semantic" } },
+      },
+      undefined,
+      provider,
+    );
+
+    expect(service.getDefaultEmbeddingModelId()).toBe("openai:text-embedding-3-small");
+    expect(service.resolveEmbedding("semantic")).toBe(embedding);
+    expect(service.listEmbeddingModels()).toEqual([
+      {
+        fullId: "openai:text-embedding-3-small",
+        config: { id: "text-embedding-3-small", dimension: 1536, name: "Semantic" },
+      },
+    ]);
+    expect(service.getProvider("openai")).toBe(provider);
+  });
+
   it("loads independent input and output modality arrays when their values are supported", async () => {
     const path = await createModelsPath({
       chat: {

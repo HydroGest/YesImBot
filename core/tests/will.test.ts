@@ -5,16 +5,24 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { Config } from "../src/config.js";
 import type { Config as ConfigType } from "../src/config.js";
-import { createInput, type Event, type EventRecord, type Input, type Message, type MessageRecord } from "../src/event/index.js";
 import {
-  DefaultWill,
+  createInput,
+  type Event,
+  type EventRecord,
+  type Input,
+  type Message,
+  type MessageRecord,
+} from "../src/event/index.js";
+import {
+  RoutingWillEngine,
+  createWillEngine,
   createWillingnessConfig,
   decayScore,
   type DefaultWillConfig,
-  WillingnessWill,
+  WillingnessWillEngine,
   type WillingnessConfig,
-  type Will,
-  type WillObservation,
+  type WillEngine,
+  type WillEngineObservation,
 } from "../src/will/index.js";
 
 declare module "koishi-plugin-yesimbot" {
@@ -26,11 +34,8 @@ declare module "koishi-plugin-yesimbot" {
   }
 }
 
-const EMPTY_STATE: Will.State = {
+const EMPTY_STATE: WillEngine.State = {
   activeTurnId: null,
-  pending: [],
-  recent: [],
-  lastActivityAt: null,
 };
 
 function messageInput(options: {
@@ -126,9 +131,9 @@ function deliveryFailedEvent(): Event<"delivery.failed"> {
   });
 }
 
-describe("DefaultWill", () => {
+describe("RoutingWillEngine", () => {
   it("triggers direct messages and mentions but waits on ordinary group messages", async () => {
-    const will = new DefaultWill({ direct: "trigger", mention: "trigger", group: "wait" });
+    const will = new RoutingWillEngine({ direct: "trigger", mention: "trigger", group: "wait" });
 
     await expect(will.decide(directMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
     await expect(will.decide(mentionedGroupInput(), EMPTY_STATE)).resolves.toBe("trigger");
@@ -136,7 +141,7 @@ describe("DefaultWill", () => {
   });
 
   it("waits for non-message and delivery-failed events", async () => {
-    const will = new DefaultWill({ direct: "trigger", mention: "trigger", group: "trigger" });
+    const will = new RoutingWillEngine({ direct: "trigger", mention: "trigger", group: "trigger" });
 
     await expect(will.decide(nonMessageEvent(), EMPTY_STATE)).resolves.toBe("wait");
     await expect(will.decide(deliveryFailedEvent(), EMPTY_STATE)).resolves.toBe("wait");
@@ -154,16 +159,39 @@ describe("DefaultWill", () => {
       group: "wait",
     };
 
-    await expect(new DefaultWill().decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe(
-      defaultConfig.group,
-    );
     await expect(
-      new DefaultWill(config.will).decide(ordinaryGroupMessageInput(), EMPTY_STATE),
+      new RoutingWillEngine().decide(ordinaryGroupMessageInput(), EMPTY_STATE),
+    ).resolves.toBe(defaultConfig.group);
+    await expect(
+      new RoutingWillEngine(config.will).decide(ordinaryGroupMessageInput(), EMPTY_STATE),
     ).resolves.toBe("trigger");
   });
 });
 
-describe("WillingnessWill", () => {
+describe("createWillEngine", () => {
+  const diagnostics = {
+    now: () => 1_000,
+    random: () => 0,
+    warn: vi.fn(),
+  };
+
+  it("creates distinct routing engines when selection is omitted", () => {
+    const first = createWillEngine(undefined, diagnostics);
+    const second = createWillEngine(undefined, diagnostics);
+
+    expect(first).toBeInstanceOf(RoutingWillEngine);
+    expect(second).toBeInstanceOf(RoutingWillEngine);
+    expect(first).not.toBe(second);
+  });
+
+  it("creates a willingness engine when selected", () => {
+    const will = createWillEngine({ engine: "willingness" }, diagnostics);
+
+    expect(will).toBeInstanceOf(WillingnessWillEngine);
+  });
+});
+
+describe("WillingnessWillEngine", () => {
   it("integrates hot, warm, and cold silence decay with injected timestamps", () => {
     const config = createWillingnessConfig({
       lifecycle: { decayHalfLifeSeconds: 10, probabilityThreshold: 100 },
@@ -202,7 +230,7 @@ describe("WillingnessWill", () => {
 
   it("decays before applying message gain without scheduling a timer", async () => {
     let now = 0;
-    const will = new WillingnessWill({
+    const will = new WillingnessWillEngine({
       config: createWillingnessConfig({
         base: { text: 10 },
         lifecycle: { probabilityThreshold: 100, decayHalfLifeSeconds: 10 },
@@ -227,7 +255,7 @@ describe("WillingnessWill", () => {
   });
 
   it("charges reply cost with a zero floor", async () => {
-    const will = new WillingnessWill({
+    const will = new WillingnessWillEngine({
       config: willingnessConfig,
       now: () => 1_000,
       random: () => 0,
@@ -243,7 +271,7 @@ describe("WillingnessWill", () => {
   });
 
   it("applies the v3 dynamic gain curve before sampling", async () => {
-    const will = new WillingnessWill({
+    const will = new WillingnessWillEngine({
       config: {
         ...willingnessConfig,
         base: { text: 20 },
@@ -263,13 +291,13 @@ describe("WillingnessWill", () => {
   });
 
   it("adds self-mention and direct bonuses from frozen message data", async () => {
-    const mention = new WillingnessWill({
+    const mention = new WillingnessWillEngine({
       config: { ...willingnessConfig, base: { text: 0 } },
       now: () => 1_000,
       random: () => 0,
       warn: vi.fn(),
     });
-    const direct = new WillingnessWill({
+    const direct = new WillingnessWillEngine({
       config: { ...willingnessConfig, base: { text: 20 } },
       now: () => 1_000,
       random: () => 0,
@@ -281,7 +309,7 @@ describe("WillingnessWill", () => {
   });
 
   it("uses keyword or default multipliers", async () => {
-    const keyword = new WillingnessWill({
+    const keyword = new WillingnessWillEngine({
       config: {
         ...willingnessConfig,
         base: { text: 40 },
@@ -291,7 +319,7 @@ describe("WillingnessWill", () => {
       random: () => 0,
       warn: vi.fn(),
     });
-    const plain = new WillingnessWill({
+    const plain = new WillingnessWillEngine({
       config: { ...willingnessConfig, base: { text: 40 } },
       now: () => 1_000,
       random: () => 0,
@@ -305,7 +333,7 @@ describe("WillingnessWill", () => {
   });
 
   it("does not award a bonus for quote elements", async () => {
-    const will = new WillingnessWill({
+    const will = new WillingnessWillEngine({
       config: {
         ...willingnessConfig,
         base: { text: 40 },
@@ -324,7 +352,7 @@ describe("WillingnessWill", () => {
   });
 
   it("clamps the score and probability at their maximums", async () => {
-    const will = new WillingnessWill({
+    const will = new WillingnessWillEngine({
       config: {
         ...willingnessConfig,
         base: { text: 1_000 },
@@ -345,7 +373,7 @@ describe("WillingnessWill", () => {
 
   it("waits without sampling or changing state for non-message events", async () => {
     const random = vi.fn(() => 0);
-    const will = new WillingnessWill({
+    const will = new WillingnessWillEngine({
       config: willingnessConfig,
       now: () => 1_000,
       random,
@@ -359,7 +387,7 @@ describe("WillingnessWill", () => {
 
   it("fails closed and reports calculation failures without retaining partial state", async () => {
     const warn = vi.fn();
-    const will = new WillingnessWill({
+    const will = new WillingnessWillEngine({
       config: willingnessConfig,
       now: () => {
         throw new Error("clock unavailable");
@@ -382,7 +410,7 @@ describe("WillingnessWill", () => {
         throw new Error("random unavailable");
       })
       .mockReturnValue(0.9);
-    const will = new WillingnessWill({
+    const will = new WillingnessWillEngine({
       config: {
         ...willingnessConfig,
         base: { text: 20 },
@@ -414,7 +442,12 @@ describe("WillingnessWill", () => {
         replyCost: 35,
       },
     };
-    const will = new WillingnessWill({ config, now: () => 1_000, random: () => 0, warn: vi.fn() });
+    const will = new WillingnessWillEngine({
+      config,
+      now: () => 1_000,
+      random: () => 0,
+      warn: vi.fn(),
+    });
     config.base.text = 0;
 
     await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
@@ -500,25 +533,26 @@ describe("Will contract", () => {
 
   it("represents the Event and completed decision in one typed observation", () => {
     const event = directMessageInput();
-    const observation = { event, decision: "trigger" } satisfies WillObservation;
+    const observation = { event, decision: "trigger" } satisfies WillEngineObservation;
 
     expect(observation).toEqual({ event, decision: "trigger" });
-    expectTypeOf<Will.Decision>().toEqualTypeOf<"wait" | "trigger">();
+    expectTypeOf<WillEngine.Decision>().toEqualTypeOf<"wait" | "trigger">();
   });
 
   it("allows an optional stop method", async () => {
     const stop = vi.fn().mockResolvedValue(undefined);
-    const will = { decide: async () => "wait" as const, stop } satisfies Will;
+    const will = { decide: async () => "wait" as const, stop } satisfies WillEngine;
 
     await will.stop?.();
     expect(stop).toHaveBeenCalledOnce();
   });
 
   it("accepts only readonly channel state and Input values", () => {
-    const state: Will.State = EMPTY_STATE;
+    const state: WillEngine.State = EMPTY_STATE;
     const input = messageInput({ channelType: 0 });
 
     expect(state).toBe(EMPTY_STATE);
     expectTypeOf(input).toEqualTypeOf<Input>();
+    expectTypeOf<WillEngine.State>().toEqualTypeOf<{ readonly activeTurnId: string | null }>();
   });
 });

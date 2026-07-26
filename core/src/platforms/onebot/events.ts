@@ -1,5 +1,6 @@
 import type { Session, Universal } from "koishi";
-import type { EventRecord } from "koishi-plugin-yesimbot";
+
+import type { EventRecord } from "../../event/index.js";
 
 export interface MessageReaction {
   id: string;
@@ -13,7 +14,7 @@ export interface MessageReactionsUpdated {
   reactions: MessageReaction[];
 }
 
-declare module "koishi-plugin-yesimbot" {
+declare module "../../event/index.js" {
   interface EventMap {
     "notice.poke": {
       channel: Universal.Channel;
@@ -98,9 +99,7 @@ function resolveMessageReactionsUpdated(
   } satisfies EventRecord<"onebot.message-reactions-updated">;
 }
 
-function isMessageReactionsUpdatedNotice(
-  payload: unknown,
-): payload is {
+function isMessageReactionsUpdatedNotice(payload: unknown): payload is {
   readonly post_type: "notice";
   readonly notice_type: "message_reactions_updated";
   readonly group_id: string | number;

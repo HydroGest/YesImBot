@@ -69,8 +69,10 @@ export function channelRecord(scope: ChannelScope, name?: string): ChannelRecord
 
 export function parseChannelManifest(value: unknown): ChannelManifest {
   const manifest = manifestSchema.parse(value);
-  if (manifest.isDirect && manifest.selfId === null) throw new TypeError("Invalid direct channel self id");
-  if (!manifest.isDirect && manifest.selfId !== null) throw new TypeError("Invalid shared channel self id");
+  if (manifest.isDirect && manifest.selfId === null)
+    throw new TypeError("Invalid direct channel self id");
+  if (!manifest.isDirect && manifest.selfId !== null)
+    throw new TypeError("Invalid shared channel self id");
 
   const scope: ChannelScope = {
     platform: manifest.platform,
@@ -79,7 +81,8 @@ export function parseChannelManifest(value: unknown): ChannelManifest {
     isDirect: manifest.isDirect,
   };
   const record = channelRecord(scope, manifest.name);
-  if (manifest.identity !== record.identity) throw new Error("Manifest identity does not match scope");
+  if (manifest.identity !== record.identity)
+    throw new Error("Manifest identity does not match scope");
   if (manifest.directoryName !== record.directoryName) {
     throw new Error("Manifest directory name does not match scope");
   }

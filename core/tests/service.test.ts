@@ -6,7 +6,6 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 const state = vi.hoisted(() => ({
   runtime: undefined as
     | {
-        setWill: ReturnType<typeof vi.fn>;
         reload: ReturnType<typeof vi.fn>;
         reset: ReturnType<typeof vi.fn>;
         stop: ReturnType<typeof vi.fn>;
@@ -22,9 +21,9 @@ type RegisteredCommand = {
   readonly dispose: ReturnType<typeof vi.fn>;
 };
 
-vi.mock("../src/runtime/manager.js", () => ({
+vi.mock("../src/runtime/index.js", () => ({
+  assertAssignee: vi.fn(async () => undefined),
   RuntimeManager: class {
-    setWill = vi.fn();
     reload = vi.fn(async () => undefined);
     reset = vi.fn(async () => undefined);
     stop = vi.fn(async () => undefined);
@@ -74,13 +73,11 @@ describe("YesImBotService facade", () => {
 
     expect(ctx.yesimbot.model).toBeDefined();
     expect(ctx.yesimbot.registerResolver).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.registerWill).toEqual(expect.any(Function));
     expect(ctx.yesimbot.registerAgentPlugin).toEqual(expect.any(Function));
     expect(ctx.yesimbot.channelIdentity).toEqual(expect.any(Function));
     expect("channelKey" in ctx.yesimbot).toBe(false);
     expect(ctx.yesimbot.registerStorage).toEqual(expect.any(Function));
     expect(ctx.yesimbot.ensureStorage).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.listChannels).toEqual(expect.any(Function));
     expect(ctx.yesimbot.reload).toEqual(expect.any(Function));
     expect(ctx.yesimbot.reset).toEqual(expect.any(Function));
     expect(ctx.yesimbot.stop).toEqual(expect.any(Function));
@@ -130,6 +127,37 @@ describe("YesImBotService facade", () => {
     expect(state.runtime?.reload).toHaveBeenCalledWith(scope);
   });
 
+  it("refreshes ingress and asset media policies when reloading a channel", async () => {
+    const serviceConfig: Config = {
+      ...config,
+      multimedia: { enabled: true, image: { maxCount: 1 } },
+    };
+    const { service } = createService(serviceConfig);
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
+
+    serviceConfig.multimedia = {
+      enabled: false,
+      image: {
+        maxCount: 2,
+        maxBytesPerImage: 20,
+        maxTotalBytes: 30,
+        selection: "lifo",
+      },
+    };
+
+    await service.reload(scope);
+
+    const expectedPolicy = {
+      enabled: false,
+      maxCount: 2,
+      maxBytesPerImage: 20,
+      maxTotalBytes: 30,
+      selection: "lifo",
+    };
+    expect(service["gate"]["mediaPolicy"]).toEqual(expectedPolicy);
+    expect(service["asset"]["policy"]).toEqual(expectedPolicy);
+  });
+
   it("registers the authority-4 modality command without replacing active runtimes", async () => {
     const addChatModelInputModality = vi.fn(async () => "added" as const);
     const { commands } = createService(config, { addChatModelInputModality });
@@ -159,7 +187,7 @@ describe("YesImBotService facade", () => {
     await expect(action({}, "vision", "unknown")).resolves.toContain("invalid modality");
   });
 
-  it("rejects shared reload before RuntimeManager for a non-assignee", async () => {
+  it("delegates shared reload assignee validation to RuntimeManager", async () => {
     const { service, database } = createService();
     const scope = {
       platform: "test",
@@ -167,20 +195,19 @@ describe("YesImBotService facade", () => {
       channelId: "room-1",
       isDirect: false,
     };
-    database.get.mockResolvedValue([{ assignee: "other" }]);
+    await service.reload(scope);
 
-    await expect(service.reload(scope)).rejects.toMatchObject({ reason: "mismatch" });
-    expect(state.runtime?.reload).not.toHaveBeenCalled();
+    expect(database.get).not.toHaveBeenCalled();
+    expect(state.runtime?.reload).toHaveBeenCalledWith(scope);
   });
 
-  it("rejects shared resets before the Runtime manager for a non-assignee", async () => {
+  it("delegates shared reset assignee validation to RuntimeManager", async () => {
     const { service, database } = createService();
     const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
-    database.get.mockResolvedValue([{ assignee: "other" }]);
+    await service.reset(scope);
 
-    await expect(service.reset(scope)).rejects.toMatchObject({ reason: "mismatch" });
-
-    expect(state.runtime?.reset).not.toHaveBeenCalled();
+    expect(database.get).not.toHaveBeenCalled();
+    expect(state.runtime?.reset).toHaveBeenCalledWith(scope);
   });
 
   it("exposes Core channel storage methods", async () => {
@@ -190,16 +217,9 @@ describe("YesImBotService facade", () => {
     await service.start();
     const dispose = service.registerStorage("workspace");
     expect(service.channelIdentity(scope)).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
-    await expect(service.ensureStorage(scope, "workspace")).resolves.toContain(
-      "channels/v1-shared-onebot-123456/workspace",
+    await expect(service.ensureStorage(scope, "workspace")).resolves.toBe(
+      "/tmp/yesimbot-service/data/yesimbot-service/channels/v1-shared-onebot-123456/workspace",
     );
-    expect(service.listChannels()).toEqual([
-      expect.objectContaining({
-        identity: "a5vnf2ijd75c2ibyo2s5czdir4",
-        directoryName: "v1-shared-onebot-123456",
-        selfId: null,
-      }),
-    ]);
     dispose();
   });
 
@@ -246,31 +266,6 @@ describe("YesImBotService facade", () => {
     await handling;
     expect(resolver.resolve).toHaveBeenCalledOnce();
     expect(runtime.route).toHaveBeenCalledOnce();
-  });
-
-  it("clears the custom Will override after the final identity-safe disposal", () => {
-    const { service } = createService();
-    const firstWill = vi.fn();
-    const secondWill = vi.fn();
-
-    const disposeFirstWill = service.registerWill(firstWill);
-    const disposeSecondWill = service.registerWill(secondWill);
-    disposeSecondWill();
-    expect(state.runtime?.setWill).toHaveBeenLastCalledWith(firstWill);
-    disposeFirstWill();
-    expect(state.runtime?.setWill).toHaveBeenLastCalledWith(undefined);
-  });
-
-  it("keeps an older Will disposer from replacing a newer active factory", () => {
-    const { service } = createService();
-    const firstWill = vi.fn();
-    const secondWill = vi.fn();
-
-    const disposeFirstWill = service.registerWill(firstWill);
-    service.registerWill(secondWill);
-    disposeFirstWill();
-
-    expect(state.runtime?.setWill).toHaveBeenLastCalledWith(secondWill);
   });
 
   it("keeps a later registration of the same Agent plugin factory live", async () => {

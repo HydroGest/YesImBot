@@ -8,15 +8,12 @@ import {
 } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
+import { normalizeElements, sealElements, unavailableImage } from "../event/element.js";
 import type { EventRecord, InputRecord, MessageRecord } from "../event/index.js";
-import type { RuntimeManager } from "../runtime/manager.js";
-import type { AssetStore } from "../shared/asset.js";
-import { assertAssignee } from "../shared/assignee.js";
-import { unavailableImage } from "../shared/element.js";
+import { createImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
+import { assertAssignee, type RuntimeManager } from "../runtime/index.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "./allowlist.js";
-import { createImageFreezer } from "./image.js";
-import { draftMessageBase, resolveFallbackMessage } from "./message.js";
 
 export interface ResolveContext {
   readonly session: Session;
@@ -40,9 +37,11 @@ export interface GatewayOptions {
   readonly allowedChannels: readonly ChannelAllowRule[];
   readonly ready: () => Promise<void>;
   readonly logger: Logger;
+  readonly mediaPolicy: UnifiedImagePolicy;
 }
 
 export class Gateway {
+  private mediaPolicy: UnifiedImagePolicy;
   private resolvers = new Map<string, SessionResolver>();
   private sessions = new WeakSet<object>();
   private tasks = new Set<Promise<void>>();
@@ -50,6 +49,7 @@ export class Gateway {
   private closed = false;
 
   constructor(private readonly opts: GatewayOptions) {
+    this.mediaPolicy = opts.mediaPolicy;
     const middleware = opts.ctx.middleware(async (session, next) => {
       try {
         await new Promise((resolve, _reject) => {
@@ -80,6 +80,10 @@ export class Gateway {
         this.resolvers.delete(resolver.platform);
       }
     };
+  }
+
+  refreshMediaPolicy(policy: UnifiedImagePolicy): void {
+    this.mediaPolicy = policy;
   }
 
   async handle(session: Session): Promise<void> {
@@ -194,7 +198,8 @@ export class Gateway {
     if (!resolver) return base ? resolveFallbackMessage(base) : null;
     const scope = scopeFromSession(session);
     const freezeImage = scope
-      ? createImageFreezer({ scope, assets: this.opts.assets }).freezeImage
+      ? createImageFreezer({ scope, assets: this.opts.assets, policy: this.mediaPolicy })
+          .freezeImage
       : async () => unavailableImage();
     return resolver.resolve({ session, ...(base ? { base } : {}), freezeImage });
   }
@@ -222,6 +227,59 @@ function scopeFromSession(session: Session): ChannelScope | null {
     channelId: session.channelId,
     isDirect: session.isDirect,
   };
+}
+
+function draftMessageBase(session: Session): Omit<MessageRecord, "text"> | null {
+  const scope = scopeFromSession(session);
+  if (!scope || session.type !== "message-created") return null;
+
+  const elements = session.elements;
+  if (!Array.isArray(elements)) return null;
+
+  const messageId = session.messageId;
+  if (typeof messageId !== "string" || messageId.length === 0) return null;
+
+  const {
+    type: _type,
+    timestamp: eventTimestamp,
+    message: _message,
+    channel,
+    user,
+    ...resources
+  } = session.event;
+  const timestamp = numberValue(session.timestamp) ?? numberValue(eventTimestamp) ?? Date.now();
+
+  return {
+    ...resources,
+    schemaVersion: 1,
+    platform: scope.platform,
+    selfId: scope.selfId,
+    channel: {
+      ...channel,
+      id: scope.channelId,
+      type: channel?.type ?? Universal.Channel.Type.TEXT,
+    },
+    user: {
+      ...user,
+      id: user?.id ?? session.userId ?? session.author?.id ?? "",
+      ...(user?.name === undefined && session.author?.name ? { name: session.author.name } : {}),
+    },
+    messageId,
+    elements,
+    timestamp,
+  } satisfies Omit<MessageRecord, "text">;
+}
+
+function resolveFallbackMessage(base: Omit<MessageRecord, "text">): MessageRecord {
+  const sealedElements = sealElements(normalizeElements([...base.elements]));
+  return {
+    ...base,
+    text: sealedElements.map((element) => element.toString()).join(""),
+  };
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function isRecord(record: InputRecord): boolean {

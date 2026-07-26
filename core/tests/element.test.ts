@@ -10,7 +10,7 @@ import {
   isUnavailableImage,
   normalizeElements,
   sealElements,
-} from "../src/shared/element.js";
+} from "../src/event/element.js";
 
 describe("sealed elements", () => {
   it("seals image, quote, and forward elements without changing literals", () => {

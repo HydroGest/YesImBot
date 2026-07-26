@@ -53,10 +53,6 @@ export function channelIdentity(scope: ChannelScope): string {
   return encodeBase32(digest.subarray(0, 16));
 }
 
-export function sameChannel(left: ChannelScope, right: ChannelScope): boolean {
-  return channelIdentity(left) === channelIdentity(right);
-}
-
 export function fromEvent(record: ChannelEvent): ChannelScope | null {
   if (!record.channel?.id) return null;
   return {

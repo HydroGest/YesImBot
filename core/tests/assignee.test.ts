@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { assertAssignee, AssigneeAdmissionError } from "../src/shared/assignee.js";
+vi.mock("koishi", async () => import("@koishijs/core"));
+vi.mock("../src/runtime/channel.js", () => ({
+  ChannelRuntime: class {},
+  ChannelRuntimeDrainingError: class extends Error {},
+}));
+vi.mock("../src/runtime/storage.js", () => ({ createJsonlStorage: vi.fn() }));
+vi.mock("../src/will/index.js", () => ({ createWillEngine: vi.fn() }));
+
+import { assertAssignee, AssigneeAdmissionError } from "../src/runtime/index.js";
 
 const shared = { platform: "onebot", selfId: "10000", channelId: "123", isDirect: false };
 const direct = { ...shared, isDirect: true };

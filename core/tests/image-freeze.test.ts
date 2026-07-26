@@ -4,14 +4,22 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h } from "koishi";
 
-import { createImageFreezer } from "../src/gateway/image.js";
+import { createImageFreezer } from "../src/media/index.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
 
-function freezer() {
+function freezer(
+  policy = {
+    enabled: true,
+    maxCount: 4,
+    maxBytesPerImage: 5 * 1024 * 1024,
+    maxTotalBytes: 10 * 1024 * 1024,
+    selection: "current-first" as const,
+  },
+) {
   const assets = { put: vi.fn(async () => ({ assetId: "asset_image", mime: "image/png" })) };
-  return { assets, ...createImageFreezer({ scope, assets }) };
+  return { assets, ...createImageFreezer({ scope, assets, policy }) };
 }
 
 describe("resolver image freezing", () => {
@@ -60,6 +68,25 @@ describe("resolver image freezing", () => {
     await expect(
       freezer().freezeImage(image(1), async () => ({ data: PNG, mime: "image/svg+xml" })),
     ).resolves.toEqual(h("img", { id: "asset_image", mime: "image/png" }));
+  });
+
+  it("uses the unified numeric budget even when multimedia projection is disabled", async () => {
+    const { freezeImage } = freezer({
+      enabled: false,
+      maxCount: 1,
+      maxBytesPerImage: 8,
+      maxTotalBytes: 8,
+      selection: "current-first",
+    });
+
+    await expect(
+      freezeImage(h("img", { src: "https://example.test/first.png" }), async () => ({ data: PNG })),
+    ).resolves.toEqual(h("img", { id: "asset_image", mime: "image/png" }));
+    await expect(
+      freezeImage(h("img", { src: "https://example.test/second.png" }), async () => ({
+        data: PNG,
+      })),
+    ).resolves.toEqual(h("img", { unavailable: "true" }));
   });
 
   it("limits loaders to two concurrent operations and seals timeout or loader failures", async () => {
