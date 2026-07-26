@@ -46,6 +46,10 @@ export const DEFAULT_REPLY_PACING_CONFIG: PacingConfig = Object.freeze({
   firstSegmentResidualMaxMs: 450,
 });
 
+export function resolveReplyPacingConfig(pacing?: Partial<PacingConfig>): PacingConfig {
+  return Object.freeze({ ...DEFAULT_REPLY_PACING_CONFIG, ...pacing });
+}
+
 export interface Config {
   basePath: string;
   chatModel: string;
