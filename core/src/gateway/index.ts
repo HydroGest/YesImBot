@@ -2,7 +2,6 @@ import {
   type Awaitable,
   type Context,
   type Element,
-  type Fragment,
   type Logger,
   type Session,
   Universal,
@@ -19,7 +18,6 @@ import type {
   ResolvedMessageDraft,
 } from "../event/index.js";
 import { createImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
-import type { ReplyDeliveryStatus, ReplyObservation } from "../reply/observability.js";
 import { nextSegmentDelayMs } from "../reply/pacing.js";
 import { assertAssignee, type RuntimeManager } from "../runtime/index.js";
 import type { ChannelStorage } from "../storage/index.js";
@@ -166,36 +164,17 @@ export class Gateway {
       if (result.kind === "run") {
         try {
           let acknowledged = false;
-          let consumedDeliveryMs = 0;
-          const pending = new Map<
-            string,
-            { readonly output: GatewayOutput; readonly startedAt: number }
-          >();
-          try {
-            for await (const output of result.output) {
-              const gatewayOutput = output;
-              if (!pending.has(gatewayOutput.messageId)) {
-                pending.set(gatewayOutput.messageId, {
-                  output: gatewayOutput,
-                  startedAt: this.now(),
-                });
-              }
+          let stopped = false;
+          for await (const output of result.output) {
+            let consumedDeliveryMs = 0;
+            for (const [index, segment] of output.segments.entries()) {
               if (result.delivery.signal.aborted) {
-                this.settleObservation(
-                  result.delivery,
-                  pending,
-                  gatewayOutput.messageId,
-                  "cancelled",
-                );
+                stopped = true;
                 break;
               }
               const delayMs = nextSegmentDelayMs({
-                segment: {
-                  text: gatewayOutput.content.toString(),
-                  index: gatewayOutput.segmentIndex,
-                  total: gatewayOutput.segmentTotal,
-                  sleepHintMs: gatewayOutput.sleepHintMs,
-                },
+                segment,
+                isFirst: index === 0,
                 config: this.pacing,
                 elapsedGenerationMs: this.elapsedSince(routeStartedAt),
                 consumedDeliveryMs,
@@ -205,38 +184,32 @@ export class Gateway {
               await (this.opts.wait ?? waitForDelay)(delayMs, result.delivery.signal);
               consumedDeliveryMs += Math.max(delayMs, this.elapsedSince(delayStartedAt));
               if (result.delivery.signal.aborted) {
-                this.settleObservation(
-                  result.delivery,
-                  pending,
-                  gatewayOutput.messageId,
-                  "cancelled",
-                );
+                stopped = true;
                 break;
               }
               try {
-                await session.send(gatewayOutput.content);
+                await session.send(segment.text);
                 if (!acknowledged) {
                   acknowledged = true;
-                  await result.delivery.complete(gatewayOutput.turnId);
-                }
-                if (gatewayOutput.segmentIndex === gatewayOutput.segmentTotal) {
-                  this.settleObservation(
-                    result.delivery,
-                    pending,
-                    gatewayOutput.messageId,
-                    "delivered",
-                  );
+                  await result.delivery.complete(output.turnId);
                 }
               } catch (cause) {
-                this.settleObservation(result.delivery, pending, gatewayOutput.messageId, "failed");
-                await this.failDelivery(record, gatewayOutput, cause, result.delivery);
+                await this.failDelivery(
+                  record,
+                  {
+                    turnId: output.turnId,
+                    messageId: output.messageId,
+                    segmentIndex: index + 1,
+                    segmentTotal: output.segments.length,
+                  },
+                  cause,
+                  result.delivery,
+                );
+                stopped = true;
                 break;
               }
             }
-          } finally {
-            for (const messageId of pending.keys()) {
-              this.settleObservation(result.delivery, pending, messageId, "incomplete");
-            }
+            if (stopped) break;
           }
         } finally {
           result.delivery.release();
@@ -282,31 +255,6 @@ export class Gateway {
     }
   }
 
-  private settleObservation(
-    delivery: RuntimeManager.Delivery,
-    pending: Map<string, { readonly output: GatewayOutput; readonly startedAt: number }>,
-    messageId: string,
-    deliveryStatus: ReplyDeliveryStatus,
-  ): void {
-    const pendingReply = pending.get(messageId);
-    if (!pendingReply) return;
-    pending.delete(messageId);
-    const { output, startedAt } = pendingReply;
-    const observation: ReplyObservation = {
-      provider: output.provider,
-      segmentCount: output.segmentTotal,
-      segmentLengths: output.segmentLengths,
-      controlAdopted: output.controlAdopted,
-      skipped: false,
-      totalDeliveryMs: this.elapsedSince(startedAt),
-      deliveryStatus,
-      ...(output.degradationReason === undefined
-        ? {}
-        : { degradationReason: output.degradationReason }),
-    };
-    delivery.observe(observation);
-  }
-
   private async resolve(session: Session, scope: ChannelScope): Promise<InputRecord | null> {
     const resolver = this.resolvers.get(session.platform);
     if (!resolver) return resolveFallbackMessage(session, scope);
@@ -340,14 +288,7 @@ export class Gateway {
 interface GatewayOutput {
   readonly turnId: string;
   readonly messageId: string;
-  readonly content: Fragment;
-  readonly segmentIndex: number;
-  readonly segmentTotal: number;
-  readonly sleepHintMs: number;
-  readonly provider: string;
-  readonly controlAdopted: boolean;
-  readonly segmentLengths: readonly number[];
-  readonly degradationReason?: ReplyObservation["degradationReason"];
+  readonly segments: readonly { readonly text: string }[];
 }
 
 function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {

@@ -335,7 +335,7 @@ describe("ChannelRuntime", () => {
     if (first.kind === "run") await Array.fromAsync(first.output);
   });
 
-  it("yields complete assistant messages in order and filters internal events", async () => {
+  it("exposes each complete assistant reply as one visible delivery plan", async () => {
     state.stream = streamFrom([
       {
         type: "message.appended",
@@ -364,29 +364,17 @@ describe("ChannelRuntime", () => {
       {
         turnId: "turn-1",
         messageId: "assistant-1",
-        content: "first",
-        segmentIndex: 1,
-        segmentTotal: 1,
-        sleepHintMs: 0,
-        provider: "test",
-        controlAdopted: false,
-        segmentLengths: [5],
+        segments: [{ text: "first" }],
       },
       {
         turnId: "turn-1",
         messageId: "assistant-2",
-        content: "second",
-        segmentIndex: 1,
-        segmentTotal: 1,
-        sleepHintMs: 0,
-        provider: "test",
-        controlAdopted: false,
-        segmentLengths: [6],
+        segments: [{ text: "second" }],
       },
     ]);
   });
 
-  it("emits ordered visible OCL segments without control or inner-thought text", async () => {
+  it("keeps raw assistant output while exposing only sanitized ReplyPlan segments", async () => {
     state.stream = streamFrom([
       {
         type: "message.appended",
@@ -396,8 +384,7 @@ describe("ChannelRuntime", () => {
         message: {
           id: "assistant-1",
           role: "assistant",
-          content:
-            '<inner_thought>private plan <sep/></inner_thought> first <sleep ms="120"/><sep/> second',
+          content: "<inner_thought>private reasoning</inner_thought>first<sep/>second",
         },
       },
       { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
@@ -412,98 +399,9 @@ describe("ChannelRuntime", () => {
       {
         turnId: "turn-1",
         messageId: "assistant-1",
-        content: "first",
-        segmentIndex: 1,
-        segmentTotal: 2,
-        sleepHintMs: 120,
-        provider: "test",
-        controlAdopted: true,
-        segmentLengths: [5, 6],
-      },
-      {
-        turnId: "turn-1",
-        messageId: "assistant-1",
-        content: "second",
-        segmentIndex: 2,
-        segmentTotal: 2,
-        sleepHintMs: 0,
-        provider: "test",
-        controlAdopted: true,
-        segmentLengths: [5, 6],
+        segments: [{ text: "first" }, { text: "second" }],
       },
     ]);
-  });
-
-  it("treats an OCL skip as a successful turn with no output", async () => {
-    state.stream = streamFrom([
-      {
-        type: "message.appended",
-        id: "event-1",
-        timestamp: 1,
-        turnId: "turn-1",
-        message: {
-          id: "assistant-1",
-          role: "assistant",
-          content: "visible text<skip/><inner_thought>decline</inner_thought>",
-        },
-      },
-      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
-    ]);
-    const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
-
-    const result = await runtime.handle(record());
-
-    expect(result.kind).toBe("run");
-    if (result.kind !== "run") return;
-    await expect(Array.fromAsync(result.output)).resolves.toEqual([]);
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: "reply.delivery_observed",
-        provider: "test",
-        segmentCount: 0,
-        skipped: true,
-        deliveryStatus: "skipped",
-      }),
-    );
-    expect(JSON.stringify(logger.info.mock.calls)).not.toContain("decline");
-  });
-
-  it("observes an empty no-segment degradation without creating output", async () => {
-    state.stream = streamFrom([
-      {
-        type: "message.appended",
-        id: "event-1",
-        timestamp: 1,
-        turnId: "turn-1",
-        message: {
-          id: "assistant-1",
-          role: "assistant",
-          content: '<inner_thought>private fallback</inner_thought> <sep/> <sleep ms="20"/>',
-        },
-      },
-      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
-    ]);
-    const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
-
-    const result = await runtime.handle(record());
-
-    expect(result.kind).toBe("run");
-    if (result.kind !== "run") return;
-    await expect(Array.fromAsync(result.output)).resolves.toEqual([]);
-    expect(logger.info).toHaveBeenCalledTimes(1);
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: "reply.delivery_observed",
-        provider: "test",
-        segmentCount: 1,
-        segmentLengths: [],
-        controlAdopted: true,
-        skipped: false,
-        degradationReason: "no_segments",
-        deliveryStatus: "incomplete",
-      }),
-    );
-    expect(JSON.stringify(logger.info.mock.calls)).not.toContain("private fallback");
   });
 
   it("keeps a delivery lease active while a segmented reply output is consumed", async () => {
@@ -524,7 +422,7 @@ describe("ChannelRuntime", () => {
 
     expect(result.kind).toBe("run");
     if (result.kind !== "run") return;
-    await expect(Array.fromAsync(result.output)).resolves.toHaveLength(2);
+    await expect(Array.fromAsync(result.output)).resolves.toHaveLength(1);
     await Promise.resolve();
     expect(state.agent?.stop).not.toHaveBeenCalled();
 
@@ -674,7 +572,7 @@ describe("ChannelRuntime", () => {
       id: "assistant-1",
       timestamp: 1,
       role: "assistant" as const,
-      content: "<inner_thought>private plan</inner_thought>visible<sep/>second<skip/>",
+      content: "<inner_thought>private reasoning</inner_thought>first<sep/>second",
     };
 
     await storage.append(createMessageEntry(assistant, { id: "entry-assistant", timestamp: 1 }));
@@ -851,28 +749,6 @@ describe("ChannelRuntime", () => {
     await plugin.onTurnFinish?.(
       turnResult("failed", [
         { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
-      ]),
-      turnFinishContext(),
-    );
-    await runtime.completeDelivery("turn-1");
-
-    expect(onReply).not.toHaveBeenCalled();
-  });
-
-  it("does not notify Will for a done OCL skip", async () => {
-    const onReply = vi.fn(async () => undefined);
-    const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
-    const plugin = coreWillReplyPlugin();
-
-    await beginReply(runtime);
-    await plugin.onTurnFinish?.(
-      turnResult("done", [
-        {
-          id: "assistant-1",
-          timestamp: 1,
-          role: "assistant",
-          content: "visible<skip/><inner_thought>decline</inner_thought>",
-        },
       ]),
       turnFinishContext(),
     );

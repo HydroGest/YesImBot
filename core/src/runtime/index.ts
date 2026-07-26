@@ -13,7 +13,6 @@ import {
 } from "@yesimbot/agent-runtime";
 import type { FilePart, LanguageModel } from "ai";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
-import type { Fragment } from "koishi";
 import { z } from "zod";
 
 import { channelIdentity, fromEvent, type ChannelScope } from "../channel/index.js";
@@ -32,13 +31,7 @@ import {
   type UnifiedImagePolicy,
 } from "../media/index.js";
 import { resolveBasePath } from "../path.js";
-import { ReplyObservability, type ReplyObservation } from "../reply/observability.js";
-import {
-  findControlElements,
-  findProtectionZones,
-  parseReply,
-  type DegradationReason,
-} from "../reply/ocl.js";
+import { parseReply } from "../reply/parse.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { createWillEngine } from "../will/index.js";
 import type { WillEngine, WillEngineObservation } from "../will/index.js";
@@ -69,14 +62,7 @@ interface RuntimeEntry {
 type ChannelOutput = {
   readonly turnId: string;
   readonly messageId: string;
-  readonly content: Fragment;
-  readonly segmentIndex: number;
-  readonly segmentTotal: number;
-  readonly sleepHintMs: number;
-  readonly provider: string;
-  readonly controlAdopted: boolean;
-  readonly segmentLengths: readonly number[];
-  readonly degradationReason?: DegradationReason;
+  readonly segments: readonly { readonly text: string }[];
 };
 
 type ChannelRuntimeResult =
@@ -92,7 +78,6 @@ type ChannelRuntimeResult =
 type RuntimeDelivery = {
   readonly fail: (record: EventRecord<"delivery.failed">) => Promise<ChannelRuntimeResult>;
   readonly complete: (turnId: string) => Promise<void>;
-  readonly observe: (observation: ReplyObservation) => void;
   readonly signal: AbortSignal;
   readonly release: () => void;
 };
@@ -171,7 +156,6 @@ export class RuntimeManager {
       delivery: {
         fail: (failure) => runtime.handleInternal(failure),
         complete: (turnId) => runtime.completeDelivery(turnId),
-        observe: (observation) => runtime.observeReply(observation),
         signal: runtime.deliverySignal(result.turnId),
         release: () => {
           runtime.releaseDelivery(result.turnId);
@@ -516,15 +500,12 @@ function renderAssistantText(content: unknown): string | undefined {
 function parseAssistantContent(content: unknown, maxSegments: number) {
   const text = renderAssistantText(content);
   if (text === undefined) return undefined;
-  return {
-    parsed: parseReply(text, { maxSegments }),
-    controlAdopted: findControlElements(text, findProtectionZones(text)).length > 0,
-  };
+  return parseReply(text, maxSegments);
 }
 
 function hasRenderableSegment(content: unknown, maxSegments: number): boolean {
   return (
-    parseAssistantContent(content, maxSegments)?.parsed.segments.some(
+    parseAssistantContent(content, maxSegments)?.segments.some(
       (segment) => segment.text.length > 0,
     ) === true
   );
@@ -551,7 +532,6 @@ export class ChannelRuntime {
   private streams = new Set<Promise<void>>();
   private readonly agent: Agent;
   private readonly maxSegments: number;
-  private readonly observability = new ReplyObservability();
   private replyCompletions = new Map<string, ReplyCompletion>();
   private deliveryAborts = new Map<string, AbortController>();
   private replyCompletionTail = Promise.resolve();
@@ -797,48 +777,13 @@ export class ChannelRuntime {
     try {
       for await (const event of stream) {
         if (isAssistantMessage(event)) {
-          const parsedContent = parseAssistantContent(event.message.content, this.maxSegments);
-          if (parsedContent !== undefined) {
-            const { parsed, controlAdopted } = parsedContent;
-            if (parsed.skipped) {
-              this.observeReply({
-                provider: this.opts.provider,
-                segmentCount: 0,
-                segmentLengths: [],
-                controlAdopted,
-                skipped: true,
-                totalDeliveryMs: 0,
-                deliveryStatus: "skipped",
-              });
-            }
-            const visibleSegments = parsed.segments.filter((segment) => segment.text.length > 0);
-            if (!parsed.skipped && visibleSegments.length === 0) {
-              this.observeReply({
-                provider: this.opts.provider,
-                segmentCount: parsed.segments.length,
-                segmentLengths: [],
-                controlAdopted,
-                skipped: false,
-                totalDeliveryMs: 0,
-                deliveryStatus: "incomplete",
-                ...(parsed.degraded === undefined ? {} : { degradationReason: parsed.degraded }),
-              });
-            }
-            const segmentLengths = visibleSegments.map((segment) => segment.text.length);
-            for (const segment of visibleSegments) {
-              output.push({
-                turnId: event.turnId,
-                messageId: event.message.id,
-                content: segment.text,
-                segmentIndex: segment.index,
-                segmentTotal: segment.total,
-                sleepHintMs: segment.sleepHintMs,
-                provider: this.opts.provider,
-                controlAdopted,
-                segmentLengths,
-                ...(parsed.degraded === undefined ? {} : { degradationReason: parsed.degraded }),
-              });
-            }
+          const plan = parseAssistantContent(event.message.content, this.maxSegments);
+          if (plan !== undefined) {
+            output.push({
+              turnId: event.turnId,
+              messageId: event.message.id,
+              segments: plan.segments,
+            });
           }
         }
         if (event.type === "turn.failed") {
@@ -916,12 +861,6 @@ export class ChannelRuntime {
 
   private abortDelivery(turnId: string): void {
     this.deliveryAborts.get(turnId)?.abort();
-  }
-
-  observeReply(observation: ReplyObservation): void {
-    try {
-      this.opts.logger.info(this.observability.record(observation));
-    } catch {}
   }
 
   private readState(): WillEngine.State {
