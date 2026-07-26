@@ -65,6 +65,7 @@ function delivery(signal?: AbortSignal) {
   return {
     fail: vi.fn(async () => ({ kind: "wait" as const, eventId: "failure-1" })),
     complete: vi.fn(async () => undefined),
+    observe: vi.fn(),
     release: vi.fn(),
     signal: signal ?? new AbortController().signal,
   };
@@ -395,6 +396,129 @@ describe("Gateway passive delivery", () => {
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith("  ordinary reply\n");
     expect(binding.complete).toHaveBeenCalledOnce();
+  });
+
+  it("settles one safe observation after a segmented reply delivery", async () => {
+    const binding = delivery();
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: (async function* () {
+        yield {
+          turnId: "turn-1",
+          messageId: "assistant-1",
+          content: "first",
+          segmentIndex: 1,
+          segmentTotal: 2,
+          sleepHintMs: 0,
+          provider: "test-provider",
+          controlAdopted: true,
+          segmentLengths: [5, 6],
+        };
+        yield {
+          turnId: "turn-1",
+          messageId: "assistant-1",
+          content: "second",
+          segmentIndex: 2,
+          segmentTotal: 2,
+          sleepHintMs: 0,
+          provider: "test-provider",
+          controlAdopted: true,
+          segmentLengths: [5, 6],
+        };
+      })(),
+      delivery: binding,
+    }));
+    const { gateway } = createGateway(route, undefined, { wait: async () => undefined });
+
+    await gateway.handle(session() as never);
+
+    expect(binding.observe).toHaveBeenCalledTimes(1);
+    expect(binding.observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "test-provider",
+        segmentCount: 2,
+        segmentLengths: [5, 6],
+        controlAdopted: true,
+        skipped: false,
+        totalDeliveryMs: expect.any(Number),
+      }),
+    );
+  });
+
+  it("settles a failed reply observation without treating it as successful", async () => {
+    const binding = delivery();
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: (async function* () {
+        yield {
+          turnId: "turn-1",
+          messageId: "assistant-1",
+          content: "first",
+          segmentIndex: 1,
+          segmentTotal: 2,
+          sleepHintMs: 0,
+          provider: "test-provider",
+          controlAdopted: true,
+          segmentLengths: [5, 6],
+        };
+      })(),
+      delivery: binding,
+    }));
+    const send = vi.fn(async () => {
+      throw new Error("offline");
+    });
+    const { gateway } = createGateway(route, undefined, { wait: async () => undefined });
+
+    await gateway.handle(session(send) as never);
+
+    expect(binding.observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        segmentCount: 2,
+        skipped: false,
+        totalDeliveryMs: expect.any(Number),
+      }),
+    );
+  });
+
+  it("settles a normally closed incomplete reply observation once", async () => {
+    const binding = delivery();
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: (async function* () {
+        yield {
+          turnId: "turn-1",
+          messageId: "assistant-1",
+          content: "first",
+          segmentIndex: 1,
+          segmentTotal: 2,
+          sleepHintMs: 0,
+          provider: "test-provider",
+          controlAdopted: true,
+          segmentLengths: [5, 6],
+        };
+      })(),
+      delivery: binding,
+    }));
+    const send = vi.fn(async () => []);
+    const { gateway } = createGateway(route, undefined, { wait: async () => undefined });
+
+    await gateway.handle(session(send) as never);
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(binding.observe).toHaveBeenCalledTimes(1);
+    expect(binding.observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "test-provider",
+        segmentCount: 2,
+        deliveryStatus: "incomplete",
+      }),
+    );
   });
 
   it("retains the originating Session only while consuming its active output", async () => {

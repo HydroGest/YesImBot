@@ -100,7 +100,7 @@ function createRuntime(
   basePath = "/tmp/yesimbot-channel-runtime",
 ) {
   const ctx = new Context();
-  const logger = { debug: vi.fn(), warn: vi.fn() };
+  const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
   const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
   const runtime = new ChannelRuntime({
     ctx,
@@ -111,6 +111,7 @@ function createRuntime(
     will,
     assets: assets as never,
     model: {} as never,
+    provider: "test",
     imageInput: false,
     mediaPolicy: Object.freeze({
       enabled: true,
@@ -226,6 +227,7 @@ describe("ChannelRuntime", () => {
       will: { decide: async () => "wait" },
       assets: { clear: vi.fn(), readByAssetId: vi.fn() } as never,
       model: {} as never,
+      provider: "test",
       imageInput: false,
       mediaPolicy: Object.freeze({
         enabled: true,
@@ -306,7 +308,7 @@ describe("ChannelRuntime", () => {
 
   it("joins a committed trigger to the active turn without creating output", async () => {
     state.activeTurnId = "turn-active";
-    const { runtime } = createRuntime({ decide: async () => "trigger" });
+    const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
 
     const result = await runtime.handle(record());
 
@@ -320,7 +322,7 @@ describe("ChannelRuntime", () => {
     state.stream = (async function* () {
       await release.promise;
     })();
-    const { runtime } = createRuntime({ decide: async () => "trigger" });
+    const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
 
     const first = await runtime.handle(record());
     const second = await runtime.handle(record({ messageId: "message-2", text: "next" }));
@@ -366,6 +368,9 @@ describe("ChannelRuntime", () => {
         segmentIndex: 1,
         segmentTotal: 1,
         sleepHintMs: 0,
+        provider: "test",
+        controlAdopted: false,
+        segmentLengths: [5],
       },
       {
         turnId: "turn-1",
@@ -374,6 +379,9 @@ describe("ChannelRuntime", () => {
         segmentIndex: 1,
         segmentTotal: 1,
         sleepHintMs: 0,
+        provider: "test",
+        controlAdopted: false,
+        segmentLengths: [6],
       },
     ]);
   });
@@ -408,6 +416,9 @@ describe("ChannelRuntime", () => {
         segmentIndex: 1,
         segmentTotal: 2,
         sleepHintMs: 120,
+        provider: "test",
+        controlAdopted: true,
+        segmentLengths: [5, 6],
       },
       {
         turnId: "turn-1",
@@ -416,6 +427,9 @@ describe("ChannelRuntime", () => {
         segmentIndex: 2,
         segmentTotal: 2,
         sleepHintMs: 0,
+        provider: "test",
+        controlAdopted: true,
+        segmentLengths: [5, 6],
       },
     ]);
   });
@@ -435,13 +449,61 @@ describe("ChannelRuntime", () => {
       },
       { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
     ]);
-    const { runtime } = createRuntime({ decide: async () => "trigger" });
+    const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
 
     const result = await runtime.handle(record());
 
     expect(result.kind).toBe("run");
     if (result.kind !== "run") return;
     await expect(Array.fromAsync(result.output)).resolves.toEqual([]);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "reply.delivery_observed",
+        provider: "test",
+        segmentCount: 0,
+        skipped: true,
+        deliveryStatus: "skipped",
+      }),
+    );
+    expect(JSON.stringify(logger.info.mock.calls)).not.toContain("decline");
+  });
+
+  it("observes an empty no-segment degradation without creating output", async () => {
+    state.stream = streamFrom([
+      {
+        type: "message.appended",
+        id: "event-1",
+        timestamp: 1,
+        turnId: "turn-1",
+        message: {
+          id: "assistant-1",
+          role: "assistant",
+          content: '<inner_thought>private fallback</inner_thought> <sep/> <sleep ms="20"/>',
+        },
+      },
+      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
+    ]);
+    const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
+
+    const result = await runtime.handle(record());
+
+    expect(result.kind).toBe("run");
+    if (result.kind !== "run") return;
+    await expect(Array.fromAsync(result.output)).resolves.toEqual([]);
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "reply.delivery_observed",
+        provider: "test",
+        segmentCount: 1,
+        segmentLengths: [],
+        controlAdopted: true,
+        skipped: false,
+        degradationReason: "no_segments",
+        deliveryStatus: "incomplete",
+      }),
+    );
+    expect(JSON.stringify(logger.info.mock.calls)).not.toContain("private fallback");
   });
 
   it("keeps a delivery lease active while a segmented reply output is consumed", async () => {
@@ -641,6 +703,7 @@ describe("ChannelRuntime", () => {
       will: { decide: async () => "wait" },
       assets: { clear: vi.fn(), readByAssetId: vi.fn() } as never,
       model: {} as never,
+      provider: "test",
       imageInput: false,
       mediaPolicy: Object.freeze({
         enabled: true,
