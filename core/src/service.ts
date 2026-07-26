@@ -1,7 +1,7 @@
 import { Service, type Context } from "koishi";
 
 import { channelIdentity, type ChannelScope } from "./channel/index.js";
-import { resolveMultimediaImagePolicy, type Config } from "./config.js";
+import { resolveMultimediaImagePolicy, resolveReplyPacingConfig, type Config } from "./config.js";
 import { Gateway, type SessionResolver } from "./gateway/index.js";
 import { AssetStore } from "./media/index.js";
 import type { ModelService } from "./model/service.js";
@@ -59,6 +59,7 @@ export class YesImBotService extends Service<Config> {
       ready: () => this.storage.start(),
       logger: this.logger,
       mediaPolicy: resolveMultimediaImagePolicy(config.multimedia),
+      pacing: resolveReplyPacingConfig(config.reply?.pacing),
     });
 
     const resetCommand = ctx.command("yesimbot.reset", { authority: 4 });
