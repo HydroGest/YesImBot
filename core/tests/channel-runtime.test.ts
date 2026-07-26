@@ -80,7 +80,7 @@ import type { WillEngine } from "../src/will/index.js";
 
 function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
@@ -276,7 +276,7 @@ describe("ChannelRuntime", () => {
     ctx.on("yesimbot/event", () => order.push("event"));
     ctx.on("yesimbot/will", () => order.push("will-observation"));
     const notice: EventRecord<"delivery.failed"> = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -589,7 +589,7 @@ describe("ChannelRuntime", () => {
     const path = join(directory, "messages.jsonl");
     const message = createInput(record());
     const event = createInput({
-      schemaVersion: 1,
+      schemaVersion: 2,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -1183,7 +1183,7 @@ describe("ChannelRuntime", () => {
         error: { name: "Error", message: "offline" },
       },
       text: "Delivery failed",
-      schemaVersion: 1,
+      schemaVersion: 2,
       eventType: "delivery.failed",
     };
 

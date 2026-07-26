@@ -1,6 +1,6 @@
-import type { Session, Universal } from "koishi";
+import type { Session } from "koishi";
 
-import type { EventRecord } from "../../event/index.js";
+import type { ResolvedEventDraft } from "../../event/index.js";
 
 export interface MessageReaction {
   id: string;
@@ -17,10 +17,7 @@ export interface MessageReactionsUpdated {
 declare module "../../event/index.js" {
   interface EventMap {
     "notice.poke": {
-      channel: Universal.Channel;
-      target: Universal.User;
-      user: Universal.User;
-      selfId: string;
+      targetId: string;
       action: string;
     };
     "onebot.message-reactions-updated": {
@@ -32,7 +29,7 @@ declare module "../../event/index.js" {
 
 export function resolveOneBotEvent(
   session: Session,
-): EventRecord<"notice.poke" | "onebot.message-reactions-updated"> | null {
+): ResolvedEventDraft<"notice.poke" | "onebot.message-reactions-updated"> | null {
   const reactionEvent = resolveMessageReactionsUpdated(session);
   if (reactionEvent) return reactionEvent;
 
@@ -40,27 +37,13 @@ export function resolveOneBotEvent(
   if (event.type === "notice") {
     switch (event.subtype) {
       case "poke": {
-        const channel: Universal.Channel = event.channel ?? {
-          id: session.channelId ?? "",
-          type: 0,
-        };
-        const user: Universal.User = event.user ?? { id: session.userId ?? "" };
-        const target: Universal.User = { id: String(event._data.target_id) };
         return {
-          sn: event.sn,
-          login: event.login,
-          referrer: event.referrer,
-          schemaVersion: 1,
+          kind: "event",
           eventType: "notice.poke",
-          platform: session.platform,
-          selfId: session.selfId,
-          channel,
-          user,
-          target,
+          targetId: String(event._data.target_id),
           action: "拍了拍",
           text: `${event._data.user_id} 拍了拍 ${event._data.target_id}`,
-          timestamp: session.timestamp,
-        } satisfies EventRecord<"notice.poke">;
+        } satisfies ResolvedEventDraft<"notice.poke">;
       }
       default:
         return null;
@@ -71,21 +54,15 @@ export function resolveOneBotEvent(
 
 function resolveMessageReactionsUpdated(
   session: Session,
-): EventRecord<"onebot.message-reactions-updated"> | null {
+): ResolvedEventDraft<"onebot.message-reactions-updated"> | null {
   if (!isMessageReactionsUpdatedNotice(session.onebot)) return null;
 
   const { group_id, message_id, user_id, reactions } = session.onebot;
   return {
-    sn: session.event.sn,
-    login: session.event.login,
-    referrer: session.event.referrer,
-    schemaVersion: 1,
+    kind: "event",
     eventType: "onebot.message-reactions-updated",
     type: "onebot.message-reactions-updated",
     text: "Message reactions updated",
-    platform: session.platform,
-    selfId: session.selfId,
-    channel: { id: String(group_id), type: 0 },
     reaction: {
       messageId: String(message_id),
       userId: String(user_id),
@@ -95,8 +72,7 @@ function resolveMessageReactionsUpdated(
         count,
       })),
     },
-    timestamp: session.timestamp,
-  } satisfies EventRecord<"onebot.message-reactions-updated">;
+  } satisfies ResolvedEventDraft<"onebot.message-reactions-updated">;
 }
 
 function isMessageReactionsUpdatedNotice(payload: unknown): payload is {

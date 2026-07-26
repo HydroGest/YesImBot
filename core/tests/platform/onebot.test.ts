@@ -8,7 +8,7 @@ import { join } from "path";
 import { pathToFileURL } from "url";
 
 import { h, type Session, type Element } from "koishi";
-import { type MessageRecord, type ResolveContext } from "koishi-plugin-yesimbot";
+import { type ResolveContext } from "koishi-plugin-yesimbot";
 
 import { resolveOneBotEvent } from "../../src/platforms/onebot/events.js";
 import { freezeOneBotImages } from "../../src/platforms/onebot/image.js";
@@ -40,16 +40,18 @@ describe("resolveOneBotEvent", () => {
     );
 
     expect(result).toMatchObject({
+      kind: "event",
+      eventType: "onebot.message-reactions-updated",
       type: "onebot.message-reactions-updated",
-      platform: "onebot",
-      selfId: "10000",
-      channel: { id: "20000" },
       reaction: {
         messageId: "40000",
         userId: "30000",
         reactions: [{ id: "100", type: "1", count: 5 }],
       },
     });
+    expect(result).not.toHaveProperty("schemaVersion");
+    expect(result).not.toHaveProperty("platform");
+    expect(result).not.toHaveProperty("channel");
     expect(result).not.toHaveProperty("content");
   });
 
@@ -95,22 +97,16 @@ describe("resolveOneBotEvent", () => {
     });
 
     expect(result).toEqual({
-      sn: 7,
-      login: { sn: 1, adapter: "onebot", status: 1, features: [] },
-      referrer: { source: "test" },
-      schemaVersion: 1,
+      kind: "event",
       eventType: "notice.poke",
-      platform: "onebot",
-      selfId: "10000",
-      timestamp: 1,
-      channel: { id: "20000", type: 0 },
-      user: { id: "30000", name: "Alice" },
-      target: { id: "10000" },
+      targetId: "10000",
       action: "拍了拍",
       text: "30000 拍了拍 10000",
     });
-    expect(result).not.toHaveProperty("type");
-    expect(result).not.toHaveProperty("content");
+    expect(result).not.toHaveProperty("schemaVersion");
+    expect(result).not.toHaveProperty("sn");
+    expect(result).not.toHaveProperty("login");
+    expect(result).not.toHaveProperty("referrer");
   });
 });
 
@@ -282,66 +278,57 @@ describe("freezeOneBotImages", () => {
   });
 });
 
-function messageBase(): Omit<MessageRecord, "text"> {
-  return {
-    schemaVersion: 1,
-    platform: "onebot",
-    selfId: "bot",
-    timestamp: 1,
-    channel: { id: "room", type: 0, name: "room" },
-    user: { id: "user", name: "Alice" },
-    member: { nick: "Alice" },
-    guild: { id: "guild", name: "Guild" },
-    messageId: "message",
-    elements: [h.text("hello")],
-  };
-}
-
 function context(overrides: Partial<ResolveContext> = {}): ResolveContext {
   return {
-    session: { platform: "onebot", selfId: "bot", event: { type: "message" } } as Session,
-    base: messageBase(),
+    session: {
+      platform: "onebot",
+      selfId: "bot",
+      userId: "user",
+      messageId: "message",
+      type: "message-created",
+      elements: [h.text("hello")],
+      event: { type: "message", user: { name: "Alice" }, channel: { name: "room" } },
+    } as Session,
     freezeImage: vi.fn(async (element) => element),
     ...overrides,
   };
 }
 
 describe("createResolver", () => {
-  it("preserves the complete generic message base while freezing OneBot images", async () => {
+  it("returns a message draft without a host envelope while freezing OneBot images", async () => {
     const resolver = createResolver({ http: { file: vi.fn() } } as never);
-    const base = messageBase();
-    const result = await resolver.resolve(context({ base }));
+    const result = await resolver.resolve(context());
 
     expect(result).toMatchObject({
-      schemaVersion: 1,
-      channel: base.channel,
-      user: base.user,
-      member: base.member,
-      guild: base.guild,
-      messageId: base.messageId,
+      kind: "message",
+      messageId: "message",
       elements: [h.text("hello")],
     });
     expect(result).toHaveProperty("text");
+    expect(result).not.toHaveProperty("schemaVersion");
+    expect(result).not.toHaveProperty("platform");
+    expect(result).not.toHaveProperty("channelId");
   });
 
   it("derives text from frozen images while retaining the source image elements", async () => {
     const resolver = createResolver({ http: { file: vi.fn<() => void>() } } as never);
     const sourceElements = [h("img", { src: "data:image/png;base64,iVBORw==" })];
-    const base = { ...messageBase(), elements: sourceElements };
     const freezeImage = vi.fn<ResolveContext["freezeImage"]>(async (_element, load) => {
       const loaded = await load(new AbortController().signal, 16);
       return h("img", { id: "asset_abc", mime: loaded.mime });
     });
 
-    const result = await resolver.resolve(context({ base, freezeImage }));
+    const result = await resolver.resolve(
+      context({ session: { ...context().session, elements: sourceElements } as Session, freezeImage }),
+    );
 
-    if (!result || "eventType" in result) throw new Error("Expected a MessageRecord");
+    if (!result || result.kind !== "message") throw new Error("Expected a message draft");
     expect(result.text).toBe('<img id="asset_abc" mime="image/png"/>');
     expect(result.elements).toBe(sourceElements);
     expect(result.elements[0]?.attrs).toEqual({ src: "data:image/png;base64,iVBORw==" });
   });
 
-  it("resolves a supported notice before considering the optional message base", async () => {
+  it("resolves a supported notice as an event draft", async () => {
     const resolver = createResolver({ http: { file: vi.fn() } } as never);
     const result = await resolver.resolve(
       context({
@@ -362,8 +349,9 @@ describe("createResolver", () => {
     );
 
     expect(result).toMatchObject({
+      kind: "event",
+      eventType: "onebot.message-reactions-updated",
       type: "onebot.message-reactions-updated",
-      channel: { id: "room" },
     });
   });
 
@@ -373,7 +361,6 @@ describe("createResolver", () => {
       resolver.resolve(
         context({
           session: { platform: "onebot", selfId: "bot", event: {} } as Session,
-          base: undefined,
         }),
       ),
     ).resolves.toBeNull();

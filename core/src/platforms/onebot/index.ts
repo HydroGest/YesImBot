@@ -1,7 +1,7 @@
 import type { Context } from "koishi";
 import type {} from "koishi-plugin-adapter-onebot";
 
-import type { MessageRecord } from "../../event/index.js";
+import type { ResolvedMessageDraft } from "../../event/index.js";
 import type { ResolveContext, SessionResolver } from "../../gateway/index.js";
 import { resolveOneBotEvent } from "./events.js";
 import { freezeOneBotImages } from "./image.js";
@@ -9,30 +9,38 @@ import { freezeOneBotImages } from "./image.js";
 export function createResolver(ctx: Context): SessionResolver {
   return {
     platform: "onebot",
-    async resolve({ session, base, freezeImage }) {
+    async resolve({ session, freezeImage }) {
       const event = resolveOneBotEvent(session);
       if (event) return event;
-      if (!base) return null;
-      return resolveOneBotMessage({ ctx, base, freezeImage });
+      return resolveOneBotMessage({ ctx, session, freezeImage });
     },
   };
 }
 
 async function resolveOneBotMessage({
   ctx,
-  base,
+  session,
   freezeImage,
 }: {
   readonly ctx: Context;
-  readonly base: Omit<MessageRecord, "text">;
+  readonly session: import("koishi").Session;
   readonly freezeImage: ResolveContext["freezeImage"];
-}): Promise<MessageRecord> {
-  const workingElements = [...base.elements];
+}): Promise<ResolvedMessageDraft | null> {
+  if (session.type !== "message-created" || !Array.isArray(session.elements)) return null;
+  if (typeof session.messageId !== "string" || session.messageId.length === 0) return null;
+  const workingElements = [...session.elements];
   const frozenElements = await freezeOneBotImages(ctx, workingElements, freezeImage);
   const text = frozenElements.map((element) => element.toString()).join("");
   return {
-    ...base,
+    kind: "message",
+    messageId: session.messageId,
+    elements: session.elements,
     text,
+    user: {
+      id: session.userId || undefined,
+      name: session.event.user?.name ?? session.author?.name,
+    },
+    channel: { name: session.event.channel?.name },
   };
 }
 
