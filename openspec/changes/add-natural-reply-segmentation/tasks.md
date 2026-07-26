@@ -43,11 +43,11 @@
 
 ## 6. Integrate Pacing And Failure Handling Into Gateway
 
-- [ ] 6.1 Apply per-segment pacing in the delivery loop while keeping send authority and Session ownership in Gateway.
-- [ ] 6.2 Check cancellation before each delay and before each send, stopping delivery without recalling delivered segments and without emitting a cancellation failure.
-- [ ] 6.3 Stop remaining segments on the first send rejection without retrying.
-- [ ] 6.4 Extend the delivery-failure record with the failed segment's position and total segment count.
-- [ ] 6.5 Add tests proving stop-on-first-failure, abort points, no duplicate sends, correct failure position, and unchanged single-message behavior for replies without control elements.
+- [x] 6.1 Apply per-segment pacing in the delivery loop while keeping send authority and Session ownership in Gateway.
+- [x] 6.2 Check cancellation before each delay and before each send, stopping delivery without recalling delivered segments and without emitting a cancellation failure.
+- [x] 6.3 Stop remaining segments on the first send rejection without retrying.
+- [x] 6.4 Extend the delivery-failure record with the failed segment's position and total segment count.
+- [x] 6.5 Add tests proving stop-on-first-failure, abort points, no duplicate sends, correct failure position, and unchanged single-message behavior for replies without control elements.
 
 ## 7. Add Observability And Anti-Template Verification
 
