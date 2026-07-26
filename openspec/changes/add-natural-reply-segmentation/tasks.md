@@ -51,8 +51,8 @@
 
 ## 7. Add Observability And Anti-Template Verification
 
-- [ ] 7.1 Emit structured diagnostics per reply recording segment count, degradation reason when present, skip decisions, and total delivery time, without logging inner-thought content.
-- [ ] 7.2 Implement the pattern-repetition metrics: sliding-window segment-count entropy, maximum run length of identical counts, and segment-length variance.
-- [ ] 7.3 Add integration tests across short, long, emotional, mixed-language, and structured-content replies asserting integrity rather than a preferred shape.
-- [ ] 7.4 Add a provider-compliance harness recording control-element adoption and degradation rate per configured provider.
-- [ ] 7.5 Record baseline measurements and the run-length alarm threshold so calibration of the deferred numeric guardrails can follow observation.
+- [x] 7.1 Emit structured diagnostics per reply recording segment count, degradation reason when present, skip decisions, and total delivery time, without logging inner-thought content.
+- [x] 7.2 Implement the pattern-repetition metrics: sliding-window segment-count entropy, maximum run length of identical counts, and segment-length variance.
+- [x] 7.3 Add integration tests across short, long, emotional, mixed-language, and structured-content replies asserting integrity rather than a preferred shape.
+- [x] 7.4 Add a provider-compliance harness recording control-element adoption and degradation rate per configured provider.
+- [x] 7.5 Record baseline measurements and the run-length alarm threshold so calibration of the deferred numeric guardrails can follow observation.
