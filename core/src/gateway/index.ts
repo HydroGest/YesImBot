@@ -164,9 +164,9 @@ export class Gateway {
       if (result.kind === "run") {
         try {
           let acknowledged = false;
+          let consumedDeliveryMs = 0;
           let stopped = false;
           for await (const output of result.output) {
-            let consumedDeliveryMs = 0;
             for (const [index, segment] of output.segments.entries()) {
               if (result.delivery.signal.aborted) {
                 stopped = true;

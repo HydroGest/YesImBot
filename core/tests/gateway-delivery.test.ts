@@ -9,6 +9,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h } from "koishi";
 
+import type { PacingConfig } from "../src/config.js";
 import { formatInput } from "../src/event/formatter.js";
 import { isInput, type InputRecord, type MessageRecord } from "../src/event/index.js";
 import { Gateway } from "../src/gateway/index.js";
@@ -73,6 +74,7 @@ function createGateway(
     readonly now?: () => number;
     readonly random?: () => number;
     readonly wait?: (delayMs: number, signal: AbortSignal) => Promise<void>;
+    readonly pacing?: PacingConfig;
   } = {},
 ) {
   const ctx = {
@@ -214,6 +216,39 @@ describe("Gateway passive delivery", () => {
     expect(binding.complete).toHaveBeenCalledTimes(1);
     expect(binding.complete).toHaveBeenCalledWith("turn-1");
     expect(binding.release).toHaveBeenCalledOnce();
+  });
+
+  it("shares the host delivery budget across multiple outputs in one run", async () => {
+    const binding = delivery();
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: (async function* () {
+        yield { turnId: "turn-1", messageId: "assistant-1", segments: [{ text: "a" }] };
+        yield { turnId: "turn-1", messageId: "assistant-2", segments: [{ text: "a" }] };
+      })(),
+      delivery: binding,
+    }));
+    const wait = vi.fn(async () => undefined);
+    const { gateway } = createGateway(route, undefined, {
+      wait,
+      pacing: {
+        minDelayMs: 10,
+        maxSegmentDelayMs: 1_000,
+        maxTotalDelayMs: 150,
+        cjkCharactersPerSecond: 10,
+        latinCharactersPerSecond: 10,
+        randomFactorMin: 1,
+        randomFactorMax: 1,
+        firstSegmentResidualMinMs: 100,
+        firstSegmentResidualMaxMs: 100,
+      },
+    });
+
+    await gateway.handle(session() as never);
+
+    expect(wait.mock.calls.map(([delayMs]) => delayMs)).toEqual([100, 10]);
   });
 
   it("stops at the first rejected segment without retrying or duplicating later sends", async () => {
