@@ -319,7 +319,10 @@ describe("createResolver", () => {
     });
 
     const result = await resolver.resolve(
-      context({ session: { ...context().session, elements: sourceElements } as Session, freezeImage }),
+      context({
+        session: { ...context().session, elements: sourceElements } as Session,
+        freezeImage,
+      }),
     );
 
     if (!result || result.kind !== "message") throw new Error("Expected a message draft");

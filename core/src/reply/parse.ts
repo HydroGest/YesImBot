@@ -19,7 +19,8 @@ type ControlMatch = {
 const INNER_THOUGHT = /<inner_thought>([\s\S]*?)<\/inner_thought>/g;
 const SEPARATOR = /<sep\s*\/>/g;
 const RESIDUAL_CONTROL = /<\/?inner_thought>|<sep\s*\/>/g;
-const PROTECTED_LITERAL = /```[\s\S]*?```|`[^`]*`|https?:\/\/[^\s]*|<(?!(?:inner_thought|sep)\b)([a-z][\w-]*)\b[^>]*(?:\/>|>[\s\S]*?<\/\1>)/gi;
+const PROTECTED_LITERAL =
+  /```[\s\S]*?```|`[^`]*`|https?:\/\/[^\s]*|<(?!(?:inner_thought|sep)\b)([a-z][\w-]*)\b[^>]*(?:\/>|>[\s\S]*?<\/\1>)/gi;
 
 export function parseReply(raw: string, maxSegments: number): ReplyPlan {
   try {
@@ -39,8 +40,14 @@ export function parseReply(raw: string, maxSegments: number): ReplyPlan {
       return degradedReply(raw, protectedRanges, "residual_control_element");
     }
 
-    const segments = splitVisibleSegments(raw, controls).map((text) => ({ text: unescapeControlText(text) }));
-    if (segments.some((segment) => hasRecognizedControl(segment.text, findProtectedRanges(segment.text)))) {
+    const segments = splitVisibleSegments(raw, controls).map((text) => ({
+      text: unescapeControlText(text),
+    }));
+    if (
+      segments.some((segment) =>
+        hasRecognizedControl(segment.text, findProtectedRanges(segment.text)),
+      )
+    ) {
       return degradedReply(raw, protectedRanges, "residual_control_element");
     }
     if (segments.length > maxSegments) {
@@ -70,8 +77,17 @@ function findControls(raw: string, protectedRanges: readonly Range[]): readonly 
     }));
   const separators = [...raw.matchAll(SEPARATOR)]
     .filter((match) => !isProtected(match.index, match.index + match[0].length, protectedRanges))
-    .filter((match) => !innerThoughtRegions.some((thought) => match.index >= thought.start && match.index < thought.end))
-    .map((match) => ({ kind: "separator" as const, start: match.index, end: match.index + match[0].length }));
+    .filter(
+      (match) =>
+        !innerThoughtRegions.some(
+          (thought) => match.index >= thought.start && match.index < thought.end,
+        ),
+    )
+    .map((match) => ({
+      kind: "separator" as const,
+      start: match.index,
+      end: match.index + match[0].length,
+    }));
   const recognized = [...innerThoughtRegions, ...separators];
   const residual = [...raw.matchAll(RESIDUAL_CONTROL)]
     .filter((match) => !isProtected(match.index, match.index + match[0].length, protectedRanges))
@@ -79,7 +95,11 @@ function findControls(raw: string, protectedRanges: readonly Range[]): readonly 
       (match) =>
         !recognized.some((control) => match.index >= control.start && match.index < control.end),
     )
-    .map((match) => ({ kind: "residual" as const, start: match.index, end: match.index + match[0].length }));
+    .map((match) => ({
+      kind: "residual" as const,
+      start: match.index,
+      end: match.index + match[0].length,
+    }));
   return [...recognized, ...residual].sort((left, right) => left.start - right.start);
 }
 
@@ -132,7 +152,10 @@ function hasRecognizedControl(raw: string, protectedRanges: readonly Range[]): b
 }
 
 function unescapeControlText(raw: string): string {
-  return raw.replace(/&lt;(\/?inner_thought|sep\s*\/)&gt;/g, (_, control: string) => `<${control}>`);
+  return raw.replace(
+    /&lt;(\/?inner_thought|sep\s*\/)&gt;/g,
+    (_, control: string) => `<${control}>`,
+  );
 }
 
 type Range = { readonly start: number; readonly end: number };

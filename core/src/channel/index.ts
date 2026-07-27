@@ -1,18 +1,10 @@
 import { createHash } from "node:crypto";
 
-import { Universal } from "koishi";
-
 export interface ChannelScope {
   readonly platform: string;
   readonly selfId: string;
   readonly channelId: string;
   readonly isDirect: boolean;
-}
-
-interface ChannelEvent {
-  readonly platform: string;
-  readonly selfId: string;
-  readonly channel?: { readonly id?: string; readonly type?: number };
 }
 
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
@@ -51,14 +43,4 @@ export function channelIdentity(scope: ChannelScope): string {
     : ["yesimbot.channel", 1, "shared", scope.platform, null, scope.channelId];
   const digest = createHash("sha256").update(JSON.stringify(canonical), "utf8").digest();
   return encodeBase32(digest.subarray(0, 16));
-}
-
-export function fromEvent(record: ChannelEvent): ChannelScope | null {
-  if (!record.channel?.id) return null;
-  return {
-    platform: record.platform,
-    selfId: record.selfId,
-    channelId: record.channel.id,
-    isDirect: record.channel.type === Universal.Channel.Type.DIRECT,
-  };
 }

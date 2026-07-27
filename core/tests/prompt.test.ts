@@ -84,7 +84,9 @@ describe("buildCoreSystemPrompt", () => {
   });
 
   it("keeps inner thought private and explains literal control escaping", () => {
-    expect(CORE_CONSTITUTION).toContain("Inner thought is yours alone and is never shown to anyone.");
+    expect(CORE_CONSTITUTION).toContain(
+      "Inner thought is yours alone and is never shown to anyone.",
+    );
     expect(CORE_CONSTITUTION).toContain("Write &lt;sep/&gt; or &lt;inner_thought&gt;");
     expect(CORE_CONSTITUTION).toContain("These elements control delivery. They never appear");
   });

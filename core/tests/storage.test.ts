@@ -292,7 +292,12 @@ describe("ChannelStorage", () => {
         error: { name: "Error", message: "offline" },
       },
     });
-    const assistant = { id: "assistant-1", timestamp: 3, role: "assistant" as const, content: rawReply };
+    const assistant = {
+      id: "assistant-1",
+      timestamp: 3,
+      role: "assistant" as const,
+      content: rawReply,
+    };
 
     await jsonl.append(createMessageEntry(message, { id: "entry-message", timestamp: 1 }));
     await jsonl.append(createMessageEntry(event, { id: "entry-event", timestamp: 2 }));
@@ -302,8 +307,14 @@ describe("ChannelStorage", () => {
     const storedMessage = entries[0]?.type === "message" ? entries[0].data : undefined;
     const storedEvent = entries[1]?.type === "message" ? entries[1].data : undefined;
     const storedAssistant = entries[2]?.type === "message" ? entries[2].data : undefined;
-    expect(storedMessage).toMatchObject({ type: "yesimbot.message", data: { messageId: "message-1" } });
-    expect(storedEvent).toMatchObject({ type: "yesimbot.event", data: { eventType: "delivery.failed" } });
+    expect(storedMessage).toMatchObject({
+      type: "yesimbot.message",
+      data: { messageId: "message-1" },
+    });
+    expect(storedEvent).toMatchObject({
+      type: "yesimbot.event",
+      data: { eventType: "delivery.failed" },
+    });
     expect(storedAssistant).toMatchObject({ content: rawReply });
     expect(parseReply(rawReply, 8).segments).toEqual([{ text: "first" }, { text: "second" }]);
   });

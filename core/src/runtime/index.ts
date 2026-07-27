@@ -12,10 +12,10 @@ import {
   type TurnResult,
 } from "@yesimbot/agent-runtime";
 import type { FilePart, LanguageModel } from "ai";
-import type { Awaitable, Bot, Context, Logger } from "koishi";
+import { Universal, type Awaitable, type Bot, type Context, type Logger } from "koishi";
 import { z } from "zod";
 
-import { channelIdentity, fromEvent, type ChannelScope } from "../channel/index.js";
+import { channelIdentity, type ChannelScope } from "../channel/index.js";
 import {
   DEFAULT_REPLY_SEGMENTATION_CONFIG,
   resolveMultimediaImagePolicy,
@@ -136,7 +136,14 @@ export class RuntimeManager {
 
   async route(record: InputRecord): Promise<RuntimeResult> {
     this.assertOpen();
-    const scope = fromEvent(record);
+    const scope = record.channel?.id
+      ? {
+          platform: record.platform,
+          selfId: record.selfId,
+          channelId: record.channel.id,
+          isDirect: record.channel.type === Universal.Channel.Type.DIRECT,
+        }
+      : null;
     if (!scope) throw new Error("Accepted event requires a channel");
     const runtime = await this.getOrCreate(scope);
     this.assertOpen();

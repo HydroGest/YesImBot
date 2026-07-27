@@ -278,7 +278,7 @@ describe("Gateway", () => {
       const { gateway, runtime } = createGateway({ allowedChannels });
       gateway.register({
         platform: "test",
-      resolve: async () => record(),
+        resolve: async () => record(),
       });
 
       await gateway.handle(session(overrides) as never);
@@ -667,7 +667,7 @@ describe("Gateway", () => {
     const { gateway, runtime, logger } = createGateway();
     gateway.register({
       platform: "test",
-      resolve: async () => ({ ...record(), platform: "other", selfId: "other" } as never),
+      resolve: async () => ({ ...record(), platform: "other", selfId: "other" }) as never,
     });
 
     await gateway.handle(session() as never);

@@ -69,11 +69,9 @@ export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase
 
 export type Input = Message | Event;
 
-function isMessageRecord(record: InputRecord): record is MessageRecord {
+export function isMessageRecord(record: InputRecord): record is MessageRecord {
   return !("eventType" in record);
 }
-
-export { isMessageRecord };
 
 export function createMessage(record: MessageRecord): Message {
   const { timestamp: _timestamp, ...data } = record;

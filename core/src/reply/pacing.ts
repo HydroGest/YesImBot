@@ -6,7 +6,6 @@ export interface PacingInput {
   readonly config: PacingConfig;
   readonly elapsedGenerationMs: number;
   readonly consumedDeliveryMs: number;
-  readonly random: () => number;
 }
 
 interface PacingLimits {
@@ -25,20 +24,15 @@ const CJK_CHARACTER = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
 
 export function nextSegmentDelayMs(input: PacingInput): number {
   const limits = normalizeLimits(input.config);
-  const random = unitRandom(input.random);
+  const random = unitRandom();
   const typingDelayMs = visibleTypingDelayMs(input.segment.text, limits, random);
-  const initialDelayMs =
-    input.isFirst
-      ? Math.max(
-          residualDelayMs(limits, random),
-          typingDelayMs - nonNegative(input.elapsedGenerationMs, 0),
-        )
-      : typingDelayMs;
-  const delayMs = clamp(
-    initialDelayMs,
-    limits.minDelayMs,
-    limits.maxSegmentDelayMs,
-  );
+  const initialDelayMs = input.isFirst
+    ? Math.max(
+        residualDelayMs(limits, random),
+        typingDelayMs - nonNegative(input.elapsedGenerationMs, 0),
+      )
+    : typingDelayMs;
+  const delayMs = clamp(initialDelayMs, limits.minDelayMs, limits.maxSegmentDelayMs);
 
   if (nonNegative(input.consumedDeliveryMs, 0) + delayMs >= limits.maxTotalDelayMs) {
     return limits.minDelayMs;
@@ -95,8 +89,8 @@ function normalizeLimits(config: PacingConfig): PacingLimits {
   };
 }
 
-function unitRandom(random: () => number): number {
-  const value = random();
+function unitRandom(): number {
+  const value = Math.random();
   return Number.isFinite(value) ? clamp(value, 0, 1) : 0.5;
 }
 

@@ -42,13 +42,9 @@ export interface GatewayOptions {
   readonly assets: AssetStore;
   readonly storage: ChannelStorage;
   readonly allowedChannels: readonly ChannelAllowRule[];
-  readonly ready: () => Promise<void>;
   readonly logger: Logger;
   readonly mediaPolicy: UnifiedImagePolicy;
   readonly pacing?: PacingConfig;
-  readonly now?: () => number;
-  readonly random?: () => number;
-  readonly wait?: (delayMs: number, signal: AbortSignal) => Promise<void>;
 }
 
 export class Gateway {
@@ -129,7 +125,6 @@ export class Gateway {
     const scope = scopeFromSession(session);
     if (!scope) return;
     if (!matchesAllowedChannel(scope, this.opts.allowedChannels)) return;
-    await this.opts.ready();
     try {
       await assertAssignee(this.opts.ctx, scope);
     } catch (cause) {
@@ -159,7 +154,7 @@ export class Gateway {
     }
     try {
       await this.opts.storage.updateName(scope, record.channel.name);
-      const routeStartedAt = this.now();
+      const routeStartedAt = Date.now();
       const result = await this.opts.runtime.route(record);
       if (result.kind === "run") {
         try {
@@ -178,10 +173,9 @@ export class Gateway {
                 config: this.pacing,
                 elapsedGenerationMs: this.elapsedSince(routeStartedAt),
                 consumedDeliveryMs,
-                random: this.opts.random ?? Math.random,
               });
-              const delayStartedAt = this.now();
-              await (this.opts.wait ?? waitForDelay)(delayMs, result.delivery.signal);
+              const delayStartedAt = Date.now();
+              await waitForDelay(delayMs, result.delivery.signal);
               consumedDeliveryMs += Math.max(delayMs, this.elapsedSince(delayStartedAt));
               if (result.delivery.signal.aborted) {
                 stopped = true;
@@ -276,19 +270,9 @@ export class Gateway {
     } catch {}
   }
 
-  private now(): number {
-    return this.opts.now?.() ?? Date.now();
-  }
-
   private elapsedSince(startedAt: number): number {
-    return Math.max(0, this.now() - startedAt);
+    return Math.max(0, Date.now() - startedAt);
   }
-}
-
-interface GatewayOutput {
-  readonly turnId: string;
-  readonly messageId: string;
-  readonly segments: readonly { readonly text: string }[];
 }
 
 function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -328,7 +312,8 @@ function resolveFallbackMessage(session: Session, scope: ChannelScope): MessageR
   const messageId = session.messageId;
   if (typeof messageId !== "string" || messageId.length === 0) return null;
 
-  const timestamp = numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
+  const timestamp =
+    numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
   const sealedElements = sealElements(normalizeElements([...elements]));
 
   return {
@@ -349,8 +334,13 @@ function normalizeDraft(
   scope: ChannelScope,
   draft: ResolvedMessageDraft | ResolvedEventDraft,
 ): InputRecord {
-  const timestamp = numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
-  const channel = normalizeChannel(session, scope, draft.kind === "message" ? draft.channel?.name : undefined);
+  const timestamp =
+    numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
+  const channel = normalizeChannel(
+    session,
+    scope,
+    draft.kind === "message" ? draft.channel?.name : undefined,
+  );
   if (draft.kind === "message") {
     const sealedElements = sealElements(normalizeElements([...draft.elements]));
     return {
@@ -378,12 +368,18 @@ function normalizeDraft(
   } as EventRecord;
 }
 
-function normalizeChannel(session: Session, scope: ChannelScope, draftName?: string): Universal.Channel {
+function normalizeChannel(
+  session: Session,
+  scope: ChannelScope,
+  draftName?: string,
+): Universal.Channel {
   const source = session.event.channel;
   const name = draftName ?? source?.name;
   return {
     id: scope.channelId,
-    type: source?.type ?? (scope.isDirect ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
+    type:
+      source?.type ??
+      (scope.isDirect ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
     ...(name === undefined ? {} : { name }),
   };
 }

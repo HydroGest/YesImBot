@@ -24,8 +24,16 @@ describe("nextSegmentDelayMs", () => {
       random: () => 0.75,
     };
 
-    const firstDelay = nextSegmentDelayMs({ ...base, segment: { text: "abcdefghij" }, isFirst: true });
-    const laterDelay = nextSegmentDelayMs({ ...base, segment: { text: "abcdefghij" }, isFirst: false });
+    const firstDelay = nextSegmentDelayMs({
+      ...base,
+      segment: { text: "abcdefghij" },
+      isFirst: true,
+    });
+    const laterDelay = nextSegmentDelayMs({
+      ...base,
+      segment: { text: "abcdefghij" },
+      isFirst: false,
+    });
     const literalSleepDelay = nextSegmentDelayMs({
       ...base,
       segment: { text: '<sleep ms="100000"/>' },

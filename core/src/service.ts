@@ -56,7 +56,6 @@ export class YesImBotService extends Service<Config> {
       runtime: this.rt,
       storage: this.storage,
       allowedChannels: config.allowedChannels ?? [],
-      ready: () => this.storage.start(),
       logger: this.logger,
       mediaPolicy: resolveMultimediaImagePolicy(config.multimedia),
       pacing: resolveReplyPacingConfig(config.reply?.pacing),

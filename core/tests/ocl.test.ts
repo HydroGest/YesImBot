@@ -37,7 +37,7 @@ describe("reply parsing", () => {
   });
 
   it("leaves unrecognized elements visible", () => {
-    expect(parseReply("before<sleep ms=\"10\"/>after", 8).segments).toEqual([
+    expect(parseReply('before<sleep ms="10"/>after', 8).segments).toEqual([
       { text: 'before<sleep ms="10"/>after' },
     ]);
   });
