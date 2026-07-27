@@ -12,12 +12,11 @@ import {
   type TurnResult,
 } from "@yesimbot/agent-runtime";
 import type { FilePart, LanguageModel } from "ai";
-import { Universal, type Awaitable, type Bot, type Context, type Logger } from "koishi";
+import { Universal, type Awaitable, type Bot, type Context, type Element, type Logger } from "koishi";
 import { z } from "zod";
 
 import { channelIdentity, type ChannelScope } from "../channel/index.js";
 import {
-  DEFAULT_REPLY_SEGMENTATION_CONFIG,
   resolveMultimediaImagePolicy,
   type Config,
 } from "../config.js";
@@ -62,7 +61,7 @@ interface RuntimeEntry {
 type ChannelOutput = {
   readonly turnId: string;
   readonly messageId: string;
-  readonly segments: readonly { readonly text: string }[];
+  readonly segments: readonly Element[][];
 };
 
 type ChannelRuntimeResult =
@@ -504,16 +503,16 @@ function renderAssistantText(content: unknown): string | undefined {
   return text.trim().length > 0 ? text : undefined;
 }
 
-function parseAssistantContent(content: unknown, maxSegments: number) {
+function parseAssistantContent(content: unknown): Element[][] | undefined {
   const text = renderAssistantText(content);
   if (text === undefined) return undefined;
-  return parseReply(text, maxSegments);
+  return parseReply(text);
 }
 
-function hasRenderableSegment(content: unknown, maxSegments: number): boolean {
+function hasRenderableSegment(content: unknown): boolean {
   return (
-    parseAssistantContent(content, maxSegments)?.segments.some(
-      (segment) => segment.text.length > 0,
+    parseAssistantContent(content)?.some((segment) =>
+      segment.some((element) => element.type === "text" && `${element.attrs["content"] ?? ""}`.trim().length > 0),
     ) === true
   );
 }
@@ -538,7 +537,6 @@ export class ChannelRuntime {
   private drainTask: Promise<void> | undefined;
   private streams = new Set<Promise<void>>();
   private readonly agent: Agent;
-  private readonly maxSegments: number;
   private replyCompletions = new Map<string, ReplyCompletion>();
   private deliveryAborts = new Map<string, AbortController>();
   private replyCompletionTail = Promise.resolve();
@@ -548,9 +546,6 @@ export class ChannelRuntime {
     this.scope = Object.freeze({ ...opts.scope });
     const plugins = opts.agentPlugins;
     const includeMessageId = opts.includeMessageId;
-    const maxSegments =
-      opts.config.reply?.segmentation?.maxSegments ?? DEFAULT_REPLY_SEGMENTATION_CONFIG.maxSegments;
-    this.maxSegments = maxSegments;
     const selectedFilesByContext = new WeakMap<
       ModelMessageContext,
       Promise<ReadonlyMap<Input["id"], readonly FilePart[]>>
@@ -784,12 +779,12 @@ export class ChannelRuntime {
     try {
       for await (const event of stream) {
         if (isAssistantMessage(event)) {
-          const plan = parseAssistantContent(event.message.content, this.maxSegments);
-          if (plan !== undefined) {
+          const segments = parseAssistantContent(event.message.content);
+          if (segments !== undefined) {
             output.push({
               turnId: event.turnId,
               messageId: event.message.id,
-              segments: plan.segments,
+              segments,
             });
           }
         }
@@ -828,7 +823,7 @@ export class ChannelRuntime {
         result.status === "done" &&
         result.messages.some(
           (message) =>
-            message.role === "assistant" && hasRenderableSegment(message.content, this.maxSegments),
+            message.role === "assistant" && hasRenderableSegment(message.content),
         )
           ? "eligible"
           : "ineligible";

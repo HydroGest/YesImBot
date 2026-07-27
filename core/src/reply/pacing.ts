@@ -1,7 +1,9 @@
+import type { Element } from "koishi";
+
 import type { PacingConfig } from "../config.js";
 
 export interface PacingInput {
-  readonly segment: { readonly text: string };
+  readonly segment: readonly Element[];
   readonly isFirst: boolean;
   readonly config: PacingConfig;
   readonly elapsedGenerationMs: number;
@@ -25,7 +27,7 @@ const CJK_CHARACTER = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u;
 export function nextSegmentDelayMs(input: PacingInput): number {
   const limits = normalizeLimits(input.config);
   const random = unitRandom();
-  const typingDelayMs = visibleTypingDelayMs(input.segment.text, limits, random);
+  const typingDelayMs = visibleTypingDelayMs(segmentText(input.segment), limits, random);
   const initialDelayMs = input.isFirst
     ? Math.max(
         residualDelayMs(limits, random),
@@ -39,6 +41,12 @@ export function nextSegmentDelayMs(input: PacingInput): number {
   }
 
   return Math.round(delayMs);
+}
+
+function segmentText(segment: readonly Element[]): string {
+  return segment
+    .map((element) => (element.type === "text" ? `${element.attrs["content"] ?? ""}` : ""))
+    .join("");
 }
 
 function visibleTypingDelayMs(text: string, limits: PacingLimits, random: number): number {

@@ -14,10 +14,6 @@ export const DEFAULT_MULTIMEDIA_IMAGE_POLICY: UnifiedImagePolicy = Object.freeze
   selection: "current-first",
 });
 
-export interface ReplySegmentationConfig {
-  maxSegments: number;
-}
-
 export interface PacingConfig {
   minDelayMs: number;
   maxSegmentDelayMs: number;
@@ -29,10 +25,6 @@ export interface PacingConfig {
   firstSegmentResidualMinMs: number;
   firstSegmentResidualMaxMs: number;
 }
-
-export const DEFAULT_REPLY_SEGMENTATION_CONFIG: ReplySegmentationConfig = Object.freeze({
-  maxSegments: 8,
-});
 
 export const DEFAULT_REPLY_PACING_CONFIG: PacingConfig = Object.freeze({
   minDelayMs: 250,
@@ -66,7 +58,6 @@ export interface Config {
   };
   will?: WillConfig;
   reply?: {
-    segmentation?: Partial<ReplySegmentationConfig>;
     pacing?: Partial<PacingConfig>;
   };
 }
@@ -144,12 +135,6 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description("消息路由"),
   Schema.object({
     reply: Schema.object({
-      segmentation: Schema.object({
-        maxSegments: Schema.number()
-          .min(1)
-          .step(1)
-          .default(DEFAULT_REPLY_SEGMENTATION_CONFIG.maxSegments),
-      }),
       pacing: Schema.object({
         minDelayMs: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.minDelayMs),
         maxSegmentDelayMs: Schema.number()

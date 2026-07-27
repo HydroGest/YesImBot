@@ -182,7 +182,7 @@ export class Gateway {
                 break;
               }
               try {
-                await session.send(segment.text);
+                await session.send(segment);
                 if (!acknowledged) {
                   acknowledged = true;
                   await result.delivery.complete(output.turnId);
