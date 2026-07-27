@@ -304,13 +304,12 @@ describe("createResolver", () => {
       messageId: "message",
       elements: [h.text("hello")],
     });
-    expect(result).toHaveProperty("text");
     expect(result).not.toHaveProperty("schemaVersion");
     expect(result).not.toHaveProperty("platform");
     expect(result).not.toHaveProperty("channelId");
   });
 
-  it("derives text from frozen images while retaining the source image elements", async () => {
+  it("freezes image elements and returns them as the message draft elements", async () => {
     const resolver = createResolver({ http: { file: vi.fn<() => void>() } } as never);
     const sourceElements = [h("img", { src: "data:image/png;base64,iVBORw==" })];
     const freezeImage = vi.fn<ResolveContext["freezeImage"]>(async (_element, load) => {
@@ -326,9 +325,7 @@ describe("createResolver", () => {
     );
 
     if (!result || result.kind !== "message") throw new Error("Expected a message draft");
-    expect(result.text).toBe('<img id="asset_abc" mime="image/png"/>');
-    expect(result.elements).toBe(sourceElements);
-    expect(result.elements[0]?.attrs).toEqual({ src: "data:image/png;base64,iVBORw==" });
+    expect(result.elements).toEqual([h("img", { id: "asset_abc", mime: "image/png" })]);
   });
 
   it("resolves a supported notice as an event draft", async () => {

@@ -16,6 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
+import { h } from "koishi";
+
 import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
 import { createEvent, createMessage } from "../src/event/index.js";
 import { detectImageMime } from "../src/media/index.js";
@@ -266,18 +268,17 @@ describe("ChannelStorage", () => {
     const jsonl = createJsonlStorage(join(sessions, "messages.jsonl"));
     const rawReply = "<inner_thought>private reasoning</inner_thought>first<sep/>second";
     const message = createMessage({
-      schemaVersion: 2,
+      schemaVersion: 3,
       platform: shared.platform,
       selfId: shared.selfId,
       channel: { id: shared.channelId },
       user: { id: "user-1" },
       messageId: "message-1",
       elements: [],
-      text: "hello",
       timestamp: 1,
     });
     const event = createEvent({
-      schemaVersion: 2,
+      schemaVersion: 3,
       platform: shared.platform,
       selfId: shared.selfId,
       channel: { id: shared.channelId },
@@ -316,7 +317,7 @@ describe("ChannelStorage", () => {
       data: { eventType: "delivery.failed" },
     });
     expect(storedAssistant).toMatchObject({ content: rawReply });
-    expect(parseReply(rawReply, 8).segments).toEqual([{ text: "first" }, { text: "second" }]);
+    expect(parseReply(rawReply)).toEqual([[h.text("first")], [h.text("second")]]);
   });
 
   it("preserves and reports unknown namespace directories during startup", async () => {

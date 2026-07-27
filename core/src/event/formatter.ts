@@ -1,6 +1,7 @@
 import type { UserModelMessage } from "@ai-sdk/provider-utils";
 import type { FilePart } from "ai";
 
+import { renderElements } from "./element.js";
 import type { Event, Input, Message } from "./index.js";
 import { isMessage } from "./index.js";
 
@@ -20,7 +21,7 @@ export function appendModelFiles(
 
 export function formatInput(input: Input, options: FormatInputOptions): UserModelMessage {
   const content = isMessage(input)
-    ? `${formatMessageHeader(input, options)}\n${input.data.text}`
+    ? `${formatMessageHeader(input, options)}\n${renderElements(input.data.elements)}`
     : formatEventNotification(input);
   return { role: "user", content: appendModelFiles(content, options.files ?? []) };
 }

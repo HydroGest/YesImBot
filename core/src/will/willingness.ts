@@ -1,5 +1,6 @@
 import type { Element, Universal } from "koishi";
 
+import { renderElements } from "../event/element.js";
 import { isMessage, type Input, type Message } from "../event/index.js";
 import type { WillEngine } from "./index.js";
 
@@ -170,7 +171,9 @@ function decayHighScore(
 
 function calculateScore(current: number, data: Message["data"], config: WillingnessConfig): number {
   assertValidConfig(config);
-  const multiplier = config.interest.keywords.some((keyword) => data.text.includes(keyword))
+  const multiplier = config.interest.keywords.some((keyword) =>
+    renderElements(data.elements).includes(keyword),
+  )
     ? config.interest.keywordMultiplier
     : config.interest.defaultMultiplier;
   const attributes =
@@ -201,7 +204,7 @@ function dynamicGainMultiplier(ratio: number): number {
   return 1 - (ratio - 0.8) / 0.2;
 }
 
-function isSelfMention(selfId: string, elements: readonly Element[] | undefined): boolean {
+export function isSelfMention(selfId: string, elements: readonly Element[] | undefined): boolean {
   return (
     elements?.some((element) => element.type === "at" && String(element.attrs.id) === selfId) ??
     false

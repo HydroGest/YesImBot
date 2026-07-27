@@ -8,7 +8,7 @@ import { h, type Element } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
 import { normalizeElements, unavailableImage } from "../event/element.js";
-import { isInput, type Input } from "../event/index.js";
+import { isInput, isMessage, type Input } from "../event/index.js";
 import type { ChannelStorage } from "../storage/index.js";
 
 const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
@@ -304,12 +304,6 @@ function collectAssetIds(elements: readonly Element[], assetIds: string[]): void
   }
 }
 
-function imageAssetIds(content: string | undefined): readonly string[] {
-  const assetIds: string[] = [];
-  collectAssetIds(h.normalize(`${content ?? ""}`), assetIds);
-  return assetIds;
-}
-
 export async function selectInputFiles(
   context: ModelMessageContext,
   options: MediaSelectionOptions,
@@ -321,8 +315,11 @@ export async function selectInputFiles(
   let totalBytes = 0;
 
   for (const input of inputSources(context, options.policy.selection)) {
+    if (!isMessage(input)) continue;
     const files: FilePart[] = [];
-    for (const assetId of imageAssetIds(input.data.text)) {
+    const assetIds: string[] = [];
+    collectAssetIds(input.data.elements, assetIds);
+    for (const assetId of assetIds) {
       if (imageCount >= options.policy.maxCount || totalBytes >= options.policy.maxTotalBytes) {
         if (files.length > 0) selected.set(input.id, files);
         return selected;

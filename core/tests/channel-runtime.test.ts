@@ -66,6 +66,8 @@ vi.mock("../src/media/index.js", async (importOriginal) => {
   return { ...actual, selectInputFiles: state.selectInputFiles };
 });
 
+import { h } from "koishi";
+
 import {
   createInput,
   isInput,
@@ -80,15 +82,14 @@ import type { WillEngine } from "../src/will/index.js";
 
 function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
     channel: { id: "room-1", type: 0 },
     user: { id: "user-1", name: "User" },
     messageId: "message-1",
-    elements: [{ type: "text", attrs: { content: "hello" }, children: [] }],
-    text: "hello",
+    elements: [h.text("hello")],
     ...overrides,
   };
 }
@@ -276,7 +277,7 @@ describe("ChannelRuntime", () => {
     ctx.on("yesimbot/event", () => order.push("event"));
     ctx.on("yesimbot/will", () => order.push("will-observation"));
     const notice: EventRecord<"delivery.failed"> = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -325,7 +326,7 @@ describe("ChannelRuntime", () => {
     const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
 
     const first = await runtime.handle(record());
-    const second = await runtime.handle(record({ messageId: "message-2", text: "next" }));
+    const second = await runtime.handle(record({ messageId: "message-2" }));
 
     expect(first).toMatchObject({ kind: "run", turnId: "turn-1" });
     expect(second).toMatchObject({ kind: "join", turnId: "turn-1" });
@@ -364,12 +365,12 @@ describe("ChannelRuntime", () => {
       {
         turnId: "turn-1",
         messageId: "assistant-1",
-        segments: [{ text: "first" }],
+        segments: [[h.text("first")]],
       },
       {
         turnId: "turn-1",
         messageId: "assistant-2",
-        segments: [{ text: "second" }],
+        segments: [[h.text("second")]],
       },
     ]);
   });
@@ -399,7 +400,7 @@ describe("ChannelRuntime", () => {
       {
         turnId: "turn-1",
         messageId: "assistant-1",
-        segments: [{ text: "first" }, { text: "second" }],
+        segments: [[h.text("first")], [h.text("second")]],
       },
     ]);
   });
@@ -487,7 +488,7 @@ describe("ChannelRuntime", () => {
     const path = join(directory, "messages.jsonl");
     const message = createInput(record());
     const event = createInput({
-      schemaVersion: 2,
+      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -802,8 +803,8 @@ describe("ChannelRuntime", () => {
     const formatter = (
       state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
     ).find((plugin) => plugin.name === "core.event-format");
-    const first = createInput(record({ messageId: "message-1", text: "first" }));
-    const second = createInput(record({ messageId: "message-2", text: "second" }));
+    const first = createInput(record({ messageId: "message-1", elements: [h.text("first")] }));
+    const second = createInput(record({ messageId: "message-2", elements: [h.text("second")] }));
     const file = { type: "file" as const, data: new Uint8Array([1]), mediaType: "image/png" };
     const context = { history: [first, second], current: [] } as ModelMessageContext;
     state.selectInputFiles.mockResolvedValue(
@@ -835,8 +836,12 @@ describe("ChannelRuntime", () => {
     const formatter = (
       state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
     ).find((plugin) => plugin.name === "core.event-format");
-    const historical = createInput(record({ messageId: "message-history", text: "history" }));
-    const current = createInput(record({ messageId: "message-current", text: "current" }));
+    const historical = createInput(
+      record({ messageId: "message-history", elements: [h.text("history")] }),
+    );
+    const current = createInput(
+      record({ messageId: "message-current", elements: [h.text("current")] }),
+    );
     const historyFile = {
       type: "file" as const,
       data: new Uint8Array([1]),
@@ -1059,7 +1064,7 @@ describe("ChannelRuntime", () => {
         error: { name: "Error", message: "offline" },
       },
       text: "Delivery failed",
-      schemaVersion: 2,
+      schemaVersion: 3,
       eventType: "delivery.failed",
     };
 

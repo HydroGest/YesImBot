@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
+import { h } from "koishi";
+
 import { type ChannelScope } from "../src/channel/index.js";
 import { appendModelFiles, formatInput } from "../src/event/formatter.js";
 import {
@@ -34,14 +36,13 @@ const FIVE_MIB = 5 * 1024 * 1024;
 
 function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     platform: scope.platform,
     selfId: scope.selfId,
     channel: { id: scope.channelId },
     user: { id: "10001", name: "Alice" },
     messageId: "m-1",
-    elements: [{ type: "text", attrs: { content: "hello" }, children: [] }],
-    text: "hello",
+    elements: [h.text("hello")],
     timestamp: overrides.timestamp ?? Date.parse("2026-07-18T12:34:00.000Z"),
   };
 }
@@ -52,13 +53,13 @@ function messageRecordWithText(
 ): MessageRecord {
   return {
     ...messageRecord(overrides),
-    text,
+    elements: h.parse(text),
   };
 }
 
 function deliveryFailureRecord(): EventRecord<"delivery.failed"> {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     eventType: "delivery.failed",
     platform: scope.platform,
     selfId: scope.selfId,
@@ -77,7 +78,7 @@ function deliveryFailureRecord(): EventRecord<"delivery.failed"> {
 
 function formatterVariantRecord(): EventRecord<"formatter.variant"> {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     eventType: "formatter.variant",
     platform: scope.platform,
     selfId: scope.selfId,
@@ -146,6 +147,18 @@ describe("formatInput", () => {
       role: "user",
       content: '[time="2026/7/25 20:34" sender="Alice (10001)" id="m-1"]\nhello',
     });
+  });
+
+  it("projects JSONL-replayed elements deterministically", () => {
+    const original = createMessage(messageRecord());
+    const replayed = JSON.parse(JSON.stringify(original)) as typeof original;
+
+    const first = formatInput(replayed, { includeMessageId: true }).content;
+    const second = formatInput(replayed, { includeMessageId: true }).content;
+
+    expect(first).toBe(second);
+    expect(first).not.toContain("[object Object]");
+    expect(first).toContain("\nhello");
   });
 
   it("formats a non-message event with eventType and text", () => {
@@ -441,14 +454,35 @@ describe("formatInput", () => {
         vi.unstubAllGlobals();
       }
     });
+
+    it("finds frozen assets nested inside message elements", async () => {
+      const assets = assetStore();
+      assets.readByAssetId.mockResolvedValue(pngBytes);
+      const input = createMessage({
+        ...messageRecord(),
+        elements: [
+          h("p", {}, [
+            h("span", {}, [h("img", { id: "asset_nested", mime: "image/png" })]),
+          ]),
+        ],
+      });
+
+      await selectInputFiles(selectionContext([input]), selectionOptions(assets));
+
+      expect(input.data.elements[0]?.children[0]?.children[0]?.attrs.id).toBe("asset_nested");
+      expect(assets.readByAssetId).toHaveBeenCalledWith(scope, "asset_nested");
+    });
   });
 
   it("preserves the exact frozen message literal and appends selected files", () => {
     const files: readonly FilePart[] = [{ type: "file", data: pngBytes, mediaType: "image/png" }];
-    const literal = '<p>  <img id="asset_1"/>\n</p>';
+    const elements = [h("p", {}, [h.text("  "), h("img", { id: "asset_1" }), h.text("\n")])];
 
     expect(
-      formatInput(createMessage(messageRecordWithText(literal)), { includeMessageId: true, files }),
+      formatInput(createMessage({ ...messageRecord(), elements }), {
+        includeMessageId: true,
+        files,
+      }),
     ).toEqual({
       role: "user",
       content: [

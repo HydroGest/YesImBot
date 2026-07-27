@@ -1,9 +1,10 @@
-import type { Awaitable, Element, Universal } from "koishi";
+import type { Awaitable, Universal } from "koishi";
 
 import type { Config } from "../config.js";
 import { isMessage, type Input } from "../event/index.js";
 import {
   createWillingnessConfig,
+  isSelfMention,
   WillingnessWillEngine,
   type WillingnessConfigInput,
   type WillingnessWillOptions,
@@ -82,15 +83,11 @@ export class RoutingWillEngine implements WillEngine {
   async decide(input: Input, _state: WillEngine.State): Promise<WillEngine.Decision> {
     if (!isMessage(input)) return "wait";
     if (input.data.channel.type === DIRECT_CHANNEL_TYPE) return this.config.direct;
-    if (input.data.elements.some(isSelfMention.bind(null, input.data.selfId))) {
+    if (isSelfMention(input.data.selfId, input.data.elements)) {
       return this.config.mention;
     }
     return this.config.group;
   }
-}
-
-function isSelfMention(selfId: string, element: Element): boolean {
-  return element.type === "at" && String(element.attrs.id) === selfId;
 }
 
 declare module "koishi" {

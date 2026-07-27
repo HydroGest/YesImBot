@@ -30,12 +30,10 @@ async function resolveOneBotMessage({
   if (typeof session.messageId !== "string" || session.messageId.length === 0) return null;
   const workingElements = [...session.elements];
   const frozenElements = await freezeOneBotImages(ctx, workingElements, freezeImage);
-  const text = frozenElements.map((element) => element.toString()).join("");
   return {
     kind: "message",
     messageId: session.messageId,
-    elements: session.elements,
-    text,
+    elements: frozenElements,
     user: {
       id: session.userId || undefined,
       name: session.event.user?.name ?? session.author?.name,

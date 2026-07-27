@@ -19,19 +19,18 @@ export interface EventMap {
 }
 
 export type MessageRecord = Readonly<{
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly platform: string;
   readonly selfId: string;
   readonly channel: Universal.Channel;
   readonly user: Universal.User;
   readonly messageId: string;
   readonly elements: readonly Element[];
-  readonly text: string;
   readonly timestamp: number;
 }>;
 
 export type EventBase = Readonly<{
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly platform: string;
   readonly selfId: string;
   readonly channel: Universal.Channel;
@@ -48,7 +47,6 @@ export type ResolvedMessageDraft = Readonly<{
   readonly kind: "message";
   readonly messageId: string;
   readonly elements: readonly Element[];
-  readonly text?: string;
   readonly user?: { readonly id?: string; readonly name?: string };
   readonly channel?: { readonly name?: string };
 }>;
@@ -97,14 +95,13 @@ export function isMessage(message: AgentMessage): message is Message {
   const data = message.data;
   return (
     isRecord(data) &&
-    data.schemaVersion === 2 &&
+    data.schemaVersion === 3 &&
     typeof data.platform === "string" &&
     typeof data.selfId === "string" &&
     hasId(data.channel) &&
     hasId(data.user) &&
     typeof data.messageId === "string" &&
-    Array.isArray(data.elements) &&
-    typeof data.text === "string"
+    Array.isArray(data.elements)
   );
 }
 
@@ -113,7 +110,7 @@ export function isEvent(message: AgentMessage): message is Event {
   const data = message.data;
   return (
     isRecord(data) &&
-    data.schemaVersion === 2 &&
+    data.schemaVersion === 3 &&
     typeof data.platform === "string" &&
     typeof data.selfId === "string" &&
     hasId(data.channel) &&

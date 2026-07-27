@@ -9,7 +9,7 @@ import {
 
 import type { ChannelScope } from "../channel/index.js";
 import { resolveReplyPacingConfig, type PacingConfig } from "../config.js";
-import { normalizeElements, sealElements, unavailableImage } from "../event/element.js";
+import { sealElements, unavailableImage } from "../event/element.js";
 import type {
   EventRecord,
   InputRecord,
@@ -227,7 +227,7 @@ export class Gateway {
   ): Promise<void> {
     const error = normalizeDeliveryError(cause);
     const failure: EventRecord<"delivery.failed"> = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: record.platform,
       selfId: record.selfId,
@@ -306,18 +306,17 @@ function scopeFromSession(session: Session): ChannelScope | null {
 function resolveFallbackMessage(session: Session, scope: ChannelScope): MessageRecord | null {
   if (session.type !== "message-created") return null;
 
-  const elements = session.elements;
-  if (!Array.isArray(elements)) return null;
+  if (!Array.isArray(session.elements)) return null;
+  const elements = sealElements(session.elements);
 
   const messageId = session.messageId;
   if (typeof messageId !== "string" || messageId.length === 0) return null;
 
   const timestamp =
     numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
-  const sealedElements = sealElements(normalizeElements([...elements]));
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     platform: scope.platform,
     selfId: scope.selfId,
     channel: normalizeChannel(session, scope),
@@ -325,7 +324,6 @@ function resolveFallbackMessage(session: Session, scope: ChannelScope): MessageR
     messageId,
     elements,
     timestamp,
-    text: sealedElements.map((element) => element.toString()).join(""),
   };
 }
 
@@ -342,22 +340,21 @@ function normalizeDraft(
     draft.kind === "message" ? draft.channel?.name : undefined,
   );
   if (draft.kind === "message") {
-    const sealedElements = sealElements(normalizeElements([...draft.elements]));
+    const elements = sealElements(draft.elements);
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       platform: scope.platform,
       selfId: scope.selfId,
       timestamp,
       channel,
       user: normalizeUser(session, draft.user),
       messageId: draft.messageId,
-      elements: draft.elements,
-      text: draft.text ?? sealedElements.map((element) => element.toString()).join(""),
+      elements,
     };
   }
   const { kind: _kind, eventType, text, ...variant } = draft;
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     platform: scope.platform,
     selfId: scope.selfId,
     timestamp,
@@ -399,7 +396,7 @@ function numberValue(value: unknown): number | undefined {
 
 function isRecord(record: InputRecord): boolean {
   return Boolean(
-    record.schemaVersion === 2 && record.platform && record.selfId && record.channel?.id,
+    record.schemaVersion === 3 && record.platform && record.selfId && record.channel?.id,
   );
 }
 

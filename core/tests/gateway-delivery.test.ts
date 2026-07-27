@@ -35,7 +35,7 @@ function session(send = vi.fn(async () => ["receipt-1"])) {
 
 function record(): MessageRecord {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
@@ -43,7 +43,6 @@ function record(): MessageRecord {
     user: { id: "user-1" },
     messageId: "message-1",
     elements: [h.text("hello")],
-    text: "hello",
   };
 }
 
@@ -52,7 +51,7 @@ function outputs(...content: string[]) {
     yield {
       turnId: "turn-1",
       messageId: "assistant-1",
-      segments: content.map((text) => ({ text })),
+      segments: content.map((text) => [h.text(text)]),
     };
   })();
 }
@@ -166,7 +165,7 @@ describe("Gateway passive delivery", () => {
 
     expect(firstInput).toMatchObject({
       type: "yesimbot.message",
-      data: { messageId: "message-1", elements: expect.any(Array), text: "hello" },
+      data: { messageId: "message-1", elements: expect.any(Array) },
     });
     expect(eventInput).toMatchObject({
       type: "yesimbot.event",
@@ -210,8 +209,8 @@ describe("Gateway passive delivery", () => {
     const inbound = session(send);
     await gateway.handle(inbound as never);
 
-    expect(send).toHaveBeenNthCalledWith(1, "first");
-    expect(send).toHaveBeenNthCalledWith(2, "second");
+    expect(send).toHaveBeenNthCalledWith(1, [h.text("first")]);
+    expect(send).toHaveBeenNthCalledWith(2, [h.text("second")]);
     expect(route).toHaveBeenCalledOnce();
     expect(binding.complete).toHaveBeenCalledTimes(1);
     expect(binding.complete).toHaveBeenCalledWith("turn-1");
@@ -267,13 +266,13 @@ describe("Gateway passive delivery", () => {
     const inbound = session(send);
     await gateway.handle(inbound as never);
 
-    expect(send).toHaveBeenNthCalledWith(1, "first");
+    expect(send).toHaveBeenNthCalledWith(1, [h.text("first")]);
     expect(send).toHaveBeenCalledTimes(1);
     expect(route).toHaveBeenCalledOnce();
     expect(route.mock.calls[0]?.[0]).not.toHaveProperty("send");
     expect(route.mock.calls[0]?.[0]).not.toBe(inbound);
     expect(binding.fail.mock.calls[0]?.[0]).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -327,7 +326,7 @@ describe("Gateway passive delivery", () => {
 
     await expect(gateway.handle(session(send) as never)).resolves.toBeUndefined();
 
-    expect(send).toHaveBeenNthCalledWith(1, "first");
+    expect(send).toHaveBeenNthCalledWith(1, [h.text("first")]);
     expect(send).toHaveBeenCalledTimes(1);
     expect(route).toHaveBeenCalledOnce();
     expect(binding.release).toHaveBeenCalledOnce();
@@ -424,7 +423,7 @@ describe("Gateway passive delivery", () => {
     await gateway.handle(session(send) as never);
 
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith("  ordinary reply\n");
+    expect(send).toHaveBeenCalledWith([h.text("  ordinary reply\n")]);
     expect(binding.complete).toHaveBeenCalledOnce();
   });
 
@@ -438,7 +437,7 @@ describe("Gateway passive delivery", () => {
       eventId: "event-1",
       turnId: "turn-1",
       output: (async function* () {
-        yield { turnId: "turn-1", messageId: "assistant-1", segments: [{ text: "first" }] };
+        yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("first")]] };
         await finished;
       })(),
       delivery: delivery(),
@@ -446,7 +445,7 @@ describe("Gateway passive delivery", () => {
     const send = vi.fn(async () => []);
     const { gateway } = createGateway(route);
     const handling = gateway.handle(session(send) as never);
-    await vi.waitFor(() => expect(send).toHaveBeenCalledWith("first"));
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith([h.text("first")]));
     let drained = false;
     const draining = gateway.drain().then(() => {
       drained = true;

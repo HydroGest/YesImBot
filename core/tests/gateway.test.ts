@@ -48,7 +48,6 @@ function record(): ResolvedMessageDraft {
     user: { id: "user-1", name: "User" },
     messageId: "message-1",
     elements: [h.text("hello")],
-    text: "hello",
   };
 }
 
@@ -243,10 +242,9 @@ describe("Gateway", () => {
 
     expect(runtime.route).toHaveBeenCalledWith(
       expect.objectContaining({
-        schemaVersion: 2,
+        schemaVersion: 3,
         messageId: "message-1",
         elements: [],
-        text: "",
         timestamp: expect.any(Number),
       }),
     );
@@ -447,7 +445,7 @@ describe("Gateway", () => {
 
     expect(resolve).toHaveBeenCalledOnce();
     expect(runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({ schemaVersion: 2, platform: "test", selfId: "bot-1" }),
+      expect.objectContaining({ schemaVersion: 3, platform: "test", selfId: "bot-1" }),
     );
   });
 
@@ -506,16 +504,37 @@ describe("Gateway", () => {
 
     const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
     expect(routed).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       messageId: "message-1",
       elements: expect.any(Array),
-      text: 'hello <img unavailable="true"/>',
     });
-    expect(routed.elements).toBe(sourceElements);
-    expect(routed.elements[1]?.attrs).toEqual({ src: "https://example.test/a.png" });
+    expect(routed.elements.map((element) => element.toString()).join("")).toBe(
+      'hello <img unavailable="true"/>',
+    );
+    expect(routed.elements[1]?.attrs).toEqual({ unavailable: "true" });
     expect(routed).not.toHaveProperty("type");
     expect(routed).not.toHaveProperty("content");
     expect(routed).not.toHaveProperty("message");
+  });
+
+  it("seals resolver image elements before routing", async () => {
+    const { gateway, runtime } = createGateway();
+    gateway.register({
+      platform: "test",
+      resolve: async () => ({
+        ...record(),
+        elements: h.parse('hello <img src="https://example.test/resolver.png"/>'),
+      }),
+    });
+
+    await gateway.handle(session() as never);
+
+    const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
+    expect(routed.elements[1]?.attrs).toEqual({ unavailable: "true" });
+    expect(routed.elements.map((element) => element.toString()).join("")).toBe(
+      'hello <img unavailable="true"/>',
+    );
+    expect(routed).not.toHaveProperty("text");
   });
 
   it("preserves Satori resources while filling the fallback message identity from Session", async () => {
@@ -550,7 +569,7 @@ describe("Gateway", () => {
 
     const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
     expect(routed).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       platform: "test",
       selfId: "bot-1",
       timestamp: 1,
@@ -587,7 +606,6 @@ describe("Gateway", () => {
       "platform",
       "schemaVersion",
       "selfId",
-      "text",
       "user",
     ]);
     expect(routed).not.toBe(input);
@@ -620,7 +638,7 @@ describe("Gateway", () => {
 
     const routed = runtime.route.mock.calls[0]?.[0];
     expect(routed).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       platform: "test",
       selfId: "bot-1",
       channel: { id: "room-1" },
@@ -734,7 +752,7 @@ describe("Gateway", () => {
 
     await gateway.handle(input as never);
 
-    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ schemaVersion: 2 }));
+    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ schemaVersion: 3 }));
     expect(Object.values(gateway)).not.toContain(input);
   });
 });

@@ -90,3 +90,14 @@ function normalizeElement(element: Element): Element | Element[] | undefined {
   }
   return children.length ? normalizeElements(children) : undefined;
 }
+
+export function renderElements(elements: readonly Element[]): string {
+  return elements.map((element) => hydrateElement(element).toString()).join("");
+}
+
+function hydrateElement(element: Element): Element {
+  if (typeof element.toString === "function" && element.toString !== Object.prototype.toString) {
+    return element;
+  }
+  return h(element.type, element.attrs, element.children.map(hydrateElement));
+}

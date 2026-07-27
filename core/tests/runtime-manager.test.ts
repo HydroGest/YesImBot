@@ -35,7 +35,7 @@ import { RoutingWillEngine, WillingnessWillEngine } from "../src/will/index.js";
 
 function record(channelId: string, overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
@@ -43,7 +43,6 @@ function record(channelId: string, overrides: Partial<MessageRecord> = {}): Mess
     user: { id: "user-1", name: "User" },
     messageId: `message-${channelId}`,
     elements: [{ type: "text", attrs: { content: "hello" }, children: [] }],
-    text: "hello",
     ...overrides,
   };
 }
@@ -440,7 +439,7 @@ describe("RuntimeManager", () => {
     for (const path of persistedFiles) await expect(access(path)).resolves.toBeUndefined();
     expect(state.runtimes).toHaveLength(1);
 
-    await manager.route(record("room", { messageId: "message-2", text: "again" }));
+    await manager.route(record("room", { messageId: "message-2" }));
     expect(state.runtimes).toHaveLength(2);
     expect(state.runtimes[1]?.init).toHaveBeenCalledOnce();
   });
@@ -527,7 +526,7 @@ describe("RuntimeManager", () => {
     });
     old?.drainAndStop.mockImplementation(async () => releaseDrain.promise);
 
-    const racing = manager.route(record("room", { messageId: "message-race", text: "race" }));
+    const racing = manager.route(record("room", { messageId: "message-race" }));
     await handleEntered.promise;
     const reloading = manager.reload({
       platform: "test",

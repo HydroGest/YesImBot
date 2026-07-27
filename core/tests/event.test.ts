@@ -30,14 +30,13 @@ declare module "koishi-plugin-yesimbot" {
 
 function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     channel: { id: "channel-1" },
     user: { id: "user-1", name: "Alice" },
     messageId: "m1",
     elements: [{ type: "text", attrs: { content: "hello" }, children: [] }],
-    text: "hello",
     timestamp: overrides.timestamp ?? 1234,
   };
 }
@@ -46,7 +45,7 @@ function deliveryFailureRecord(
   overrides: { timestamp?: number } = {},
 ): EventRecord<"delivery.failed"> {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     eventType: "delivery.failed",
     platform: "test",
     selfId: "bot-1",
@@ -70,7 +69,7 @@ describe("Event", () => {
       role: "custom",
       type: "yesimbot.message",
       timestamp: 1234,
-      data: { schemaVersion: 2, messageId: "m1", text: "hello" },
+      data: { schemaVersion: 3, messageId: "m1" },
     });
     expect("timestamp" in message.data).toBe(false);
   });
@@ -80,7 +79,7 @@ describe("Event", () => {
     expect(event).toMatchObject({
       type: "yesimbot.event",
       timestamp: 5678,
-      data: { schemaVersion: 2, eventType: "delivery.failed" },
+      data: { schemaVersion: 3, eventType: "delivery.failed" },
     });
     expect("timestamp" in event.data).toBe(false);
   });
@@ -165,10 +164,9 @@ describe("Event", () => {
     expect(isInput(badEvent)).toBe(false);
   });
 
-  it("Message type exposes elements, messageId, and text", () => {
+  it("Message type exposes elements and messageId", () => {
     expectTypeOf<Message["data"]["elements"]>().toBeArray();
     expectTypeOf<Message["data"]["messageId"]>().toBeString();
-    expectTypeOf<Message["data"]["text"]>().toBeString();
   });
 
   it("Event type exposes eventType and text", () => {
@@ -200,7 +198,7 @@ describe("Event", () => {
 
   it("constructs a declaration-merged event from the closed host base", () => {
     const event = createEvent({
-      schemaVersion: 2,
+      schemaVersion: 3,
       eventType: "test.variant",
       platform: "test",
       selfId: "bot-1",
@@ -211,7 +209,7 @@ describe("Event", () => {
     });
 
     expect(event.data).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       eventType: "test.variant",
       platform: "test",
       selfId: "bot-1",
@@ -236,7 +234,6 @@ describe("Event", () => {
   it("keeps message and event host records free of Universal.Event residue", () => {
     expectTypeOf<MessageRecord>().toHaveProperty("messageId");
     expectTypeOf<MessageRecord>().toHaveProperty("elements");
-    expectTypeOf<MessageRecord>().toHaveProperty("text");
     expectTypeOf<MessageRecord>().not.toHaveProperty("guild");
     expectTypeOf<MessageRecord>().not.toHaveProperty("member");
     expectTypeOf<EventBase>().toHaveProperty("eventType");

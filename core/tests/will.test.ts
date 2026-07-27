@@ -1,4 +1,4 @@
-import type { Universal } from "koishi";
+import { h, type Universal } from "koishi";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -41,10 +41,9 @@ const EMPTY_STATE: WillEngine.State = {
 function messageInput(options: {
   readonly channelType: Universal.Channel.Type;
   readonly elements?: Universal.Message["elements"];
-  readonly text?: string;
 }): Message {
   return createInput({
-    schemaVersion: 2,
+    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
@@ -52,7 +51,6 @@ function messageInput(options: {
     user: { id: "user-1" },
     messageId: "message-1",
     elements: options.elements ?? [],
-    text: options.text ?? "",
   });
 }
 
@@ -76,7 +74,7 @@ function ordinaryGroupMessageInput(): Message {
 
 function quotedGroupMessageInput(): Message {
   return createInput({
-    schemaVersion: 2,
+    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
@@ -84,13 +82,12 @@ function quotedGroupMessageInput(): Message {
     user: { id: "user-1" },
     messageId: "message-quote",
     elements: [{ type: "quote", attrs: { user: { id: "bot-1" } }, children: [] }],
-    text: "quoted",
   });
 }
 
 function nonMessageEvent(): Event<"test.notice"> {
   return createInput({
-    schemaVersion: 2,
+    schemaVersion: 3,
     eventType: "test.notice",
     platform: "test",
     selfId: "bot-1",
@@ -116,7 +113,7 @@ const willingnessConfig: WillingnessConfig = {
 
 function deliveryFailedEvent(): Event<"delivery.failed"> {
   return createInput({
-    schemaVersion: 2,
+    schemaVersion: 3,
     eventType: "delivery.failed",
     platform: "test",
     selfId: "bot-1",
@@ -329,7 +326,7 @@ describe("WillingnessWillEngine", () => {
     });
 
     await expect(
-      keyword.decide(messageInput({ channelType: 0, text: "yes" }), EMPTY_STATE),
+      keyword.decide(messageInput({ channelType: 0, elements: [h.text("yes")] }), EMPTY_STATE),
     ).resolves.toBe("trigger");
     await expect(plain.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
   });
