@@ -41,6 +41,7 @@ export interface GatewayOptions {
   readonly runtime: RuntimeManager;
   readonly assets: AssetStore;
   readonly storage: ChannelStorage;
+  readonly ready: () => Promise<void>;
   readonly allowedChannels: readonly ChannelAllowRule[];
   readonly logger: Logger;
   readonly mediaPolicy: UnifiedImagePolicy;
@@ -126,6 +127,7 @@ export class Gateway {
     if (!scope) return;
     if (!matchesAllowedChannel(scope, this.opts.allowedChannels)) return;
     try {
+      await this.opts.ready();
       await assertAssignee(this.opts.ctx, scope);
     } catch (cause) {
       this.warn("gateway.assignee_rejected", cause, session.platform);
@@ -139,19 +141,6 @@ export class Gateway {
       return;
     }
     if (!record) return;
-    if (
-      !isRecord(record) ||
-      !scope ||
-      !hasScope(record, scope) ||
-      containsReference(record, session)
-    ) {
-      this.warn(
-        "gateway.invalid_record",
-        new Error("Resolved record is invalid or retains its Session"),
-        session.platform,
-      );
-      return;
-    }
     try {
       await this.opts.storage.updateName(scope, record.channel.name);
       const result = await this.opts.runtime.route(record);
@@ -389,32 +378,6 @@ function normalizeUser(session: Session, draft?: ResolvedMessageDraft["user"]): 
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function isRecord(record: InputRecord): boolean {
-  return Boolean(
-    record.schemaVersion === 3 && record.platform && record.selfId && record.channel?.id,
-  );
-}
-
-function hasScope(record: InputRecord, scope: ChannelScope): boolean {
-  return (
-    record.platform === scope.platform &&
-    record.selfId === scope.selfId &&
-    record.channel.id === scope.channelId &&
-    (record.channel.type === Universal.Channel.Type.DIRECT) === scope.isDirect
-  );
-}
-
-function containsReference(value: unknown, target: object, seen = new WeakSet<object>()): boolean {
-  if (value === target) return true;
-  if (typeof value !== "object" || value === null || seen.has(value)) return false;
-  seen.add(value);
-  try {
-    return Object.values(value).some((child) => containsReference(child, target, seen));
-  } catch {
-    return true;
-  }
 }
 
 function normalizeDeliveryError(cause: unknown): { name: string; message: string; code?: string } {

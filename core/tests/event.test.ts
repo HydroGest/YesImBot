@@ -142,7 +142,7 @@ describe("Event", () => {
     expect(isInput(nonInput)).toBe(false);
   });
 
-  it("rejects missing or unsupported schemaVersion", () => {
+  it("recognizes custom discriminators without re-validating their payloads", () => {
     const badMessage = {
       id: "x",
       timestamp: 0,
@@ -158,10 +158,10 @@ describe("Event", () => {
       data: { eventType: "delivery.failed", text: "failed" },
     } as AgentMessage;
 
-    expect(isMessage(badMessage)).toBe(false);
-    expect(isEvent(badEvent)).toBe(false);
-    expect(isInput(badMessage)).toBe(false);
-    expect(isInput(badEvent)).toBe(false);
+    expect(isMessage(badMessage)).toBe(true);
+    expect(isEvent(badEvent)).toBe(true);
+    expect(isInput(badMessage)).toBe(true);
+    expect(isInput(badEvent)).toBe(true);
   });
 
   it("Message type exposes elements and messageId", () => {

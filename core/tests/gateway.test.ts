@@ -42,6 +42,13 @@ function session(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function containsReference(value: unknown, target: object, seen = new WeakSet<object>()): boolean {
+  if (value === target) return true;
+  if (typeof value !== "object" || value === null || seen.has(value)) return false;
+  seen.add(value);
+  return Object.values(value).some((child) => containsReference(child, target, seen));
+}
+
 function record(): ResolvedMessageDraft {
   return {
     kind: "message",
@@ -745,14 +752,15 @@ describe("Gateway", () => {
     expect(runtime.route).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retain the Session below Gateway after accepted resolution", async () => {
+  it("routes a record with no retained Session reference", async () => {
     const { gateway, runtime } = createGateway();
     const input = session();
     gateway.register({ platform: "test", resolve: async () => record() });
 
     await gateway.handle(input as never);
 
-    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ schemaVersion: 3 }));
-    expect(Object.values(gateway)).not.toContain(input);
+    const routed = runtime.route.mock.calls[0]?.[0];
+    expect(routed).toMatchObject({ schemaVersion: 3 });
+    expect(containsReference(routed, input)).toBe(false);
   });
 });

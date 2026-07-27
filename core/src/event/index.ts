@@ -91,44 +91,15 @@ export function createInput(record: InputRecord): Input {
 }
 
 export function isMessage(message: AgentMessage): message is Message {
-  if (message.role !== "custom" || message.type !== "yesimbot.message") return false;
-  const data = message.data;
-  return (
-    isRecord(data) &&
-    data.schemaVersion === 3 &&
-    typeof data.platform === "string" &&
-    typeof data.selfId === "string" &&
-    hasId(data.channel) &&
-    hasId(data.user) &&
-    typeof data.messageId === "string" &&
-    Array.isArray(data.elements)
-  );
+  return message.role === "custom" && message.type === "yesimbot.message";
 }
 
 export function isEvent(message: AgentMessage): message is Event {
-  if (message.role !== "custom" || message.type !== "yesimbot.event") return false;
-  const data = message.data;
-  return (
-    isRecord(data) &&
-    data.schemaVersion === 3 &&
-    typeof data.platform === "string" &&
-    typeof data.selfId === "string" &&
-    hasId(data.channel) &&
-    typeof data.eventType === "string" &&
-    typeof data.text === "string"
-  );
+  return message.role === "custom" && message.type === "yesimbot.event";
 }
 
 export function isInput(message: AgentMessage): message is Input {
   return isMessage(message) || isEvent(message);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function hasId(value: unknown): value is { id: string } {
-  return isRecord(value) && typeof value.id === "string";
 }
 
 declare module "@yesimbot/agent-runtime" {

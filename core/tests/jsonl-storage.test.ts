@@ -2,16 +2,120 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { createEntry, createUserMessage } from "@yesimbot/agent-runtime";
+import {
+  createAssistantMessage,
+  createEntry,
+  createToolMessage,
+  createUserMessage,
+} from "@yesimbot/agent-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { ChannelScope } from "../src/channel/index.js";
+import { createEvent, createMessage, type EventRecord, type MessageRecord } from "../src/event/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import { ChannelStorage } from "../src/storage/index.js";
 
 describe("jsonl storage", () => {
+  const messageRecord: MessageRecord = {
+    schemaVersion: 3,
+    platform: "test",
+    selfId: "bot-1",
+    channel: { id: "channel-1" },
+    user: { id: "user-1" },
+    messageId: "message-1",
+    elements: [],
+    timestamp: 1,
+  };
+  const eventRecord: EventRecord<"delivery.failed"> = {
+    schemaVersion: 3,
+    platform: "test",
+    selfId: "bot-1",
+    channel: { id: "channel-1" },
+    eventType: "delivery.failed",
+    text: "Delivery failed",
+    timestamp: 1,
+    delivery: {
+      turnId: "turn-1",
+      messageId: "message-1",
+      segmentIndex: 1,
+      segmentTotal: 1,
+      error: { name: "Error", message: "failed" },
+    },
+  };
+
+  it("round-trips valid yesimbot.message payloads", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const storage = createJsonlStorage(join(dir, "session.jsonl"));
+    const entry = createEntry("message", createMessage(messageRecord));
+
+    await storage.append(entry);
+
+    await expect(storage.read()).resolves.toEqual([entry]);
+  });
+
+  it.each([
+    ["an unsupported schema version", { ...messageRecord, schemaVersion: 2 }],
+    ["a missing elements array", { ...messageRecord, elements: undefined }],
+  ])("rejects yesimbot.message payload with %s", async (_label, data) => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const filePath = join(dir, "session.jsonl");
+    const entry = createEntry("message", createMessage(messageRecord));
+    await writeFile(filePath, `${JSON.stringify({ ...entry, data: { ...entry.data, data } })}\n`, "utf8");
+
+    await expect(createJsonlStorage(filePath).read()).rejects.toThrow();
+  });
+
+  it("round-trips valid yesimbot.event payloads", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const storage = createJsonlStorage(join(dir, "session.jsonl"));
+    const entry = createEntry("message", createEvent(eventRecord));
+
+    await storage.append(entry);
+
+    await expect(storage.read()).resolves.toEqual([entry]);
+  });
+
+  it("rejects malformed yesimbot.event payloads", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const filePath = join(dir, "session.jsonl");
+    const entry = createEntry("message", createEvent(eventRecord));
+    await writeFile(
+      filePath,
+      `${JSON.stringify({ ...entry, data: { ...entry.data, data: { ...entry.data.data, text: 1 } } })}\n`,
+      "utf8",
+    );
+
+    await expect(createJsonlStorage(filePath).read()).rejects.toThrow();
+  });
+
+  it("passes non-target AgentEntry values through unchanged", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const storage = createJsonlStorage(join(dir, "session.jsonl"));
+    const entries = [
+      createEntry("message", createUserMessage("user")),
+      createEntry("message", createAssistantMessage("assistant")),
+      createEntry(
+        "message",
+        createToolMessage([
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "test",
+            output: { type: "text", value: "tool" },
+          },
+        ]),
+      ),
+      createEntry("state", { state: "value" }),
+      createEntry("event", { name: "internal" }),
+    ];
+
+    await storage.append(...entries);
+
+    await expect(storage.read()).resolves.toEqual(entries);
+  });
+
   it("appends entries and reads them back across restarts", async () => {
     const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
     const filePath = join(dir, "session.jsonl");
