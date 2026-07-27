@@ -67,9 +67,12 @@ export function createJsonlStorage<T extends AgentEntry = AgentEntry>(
 function validateEntry(entry: unknown): unknown {
   if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.data)) return entry;
   const message = entry.data;
-  if (message.role !== "custom" || !isRecord(message.data)) return entry;
+  if (message.role !== "custom") return entry;
+  if (message.type !== "yesimbot.message" && message.type !== "yesimbot.event") return entry;
 
-  const data = { ...message.data, timestamp: message.timestamp };
+  const data = isRecord(message.data)
+    ? { ...message.data, timestamp: message.timestamp }
+    : message.data;
   if (message.type === "yesimbot.message") messageDataSchema.parse(data);
   if (message.type === "yesimbot.event") eventDataSchema.parse(data);
   return entry;

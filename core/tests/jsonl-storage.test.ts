@@ -67,6 +67,21 @@ describe("jsonl storage", () => {
     await expect(createJsonlStorage(filePath).read()).rejects.toThrow();
   });
 
+  it.each([
+    ["a missing payload", undefined],
+    ["a null payload", null],
+  ])("rejects yesimbot.message with %s", async (_label, data) => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const filePath = join(dir, "session.jsonl");
+    const entry = createEntry("message", createMessage(messageRecord));
+    const message = { ...entry.data } as Record<string, unknown>;
+    if (data === undefined) delete message.data;
+    else message.data = data;
+    await writeFile(filePath, `${JSON.stringify({ ...entry, data: message })}\n`, "utf8");
+
+    await expect(createJsonlStorage(filePath).read()).rejects.toThrow();
+  });
+
   it("round-trips valid yesimbot.event payloads", async () => {
     const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
     const storage = createJsonlStorage(join(dir, "session.jsonl"));
@@ -86,6 +101,15 @@ describe("jsonl storage", () => {
       `${JSON.stringify({ ...entry, data: { ...entry.data, data: { ...entry.data.data, text: 1 } } })}\n`,
       "utf8",
     );
+
+    await expect(createJsonlStorage(filePath).read()).rejects.toThrow();
+  });
+
+  it("rejects yesimbot.event with a primitive payload", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const filePath = join(dir, "session.jsonl");
+    const entry = createEntry("message", createEvent(eventRecord));
+    await writeFile(filePath, `${JSON.stringify({ ...entry, data: { ...entry.data, data: "event" } })}\n`, "utf8");
 
     await expect(createJsonlStorage(filePath).read()).rejects.toThrow();
   });
