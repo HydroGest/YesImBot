@@ -6,11 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ChannelScope } from "../src/channel/index.js";
 import { buildCoreSystemPrompt } from "../src/runtime/prompt.js";
-import { DEFAULT_ATHENA_PERSONA } from "../src/runtime/prompts/athena.js";
-import {
-  CORE_CONSTITUTION,
-  CORE_CONSTITUTION_VERSION,
-} from "../src/runtime/prompts/constitution.js";
+import { CORE_CONSTITUTION_VERSION } from "../src/runtime/prompts/constitution.js";
+import { readPromptResource } from "../src/runtime/prompts/resource.js";
 
 const roots: string[] = [];
 const scope = {
@@ -28,6 +25,7 @@ async function createBasePath(): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  vi.restoreAllMocks();
 });
 
 describe("buildCoreSystemPrompt", () => {
@@ -36,6 +34,7 @@ describe("buildCoreSystemPrompt", () => {
     await writeFile(join(basePath, "AGENTS.md"), "operator policy\n");
     await writeFile(join(basePath, "PERSONA.md"), "custom persona\n");
 
+    const constitution = await readPromptResource("constitution");
     const result = await buildCoreSystemPrompt({
       basePath,
       channel: {
@@ -47,9 +46,9 @@ describe("buildCoreSystemPrompt", () => {
       logger: { debug: vi.fn(), warn: vi.fn() } as never,
     });
 
-    expect(CORE_CONSTITUTION_VERSION).toBe(2);
+    expect(CORE_CONSTITUTION_VERSION).toBe(3);
     expect(result).toEqual([
-      { role: "system", content: CORE_CONSTITUTION },
+      { role: "system", content: constitution },
       { role: "system", content: "<agents>\noperator policy\n</agents>" },
       { role: "system", content: "<persona>\ncustom persona\n</persona>" },
       {
@@ -66,29 +65,39 @@ describe("buildCoreSystemPrompt", () => {
     ]);
   });
 
-  it("uses the version-two constitution and two-control reply grammar", () => {
-    expect(CORE_CONSTITUTION_VERSION).toBe(2);
-    expect(CORE_CONSTITUTION).toContain("<base_instructions>");
-    expect(CORE_CONSTITUTION).toContain("<style>");
-    expect(CORE_CONSTITUTION).toContain("<basic_functions>");
-    expect(CORE_CONSTITUTION).toContain("# Memory and context");
-    expect(CORE_CONSTITUTION).toContain("# Deliberation and communication");
-    expect(CORE_CONSTITUTION).toContain("# Voice and inner thought");
-    expect(CORE_CONSTITUTION).toContain("# Message shape");
-    expect(CORE_CONSTITUTION).toContain("# Output protocol");
-    expect(CORE_CONSTITUTION).toContain("<inner_thought>");
-    expect(CORE_CONSTITUTION).toContain("</inner_thought>");
-    expect(CORE_CONSTITUTION).toContain("<sep/>");
-    expect(CORE_CONSTITUTION).not.toContain("<skip/>");
-    expect(CORE_CONSTITUTION).not.toContain("<sleep");
+  it("uses version-three constitution and teaches the raw control element", async () => {
+    const constitution = await readPromptResource("constitution");
+
+    expect(CORE_CONSTITUTION_VERSION).toBe(3);
+    expect(constitution).toContain("<base_instructions>");
+    expect(constitution).toContain("<style>");
+    expect(constitution).toContain("<basic_functions>");
+    expect(constitution).toContain("# Memory and context");
+    expect(constitution).toContain("# Deliberation and communication");
+    expect(constitution).toContain("# Voice and inner thought");
+    expect(constitution).toContain("# Message shape");
+    expect(constitution).toContain("# Output protocol");
+    expect(constitution).toContain("<inner_thought>");
+    expect(constitution).toContain("</inner_thought>");
+    expect(constitution).toContain("<sep/>");
+    expect(constitution).not.toContain("<skip/>");
+    expect(constitution).not.toContain("<sleep");
+
+    expect(constitution).toContain("exactly three control elements");
+    expect(constitution).toContain("<raw>...</raw>");
+    expect(constitution).toContain("<raw>");
+    expect(constitution).toContain("</raw>");
+    expect(constitution).toContain("List<String>");
   });
 
-  it("keeps inner thought private and explains literal control escaping", () => {
-    expect(CORE_CONSTITUTION).toContain(
+  it("keeps inner thought private and explains literal control escaping", async () => {
+    const constitution = await readPromptResource("constitution");
+
+    expect(constitution).toContain(
       "Inner thought is yours alone and is never shown to anyone.",
     );
-    expect(CORE_CONSTITUTION).toContain("Write &lt;sep/&gt; or &lt;inner_thought&gt;");
-    expect(CORE_CONSTITUTION).toContain("These elements control delivery. They never appear");
+    expect(constitution).toContain("Write &lt;sep/&gt; or &lt;inner_thought&gt;");
+    expect(constitution).toContain("These elements control delivery. They never appear");
   });
 
   it.each([
@@ -98,13 +107,14 @@ describe("buildCoreSystemPrompt", () => {
     const basePath = await createBasePath();
     if (content !== undefined) await writeFile(join(basePath, "PERSONA.md"), content);
 
+    const defaultPersona = await readPromptResource("athena-persona");
     const result = await buildCoreSystemPrompt({ basePath, channel: scope });
     const personas = result.filter((block) => String(block.content).startsWith("<persona>"));
 
     expect(personas).toEqual([
       {
         role: "system",
-        content: `<persona>\n${DEFAULT_ATHENA_PERSONA}\n</persona>`,
+        content: `<persona>\n${defaultPersona}\n</persona>`,
       },
     ]);
   });
@@ -113,11 +123,12 @@ describe("buildCoreSystemPrompt", () => {
     const basePath = await createBasePath();
     await writeFile(join(basePath, "PERSONA.md"), "Custom Subject\n");
 
+    const defaultPersona = await readPromptResource("athena-persona");
     const result = await buildCoreSystemPrompt({ basePath, channel: scope });
     const text = result.map((block) => String(block.content)).join("\n");
 
     expect(text).toContain("<persona>\nCustom Subject\n</persona>");
-    expect(text).not.toContain(DEFAULT_ATHENA_PERSONA);
+    expect(text).not.toContain(defaultPersona);
   });
 
   it("treats missing AGENTS.md as unconfigured", async () => {
@@ -137,5 +148,19 @@ describe("buildCoreSystemPrompt", () => {
       buildCoreSystemPrompt({ basePath, channel: scope, logger: logger as never }),
     ).rejects.toThrow();
     expect(logger.warn).toHaveBeenCalledOnce();
+  });
+
+  it("rejects when a packaged prompt resource is missing", async () => {
+    const basePath = await createBasePath();
+    const resourceModule = await import("../src/runtime/prompts/resource.js");
+    const spy = vi
+      .spyOn(resourceModule, "readPromptResource")
+      .mockRejectedValueOnce(new Error("Prompt resource constitution not found"));
+
+    await expect(buildCoreSystemPrompt({ basePath, channel: scope })).rejects.toThrow(
+      "Prompt resource constitution not found",
+    );
+
+    spy.mockRestore();
   });
 });

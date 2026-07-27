@@ -5,8 +5,7 @@ import type { SystemModelMessage } from "ai";
 import type { Logger } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
-import { DEFAULT_ATHENA_PERSONA } from "./prompts/athena.js";
-import { CORE_CONSTITUTION } from "./prompts/constitution.js";
+import { readPromptResource } from "./prompts/resource.js";
 
 export interface CoreSystemPromptOptions {
   readonly basePath: string;
@@ -69,14 +68,16 @@ function formatRuntimeContext(channel: ChannelScope): SystemModelMessage {
 export async function buildCoreSystemPrompt(
   options: CoreSystemPromptOptions,
 ): Promise<SystemModelMessage[]> {
-  const [agents, customPersona] = await Promise.all([
+  const [agents, customPersona, constitution, defaultPersona] = await Promise.all([
     readPromptFile(options.basePath, "AGENTS.md", options.logger),
     readPromptFile(options.basePath, "PERSONA.md", options.logger),
+    readPromptResource("constitution"),
+    readPromptResource("athena-persona"),
   ]);
-  const persona = customPersona ?? DEFAULT_ATHENA_PERSONA;
+  const persona = customPersona ?? defaultPersona;
 
   return [
-    { role: "system", content: CORE_CONSTITUTION },
+    { role: "system", content: constitution },
     ...(agents ? [wrap("agents", agents)] : []),
     wrap("persona", persona),
     formatRuntimeContext(options.channel),
