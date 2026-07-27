@@ -9,7 +9,7 @@ import {
 
 import type { ChannelScope } from "../channel/index.js";
 import { resolveReplyPacingConfig, type PacingConfig } from "../config.js";
-import { sealElements, unavailableImage } from "../event/element.js";
+import { renderElements, sealElements, unavailableImage } from "../event/element.js";
 import type {
   EventRecord,
   InputRecord,
@@ -154,7 +154,6 @@ export class Gateway {
     }
     try {
       await this.opts.storage.updateName(scope, record.channel.name);
-      const routeStartedAt = Date.now();
       const result = await this.opts.runtime.route(record);
       if (result.kind === "run") {
         try {
@@ -168,11 +167,9 @@ export class Gateway {
                 break;
               }
               const delayMs = nextSegmentDelayMs({
-                segment,
-                isFirst: index === 0,
-                config: this.pacing,
-                elapsedGenerationMs: this.elapsedSince(routeStartedAt),
+                text: renderElements(segment),
                 consumedDeliveryMs,
+                config: this.pacing,
               });
               const delayStartedAt = Date.now();
               await waitForDelay(delayMs, result.delivery.signal);

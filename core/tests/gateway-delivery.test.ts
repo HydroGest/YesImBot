@@ -70,9 +70,6 @@ function createGateway(
   route: ReturnType<typeof vi.fn>,
   logger = { warn: vi.fn() },
   deliveryOptions: {
-    readonly now?: () => number;
-    readonly random?: () => number;
-    readonly wait?: (delayMs: number, signal: AbortSignal) => Promise<void>;
     readonly pacing?: PacingConfig;
   } = {},
 ) {
@@ -217,37 +214,39 @@ describe("Gateway passive delivery", () => {
     expect(binding.release).toHaveBeenCalledOnce();
   });
 
-  it("shares the host delivery budget across multiple outputs in one run", async () => {
-    const binding = delivery();
-    const route = vi.fn(async () => ({
-      kind: "run" as const,
-      eventId: "event-1",
-      turnId: "turn-1",
-      output: (async function* () {
-        yield { turnId: "turn-1", messageId: "assistant-1", segments: [{ text: "a" }] };
-        yield { turnId: "turn-1", messageId: "assistant-2", segments: [{ text: "a" }] };
-      })(),
-      delivery: binding,
-    }));
-    const wait = vi.fn(async () => undefined);
-    const { gateway } = createGateway(route, undefined, {
-      wait,
-      pacing: {
-        minDelayMs: 10,
-        maxSegmentDelayMs: 1_000,
-        maxTotalDelayMs: 150,
-        cjkCharactersPerSecond: 10,
-        latinCharactersPerSecond: 10,
-        randomFactorMin: 1,
-        randomFactorMax: 1,
-        firstSegmentResidualMinMs: 100,
-        firstSegmentResidualMaxMs: 100,
-      },
-    });
+  it("keeps sending at the minimum interval after the host delivery budget is exhausted", async () => {
+    vi.useFakeTimers();
+    try {
+      const binding = delivery();
+      const route = vi.fn(async () => ({
+        kind: "run" as const,
+        eventId: "event-1",
+        turnId: "turn-1",
+        output: (async function* () {
+          yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("a")]] };
+          yield { turnId: "turn-1", messageId: "assistant-2", segments: [[h.text("a")]] };
+        })(),
+        delivery: binding,
+      }));
+      const send = vi.fn(async () => []);
+      const { gateway } = createGateway(route, undefined, {
+        pacing: { maxTotalDelayMs: 150, charactersPerSecond: 10 },
+      });
+      const handling = gateway.handle(session(send) as never);
 
-    await gateway.handle(session() as never);
+      await vi.advanceTimersByTimeAsync(249);
+      expect(send).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(send).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(249);
+      expect(send).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1);
+      await handling;
 
-    expect(wait.mock.calls.map(([delayMs]) => delayMs)).toEqual([100, 10]);
+      expect(send).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stops at the first rejected segment without retrying or duplicating later sends", async () => {
@@ -344,16 +343,18 @@ describe("Gateway passive delivery", () => {
       delivery: binding,
     }));
     const send = vi.fn(async () => []);
-    const wait = vi.fn(async () => undefined);
-    const { gateway } = createGateway(route, undefined, { wait });
+    vi.useFakeTimers();
+    try {
+      const { gateway } = createGateway(route);
+      await gateway.handle(session(send) as never);
 
-    await gateway.handle(session(send) as never);
-
-    expect(wait).not.toHaveBeenCalled();
-    expect(send).not.toHaveBeenCalled();
-    expect(binding.complete).not.toHaveBeenCalled();
-    expect(binding.fail).not.toHaveBeenCalled();
-    expect(binding.release).toHaveBeenCalledOnce();
+      expect(send).not.toHaveBeenCalled();
+      expect(binding.complete).not.toHaveBeenCalled();
+      expect(binding.fail).not.toHaveBeenCalled();
+      expect(binding.release).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("abandons an in-progress delay when the runtime cancels the turn", async () => {
@@ -367,21 +368,22 @@ describe("Gateway passive delivery", () => {
       delivery: binding,
     }));
     const send = vi.fn(async () => []);
-    const wait = vi.fn(
-      (_delayMs: number, signal: AbortSignal) =>
-        new Promise<void>((resolve) => signal.addEventListener("abort", resolve, { once: true })),
-    );
-    const { gateway } = createGateway(route, undefined, { wait });
-    const handling = gateway.handle(session(send) as never);
+    vi.useFakeTimers();
+    try {
+      const { gateway } = createGateway(route);
+      const handling = gateway.handle(session(send) as never);
 
-    await vi.waitFor(() => expect(wait).toHaveBeenCalledOnce());
-    controller.abort();
-    await handling;
+      await vi.advanceTimersByTimeAsync(0);
+      controller.abort();
+      await handling;
 
-    expect(send).not.toHaveBeenCalled();
-    expect(binding.complete).not.toHaveBeenCalled();
-    expect(binding.fail).not.toHaveBeenCalled();
-    expect(binding.release).toHaveBeenCalledOnce();
+      expect(send).not.toHaveBeenCalled();
+      expect(binding.complete).not.toHaveBeenCalled();
+      expect(binding.fail).not.toHaveBeenCalled();
+      expect(binding.release).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("checks cancellation again after the delay and before sending", async () => {
@@ -395,17 +397,21 @@ describe("Gateway passive delivery", () => {
       delivery: binding,
     }));
     const send = vi.fn(async () => []);
-    const wait = vi.fn(async () => {
-      controller.abort();
-    });
-    const { gateway } = createGateway(route, undefined, { wait });
+    vi.useFakeTimers();
+    try {
+      setTimeout(() => controller.abort(), 250);
+      const { gateway } = createGateway(route);
+      const handling = gateway.handle(session(send) as never);
 
-    await gateway.handle(session(send) as never);
+      await vi.advanceTimersByTimeAsync(250);
+      await handling;
 
-    expect(wait).toHaveBeenCalledOnce();
-    expect(send).not.toHaveBeenCalled();
-    expect(binding.complete).not.toHaveBeenCalled();
-    expect(binding.fail).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+      expect(binding.complete).not.toHaveBeenCalled();
+      expect(binding.fail).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps a no-control reply as one unchanged platform send", async () => {
@@ -418,7 +424,7 @@ describe("Gateway passive delivery", () => {
       delivery: binding,
     }));
     const send = vi.fn(async () => []);
-    const { gateway } = createGateway(route, undefined, { wait: async () => undefined });
+    const { gateway } = createGateway(route);
 
     await gateway.handle(session(send) as never);
 

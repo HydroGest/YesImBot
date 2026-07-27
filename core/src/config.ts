@@ -15,27 +15,13 @@ export const DEFAULT_MULTIMEDIA_IMAGE_POLICY: UnifiedImagePolicy = Object.freeze
 });
 
 export interface PacingConfig {
-  minDelayMs: number;
-  maxSegmentDelayMs: number;
+  charactersPerSecond: number;
   maxTotalDelayMs: number;
-  cjkCharactersPerSecond: number;
-  latinCharactersPerSecond: number;
-  randomFactorMin: number;
-  randomFactorMax: number;
-  firstSegmentResidualMinMs: number;
-  firstSegmentResidualMaxMs: number;
 }
 
 export const DEFAULT_REPLY_PACING_CONFIG: PacingConfig = Object.freeze({
-  minDelayMs: 250,
-  maxSegmentDelayMs: 10_000,
+  charactersPerSecond: 8,
   maxTotalDelayMs: 60_000,
-  cjkCharactersPerSecond: 5,
-  latinCharactersPerSecond: 8,
-  randomFactorMin: 0.85,
-  randomFactorMax: 1.15,
-  firstSegmentResidualMinMs: 150,
-  firstSegmentResidualMaxMs: 450,
 });
 
 export function resolveReplyPacingConfig(pacing?: Partial<PacingConfig>): PacingConfig {
@@ -136,31 +122,12 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     reply: Schema.object({
       pacing: Schema.object({
-        minDelayMs: Schema.number().min(0).default(DEFAULT_REPLY_PACING_CONFIG.minDelayMs),
-        maxSegmentDelayMs: Schema.number()
+        charactersPerSecond: Schema.number()
           .min(1)
-          .default(DEFAULT_REPLY_PACING_CONFIG.maxSegmentDelayMs),
+          .default(DEFAULT_REPLY_PACING_CONFIG.charactersPerSecond),
         maxTotalDelayMs: Schema.number()
           .min(1)
           .default(DEFAULT_REPLY_PACING_CONFIG.maxTotalDelayMs),
-        cjkCharactersPerSecond: Schema.number()
-          .min(1)
-          .default(DEFAULT_REPLY_PACING_CONFIG.cjkCharactersPerSecond),
-        latinCharactersPerSecond: Schema.number()
-          .min(1)
-          .default(DEFAULT_REPLY_PACING_CONFIG.latinCharactersPerSecond),
-        randomFactorMin: Schema.number()
-          .min(0)
-          .default(DEFAULT_REPLY_PACING_CONFIG.randomFactorMin),
-        randomFactorMax: Schema.number()
-          .min(0)
-          .default(DEFAULT_REPLY_PACING_CONFIG.randomFactorMax),
-        firstSegmentResidualMinMs: Schema.number()
-          .min(0)
-          .default(DEFAULT_REPLY_PACING_CONFIG.firstSegmentResidualMinMs),
-        firstSegmentResidualMaxMs: Schema.number()
-          .min(0)
-          .default(DEFAULT_REPLY_PACING_CONFIG.firstSegmentResidualMaxMs),
       }),
     }),
   }).description("回复分段与节奏"),
