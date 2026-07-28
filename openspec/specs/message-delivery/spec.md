@@ -7,7 +7,7 @@ Define Gateway-owned passive delivery, normalized send results, durable failure 
 ## Requirements
 
 ### Requirement: Gateway-Owned Passive Delivery
-Gateway MUST call the original `Session.send()` for every ChannelRuntime output; RuntimeManager and ChannelRuntime MUST NOT receive a Session or Session-bound send capability. One assistant message MAY produce multiple ordered outputs, and Gateway MUST send them in the order produced.
+Gateway MUST call the original `Session.send()` for every ChannelRuntime output; RuntimeManager and ChannelRuntime MUST NOT receive a Session or Session-bound send capability. A segment MUST be delivered as an ordered element list rather than a plain string, so structured elements survive to the platform. One assistant message MAY produce multiple ordered outputs, and Gateway MUST send them in the order produced.
 
 #### Scenario: Runtime yields output
 - **WHEN** Gateway receives a ChannelRuntime output
@@ -17,6 +17,11 @@ Gateway MUST call the original `Session.send()` for every ChannelRuntime output;
 - **WHEN** one assistant message parses into several segments
 - **THEN** Gateway MUST send each segment through the active Session in produced order
 - **AND** send authority MUST remain with Gateway for every segment
+
+#### Scenario: Segment contains a structured element
+- **WHEN** a segment contains a platform element such as `<at>` or an image
+- **THEN** Gateway MUST deliver it as a structured element
+- **AND** it MUST NOT be flattened to its source text
 
 ### Requirement: Durable Passive Delivery Failure
 A rejected passive send MUST create a same-channel `yesimbot.event` with `schemaVersion: 1`, `eventType: "delivery.failed"`, frozen `text`, turn ID, assistant message ID, and the failed segment's position and total segment count. DefaultWill MUST not trigger a new turn for it.
@@ -67,27 +72,29 @@ Gateway MUST check for cancellation before each inter-segment delay and again be
 
 ### Requirement: Bounded Human-Like Pacing
 
-Gateway MUST apply a delay before each segment derived from that segment's visible character count with bounded randomness, plus the sum of that segment's `<sleep>` hints. The first segment's delay MUST subtract already-elapsed model generation time while retaining a bounded random residual. Each segment's delay MUST be clamped to a per-segment ceiling, and total delivery time MUST be bounded; when the total ceiling is reached, remaining segments MUST be delivered with minimum spacing rather than dropped.
+Gateway MUST apply a delay before each segment derived from that segment's visible character count with bounded randomness. Every segment MUST be treated uniformly; Gateway MUST NOT apply a distinct first-segment rule and MUST NOT accept any model-authored timing hint. Each delay MUST be clamped to a per-segment ceiling, and total delivery time MUST be bounded; when the total ceiling is reached, remaining segments MUST be delivered with minimum spacing rather than dropped.
 
 #### Scenario: Multi-segment reply is paced
 - **WHEN** Gateway delivers several segments
 - **THEN** it MUST wait a bounded delay before each segment
 - **AND** the segments MUST NOT arrive simultaneously
 
-#### Scenario: Generation already consumed wall clock
-- **WHEN** model generation took longer than the computed first-segment delay
-- **THEN** Gateway MUST reduce that delay by the elapsed time
-- **AND** it MUST retain a bounded random residual delay rather than sending instantly
+#### Scenario: Longer segment waits longer
+- **WHEN** two segments differ in visible character count
+- **THEN** the longer segment's computed delay MUST NOT be smaller than the shorter segment's, given the same configuration
 
-#### Scenario: Sleep hint extends a pause
-- **WHEN** a segment carries a `<sleep>` hint
-- **THEN** Gateway MUST add the hint to that segment's computed delay
-- **AND** the result MUST be clamped to the per-segment ceiling
+#### Scenario: First segment uses the same rule
+- **WHEN** Gateway delivers the first segment of a reply
+- **THEN** its delay MUST be computed by the same rule as any other segment
 
 #### Scenario: Total delivery ceiling is reached
 - **WHEN** accumulated delivery time reaches the total ceiling
 - **THEN** Gateway MUST deliver the remaining segments with minimum spacing
 - **AND** it MUST NOT drop any remaining segment
+
+#### Scenario: Visible length comes from segment elements
+- **WHEN** a segment contains both text and non-text elements
+- **THEN** the delay MUST be derived from the segment's visible text content
 
 ### Requirement: Skipped Turn Delivers Nothing
 

@@ -121,6 +121,5 @@ Load these on demand when deeper context is needed:
 When finishing a coding task, summarize:
 
 - What changed and where.
-- How KISS / YAGNI / DRY / SOLID affected the implementation.
 - What verification ran, with failures or skipped checks called out clearly.
 - Any remaining risk or focused next step directly tied to the request.

@@ -70,25 +70,20 @@ Core MUST expose one unified numeric image budget with `maxCount`, `maxBytesPerI
 - **THEN** Core MUST create a fresh `maxCount` and `maxTotalBytes` selection budget
 - **AND** it MUST reapply the configured deterministic selection strategy
 ### Requirement: Deterministic Image Selection Strategies
-Core MUST support `current-first`, `fifo`, and `lifo` model-call image selection. `current-first` MUST be the default and MUST visit only the new current batch for that model request in FIFO order before transformed history in FIFO order. `fifo` MUST visit all source messages in final model-boundary order. `lifo` MUST visit source Events from newest to oldest. Every strategy MUST preserve image-reference order within one source message.
+Core MUST discover frozen image references by walking persisted Message `elements` in document order, and MUST order candidates across inputs by the configured selection strategy. Core MUST NOT recover references by parsing a rendered text projection, and selection MUST remain deterministic for identical persisted input.
 
-#### Scenario: Joined input reaches a later model step
-- **WHEN** a joined batch is newly drained for a later model request
-- **THEN** `current-first` MUST visit that current batch before history
-- **AND** it MUST visit joined messages in their batch order
+#### Scenario: Candidates are discovered
+- **WHEN** Core builds the candidate sequence for a turn
+- **THEN** it MUST read references from persisted `elements`
+- **AND** references within one input MUST follow element document order
 
-#### Scenario: Tool step has no new batch
-- **WHEN** a later model request has an empty current batch
-- **THEN** `current-first` MUST visit transformed history in FIFO order
+#### Scenario: Same history is projected twice
+- **WHEN** the same persisted history is projected on two turns with identical configuration
+- **THEN** the selected candidate sequence MUST be identical
 
-#### Scenario: FIFO is selected
-- **WHEN** history and current messages contain eligible images under `fifo`
-- **THEN** Core MUST select candidates in persisted message order and source-reference order
-
-#### Scenario: LIFO is selected
-- **WHEN** history contains more eligible images than the call budget under `lifo`
-- **THEN** Core MUST visit newer Events before older Events
-- **AND** selected files attached to one Event MUST remain in that Event's source-reference order
+#### Scenario: Nested elements carry a reference
+- **WHEN** a frozen image reference appears inside a nested element
+- **THEN** Core MUST discover it by walking element children
 
 ### Requirement: Per-Reference Budget Accounting
 Every frozen image reference MUST be an independent budget candidate. Duplicate asset IDs MUST consume count and byte budgets once per reference and MUST NOT be deduplicated. A rejected candidate MUST NOT prevent a later candidate from being selected when the later candidate fits the remaining budget.

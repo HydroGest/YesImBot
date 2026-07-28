@@ -7,18 +7,16 @@ Define the Output Control Language (OCL) that governs how assistant output is pa
 ## Requirements
 
 ### Requirement: Output Control Language Grammar
-
-Assistant output MUST be interpreted as an Output Control Language (OCL) stream that mixes reader-visible content with host-owned control elements expressed in Koishi element syntax. Core MUST recognize exactly four control elements: `<inner_thought>…</inner_thought>`, `<sep/>`, `<sleep ms="N"/>`, and `<skip/>`. Core MUST NOT allow a persona, plugin, tool result, memory, or user message to define, redefine, extend, or disable a control element.
+Assistant output MUST be interpreted as a Koishi element stream parsed by `h.parse()`. Core MUST recognize exactly three control elements: `<inner_thought>…</inner_thought>`, `<sep/>`, and `<raw>…</raw>`. Core MUST NOT allow a persona, plugin, tool result, memory, or user message to define, redefine, extend, or disable a control element.
 
 #### Scenario: Assistant output contains no control element
 - **WHEN** a rendered assistant message contains no recognized control element
 - **THEN** Core MUST deliver it as exactly one platform message
-- **AND** the delivered content MUST equal the current single-message behaviour
 
-#### Scenario: Unrecognized element resembling a control element
-- **WHEN** assistant output contains an element that is not one of the four recognized control elements
-- **THEN** Core MUST NOT interpret it as a control element
-- **AND** it MUST remain part of reader-visible content
+#### Scenario: Assistant output contains a platform element
+- **WHEN** assistant output contains a platform element such as `<at>` or `<img>`
+- **THEN** Core MUST preserve it as a structured element in the delivered segment
+- **AND** it MUST NOT be flattened into literal text
 
 #### Scenario: Plugin attempts to register a control element
 - **WHEN** a plugin or persona supplies text that declares a new control element
@@ -27,53 +25,27 @@ Assistant output MUST be interpreted as an Output Control Language (OCL) stream 
 
 ### Requirement: Control Element Escaping
 
-Core MUST treat the XML entity forms `&lt;sep/&gt;`, `&lt;sleep&gt;`, `&lt;skip/&gt;`, and `&lt;inner_thought&gt;` as literal text rather than control elements, and MUST unescape them into their literal character form in delivered content.
-
-#### Scenario: Model refers to a control element literally
-- **WHEN** assistant output contains `&lt;sep/&gt;`
-- **THEN** Core MUST NOT treat it as a split point
-- **AND** the delivered message MUST contain the literal characters `<sep/>`
-
-### Requirement: Protection Zones
-
-Core MUST identify protection zones before evaluating any control element. Protection zones MUST include fenced code blocks, inline code spans, URLs, and non-control platform elements such as `<at>`, `<img>`, and `<quote>`. A control element occurring inside a protection zone MUST be preserved as literal text and MUST NOT be interpreted, removed, or used as a split point.
-
-#### Scenario: Separator inside a fenced code block
-- **WHEN** assistant output contains `<sep/>` inside a fenced code block
-- **THEN** Core MUST NOT split at that position
-- **AND** the fenced code block MUST be delivered intact with the literal text preserved
-
-#### Scenario: Separator inside inline code
-- **WHEN** assistant output contains `<sep/>` inside an inline code span
-- **THEN** Core MUST NOT split at that position
-- **AND** the literal text MUST remain in the delivered content
-
-#### Scenario: Separator inside a URL
-- **WHEN** a split point would fall inside a URL
-- **THEN** Core MUST NOT split at that position
-- **AND** the URL MUST be delivered as one contiguous string
-
-#### Scenario: Platform element spanning a split point
-- **WHEN** a split point would fall inside an `<at>` or `<img>` element
-- **THEN** Core MUST NOT split at that position
-- **AND** the element MUST be delivered intact within one message
 
 ### Requirement: Ordered Parsing Algorithm
+Core MUST parse a complete assistant message in this fixed order: extract every `<raw>` region from the source string before any element parsing, parse the remaining source with `h.parse()`, discard `<inner_thought>` subtrees, partition the tree on `<sep/>` into ordered segments, then restore extracted `<raw>` content into text nodes. Core MUST NOT reorder these stages, and MUST NOT parse `<raw>` content as elements at any stage.
 
-Core MUST parse a complete assistant message in this fixed order: identify protection zones, extract `<inner_thought>` regions, evaluate `<skip/>`, split on `<sep/>`, resolve `<sleep>` hints per segment, apply guardrails, then assert no residual control element survives. Core MUST NOT reorder these stages, and MUST NOT split before protection zones are known.
+#### Scenario: Raw extraction precedes element parsing
+- **WHEN** Core parses an assistant message containing a `<raw>` region
+- **THEN** the raw substring MUST be captured before `h.parse()` is invoked
+- **AND** the captured substring MUST be restored byte-for-byte into the segment
 
-#### Scenario: Parsing begins
-- **WHEN** Core parses an assistant message
-- **THEN** it MUST compute protection zones before evaluating any split point
-
-#### Scenario: All stages apply to one message
-- **WHEN** an assistant message contains inner thought, separators, and sleep hints together
+#### Scenario: Message contains inner thought and separators
+- **WHEN** an assistant message contains both `<inner_thought>` and `<sep/>`
 - **THEN** Core MUST apply every stage in the required order
-- **AND** the resulting segments MUST contain no control element
+- **AND** the resulting segments MUST contain neither recognized control element nor private-deliberation content
+
+#### Scenario: Raw placeholder cannot be forged
+- **WHEN** assistant output contains text resembling Core's internal raw placeholder
+- **THEN** Core MUST NOT substitute captured raw content at that position
+- **AND** the text MUST be delivered as ordinary content
 
 ### Requirement: Private Inner Thought Handling
-
-Core MUST remove every `<inner_thought>` region from delivered content and MUST NOT deliver its text to any reader. Core MUST retain the raw assistant output including inner-thought text in channel JSONL, and MUST replay it unchanged to the model as the model's own history. Inner-thought text MUST NOT contribute to typing-delay computation.
+Core MUST remove every `<inner_thought>` subtree from delivered content and MUST NOT deliver its content to any reader. Core MUST NOT expose inner-thought content as a parser output field. Core MUST retain the raw assistant output including inner-thought content in channel JSONL, and MUST replay it unchanged to the model as the model's own history.
 
 #### Scenario: Reply contains an inner thought
 - **WHEN** assistant output contains an `<inner_thought>` region
@@ -82,113 +54,71 @@ Core MUST remove every `<inner_thought>` region from delivered content and MUST 
 
 #### Scenario: History is projected to the model
 - **WHEN** Core projects channel history for a later turn
-- **THEN** stored inner-thought text MUST be replayed unchanged
-- **AND** Core MUST NOT rewrite, summarize, or strip it from the projection
-
-#### Scenario: Inner thought precedes visible content
+- **THEN** the assistant message MUST be replayed including its inner thought
 - **WHEN** an inner-thought region appears before the first visible segment
 - **THEN** the first segment's typing delay MUST derive only from visible characters
 
 ### Requirement: Segment Splitting Authority
 
-The model MUST own segment count, split position, and segment length. Core MUST NOT split content the model did not mark, MUST NOT merge marked segments to reach a target count, and MUST NOT apply randomness to segment structure. Core MUST NOT define a preferred or target number of segments.
+The model MUST own every visible split position through `<sep/>`. Core MUST NOT create an unmarked split and MUST NOT merge marked segments. Core MUST discard segments that are empty after trimming.
 
-#### Scenario: Model marks three split points
-- **WHEN** assistant output contains three separators outside protection zones
-- **THEN** Core MUST produce four segments in original order
-- **AND** Core MUST NOT merge them toward any target count
+#### Scenario: Leading, trailing, or consecutive separators
+- **WHEN** assistant output contains leading, trailing, or consecutive `<sep/>`
+- **THEN** Core MUST produce no empty segment
 
-#### Scenario: Model marks no split point in a long reply
-- **WHEN** a long assistant message contains no separator
-- **THEN** Core MUST deliver it as one message
-- **AND** Core MUST NOT split it by punctuation, length, or sentence boundary
-
-#### Scenario: Identical output parsed twice
-- **WHEN** Core parses the same assistant output twice
-- **THEN** the resulting segment boundaries MUST be identical
-
+#### Scenario: Long output without a separator
+- **WHEN** assistant output is long and contains no `<sep/>`
+- **THEN** Core MUST deliver exactly one message
+- **AND** Core MUST NOT split on punctuation or length
 ### Requirement: Segment Normalization
 
 Core MUST trim leading and trailing whitespace from each segment and MUST discard segments that contain no content after trimming. Core MUST collapse consecutive separators into one split point and MUST ignore separators at the start or end of the output.
 
 #### Scenario: Consecutive separators
 - **WHEN** assistant output contains two adjacent separators
-- **THEN** Core MUST treat them as one split point
-- **AND** Core MUST NOT emit an empty message
-
-#### Scenario: Whitespace-only segment
-- **WHEN** a segment contains only whitespace after trimming
-- **THEN** Core MUST discard that segment
-- **AND** Core MUST NOT deliver a blank message
-
-#### Scenario: Leading and trailing separators
-- **WHEN** the output begins or ends with a separator
-- **THEN** Core MUST ignore it
-- **AND** the segment count MUST NOT include an empty leading or trailing segment
-
-### Requirement: Turn Skip Element
-
-When `<skip/>` occurs outside a protection zone, Core MUST deliver zero messages for that turn, MUST discard all visible content from that output, and MUST persist the raw output including any accompanying inner thought. Core MUST NOT treat a skipped turn as a delivery failure.
-
-#### Scenario: Model declines to reply
-- **WHEN** assistant output contains `<skip/>` outside a protection zone
-- **THEN** Core MUST deliver no message for that turn
-- **AND** Core MUST persist the raw output including the skip element
-
-#### Scenario: Skip accompanied by visible text
-- **WHEN** assistant output contains both `<skip/>` and visible content
-- **THEN** Core MUST discard the visible content
-- **AND** Core MUST NOT deliver any part of it
-
-#### Scenario: Skip is recorded rather than failed
-- **WHEN** a turn produces only a skip decision
-- **THEN** Core MUST NOT emit a delivery-failure record
-- **AND** the turn status MUST remain successful
-
-### Requirement: Guardrails And Safe Degradation
-
-Core MUST enforce a maximum segment count, a per-segment delay ceiling, and a total delivery time ceiling as safety limits. When parsing, validation, or the residual-element assertion fails, Core MUST degrade to one complete message containing the reply with all control elements removed. Core MUST NOT lose a reply because of a parsing or validation failure.
-
-#### Scenario: Segment count exceeds the maximum
-- **WHEN** parsed segments exceed the configured maximum
-- **THEN** Core MUST truncate to the maximum
-- **AND** Core MUST NOT reject the reply
-
-#### Scenario: Parsing fails
-- **WHEN** parsing raises an error
-- **THEN** Core MUST deliver the reply as one message with control elements removed
-- **AND** Core MUST NOT discard the reply
-
-#### Scenario: All segments are discarded
-- **WHEN** normalization leaves zero segments but the raw output contains visible content
-- **THEN** Core MUST deliver that visible content as one message
-
-#### Scenario: Guardrails are not model targets
-- **WHEN** Core composes model instructions for output shape
-- **THEN** it MUST NOT present the maximum segment count or delay ceilings as targets
-
 ### Requirement: No Control Element Leakage
-
-Core MUST verify that no recognized control element and no inner-thought text survives in any segment before delivery. When verification fails, Core MUST degrade the whole reply to one sanitized message rather than deliver the offending segment.
-
-#### Scenario: Residual control element detected
-- **WHEN** a prepared segment still contains a recognized control element
-- **THEN** Core MUST NOT deliver that segment
-- **AND** Core MUST degrade the reply to one sanitized message
+Core MUST verify that no recognized control element survives as a *control element* in any segment before delivery, and that no inner-thought content survives in any form. Literal control-element text restored from a `<raw>` region MUST be permitted as reader-visible content. When a control element survives as an element, Core MUST remove it and deliver the remaining content rather than discard the reply.
 
 #### Scenario: Reader-visible output is verified
 - **WHEN** Core delivers any segment
-- **THEN** that segment MUST contain no control element and no inner-thought text
+- **THEN** that segment MUST contain no `<sep/>` or `<inner_thought>` element
+- **AND** it MUST contain no inner-thought content
 
-### Requirement: Parsing Applies Only To Current Assistant Output
+#### Scenario: Literal control text from a raw region
+- **WHEN** a segment contains the literal text `<sep/>` restored from `<raw>`
+- **THEN** Core MUST deliver it as ordinary visible content
+- **AND** Core MUST NOT treat it as leakage
 
-Core MUST apply OCL parsing only to the assistant output of the current turn. Core MUST NOT parse control elements from user messages, event records, tool results, memory content, or projected history.
+### Requirement: Verbatim Raw Content
+Core MUST treat the content of a `<raw>…</raw>` region as verbatim plain text. Core MUST NOT parse it as elements, MUST NOT unescape entities inside it, and MUST deliver it byte-for-byte as it appeared in the assistant output.
 
-#### Scenario: User message contains a control element
-- **WHEN** an inbound user message contains `<sep/>`
-- **THEN** Core MUST NOT interpret it as a control element
-- **AND** it MUST NOT affect delivery of any reply
+#### Scenario: Raw content contains markup-like text
+- **WHEN** assistant output contains `<raw>List<String> generic</raw>`
+- **THEN** the delivered message MUST contain the literal text `List<String> generic`
+- **AND** no `String` element MUST appear in the delivered segment
 
-#### Scenario: History contains stored control elements
-- **WHEN** Core projects stored assistant output containing control elements
-- **THEN** Core MUST NOT re-parse or re-execute them
+#### Scenario: Raw content contains a code fence
+- **WHEN** assistant output contains a fenced code block inside `<raw>`
+- **THEN** the code block MUST be delivered intact including every `<` character
+
+#### Scenario: Raw content contains a control element
+- **WHEN** assistant output contains `<raw>` content that includes `<sep/>`
+- **THEN** Core MUST NOT split at that position
+- **AND** the literal text `<sep/>` MUST be delivered
+
+#### Scenario: Raw region is unterminated
+- **WHEN** assistant output contains `<raw>` with no matching `</raw>`
+- **THEN** Core MUST deliver the reply without dropping content
+
+### Requirement: No Element Whitelist On Delivery
+Core MUST deliver every parsed non-control element as a structured element without consulting an allowed-element set. Core MUST NOT filter, reconstruct, or warn about an element merely because Core does not recognize its type, and MUST NOT maintain a runtime registry of recognized element types.
+
+#### Scenario: Segment contains an element Core does not know
+- **WHEN** a segment contains an element type Core has no specific handling for
+- **THEN** Core MUST pass it to the platform as a structured element
+- **AND** Core MUST NOT replace it with literal text
+
+#### Scenario: Model omits raw around markup-like text
+- **WHEN** assistant output contains `List<String> generic` outside a `<raw>` region
+- **THEN** Core MUST deliver the parsed result as-is
+- **AND** Core MUST NOT attempt to reconstruct the original literal text

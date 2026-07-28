@@ -87,24 +87,33 @@ A registered resolver MUST be authoritative for its platform. If its `resolve` c
 - **AND** it MUST NOT create a fallback MessageRecord
 
 ### Requirement: Satori Message Fallback
-When a platform has no registered resolver, Gateway MUST convert a standard message Session from Satori resources and MUST skip non-message Sessions.
+When no resolver is registered for a platform, Gateway MUST assemble a message record from explicitly selected Session fields, requiring a routable scope, an `elements` array, and a non-empty platform message id. Gateway MUST seal the selected elements and persist them as the sole structured content field, and MUST NOT persist a rendered `text`.
 
-#### Scenario: Message has no platform resolver
-- **WHEN** middleware receives a valid Satori message Session for a platform without a resolver
-- **THEN** Gateway MUST create a MessageRecord only when the Session has a routable scope, elements array, and non-empty platform message ID
-- **AND** it MUST capture source elements before transformations and freeze final message text before routing
+#### Scenario: Fallback message is persisted
+- **WHEN** Gateway assembles a fallback message record
+- **THEN** it MUST contain only the literal host fields plus sealed `elements`
+- **AND** it MUST NOT contain a `text` field or any platform event residue
 
-#### Scenario: Non-message Session has no platform resolver
-- **WHEN** `internal/session` receives a non-message Session for a platform without a resolver
-- **THEN** Gateway MUST return without routing the Session
+#### Scenario: Non-message session without a resolver
+- **WHEN** a non-message Session arrives and no resolver is registered
+- **THEN** Gateway MUST return without persisting or routing
 
 ### Requirement: Element-Based Resolved Message
-An accepted ordinary message MUST persist source `elements` as its sole structured message field and MUST carry separately frozen `text` for model projection. Core MUST NOT introduce a nested message/content field, Element DTO, cleaner, or parallel structured representation.
+A resolved ordinary message MUST carry its content as `elements` only. Gateway MUST seal those elements once at ingress and persist the sealed result as the sole structured content field. A resolver MUST NOT supply a rendered `text`, and Gateway MUST NOT persist one on a Message.
 
-#### Scenario: Resolver accepts a rich message
-- **WHEN** a message contains text, mentions, quotes, forwards, or supported media
-- **THEN** the persisted Message MUST retain captured source elements
-- **AND** its frozen text MUST contain the transformed literal representation
+#### Scenario: Resolver returns a message draft
+- **WHEN** a resolver returns a message draft with elements
+- **THEN** Gateway MUST persist the sealed elements
+- **AND** the persisted record MUST NOT contain a `text` field
+
+#### Scenario: Draft contains an image carrying a source URL
+- **WHEN** a message draft contains an image element with a remote source
+- **THEN** the persisted `elements` MUST contain the sealed form of that image
+- **AND** the persisted `elements` MUST NOT retain the original remote source
+
+#### Scenario: Elements are sealed exactly once
+- **WHEN** Gateway normalizes and seals a draft
+- **THEN** normalization MUST NOT be applied more than once to the same elements
 
 ### Requirement: Resolver-Owned Bounded Image Freezing
 Session resolution MUST finish every eligible image download before first persistence. It MUST enforce a maximum of 4 images, 5 MiB per image, 10 MiB total image bytes, 10 seconds per image, 2 concurrent downloads, and the MIME allowlist `image/jpeg`, `image/png`, `image/webp`, and `image/gif`. `freezeImage()` MUST call its loader as `load(signal, maxBytes)` using the remaining core-controlled budget; loaders MUST honor the signal and cap at transport/decode time. Timeout MUST abort the loader, return unavailable promptly, and retain its concurrency permit until that loader settles. AssetStore MUST determine accepted MIME from actual bytes; the loader MIME is only a hint.

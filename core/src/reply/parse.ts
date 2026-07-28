@@ -92,7 +92,6 @@ function expand(value: string, nonce: string, captured: string[]): string {
 
 function isBlank(segment: readonly Element[]): boolean {
   return segment.every(
-    (element) =>
-      element.type === "text" && `${element.attrs["content"] ?? ""}`.trim().length === 0,
+    (element) => element.type === "text" && `${element.attrs["content"] ?? ""}`.trim().length === 0,
   );
 }

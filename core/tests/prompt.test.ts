@@ -93,9 +93,7 @@ describe("buildCoreSystemPrompt", () => {
   it("keeps inner thought private and explains literal control escaping", async () => {
     const constitution = await readPromptResource("constitution");
 
-    expect(constitution).toContain(
-      "Inner thought is yours alone and is never shown to anyone.",
-    );
+    expect(constitution).toContain("Inner thought is yours alone and is never shown to anyone.");
     expect(constitution).toContain("Write &lt;sep/&gt; or &lt;inner_thought&gt;");
     expect(constitution).toContain("These elements control delivery. They never appear");
   });

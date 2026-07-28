@@ -116,23 +116,21 @@ deliver it byte-for-byte as it appeared in the assistant output.
 - **WHEN** assistant output contains `<raw>` with no matching `</raw>`
 - **THEN** Core MUST deliver the reply without dropping content
 
-### Requirement: Literal Recovery For Unrecognized Elements
-When parsing produces an element that is neither a recognized control element nor
-a platform element Core handles, Core MUST reconstruct it as literal text in
-place and MUST emit exactly one warning identifying the unrecognized element type.
-Core MUST still deliver the reply, and MUST NOT collapse it to a single message or
-expose a degradation field.
+### Requirement: No Element Whitelist On Delivery
+Core MUST deliver every parsed non-control element as a structured element without
+consulting an allowed-element set. Core MUST NOT filter, reconstruct, or warn about
+an element merely because Core does not recognize its type, and MUST NOT maintain a
+runtime registry of recognized element types.
 
-#### Scenario: Model omits raw around a generic type
+#### Scenario: Segment contains an element Core does not know
+- **WHEN** a segment contains an element type Core has no specific handling for
+- **THEN** Core MUST pass it to the platform as a structured element
+- **AND** Core MUST NOT replace it with literal text
+
+#### Scenario: Model omits raw around markup-like text
 - **WHEN** assistant output contains `List<String> generic` outside a `<raw>` region
-- **THEN** Core MUST deliver text containing `List<String>`
-- **AND** Core MUST emit one warning naming the unrecognized element
-
-#### Scenario: Unrecoverable attribute collapse
-- **WHEN** unwrapped output collapses into element attributes such that the
-  original text cannot be reconstructed
-- **THEN** Core MUST still deliver a non-empty reply
-- **AND** Core MUST emit the warning so the omission is observable
+- **THEN** Core MUST deliver the parsed result as-is
+- **AND** Core MUST NOT attempt to reconstruct the original literal text
 
 ## REMOVED Requirements
 
@@ -149,8 +147,8 @@ code, and URLs. The host cannot determine whether `<` was markup or text, so the
 heuristic is unbounded and never complete. `<raw>` moves the decision to the model,
 which knows.
 **Migration**: Delete `findProtectedRanges`, `isProtected`, and `PROTECTED_LITERAL`.
-Instruct the model to wrap literal text in `<raw>`; rely on literal recovery plus a
-warning when it does not.
+Instruct the model to wrap literal text in `<raw>`. When it does not, the parsed
+result is delivered as-is; Core adds no recovery or warning.
 
 ### Requirement: Guardrails And Safe Degradation
 **Reason**: The maximum-segment guardrail truncated replies and reported the
@@ -160,6 +158,6 @@ tests. Parse-failure fallback to a single sanitized message is replaced by liter
 recovery, which preserves segmentation instead of discarding it.
 **Migration**: Delete the `ReplyPlan` type, the `degraded` field, `maxSegments`,
 the `reply.segmentation` configuration section, and the degradation branches.
-`parseReply` returns ordered element segments. Unrecognized elements are handled by
-literal recovery with a warning. Bounding of total channel occupancy is owned by
-pacing's total-delay ceiling.
+`parseReply` returns ordered element segments. Unrecognized elements are delivered
+as structured elements without recovery or warning. Bounding of total channel
+occupancy is owned by pacing's total-delay ceiling.

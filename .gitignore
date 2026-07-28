@@ -177,3 +177,4 @@ yarn-error.log
 references/
 .mcp.json
 yarn.lock
+*.o

@@ -8,7 +8,9 @@ import { parseReply } from "../src/reply/parse.js";
 
 function text(segment: readonly Element[]): string {
   return segment
-    .map((element) => (element.type === "text" ? `${element.attrs["content"] ?? ""}` : element.toString()))
+    .map((element) =>
+      element.type === "text" ? `${element.attrs["content"] ?? ""}` : element.toString(),
+    )
     .join("");
 }
 
@@ -75,7 +77,7 @@ describe("parseReply", () => {
     expect(text(segments[0])).toBe("r0 not a real capture");
   });
 
-  it("keeps <at id=\"42\"/> as an element that survives parsing", () => {
+  it('keeps <at id="42"/> as an element that survives parsing', () => {
     const segments = parseReply('hello <at id="42"/> there');
     expect(segments).toHaveLength(1);
     const at = segments[0].find((element) => element.type === "at");
