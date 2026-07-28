@@ -921,6 +921,25 @@ describe("ChannelRuntime", () => {
     expect(state.agent?.stop).toHaveBeenCalledOnce();
   });
 
+  it("keeps a draining waiter live when concurrent stop clears delivery state", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" });
+    const release = runtime.acquireDeliveryLease();
+    const draining = runtime.drainAndStop();
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await runtime.stop();
+    expect(state.agent?.wait).not.toHaveBeenCalled();
+
+    release();
+    release();
+    await expect(
+      Promise.race([
+        draining.then(() => "completed"),
+        new Promise<"timed out">((resolve) => setTimeout(() => resolve("timed out"), 50)),
+      ]),
+    ).resolves.toBe("completed");
+  });
+
   it("waits for committed FIFO work before graceful stop", async () => {
     const entered = deferred();
     const release = deferred();

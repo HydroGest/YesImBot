@@ -55,7 +55,7 @@ export function createDeliveryState(options: {
   readonly onReply: (() => Promise<void>) | undefined;
   readonly warn: (event: string, fields: Record<string, unknown>) => void;
 }): DeliveryState {
-  let leases = 0;
+  let leases = Number();
   const waiters = new Set<() => void>();
   const aborts = new Map<string, AbortController>();
   const acknowledged = new Set<string>();
@@ -69,8 +69,11 @@ export function createDeliveryState(options: {
         released = true;
         leases -= 1;
         if (leases !== 0) return;
-        for (const resolve of waiters) resolve();
-        waiters.clear();
+        const pending = [...waiters];
+        for (const resolve of pending) {
+          waiters.delete(resolve);
+          resolve();
+        }
       };
     },
     waitForDeliveries() {
@@ -105,8 +108,6 @@ export function createDeliveryState(options: {
       for (const controller of aborts.values()) controller.abort();
       aborts.clear();
       acknowledged.clear();
-      waiters.clear();
-      leases = 0;
     },
   };
 }
