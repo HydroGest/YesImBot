@@ -8,6 +8,7 @@ import {
   createToolMessage,
   createUserMessage,
 } from "@yesimbot/agent-runtime";
+import { h, Universal } from "koishi";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -22,7 +23,7 @@ describe("jsonl storage", () => {
     schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
-    channel: { id: "channel-1" },
+    channel: { id: "channel-1", type: Universal.Channel.Type.TEXT },
     user: { id: "user-1" },
     messageId: "message-1",
     elements: [],
@@ -32,7 +33,7 @@ describe("jsonl storage", () => {
     schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
-    channel: { id: "channel-1" },
+    channel: { id: "channel-1", type: Universal.Channel.Type.TEXT },
     eventType: "delivery.failed",
     text: "Delivery failed",
     timestamp: 1,
@@ -58,6 +59,13 @@ describe("jsonl storage", () => {
   it.each([
     ["an unsupported schema version", { ...messageRecord, schemaVersion: 2 }],
     ["a missing elements array", { ...messageRecord, elements: undefined }],
+    ["a channel without its type", { ...messageRecord, channel: { id: "channel-1" } }],
+    ["a null element", { ...messageRecord, elements: [null] }],
+    ["an element without its type", { ...messageRecord, elements: [{ attrs: {}, children: [] }] }],
+    [
+      "an element with a null child",
+      { ...messageRecord, elements: [{ type: "p", attrs: {}, children: [null] }] },
+    ],
   ])("rejects yesimbot.message payload with %s", async (_label, data) => {
     const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
     const filePath = join(dir, "session.jsonl");
@@ -65,6 +73,22 @@ describe("jsonl storage", () => {
     await writeFile(filePath, `${JSON.stringify({ ...entry, data: { ...entry.data, data } })}\n`, "utf8");
 
     await expect(createJsonlStorage(filePath).read()).rejects.toThrow();
+  });
+
+  it("accepts unknown structured element types", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const storage = createJsonlStorage(join(dir, "session.jsonl"));
+    const entry = createEntry(
+      "message",
+      createMessage({
+        ...messageRecord,
+        elements: [h("plugin-custom-element", { value: "x" })],
+      }),
+    );
+
+    await storage.append(entry);
+
+    await expect(storage.read()).resolves.toEqual([entry]);
   });
 
   it.each([
@@ -99,6 +123,57 @@ describe("jsonl storage", () => {
     await writeFile(
       filePath,
       `${JSON.stringify({ ...entry, data: { ...entry.data, data: { ...entry.data.data, text: 1 } } })}\n`,
+      "utf8",
+    );
+
+    await expect(createJsonlStorage(filePath).read()).rejects.toThrow();
+  });
+
+  it.each([
+    ["a missing delivery segment total", { ...eventRecord.delivery, segmentTotal: undefined }],
+    ["a non-string delivery error message", { ...eventRecord.delivery, error: { name: "Error", message: 1 } }],
+  ])("rejects delivery.failed with %s", async (_label, delivery) => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const filePath = join(dir, "session.jsonl");
+    const entry = createEntry("message", createEvent(eventRecord));
+    await writeFile(
+      filePath,
+      `${JSON.stringify({
+        ...entry,
+        data: { ...entry.data, data: { ...entry.data.data, delivery } },
+      })}\n`,
+      "utf8",
+    );
+
+    await expect(createJsonlStorage(filePath).read()).rejects.toThrow();
+  });
+
+  it("accepts declaration-merged extension event payloads", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const filePath = join(dir, "session.jsonl");
+    const entry = createEntry("message", createEvent(eventRecord));
+    const extension = {
+      ...entry,
+      data: {
+        ...entry.data,
+        data: { ...entry.data.data, eventType: "plugin.custom", pluginPayload: { enabled: true } },
+      },
+    };
+    await writeFile(filePath, `${JSON.stringify(extension)}\n`, "utf8");
+
+    await expect(createJsonlStorage(filePath).read()).resolves.toEqual([extension]);
+  });
+
+  it("does not accept malformed delivery.failed through extension fallback", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
+    const filePath = join(dir, "session.jsonl");
+    const entry = createEntry("message", createEvent(eventRecord));
+    await writeFile(
+      filePath,
+      `${JSON.stringify({
+        ...entry,
+        data: { ...entry.data, data: { ...entry.data.data, delivery: { turnId: "turn-1" } } },
+      })}\n`,
       "utf8",
     );
 

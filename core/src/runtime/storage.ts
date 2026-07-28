@@ -4,7 +4,30 @@ import { dirname } from "node:path";
 import type { AgentEntry, AgentStorage } from "@yesimbot/agent-runtime";
 import { z } from "zod";
 
-const channelSchema = z.object({ id: z.string().min(1) }).passthrough();
+const channelSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.number().int(),
+    name: z.string().optional(),
+  })
+  .passthrough();
+
+const userSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+  })
+  .passthrough();
+
+const elementSchema: z.ZodType<unknown> = z.lazy(() =>
+  z
+    .object({
+      type: z.string().min(1),
+      attrs: z.record(z.string(), z.unknown()).optional(),
+      children: z.array(elementSchema).optional(),
+    })
+    .passthrough(),
+);
 
 const messageDataSchema = z
   .object({
@@ -12,14 +35,14 @@ const messageDataSchema = z
     platform: z.string().min(1),
     selfId: z.string().min(1),
     channel: channelSchema,
-    user: z.object({ id: z.string().min(1) }).passthrough(),
+    user: userSchema,
     messageId: z.string().min(1),
-    elements: z.array(z.unknown()),
+    elements: z.array(elementSchema),
     timestamp: z.number(),
   })
   .passthrough();
 
-const eventDataSchema = z
+const eventBaseSchema = z
   .object({
     schemaVersion: z.literal(3),
     platform: z.string().min(1),
@@ -30,6 +53,27 @@ const eventDataSchema = z
     timestamp: z.number(),
   })
   .passthrough();
+
+const deliveryFailedEventSchema = eventBaseSchema.extend({
+  eventType: z.literal("delivery.failed"),
+  delivery: z.object({
+    turnId: z.string(),
+    messageId: z.string(),
+    segmentIndex: z.number().int().nonnegative(),
+    segmentTotal: z.number().int().positive(),
+    error: z.object({
+      name: z.string(),
+      message: z.string(),
+      code: z.string().optional(),
+    }),
+  }),
+});
+
+const extensionEventSchema = eventBaseSchema
+  .extend({ eventType: z.string().min(1) })
+  .refine(({ eventType }) => eventType !== "delivery.failed");
+
+const eventDataSchema = z.union([deliveryFailedEventSchema, extensionEventSchema]);
 
 export function createJsonlStorage<T extends AgentEntry = AgentEntry>(
   filePath: string,

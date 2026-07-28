@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { h } from "koishi";
+import { h, Universal } from "koishi";
 
 import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
 import { createEvent, createMessage } from "../src/event/index.js";
@@ -271,7 +271,7 @@ describe("ChannelStorage", () => {
       schemaVersion: 3,
       platform: shared.platform,
       selfId: shared.selfId,
-      channel: { id: shared.channelId },
+      channel: { id: shared.channelId, type: Universal.Channel.Type.TEXT },
       user: { id: "user-1" },
       messageId: "message-1",
       elements: [],
@@ -281,7 +281,7 @@ describe("ChannelStorage", () => {
       schemaVersion: 3,
       platform: shared.platform,
       selfId: shared.selfId,
-      channel: { id: shared.channelId },
+      channel: { id: shared.channelId, type: Universal.Channel.Type.TEXT },
       eventType: "delivery.failed",
       text: "Delivery failed",
       timestamp: 2,
