@@ -4,7 +4,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h } from "koishi";
 
-import { createImageFreezer } from "../src/media/index.js";
+import { ImageFreezer } from "../src/media/index.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
@@ -19,7 +19,7 @@ function freezer(
   },
 ) {
   const assets = { put: vi.fn(async () => ({ assetId: "asset_image", mime: "image/png" })) };
-  return { assets, ...createImageFreezer({ scope, assets, policy }) };
+  return { assets, ...new ImageFreezer({ scope, assets, policy }) };
 }
 
 describe("resolver image freezing", () => {

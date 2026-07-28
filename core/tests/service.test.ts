@@ -248,6 +248,13 @@ describe("YesImBotService facade", () => {
       ready: () => ready,
       allowedChannels: [{ platform: "test", channelId: "room-1" }],
       logger: { warn: vi.fn() } as never,
+      mediaPolicy: {
+        enabled: true,
+        maxCount: 4,
+        maxBytesPerImage: 5 * 1024 * 1024,
+        maxTotalBytes: 10 * 1024 * 1024,
+        selection: "current-first",
+      },
     });
     gateway.register(resolver);
     const handling = gateway.handle({

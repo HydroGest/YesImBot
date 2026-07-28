@@ -485,6 +485,33 @@ describe("Gateway", () => {
     );
   });
 
+  it("creates a separate image budget for each resolver invocation", async () => {
+    const { gateway, assets } = createGateway({
+      mediaPolicy: {
+        enabled: true,
+        maxCount: 1,
+        maxBytesPerImage: 8,
+        maxTotalBytes: 8,
+        selection: "current-first",
+      },
+    });
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const load = vi.fn(async () => ({ data: png }));
+    gateway.register({
+      platform: "test",
+      resolve: async ({ freezeImage }) => {
+        await freezeImage(h("img", { src: "https://example.test/image.png" }), load);
+        return record();
+      },
+    });
+
+    await gateway.handle(session({ messageId: "message-1" }) as never);
+    await gateway.handle(session({ messageId: "message-2" }) as never);
+
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(assets.put).toHaveBeenCalledTimes(2);
+  });
+
   it("derives direct classification from the active Session", async () => {
     const { gateway, runtime } = createGateway();
     const resolver = {

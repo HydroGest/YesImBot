@@ -17,7 +17,7 @@ import type {
   ResolvedEventDraft,
   ResolvedMessageDraft,
 } from "../event/index.js";
-import { createImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
+import { ImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
 import { nextSegmentDelayMs } from "../reply/pacing.js";
 import { assertAssignee, type RuntimeManager } from "../runtime/index.js";
 import type { ChannelStorage } from "../storage/index.js";
@@ -239,8 +239,7 @@ export class Gateway {
     const resolver = this.resolvers.get(session.platform);
     if (!resolver) return resolveFallbackMessage(session, scope);
     const freezeImage = scope
-      ? createImageFreezer({ scope, assets: this.opts.assets, policy: this.mediaPolicy })
-          .freezeImage
+      ? new ImageFreezer({ scope, assets: this.opts.assets, policy: this.mediaPolicy }).freezeImage
       : async () => unavailableImage();
     const draft = await resolver.resolve({ session, freezeImage });
     return draft ? normalizeDraft(session, scope, draft) : null;

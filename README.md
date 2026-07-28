@@ -131,16 +131,7 @@ YesImBot 的能力通过插件系统按需加载。
 
 ## Architecture
 
-```text
-Athena/
-├── core/                     Koishi 主插件：Gateway、模型、频道存储与运行时
-├── packages/agent-runtime/   通用消息运行时：回合队列、工具调用、插件钩子、状态与存储
-├── platforms/                平台适配器：OneBot 入站消息与事件边界
-├── providers/                模型 Provider 插件：OpenAI / Anthropic / DeepSeek / Google
-├── plugins/                  可选能力插件：Workspace / MCP / Skill / Search / MemOS 等
-├── docs/                     设计记录与归档文档
-└── assets/                   项目资源（Logo 等）
-```
+Athena 是一个 message-first Koishi agent runtime。当前架构见 [AGENTS.md](./AGENTS.md#current-architecture)。
 
 ## Development
 

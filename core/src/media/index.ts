@@ -138,45 +138,38 @@ export interface ImageFreezerOptions {
   readonly policy: UnifiedImagePolicy;
 }
 
-export function createImageFreezer(options: ImageFreezerOptions) {
-  let imageCount = 0;
-  let totalBytes = 0;
-  let active = 0;
-  const waiting: Array<{ grant(): boolean }> = [];
+export class ImageFreezer {
+  private totalImages = 0;
+  private totalBytes = 0;
+  private active = 0;
+  private readonly waiting: Array<{ grant(): boolean }> = [];
+  private readonly maxCount: number;
+  private readonly maxBytesPerImage: number;
+  private readonly maxTotalBytes: number;
+  private readonly scope: ChannelScope;
+  private readonly assets: Pick<AssetStore, "put">;
 
-  async function storeImage(data: Uint8Array, reserved: boolean): Promise<Element> {
-    if (!reserved) imageCount += 1;
-    if (
-      imageCount > options.policy.maxCount ||
-      !(data instanceof Uint8Array) ||
-      data.byteLength > options.policy.maxBytesPerImage ||
-      totalBytes + data.byteLength > options.policy.maxTotalBytes
-    ) {
-      return unavailableImage();
-    }
-
-    totalBytes += data.byteLength;
-    try {
-      const asset = await options.assets.put(options.scope, data);
-      return h("img", { id: asset.assetId, mime: asset.mime });
-    } catch {
-      return unavailableImage();
-    }
+  constructor(options: ImageFreezerOptions) {
+    this.scope = options.scope;
+    this.assets = options.assets;
+    this.maxCount = options.policy.maxCount;
+    this.maxBytesPerImage = options.policy.maxBytesPerImage;
+    this.maxTotalBytes = options.policy.maxTotalBytes;
   }
 
-  async function freezeImage(
+  readonly freezeImage = async (
     element: Element,
     load: (signal: AbortSignal, maxBytes: number) => Promise<{ data: Uint8Array; mime?: string }>,
-  ): Promise<Element> {
+  ): Promise<Element> => {
     const normalized = normalizeElements([element])[0];
     if (!normalized) return unavailableImage();
     if (normalized.type === "quote" || normalized.type === "forward") return normalized;
     if (normalized.type !== "img" || typeof normalized.attrs.src !== "string") return normalized;
-    if (imageCount >= options.policy.maxCount) return unavailableImage();
-    imageCount += 1;
+    if (this.totalImages >= this.maxCount) return unavailableImage();
+    this.totalImages += 1;
 
     const controller = new AbortController();
-    let permit: ReturnType<typeof acquire> | undefined;
+    let permit: ReturnType<ImageFreezer["acquire"]> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<"timeout">((resolve) => {
       timer = setTimeout(() => {
@@ -185,7 +178,7 @@ export function createImageFreezer(options: ImageFreezerOptions) {
         resolve("timeout");
       }, IMAGE_DOWNLOAD_TIMEOUT_MS);
     });
-    permit = acquire();
+    permit = this.acquire();
     let releaseWhenSettled = true;
     let holdsPermit = false;
     try {
@@ -193,30 +186,50 @@ export function createImageFreezer(options: ImageFreezerOptions) {
       if (acquired !== true) return unavailableImage();
       holdsPermit = true;
       const maxBytes = Math.min(
-        options.policy.maxBytesPerImage,
-        options.policy.maxTotalBytes - totalBytes,
+        this.maxBytesPerImage,
+        this.maxTotalBytes - this.totalBytes,
       );
       const loaded = Promise.resolve().then(() => load(controller.signal, maxBytes));
       try {
         const result = await Promise.race([loaded, deadline]);
         if (result === "timeout") {
           releaseWhenSettled = false;
-          void loaded.then(release, release);
+          void loaded.then(this.release, this.release);
           return unavailableImage();
         }
-        return await storeImage(result.data, true);
+        return await this.storeImage(result.data, true);
       } catch {
         return unavailableImage();
       }
     } finally {
       if (timer) clearTimeout(timer);
-      if (holdsPermit && releaseWhenSettled) release();
+      if (holdsPermit && releaseWhenSettled) this.release();
+    }
+  };
+
+  private async storeImage(data: Uint8Array, reserved: boolean): Promise<Element> {
+    if (!reserved) this.totalImages += 1;
+    if (
+      this.totalImages > this.maxCount ||
+      !(data instanceof Uint8Array) ||
+      data.byteLength > this.maxBytesPerImage ||
+      this.totalBytes + data.byteLength > this.maxTotalBytes
+    ) {
+      return unavailableImage();
+    }
+
+    this.totalBytes += data.byteLength;
+    try {
+      const asset = await this.assets.put(this.scope, data);
+      return h("img", { id: asset.assetId, mime: asset.mime });
+    } catch {
+      return unavailableImage();
     }
   }
 
-  function acquire(): { readonly promise: Promise<boolean>; cancel(): void } {
-    if (active < IMAGE_DOWNLOAD_CONCURRENCY) {
-      active += 1;
+  private acquire(): { readonly promise: Promise<boolean>; cancel(): void } {
+    if (this.active < IMAGE_DOWNLOAD_CONCURRENCY) {
+      this.active += 1;
       return { promise: Promise.resolve(true), cancel() {} };
     }
     let settled = false;
@@ -225,7 +238,7 @@ export function createImageFreezer(options: ImageFreezerOptions) {
       grant: () => {
         if (settled) return false;
         settled = true;
-        active += 1;
+        this.active += 1;
         resolve(true);
         return true;
       },
@@ -233,25 +246,23 @@ export function createImageFreezer(options: ImageFreezerOptions) {
     const promise = new Promise<boolean>((next) => {
       resolve = next;
     });
-    waiting.push(waiter);
+    this.waiting.push(waiter);
     return {
       promise,
-      cancel() {
+      cancel: () => {
         if (settled) return;
         settled = true;
-        const index = waiting.indexOf(waiter);
-        if (index >= 0) waiting.splice(index, 1);
+        const index = this.waiting.indexOf(waiter);
+        if (index >= 0) this.waiting.splice(index, 1);
         resolve(false);
       },
     };
   }
 
-  function release(): void {
-    active -= 1;
-    while (waiting.shift()?.grant() !== true && waiting.length > 0) {}
-  }
-
-  return { freezeImage };
+  private readonly release = (): void => {
+    this.active -= 1;
+    while (this.waiting.shift()?.grant() !== true && this.waiting.length > 0) {}
+  };
 }
 
 export interface MediaSelectionOptions {

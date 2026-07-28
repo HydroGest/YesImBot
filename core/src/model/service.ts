@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { EmbeddingModel, LanguageModel } from "ai";
 import { Context, Schema, Service } from "koishi";
 
-import { resolveBasePath } from "../path.js";
 import {
   type ChatModelConfig,
   type ChatModelRef,
@@ -324,7 +323,7 @@ export class ModelService extends Service<ModelServiceConfig> {
   }
 
   private getModelsConfigPath(): string {
-    return join(resolveBasePath(this.config.basePath, this.ctx.baseDir), "models.json");
+    return join(resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir), "models.json");
   }
 
   override async start(): Promise<void> {

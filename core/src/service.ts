@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import { Service, type Context } from "koishi";
 
 import { channelIdentity, type ChannelScope } from "./channel/index.js";
@@ -5,7 +7,6 @@ import { resolveMultimediaImagePolicy, resolveReplyPacingConfig, type Config } f
 import { Gateway, type SessionResolver } from "./gateway/index.js";
 import { AssetStore } from "./media/index.js";
 import type { ModelService } from "./model/index.js";
-import { resolveBasePath } from "./path.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
 import { ChannelStorage } from "./storage/index.js";
 
@@ -33,7 +34,7 @@ export class YesImBotService extends Service<Config> {
     this.logger.level = config.logLevel ?? 2;
     this.model = ctx["yesimbot.model"];
     this.storage = new ChannelStorage(
-      resolveBasePath(config.basePath, ctx.baseDir),
+      resolve(ctx.baseDir, config.basePath || ctx.baseDir),
       (code, fields) => {
         this.logger.warn({ code, ...fields });
       },

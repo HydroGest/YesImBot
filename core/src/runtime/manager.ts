@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 import { Universal } from "koishi";
@@ -6,7 +8,6 @@ import { channelIdentity, type ChannelScope } from "../channel/index.js";
 import { resolveMultimediaImagePolicy, type Config } from "../config.js";
 import type { EventRecord, InputRecord } from "../event/index.js";
 import type { AssetStore } from "../media/index.js";
-import { resolveBasePath } from "../path.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { createWillEngine } from "../will/index.js";
 import {
@@ -240,7 +241,10 @@ export class RuntimeManager {
     );
     const options: ChannelRuntimeOptions = {
       ctx: this.opts.ctx,
-      config: { ...this.opts.config, basePath: resolveBasePath(this.opts.config.basePath, this.opts.ctx.baseDir) },
+      config: {
+        ...this.opts.config,
+        basePath: resolve(this.opts.ctx.baseDir, this.opts.config.basePath || this.opts.ctx.baseDir),
+      },
       logger: this.opts.logger,
       scope,
       bot,

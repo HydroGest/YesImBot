@@ -62,8 +62,7 @@ yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/tools.t
 - `core/src/index.ts` is the Koishi entrypoint. It registers `ModelService` and `YesImBotService`; Database is a required injection.
 - `core/src/service.ts` owns the public `ctx.yesimbot` facade: model, resolver/Agent plugin registration, `channelIdentity`/storage methods, non-destructive `reload(scope)`, reset, and stop. Gateway, RuntimeManager, ChannelRuntime, ChannelStorage, AssetStore, and assignee helpers stay private.
 - `core/src/gateway/index.ts` owns Koishi middleware and `internal/session` admission, one Resolver call, bounded image freezing, passive `Session.send()`, and same-channel `delivery.failed` feedback. A Session never leaves its active Gateway handle.
-- `core/src/runtime/index.ts` contains both runtime owners. RuntimeManager owns one Runtime entry per `channelIdentity`, per-identity lifecycle coordination, Database assignee revalidation, reset, global stop, and explicit reload.
-- ChannelRuntime owns one channel FIFO, Agent, WillEngine, JSONL storage, prompt/plugin assembly, atomic append/join/run submission, one stream consumer, delivery leases, delivery-failure completion, graceful drain, and stop.
+- `core/src/runtime/manager.ts` owns RuntimeManager: one Runtime entry per `channelIdentity`, per-identity lifecycle coordination, Database assignee revalidation, reset, global stop, and explicit reload. `runtime/channel.ts` owns ChannelRuntime: one channel FIFO, Agent, WillEngine, JSONL storage, prompt/plugin assembly, atomic append/join/run submission, one stream consumer, graceful drain, and stop. `runtime/delivery.ts` owns delivery state; `runtime/serial-queue.ts` owns rejection-safe FIFO scheduling; `runtime/index.ts` is the barrel.
 - `core/src/media/index.ts` owns the unified multimedia policy consumers: Gateway image freezing, AssetStore persistence, MIME detection, and model-call image selection. `reload(scope)` refreshes Gateway and AssetStore from the current policy after draining the scoped runtime.
 - Channel runtime identities are unified 26-character lowercase Base32 `channelIdentity` values derived from a versioned canonical tuple. Shared identity = `platform + channelId`; direct identity = `platform + selfId + channelId`. JSONL history lives under `<basePath>/channels/v1-shared-*/` or `v1-direct-*/sessions/messages.jsonl`.
 - The storage layout is channel-first: each readable `v1-shared-<platform>-<channelId>` or `v1-direct-<platform>-<channelId>-<selfId>` directory has an authoritative `channel.json`. Startup scans valid Manifests into memory; `channels.json` is not created. Session storage lives under `sessions/`, assets under `assets/`, workspace under `workspace/`, and registered module namespaces are isolated per channel.
@@ -104,7 +103,11 @@ Load these on demand when deeper context is needed:
 - `core/src/service.ts` — public YesImBot facade, reset command, storage ownership, and Gateway/RuntimeManager composition.
 - `core/src/gateway/index.ts` — Session admission, Resolver selection, Satori fallback, image freezing, passive delivery, and Session lifetime.
 - `core/src/event/` — declaration-mergeable EventMap/EventRecord contracts, message sealing, and model formatting.
-- `core/src/runtime/index.ts` — RuntimeManager lifecycle and ChannelRuntime FIFO/Agent/stream/delivery ownership; `core/src/runtime/prompts/` and `core/src/runtime/storage.ts` provide its prompt and JSONL support.
+- `core/src/runtime/manager.ts` — RuntimeManager lifecycle and runtime construction.
+- `core/src/runtime/channel.ts` — ChannelRuntime FIFO, Agent assembly, prompt and JSONL ownership.
+- `core/src/runtime/delivery.ts` — delivery leases, abort signals, and output queue state.
+- `core/src/runtime/serial-queue.ts` — rejection-safe FIFO scheduling.
+- `core/src/runtime/index.ts` — runtime barrel; `core/src/runtime/prompts/` and `core/src/runtime/storage.ts` provide prompt and JSONL support.
 - `core/src/storage/` and `core/src/channel/` — canonical `channelIdentity`, readable Manifest-backed directories, namespace registry, and safe channel paths.
 - `core/src/media/index.ts` — internal AssetStore, image freezing, MIME detection, and model-call image selection; `core/src/event/element.ts` and `core/src/runtime/index.ts` provide element helpers and Database assignee assertion.
 - `core/src/model/` — model config, provider contracts, schema helpers, model resolution.
