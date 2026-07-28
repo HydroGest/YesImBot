@@ -45,6 +45,7 @@ export class WillingnessWillEngine implements WillEngine {
 
   constructor(private readonly options: WillingnessWillOptions) {
     this.config = snapshotConfig(options.config);
+    assertValidConfig(this.config);
   }
 
   async decide(input: Input, _state: WillEngine.State): Promise<WillEngine.Decision> {
@@ -71,12 +72,7 @@ export class WillingnessWillEngine implements WillEngine {
   }
 
   async onReply(): Promise<void> {
-    try {
-      assertValidConfig(this.config);
-      this.score = Math.max(0, this.score - this.config.lifecycle.replyCost);
-    } catch (cause) {
-      this.warn(cause);
-    }
+    this.score = Math.max(0, this.score - this.config.lifecycle.replyCost);
   }
 
   private warn(cause: unknown): void {
@@ -109,14 +105,13 @@ export function createWillingnessConfig(config: WillingnessConfigInput = {}): Wi
   });
 }
 
-export function decayScore(
+function decayScore(
   score: number,
   lastDecayAt: number,
   lastMessageAt: number,
   now: number,
   config: WillingnessConfig,
 ): number {
-  assertValidConfig(config);
   if (![score, lastDecayAt, lastMessageAt, now].every(Number.isFinite) || now < lastDecayAt) {
     throw new TypeError("Invalid willingness decay state");
   }
@@ -170,7 +165,6 @@ function decayHighScore(
 }
 
 function calculateScore(current: number, data: Message["data"], config: WillingnessConfig): number {
-  assertValidConfig(config);
   const multiplier = config.interest.keywords.some((keyword) =>
     renderElements(data.elements).includes(keyword),
   )

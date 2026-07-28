@@ -17,7 +17,6 @@ import {
   RoutingWillEngine,
   createWillEngine,
   createWillingnessConfig,
-  decayScore,
   type DefaultWillConfig,
   WillingnessWillEngine,
   type WillingnessConfig,
@@ -191,43 +190,7 @@ describe("createWillEngine", () => {
 });
 
 describe("WillingnessWillEngine", () => {
-  it("integrates hot, warm, and cold silence decay with injected timestamps", () => {
-    const config = createWillingnessConfig({
-      lifecycle: { decayHalfLifeSeconds: 10, probabilityThreshold: 100 },
-    });
-
-    expect(decayScore(8, 0, 0, 10_000, config)).toBeCloseTo(8 * 0.5 ** 0.3);
-    expect(decayScore(8, 0, 0, 30_000, config)).toBeCloseTo(8 * 0.5 ** 1.5);
-    expect(decayScore(8, 0, 0, 90_000, config)).toBeCloseTo(8 * 0.5 ** 6.6);
-    expect(decayScore(8, 0, 0, 1_000_000, config)).toBe(0);
-  });
-
-  it("uses half-rate decay above threshold only until the threshold crossing", () => {
-    const config = createWillingnessConfig({
-      lifecycle: { decayHalfLifeSeconds: 10, probabilityThreshold: 5 },
-    });
-    const weightedSecondsToThreshold = 20 * Math.log2(8 / 5);
-
-    expect(decayScore(5, 0, -60_000, 10_000, config)).toBeCloseTo(2.5);
-    expect(decayScore(8, 0, -60_000, 10_000, config)).toBeCloseTo(8 * 0.5 ** 0.5);
-    expect(decayScore(8, 0, -60_000, 20_000, config)).toBeCloseTo(
-      5 * 0.5 ** ((20 - weightedSecondsToThreshold) / 10),
-    );
-  });
-
-  it("skips high-score decay at a zero threshold and clamps negligible scores", () => {
-    const zeroThreshold = createWillingnessConfig({
-      lifecycle: { decayHalfLifeSeconds: 10, probabilityThreshold: 0 },
-    });
-    const normalThreshold = createWillingnessConfig({
-      lifecycle: { decayHalfLifeSeconds: 10, probabilityThreshold: 100 },
-    });
-
-    expect(decayScore(8, 0, -60_000, 10_000, zeroThreshold)).toBeCloseTo(4);
-    expect(decayScore(0.01, 0, -60_000, 10_000, normalThreshold)).toBe(0);
-  });
-
-  it("decays before applying message gain without scheduling a timer", async () => {
+  it("decays through public decisions without scheduling a timer", async () => {
     let now = 0;
     const will = new WillingnessWillEngine({
       config: createWillingnessConfig({
@@ -238,19 +201,45 @@ describe("WillingnessWillEngine", () => {
       random: () => 1,
       warn: vi.fn(),
     });
-    will["score"] = 8;
-    will["lastDecayAt"] = 0;
-    will["lastMessageAt"] = -60_000;
+    await will.decide(ordinaryGroupMessageInput(), EMPTY_STATE);
     now = 10_000;
     vi.useFakeTimers();
 
     await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
 
-    expect(will["score"]).toBeCloseTo(13.984);
-    expect(will["lastDecayAt"]).toBe(10_000);
-    expect(will["lastMessageAt"]).toBe(10_000);
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
     expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
+  });
+
+  it("validates invalid configuration at construction", () => {
+    const options = {
+      now: () => 1_000,
+      random: () => 0,
+      warn: vi.fn(),
+    };
+
+    expect(
+      () =>
+        new WillingnessWillEngine({
+          ...options,
+          config: createWillingnessConfig({ base: { text: Number.NaN } }),
+        }),
+    ).toThrow("Invalid willingness configuration");
+    expect(
+      () =>
+        new WillingnessWillEngine({
+          ...options,
+          config: createWillingnessConfig({ lifecycle: { maxWillingness: 0 } }),
+        }),
+    ).toThrow("Invalid willingness configuration");
+    expect(
+      () =>
+        new WillingnessWillEngine({
+          ...options,
+          config: createWillingnessConfig({ lifecycle: { decayHalfLifeSeconds: 0 } }),
+        }),
+    ).toThrow("Invalid willingness configuration");
   });
 
   it("charges reply cost with a zero floor", async () => {

@@ -9,7 +9,6 @@ import {
   type AgentTool,
   type AgentToolSet,
   type ModelMessageContext,
-  type TurnResult,
 } from "@yesimbot/agent-runtime";
 import type { FilePart, LanguageModel } from "ai";
 import { Universal, type Awaitable, type Bot, type Context, type Element, type Logger } from "koishi";
@@ -161,7 +160,7 @@ export class RuntimeManager {
       ...result,
       delivery: {
         fail: (failure) => runtime.handleInternal(failure),
-        complete: (turnId) => runtime.completeDelivery(turnId),
+        complete: (turnId) => runtime.complete(turnId),
         signal: runtime.deliverySignal(result.turnId),
         release: () => {
           runtime.releaseDelivery(result.turnId);
@@ -509,22 +508,6 @@ function parseAssistantContent(content: unknown): Element[][] | undefined {
   return parseReply(text);
 }
 
-function hasRenderableSegment(content: unknown): boolean {
-  return (
-    parseAssistantContent(content)?.some((segment) =>
-      segment.some((element) => element.type === "text" && `${element.attrs["content"] ?? ""}`.trim().length > 0),
-    ) === true
-  );
-}
-
-type ReplyEligibility = "pending" | "eligible" | "ineligible";
-
-type ReplyCompletion = {
-  acknowledged: boolean;
-  deliveryReleased: boolean;
-  eligibility: ReplyEligibility;
-};
-
 export class ChannelRuntime {
   readonly scope: ChannelScope;
 
@@ -537,9 +520,8 @@ export class ChannelRuntime {
   private drainTask: Promise<void> | undefined;
   private streams = new Set<Promise<void>>();
   private readonly agent: Agent;
-  private replyCompletions = new Map<string, ReplyCompletion>();
   private deliveryAborts = new Map<string, AbortController>();
-  private replyCompletionTail = Promise.resolve();
+  private readonly acknowledged = new Set<string>();
   private initTask: Promise<void> | undefined;
 
   constructor(private readonly opts: ChannelRuntimeOptions) {
@@ -622,11 +604,6 @@ export class ChannelRuntime {
             return [formatted];
           },
         },
-        {
-          name: "core.will-reply",
-          enforce: "pre",
-          onTurnFinish: async (result) => this.recordReplyCompletion(result),
-        },
         ...plugins,
       ],
       terminalTool: true,
@@ -666,13 +643,14 @@ export class ChannelRuntime {
     };
   }
 
-  completeDelivery(turnId: string): Promise<void> {
-    return this.enqueueReplyCompletion(async () => {
-      const completion = this.replyCompletions.get(turnId);
-      if (!completion) return;
-      completion.acknowledged = true;
-      await this.reconcileReplyCompletion(turnId, completion);
-    });
+  async complete(turnId: string): Promise<void> {
+    if (this.acknowledged.has(turnId)) return;
+    this.acknowledged.add(turnId);
+    try {
+      await this.opts.will.onReply?.();
+    } catch (cause) {
+      this.warn("will_reply_failed", { cause });
+    }
   }
 
   deliverySignal(turnId: string): AbortSignal {
@@ -692,7 +670,7 @@ export class ChannelRuntime {
       this.stopped = true;
       await this.agent.stop();
       await this.opts.will.stop?.();
-      this.replyCompletions.clear();
+      this.acknowledged.clear();
     })();
     return this.drainTask;
   }
@@ -745,7 +723,7 @@ export class ChannelRuntime {
       this.warn("will_stop_failed", { cause, reason });
     }
     await Promise.allSettled([...this.streams]);
-    this.replyCompletions.clear();
+    this.acknowledged.clear();
   }
 
   private waitForDeliveries(): Promise<void> {
@@ -760,11 +738,6 @@ export class ChannelRuntime {
     if (turnId === null) {
       throw new Error("Agent did not expose an active turn after run");
     }
-    this.replyCompletions.set(turnId, {
-      acknowledged: false,
-      deliveryReleased: false,
-      eligibility: "pending",
-    });
     this.deliveryAborts.set(turnId, new AbortController());
     const task = this.consumeStream(stream, output);
     this.streams.add(task);
@@ -804,61 +777,8 @@ export class ChannelRuntime {
   }
 
   releaseDelivery(turnId: string): void {
-    void this.enqueueReplyCompletion(async () => {
-      const completion = this.replyCompletions.get(turnId);
-      if (!completion) return;
-      completion.deliveryReleased = true;
-      this.deliveryAborts.delete(turnId);
-      await this.reconcileReplyCompletion(turnId, completion);
-    });
-  }
-
-  private recordReplyCompletion(result: TurnResult): Promise<void> {
-    return this.enqueueReplyCompletion(async () => {
-      if (result.status === "failed" || result.status === "aborted")
-        this.abortDelivery(result.turnId);
-      const completion = this.replyCompletions.get(result.turnId);
-      if (!completion) return;
-      completion.eligibility =
-        result.status === "done" &&
-        result.messages.some(
-          (message) =>
-            message.role === "assistant" && hasRenderableSegment(message.content),
-        )
-          ? "eligible"
-          : "ineligible";
-      await this.reconcileReplyCompletion(result.turnId, completion);
-    });
-  }
-
-  private async reconcileReplyCompletion(
-    turnId: string,
-    completion: ReplyCompletion,
-  ): Promise<void> {
-    if (completion.eligibility === "ineligible") {
-      this.replyCompletions.delete(turnId);
-      return;
-    }
-    if (completion.eligibility === "pending") return;
-    if (!completion.acknowledged) {
-      if (completion.deliveryReleased) this.replyCompletions.delete(turnId);
-      return;
-    }
-    this.replyCompletions.delete(turnId);
-    try {
-      await this.opts.will.onReply?.();
-    } catch (cause) {
-      this.warn("will_reply_failed", { cause });
-    }
-  }
-
-  private enqueueReplyCompletion(operation: () => Promise<void>): Promise<void> {
-    const next = this.replyCompletionTail.then(operation, operation);
-    this.replyCompletionTail = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
+    this.deliveryAborts.delete(turnId);
+    this.acknowledged.delete(turnId);
   }
 
   private abortDelivery(turnId: string): void {

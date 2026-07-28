@@ -12,7 +12,6 @@ import {
 
 export {
   createWillingnessConfig,
-  decayScore,
   WillingnessWillEngine,
   type WillingnessConfig,
   type WillingnessConfigInput,

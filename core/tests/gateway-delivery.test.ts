@@ -56,6 +56,14 @@ function outputs(...content: string[]) {
   })();
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 function delivery(signal?: AbortSignal) {
   return {
     fail: vi.fn(async () => ({ kind: "wait" as const, eventId: "failure-1" })),
@@ -137,7 +145,7 @@ describe("Gateway passive delivery", () => {
     const first = createIntegratedGateway(basePath);
     await first.gateway.handle(session() as never);
     await first.manager.route({
-      schemaVersion: 2,
+      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -218,21 +226,27 @@ describe("Gateway passive delivery", () => {
     vi.useFakeTimers();
     try {
       const binding = delivery();
-      const route = vi.fn(async () => ({
-        kind: "run" as const,
-        eventId: "event-1",
-        turnId: "turn-1",
-        output: (async function* () {
-          yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("a")]] };
-          yield { turnId: "turn-1", messageId: "assistant-2", segments: [[h.text("a")]] };
-        })(),
-        delivery: binding,
-      }));
+      const routed = deferred();
+      const route = vi.fn(async () => {
+        routed.resolve();
+        return {
+          kind: "run" as const,
+          eventId: "event-1",
+          turnId: "turn-1",
+          output: (async function* () {
+            yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("a")]] };
+            yield { turnId: "turn-1", messageId: "assistant-2", segments: [[h.text("a")]] };
+          })(),
+          delivery: binding,
+        };
+      });
       const send = vi.fn(async () => []);
       const { gateway } = createGateway(route, undefined, {
         pacing: { maxTotalDelayMs: 150, charactersPerSecond: 10 },
       });
       const handling = gateway.handle(session(send) as never);
+
+      await routed.promise;
 
       await vi.advanceTimersByTimeAsync(249);
       expect(send).not.toHaveBeenCalled();
@@ -268,6 +282,7 @@ describe("Gateway passive delivery", () => {
     expect(send).toHaveBeenNthCalledWith(1, [h.text("first")]);
     expect(send).toHaveBeenCalledTimes(1);
     expect(route).toHaveBeenCalledOnce();
+    expect(binding.complete).not.toHaveBeenCalled();
     expect(route.mock.calls[0]?.[0]).not.toHaveProperty("send");
     expect(route.mock.calls[0]?.[0]).not.toBe(inbound);
     expect(binding.fail.mock.calls[0]?.[0]).toMatchObject({

@@ -4,17 +4,10 @@ import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
 import {
-  createAgentChannel,
   createMessageEntry,
-  createStateManager,
   orderPlugins,
 } from "@yesimbot/agent-runtime";
-import type {
-  AgentPlugin,
-  ModelMessageContext,
-  TurnFinishContext,
-  TurnResult,
-} from "@yesimbot/agent-runtime";
+import type { AgentPlugin, ModelMessageContext } from "@yesimbot/agent-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -132,35 +125,6 @@ function streamFrom(events: readonly unknown[]): AsyncIterable<unknown> {
   return (async function* () {
     yield* events;
   })();
-}
-
-function coreWillReplyPlugin(): AgentPlugin {
-  const plugins = state.options?.plugins;
-  if (!Array.isArray(plugins)) throw new Error("Agent plugins are unavailable");
-  const plugin = plugins.find(
-    (candidate): candidate is AgentPlugin =>
-      typeof candidate === "object" &&
-      candidate !== null &&
-      "name" in candidate &&
-      candidate.name === "core.will-reply",
-  );
-  if (!plugin) throw new Error("Core Will reply plugin is unavailable");
-  return plugin;
-}
-
-function turnResult(status: TurnResult["status"], messages: TurnResult["messages"]): TurnResult {
-  return { turnId: "turn-1", status, messages };
-}
-
-function turnFinishContext(): TurnFinishContext {
-  return {
-    runtime: { id: "channel-test" },
-    channel: createAgentChannel(),
-    state: createStateManager({
-      storage: createJsonlStorage("/tmp/yesimbot-turn-finish/messages.jsonl"),
-    }),
-    turnId: "turn-1",
-  };
 }
 
 async function beginReply(runtime: ChannelRuntime): Promise<void> {
@@ -513,9 +477,8 @@ describe("ChannelRuntime", () => {
         data: {
           id: "unsupported",
           timestamp: 3,
-          role: "custom",
-          type: "yesimbot.message",
-          data: { schemaVersion: 2, text: "unsupported" },
+          role: "user",
+          content: "unsupported",
         },
       }),
       JSON.stringify({
@@ -525,9 +488,8 @@ describe("ChannelRuntime", () => {
         data: {
           id: "missing",
           timestamp: 4,
-          role: "custom",
-          type: "yesimbot.event",
-          data: { eventType: "delivery.failed", text: "missing" },
+          role: "assistant",
+          content: "missing",
         },
       }),
     ].join("\n");
@@ -584,7 +546,7 @@ describe("ChannelRuntime", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it("keeps Core event projection and Will reply hooks ahead of external pre plugins", () => {
+  it("keeps Core event projection ahead of external pre plugins", () => {
     const externalPlugin: AgentPlugin = {
       name: "external.formatter",
       enforce: "pre",
@@ -627,151 +589,81 @@ describe("ChannelRuntime", () => {
 
     expect(ordered.map((plugin) => plugin.name)).toEqual([
       "core.event-format",
-      "core.will-reply",
       "external.formatter",
     ]);
     expect(ordered.find((plugin) => plugin.toModelMessages)?.name).toBe("core.event-format");
     expect(ordered.filter((plugin) => plugin.onTurnFinish).map((plugin) => plugin.name)).toEqual([
-      "core.will-reply",
       "external.formatter",
     ]);
   });
 
-  it("does not notify Will when a done multi-segment reply has no delivery acknowledgement", async () => {
+  it("notifies Will once for repeated acknowledgements of the same active delivery", async () => {
     const onReply = vi.fn(async () => undefined);
     const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
-    const plugin = coreWillReplyPlugin();
-
     await beginReply(runtime);
-    await plugin.onTurnFinish?.(
-      turnResult("done", [
-        { id: "assistant-1", timestamp: 1, role: "assistant", content: "first<sep/>second" },
-      ]),
-      turnFinishContext(),
-    );
-
-    expect(onReply).not.toHaveBeenCalled();
-  });
-
-  it("reconciles a delivery acknowledgement that arrives before a done turn finish", async () => {
-    const onReply = vi.fn(async () => undefined);
-    const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
-    const plugin = coreWillReplyPlugin();
-
-    await beginReply(runtime);
-    await runtime.completeDelivery("turn-1");
-    await plugin.onTurnFinish?.(
-      turnResult("done", [
-        { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
-      ]),
-      turnFinishContext(),
-    );
+    await runtime.complete("turn-1");
+    await runtime.complete("turn-1");
 
     expect(onReply).toHaveBeenCalledOnce();
   });
 
-  it("notifies Will once when a done multi-segment reply receives one acknowledgement", async () => {
+  it("does not notify Will for an aborted turn without acknowledgement", async () => {
     const onReply = vi.fn(async () => undefined);
+    state.stream = streamFrom([
+      { type: "turn.aborted", id: "event-1", timestamp: 1, turnId: "turn-1" },
+    ]);
     const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
-    const plugin = coreWillReplyPlugin();
 
-    await beginReply(runtime);
-    await plugin.onTurnFinish?.(
-      turnResult("done", [
-        { id: "assistant-1", timestamp: 1, role: "assistant", content: "first<sep/>second" },
-      ]),
-      turnFinishContext(),
-    );
-    await runtime.completeDelivery("turn-1");
-
-    expect(onReply).toHaveBeenCalledOnce();
-  });
-
-  it("treats repeated delivery acknowledgements as one logical reply completion", async () => {
-    const onReply = vi.fn(async () => undefined);
-    const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
-    const plugin = coreWillReplyPlugin();
-
-    await beginReply(runtime);
-    await plugin.onTurnFinish?.(
-      turnResult("done", [
-        { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
-      ]),
-      turnFinishContext(),
-    );
-    await runtime.completeDelivery("turn-1");
-    await runtime.completeDelivery("turn-1");
-
-    expect(onReply).toHaveBeenCalledOnce();
-  });
-
-  it("does not notify Will for empty, failed, aborted, or assistant-free turn results", async () => {
-    const onReply = vi.fn(async () => undefined);
-    createRuntime({ decide: async () => "trigger", onReply });
-    const plugin = coreWillReplyPlugin();
-    const emptyAssistant = {
-      id: "assistant-empty",
-      timestamp: 1,
-      role: "assistant",
-      content: "   ",
-    } satisfies TurnResult["messages"][number];
-
-    await plugin.onTurnFinish?.(turnResult("done", [emptyAssistant]), turnFinishContext());
-    await plugin.onTurnFinish?.(
-      turnResult("done", [{ ...emptyAssistant, content: [{ type: "text", text: " " }] }]),
-      turnFinishContext(),
-    );
-    await plugin.onTurnFinish?.(
-      turnResult("failed", [
-        { id: "assistant-failed", timestamp: 2, role: "assistant", content: "reply" },
-      ]),
-      turnFinishContext(),
-    );
-    await plugin.onTurnFinish?.(
-      turnResult("aborted", [
-        { id: "assistant-aborted", timestamp: 3, role: "assistant", content: "reply" },
-      ]),
-      turnFinishContext(),
-    );
-    await plugin.onTurnFinish?.(
-      turnResult("done", [{ id: "tool-1", timestamp: 1, role: "tool", content: [] }]),
-      turnFinishContext(),
-    );
+    const result = await runtime.handle(record());
+    if (result.kind !== "run") throw new Error("Expected a running reply");
+    await expect(Array.fromAsync(result.output)).rejects.toThrow("Agent turn aborted");
 
     expect(onReply).not.toHaveBeenCalled();
   });
 
-  it("discards a failed turn before a later delivery acknowledgement", async () => {
+  it("keeps a successful acknowledgement after a later aborted turn", async () => {
     const onReply = vi.fn(async () => undefined);
+    const continueAbort = deferred();
+    state.stream = (async function* () {
+      yield {
+        type: "message.appended",
+        id: "event-1",
+        timestamp: 1,
+        turnId: "turn-1",
+        message: { id: "assistant-1", role: "assistant", content: "reply" },
+      };
+      await continueAbort.promise;
+      yield { type: "turn.aborted", id: "event-2", timestamp: 2, turnId: "turn-1" };
+    })();
     const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
-    const plugin = coreWillReplyPlugin();
 
-    await beginReply(runtime);
-    await plugin.onTurnFinish?.(
-      turnResult("failed", [
-        { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
-      ]),
-      turnFinishContext(),
-    );
-    await runtime.completeDelivery("turn-1");
+    const result = await runtime.handle(record());
+    if (result.kind !== "run") throw new Error("Expected a running reply");
+    const iterator = result.output[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({ value: expect.any(Object) });
+    await runtime.complete("turn-1");
+    continueAbort.resolve();
+    await expect(iterator.next()).rejects.toThrow("Agent turn aborted");
 
-    expect(onReply).not.toHaveBeenCalled();
+    expect(onReply).toHaveBeenCalledOnce();
   });
 
-  it("accepts a done renderable reply when Will has no reply callback", async () => {
+  it("releases acknowledgement state with the delivery", async () => {
+    const onReply = vi.fn(async () => undefined);
+    const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
+
+    await beginReply(runtime);
+    await runtime.complete("turn-1");
+    runtime.releaseDelivery("turn-1");
+    await runtime.complete("turn-1");
+
+    expect(onReply).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts acknowledgement when Will has no reply callback", async () => {
     const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
-    const plugin = coreWillReplyPlugin();
-
     await beginReply(runtime);
-    await expect(
-      plugin.onTurnFinish?.(
-        turnResult("done", [
-          { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
-        ]),
-        turnFinishContext(),
-      ),
-    ).resolves.toBeUndefined();
-    await expect(runtime.completeDelivery("turn-1")).resolves.toBeUndefined();
+    await expect(runtime.complete("turn-1")).resolves.toBeUndefined();
 
     expect(logger.warn).not.toHaveBeenCalledWith(
       expect.objectContaining({ event: "will_reply_failed" }),
@@ -783,14 +675,9 @@ describe("ChannelRuntime", () => {
       throw new Error("reply charge failed");
     });
     const { logger, runtime } = createRuntime({ decide: async () => "trigger", onReply });
-    const plugin = coreWillReplyPlugin();
-    const result = turnResult("done", [
-      { id: "assistant-1", timestamp: 1, role: "assistant", content: "reply" },
-    ]);
 
     await beginReply(runtime);
-    await expect(plugin.onTurnFinish?.(result, turnFinishContext())).resolves.toBeUndefined();
-    await expect(runtime.completeDelivery("turn-1")).resolves.toBeUndefined();
+    await expect(runtime.complete("turn-1")).resolves.toBeUndefined();
 
     expect(onReply).toHaveBeenCalledOnce();
     expect(logger.warn).toHaveBeenCalledWith(
