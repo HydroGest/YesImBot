@@ -1,16 +1,56 @@
 import type { EmbeddingModel, LanguageModel } from "ai";
-import { Context } from "koishi";
+import { Context, Schema } from "koishi";
 
-import type {
-  ChatModelConfig,
-  EmbeddingModelConfig,
-  ModelProvider,
-  ModelProviderCapabilities,
-} from "./types.js";
+export type ModelId = `${string}:${string}`;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+export const CHAT_MODEL_MODALITIES = ["text", "audio", "image", "video", "pdf"] as const;
+export type ChatModelModality = (typeof CHAT_MODEL_MODALITIES)[number];
+
+export interface ChatModelConfig {
+  id: string;
+  name?: string;
+  hidden?: boolean;
+  toolCall?: boolean;
+  reasoning?: boolean;
+  limit?: {
+    context: number;
+    output: number;
+  };
+  modalities?: {
+    input?: ChatModelModality[];
+    output?: ChatModelModality[];
+  };
+  variants?: Record<string, unknown>;
+}
+
+export interface EmbeddingModelConfig {
+  id: string;
+  name?: string;
+  hidden?: boolean;
+  dimension?: number;
+}
+
+export interface ChatModelRef {
+  fullId: ModelId;
+  providerId: string;
+  modelId: string;
+  entry: ChatModelConfig;
+  model: LanguageModel;
+}
+
+export function isChatModelModality(value: string): value is ChatModelModality {
+  return CHAT_MODEL_MODALITIES.some((modality) => modality === value);
+}
+
+export function parseModelId(fullId: string): { provider: string; model: string } | null {
+  const idx = fullId.indexOf(":");
+  if (idx <= 0) return null;
+  return { provider: fullId.slice(0, idx), model: fullId.slice(idx + 1) };
+}
+
+export function formatModelId(providerId: string, modelId: string): ModelId {
+  return `${providerId}:${modelId}`;
+}
 
 export interface BaseProviderConfig {
   id: string;
@@ -20,34 +60,15 @@ export interface BaseProviderConfig {
   embeddingModels?: EmbeddingModelConfig[];
 }
 
-export interface ProviderPluginOptions<TConfig extends BaseProviderConfig, TClient> {
-  /** Koishi plugin name, e.g. "yesimbot-provider-openai" */
-  name: string;
-  /** Static capability flags */
-  capabilities: ModelProviderCapabilities;
-  /** Koishi Config schema — attached to the plugin object so Koishi can validate config */
-  Config: unknown;
-  /** Create the SDK client from config */
-  createClient: (config: { apiKey: string; baseURL?: string }) => TClient;
-  /** Adapt SDK client + modelId → LanguageModel */
-  chat: (client: TClient, modelId: string, config: TConfig) => LanguageModel;
-  /** Adapt SDK client + modelId → EmbeddingModel (omit when capabilities.embedding is false) */
-  embedding?: (client: TClient, modelId: string, config: TConfig) => EmbeddingModel;
-}
-
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-/**
- * Create a Koishi plugin that registers a ModelProvider.
- *
- * Eliminates the ~60-line boilerplate shared by every provider: client
- * construction, ModelProvider object, register/unregister lifecycle, and
- * the "no embedding" throw pattern.
- */
 export function createProviderPlugin<TConfig extends BaseProviderConfig, TClient>(
-  options: ProviderPluginOptions<TConfig, TClient>,
+  options: {
+    name: string;
+    capabilities: { chat: boolean; embedding: boolean };
+    Config: unknown;
+    createClient: (config: { apiKey: string; baseURL?: string }) => TClient;
+    chat: (client: TClient, modelId: string, config: TConfig) => LanguageModel;
+    embedding?: (client: TClient, modelId: string, config: TConfig) => EmbeddingModel;
+  },
 ): {
   name: string;
   reusable: boolean;
@@ -68,18 +89,18 @@ export function createProviderPlugin<TConfig extends BaseProviderConfig, TClient
         baseURL: config.baseURL,
       });
 
-      const provider: ModelProvider = {
+      const provider = {
         id: config.id,
         capabilities,
         chatModels: () => (capabilities.chat ? config.chatModels : []),
         embeddingModels: () => (capabilities.embedding ? (config.embeddingModels ?? []) : []),
         chat: capabilities.chat
-          ? (modelId) => chat(client, modelId, config)
+          ? (modelId: string) => chat(client, modelId, config)
           : () => {
               throw new Error(`Provider "${config.id}" does not support chat`);
             },
         embedding: capabilities.embedding
-          ? (modelId) => embedding!(client, modelId, config)
+          ? (modelId: string) => embedding!(client, modelId, config)
           : () => {
               throw new Error(`Provider "${config.id}" does not support embedding`);
             },
@@ -89,4 +110,32 @@ export function createProviderPlugin<TConfig extends BaseProviderConfig, TClient
       ctx.on("dispose", disposeProvider);
     },
   };
+}
+
+export function createChatModelsSchema(defaults: ChatModelConfig[]): Schema<ChatModelConfig[]> {
+  const schema = Schema.array(
+    Schema.object({
+      id: Schema.string().required().description("模型 ID"),
+      toolCall: Schema.boolean().default(true).description("支持工具调用"),
+      reasoning: Schema.boolean().default(false).description("支持推理"),
+    }),
+  )
+    .role("table")
+    .default(defaults as never)
+    .description("可用聊天模型列表");
+  return schema as Schema<ChatModelConfig[]>;
+}
+
+export function createEmbeddingModelsSchema(
+  defaults: EmbeddingModelConfig[],
+): Schema<EmbeddingModelConfig[]> {
+  const schema = Schema.array(
+    Schema.object({
+      id: Schema.string().required().description("模型 ID"),
+    }),
+  )
+    .role("table")
+    .default(defaults)
+    .description("可用嵌入模型列表");
+  return schema as Schema<EmbeddingModelConfig[]>;
 }

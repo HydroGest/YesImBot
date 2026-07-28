@@ -7,9 +7,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import * as modelConfig from "../src/model/config.js";
-import { ModelService } from "../src/model/service.js";
-import type { ChatModelModality, ModelProvider } from "../src/model/types.js";
+import * as model from "../src/model/index.js";
+import { ModelService } from "../src/model/index.js";
+
+type ModelProvider = Parameters<ModelService["register"]>[0];
 
 const temporaryDirectories: string[] = [];
 
@@ -40,7 +41,7 @@ function createProviderWithImage(): ModelProvider {
       {
         id: "gpt-4o",
         name: "GPT-4o",
-        modalities: { input: ["image" as ChatModelModality] },
+        modalities: { input: ["image" as const] },
       },
     ],
     embeddingModels: () => [{ id: "text-embedding-3-small", dimension: 1536 }],
@@ -102,35 +103,30 @@ describe("models.json modalities", () => {
   });
 
   it("loads independent input and output modality arrays when their values are supported", async () => {
-    const path = await createModelsPath({
-      chat: {
-        "openai:gpt-4o": {
-          modalities: { input: ["image"], output: ["text"] },
-        },
-      },
+    const service = await createModelService({
+      chat: { "openai:gpt-4o": { modalities: { input: ["image"], output: ["text"] } } },
     });
 
-    const result = await modelConfig.loadModelsConfig(path);
-
-    expect(result.config.chat["openai:gpt-4o"]?.modalities).toEqual({
+    expect(service.resolveChatModel("openai:gpt-4o").entry.modalities).toEqual({
       input: ["image"],
       output: ["text"],
     });
   });
 
   it("ignores invalid modality arrays without discarding valid independent values", async () => {
-    const path = await createModelsPath({
-      chat: {
-        inputOnly: { modalities: { input: ["image"], output: ["unsupported"] } },
-        outputOnly: { modalities: { input: "image", output: ["text"] } },
-      },
+    const inputService = await createModelService({
+      chat: { "openai:gpt-4o": { modalities: { input: ["image"], output: ["unsupported"] } } },
+    });
+    const outputService = await createModelService({
+      chat: { "openai:gpt-4o": { modalities: { input: "image", output: ["text"] } } },
     });
 
-    const result = await modelConfig.loadModelsConfig(path);
-
-    expect(result.config.chat.inputOnly?.modalities).toEqual({ input: ["image"] });
-    expect(result.config.chat.outputOnly?.modalities).toEqual({ output: ["text"] });
-    expect(result.warnings).toHaveLength(2);
+    expect(inputService.resolveChatModel("openai:gpt-4o").entry.modalities).toEqual({
+      input: ["image"],
+    });
+    expect(outputService.resolveChatModel("openai:gpt-4o").entry.modalities).toEqual({
+      output: ["text"],
+    });
   });
 
   it("adds an input modality through an alias, persists unrelated configuration, and refreshes resolution", async () => {
@@ -211,25 +207,13 @@ describe("models.json modalities", () => {
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual(models);
   });
 
-  it("exports an atomic models configuration writer", () => {
-    expect(modelConfig).toHaveProperty("writeModelsConfig");
-  });
-
-  it("leaves the target file and config untouched when atomic rename fails", async () => {
-    const path = await createModelsPath({ aliases: { vision: "openai:gpt-4o" } });
-    const config = (await modelConfig.loadModelsConfig(path)).config;
-    const directory = await mkdtemp(join(tmpdir(), "yesimbot-model-directory-"));
-    temporaryDirectories.push(directory);
-
-    await expect(modelConfig.writeModelsConfig(directory, config)).rejects.toMatchObject({
-      code: "EISDIR",
-    });
-    expect(config).toEqual({
-      defaults: {},
-      aliases: { vision: "openai:gpt-4o" },
-      chat: {},
-      embedding: {},
-    });
+  it("exports only the established model runtime values", () => {
+    expect(Object.keys(model).sort()).toEqual([
+      "ModelService",
+      "createChatModelsSchema",
+      "createEmbeddingModelsSchema",
+      "createProviderPlugin",
+    ]);
   });
 
   it("preserves chat model limit through an add-input-modality write cycle", async () => {

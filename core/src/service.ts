@@ -4,7 +4,7 @@ import { channelIdentity, type ChannelScope } from "./channel/index.js";
 import { resolveMultimediaImagePolicy, resolveReplyPacingConfig, type Config } from "./config.js";
 import { Gateway, type SessionResolver } from "./gateway/index.js";
 import { AssetStore } from "./media/index.js";
-import type { ModelService } from "./model/service.js";
+import type { ModelService } from "./model/index.js";
 import { resolveBasePath } from "./path.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
 import { ChannelStorage } from "./storage/index.js";
