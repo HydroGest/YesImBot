@@ -151,6 +151,19 @@ describe("ChannelRuntime", () => {
     state.selectInputFiles.mockResolvedValue(new Map());
   });
 
+  it("continues channel FIFO work after a rejected operation", async () => {
+    const decide = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("operation failed"))
+      .mockResolvedValueOnce("wait" as const);
+    const { runtime } = createRuntime({ decide });
+
+    await expect(runtime.handle(record())).rejects.toThrow("operation failed");
+    await expect(runtime.handle(record({ messageId: "message-2" }))).resolves.toMatchObject({
+      kind: "wait",
+    });
+  });
+
   it("initializes its Agent once", async () => {
     const { runtime } = createRuntime({ decide: async () => "wait" as const });
 
