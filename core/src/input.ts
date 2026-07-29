@@ -19,7 +19,6 @@ export interface EventMap {
 }
 
 export type MessageRecord = Readonly<{
-  readonly schemaVersion: 3;
   readonly platform: string;
   readonly selfId: string;
   readonly channel: Universal.Channel;
@@ -30,7 +29,6 @@ export type MessageRecord = Readonly<{
 }>;
 
 export type EventBase = Readonly<{
-  readonly schemaVersion: 3;
   readonly platform: string;
   readonly selfId: string;
   readonly channel: Universal.Channel;

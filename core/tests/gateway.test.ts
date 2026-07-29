@@ -12,7 +12,7 @@ import {
   type MessageRecord,
   type ResolvedEventDraft,
   type ResolvedMessageDraft,
-} from "../src/event/index.js";
+} from "../src/input.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "../src/gateway/allowlist.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
 import type { UnifiedImagePolicy } from "../src/media/index.js";
@@ -249,7 +249,6 @@ describe("Gateway", () => {
 
     expect(runtime.route).toHaveBeenCalledWith(
       expect.objectContaining({
-        schemaVersion: 3,
         messageId: "message-1",
         elements: [],
         timestamp: expect.any(Number),
@@ -452,7 +451,7 @@ describe("Gateway", () => {
 
     expect(resolve).toHaveBeenCalledOnce();
     expect(runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({ schemaVersion: 3, platform: "test", selfId: "bot-1" }),
+      expect.objectContaining({ platform: "test", selfId: "bot-1" }),
     );
   });
 
@@ -538,7 +537,6 @@ describe("Gateway", () => {
 
     const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
     expect(routed).toMatchObject({
-      schemaVersion: 3,
       messageId: "message-1",
       elements: expect.any(Array),
     });
@@ -603,7 +601,6 @@ describe("Gateway", () => {
 
     const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
     expect(routed).toMatchObject({
-      schemaVersion: 3,
       platform: "test",
       selfId: "bot-1",
       timestamp: 1,
@@ -638,7 +635,6 @@ describe("Gateway", () => {
       "elements",
       "messageId",
       "platform",
-      "schemaVersion",
       "selfId",
       "user",
     ]);
@@ -672,7 +668,6 @@ describe("Gateway", () => {
 
     const routed = runtime.route.mock.calls[0]?.[0];
     expect(routed).toMatchObject({
-      schemaVersion: 3,
       platform: "test",
       selfId: "bot-1",
       channel: { id: "room-1" },
@@ -689,7 +684,6 @@ describe("Gateway", () => {
       "channel",
       "eventType",
       "platform",
-      "schemaVersion",
       "selfId",
       "targetId",
       "text",
@@ -787,7 +781,7 @@ describe("Gateway", () => {
     await gateway.handle(input as never);
 
     const routed = runtime.route.mock.calls[0]?.[0];
-    expect(routed).toMatchObject({ schemaVersion: 3 });
+    expect(routed).not.toHaveProperty("schemaVersion");
     expect(containsReference(routed, input)).toBe(false);
   });
 });

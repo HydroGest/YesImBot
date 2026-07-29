@@ -1,5 +1,9 @@
 import type { AgentMessage } from "@yesimbot/agent-runtime";
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
+
+vi.mock("koishi", async () => import("@koishijs/core"));
+
+import { h, Universal } from "koishi";
 
 import {
   createEvent,
@@ -17,7 +21,7 @@ import {
   type InputRecord,
   type Message,
   type MessageRecord,
-} from "../src/event/index.js";
+} from "../src/input.js";
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
@@ -30,13 +34,12 @@ declare module "koishi-plugin-yesimbot" {
 
 function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   return {
-    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
-    channel: { id: "channel-1" },
+    channel: { id: "channel-1", type: Universal.Channel.Type.TEXT },
     user: { id: "user-1", name: "Alice" },
     messageId: "m1",
-    elements: [{ type: "text", attrs: { content: "hello" }, children: [] }],
+    elements: [h.text("hello")],
     timestamp: overrides.timestamp ?? 1234,
   };
 }
@@ -45,11 +48,10 @@ function deliveryFailureRecord(
   overrides: { timestamp?: number } = {},
 ): EventRecord<"delivery.failed"> {
   return {
-    schemaVersion: 3,
     eventType: "delivery.failed",
     platform: "test",
     selfId: "bot-1",
-    channel: { id: "channel-1" },
+    channel: { id: "channel-1", type: Universal.Channel.Type.TEXT },
     delivery: {
       turnId: "turn-1",
       messageId: "assistant-1",
@@ -69,9 +71,10 @@ describe("Event", () => {
       role: "custom",
       type: "yesimbot.message",
       timestamp: 1234,
-      data: { schemaVersion: 3, messageId: "m1" },
+      data: { messageId: "m1" },
     });
     expect("timestamp" in message.data).toBe(false);
+    expect(message.data).not.toHaveProperty("schemaVersion");
   });
 
   it("creates eventType-discriminated yesimbot.event", () => {
@@ -79,9 +82,10 @@ describe("Event", () => {
     expect(event).toMatchObject({
       type: "yesimbot.event",
       timestamp: 5678,
-      data: { schemaVersion: 3, eventType: "delivery.failed" },
+      data: { eventType: "delivery.failed" },
     });
     expect("timestamp" in event.data).toBe(false);
+    expect(event.data).not.toHaveProperty("schemaVersion");
   });
 
   it("createInput dispatches to createMessage or createEvent", () => {
@@ -198,7 +202,6 @@ describe("Event", () => {
 
   it("constructs a declaration-merged event from the closed host base", () => {
     const event = createEvent({
-      schemaVersion: 3,
       eventType: "test.variant",
       platform: "test",
       selfId: "bot-1",
@@ -209,7 +212,6 @@ describe("Event", () => {
     });
 
     expect(event.data).toMatchObject({
-      schemaVersion: 3,
       eventType: "test.variant",
       platform: "test",
       selfId: "bot-1",
@@ -221,7 +223,6 @@ describe("Event", () => {
       "channel",
       "eventType",
       "platform",
-      "schemaVersion",
       "selfId",
       "test",
       "text",

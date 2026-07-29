@@ -7,7 +7,7 @@ Define closed host-owned base shapes for persisted ordinary messages and non-mes
 ## Requirements
 
 ### Requirement: Closed Host-Owned Ingress Bases
-Core MUST define host-owned closed base shapes for persisted ordinary messages and persisted non-message events. These base shapes MUST be assembled by Core rather than inherited from `Universal.Event`, and they MUST admit only fields explicitly declared by the host contract.
+Core MUST define versionless host-owned closed base shapes for persisted ordinary messages and persisted non-message events. A message base contains `platform`, `selfId`, `channel`, `user`, `messageId`, `elements`, and `timestamp`; an event base contains `platform`, `selfId`, `channel`, `timestamp`, `eventType`, and `text`. These base shapes MUST be assembled by Core rather than inherited from `Universal.Event`, and they MUST admit only fields explicitly declared by the host contract.
 
 #### Scenario: Gateway assembles a message record
 - **WHEN** Core accepts an ordinary message Session or resolver draft

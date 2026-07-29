@@ -17,8 +17,8 @@ import { z } from "zod";
 import { channelIdentity, type ChannelScope } from "../channel/index.js";
 import type { Config } from "../config.js";
 import { formatInput } from "../event/formatter.js";
-import type { EventRecord, InputRecord } from "../event/index.js";
-import { createInput, isInput, type Input } from "../event/index.js";
+import type { EventRecord, InputRecord } from "../input.js";
+import { createInput, isInput, type Input } from "../input.js";
 import type { AssetStore } from "../media/index.js";
 import {
   selectInputFiles,

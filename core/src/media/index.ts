@@ -8,7 +8,7 @@ import { h, type Element } from "koishi";
 
 import type { ChannelScope } from "../channel/index.js";
 import { normalizeElements, unavailableImage } from "../event/element.js";
-import { isInput, isMessage, type Input } from "../event/index.js";
+import { isInput, isMessage, type Input } from "../input.js";
 import type { ChannelStorage } from "../storage/index.js";
 
 const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;

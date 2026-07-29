@@ -1,6 +1,6 @@
 import type { Session } from "koishi";
 
-import type { ResolvedEventDraft } from "../../event/index.js";
+import type { ResolvedEventDraft } from "../../input.js";
 
 export interface MessageReaction {
   id: string;
@@ -14,7 +14,7 @@ export interface MessageReactionsUpdated {
   reactions: MessageReaction[];
 }
 
-declare module "../../event/index.js" {
+declare module "../../input.js" {
   interface EventMap {
     "notice.poke": {
       targetId: string;

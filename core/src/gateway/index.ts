@@ -16,7 +16,7 @@ import type {
   MessageRecord,
   ResolvedEventDraft,
   ResolvedMessageDraft,
-} from "../event/index.js";
+} from "../input.js";
 import { ImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
 import { nextSegmentDelayMs } from "../reply/pacing.js";
 import { assertAssignee, type RuntimeManager } from "../runtime/index.js";
@@ -213,7 +213,6 @@ export class Gateway {
   ): Promise<void> {
     const error = normalizeDeliveryError(cause);
     const failure: EventRecord<"delivery.failed"> = {
-      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: record.platform,
       selfId: record.selfId,
@@ -301,7 +300,6 @@ function resolveFallbackMessage(session: Session, scope: ChannelScope): MessageR
     numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
 
   return {
-    schemaVersion: 3,
     platform: scope.platform,
     selfId: scope.selfId,
     channel: normalizeChannel(session, scope),
@@ -327,7 +325,6 @@ function normalizeDraft(
   if (draft.kind === "message") {
     const elements = sealElements(draft.elements);
     return {
-      schemaVersion: 3,
       platform: scope.platform,
       selfId: scope.selfId,
       timestamp,
@@ -339,7 +336,6 @@ function normalizeDraft(
   }
   const { kind: _kind, eventType, text, ...variant } = draft;
   return {
-    schemaVersion: 3,
     platform: scope.platform,
     selfId: scope.selfId,
     timestamp,

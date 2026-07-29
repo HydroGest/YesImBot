@@ -1,7 +1,7 @@
 import type { Element, Universal } from "koishi";
 
 import { renderElements } from "../event/element.js";
-import { isMessage, type Input, type Message } from "../event/index.js";
+import { isMessage, type Input, type Message } from "../input.js";
 import type { WillEngine } from "./index.js";
 
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;

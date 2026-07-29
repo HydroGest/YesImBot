@@ -24,7 +24,7 @@ Gateway MUST call the original `Session.send()` for every ChannelRuntime output;
 - **AND** it MUST NOT be flattened to its source text
 
 ### Requirement: Durable Passive Delivery Failure
-A rejected passive send MUST create a same-channel `yesimbot.event` with `schemaVersion: 1`, `eventType: "delivery.failed"`, frozen `text`, turn ID, assistant message ID, and the failed segment's position and total segment count. DefaultWill MUST not trigger a new turn for it.
+A rejected passive send MUST create a same-channel `yesimbot.event` with `eventType: "delivery.failed"`, frozen `text`, turn ID, assistant message ID, and the failed segment's position and total segment count. DefaultWill MUST not trigger a new turn for it.
 
 #### Scenario: Passive output fails
 - **WHEN** `Session.send()` rejects

@@ -100,7 +100,7 @@ Global stop MUST stop Gateway admission, stop RuntimeManager admission, interrup
 - **AND** it MUST wait for the owning Gateway handler to finish
 
 ### Requirement: Runtime Error Isolation
-Core MUST isolate failures so one channel's error cannot stop another channel, and MUST validate untrusted data only at its two real trust boundaries: Session ingress and JSONL read-back. Core MUST NOT re-validate values it constructed itself in the same process, and MUST NOT traverse a persisted record to assert an architectural invariant at runtime.
+Core MUST isolate failures so one channel's error cannot stop another channel. Core MUST NOT re-check host fields on records it constructed at Session ingress, and JSONL read-back MUST recover independently from a line with invalid JSON syntax.
 
 #### Scenario: Record is routed internally
 - **WHEN** Gateway passes an assembled record to RuntimeManager
@@ -108,8 +108,8 @@ Core MUST isolate failures so one channel's error cannot stop another channel, a
 
 #### Scenario: Persisted history is read from disk
 - **WHEN** Core reads a stored input from JSONL
-- **THEN** it MUST validate the parsed value once before use
-- **AND** an invalid stored record MUST fail loudly rather than be silently reinterpreted
+- **THEN** it MUST skip a line whose JSON syntax cannot be parsed and report a warning
+- **AND** it MUST return every successfully parsed line without Core semantic schema validation
 
 #### Scenario: One channel runtime throws
 - **WHEN** a channel runtime raises during input handling

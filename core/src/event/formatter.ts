@@ -2,8 +2,8 @@ import type { UserModelMessage } from "@ai-sdk/provider-utils";
 import type { FilePart } from "ai";
 
 import { renderElements } from "./element.js";
-import type { Event, Input, Message } from "./index.js";
-import { isMessage } from "./index.js";
+import type { Event, Input, Message } from "../input.js";
+import { isMessage } from "../input.js";
 
 export interface FormatInputOptions {
   readonly includeMessageId: boolean;

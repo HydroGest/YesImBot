@@ -14,7 +14,7 @@ import {
   DEFAULT_MULTIMEDIA_IMAGE_POLICY,
   type Config as CoreConfig,
 } from "../src/config.js";
-import type { MessageRecord } from "../src/event/index.js";
+import type { MessageRecord } from "../src/input.js";
 import {
   ChannelRuntime,
   ChannelRuntimeDrainingError,
@@ -27,7 +27,6 @@ import { RoutingWillEngine, WillingnessWillEngine } from "../src/will/index.js";
 
 function record(channelId: string, overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
-    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,

@@ -19,7 +19,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { h, Universal } from "koishi";
 
 import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
-import { createEvent, createMessage } from "../src/event/index.js";
+import { createEvent, createMessage } from "../src/input.js";
 import { detectImageMime } from "../src/media/index.js";
 import { parseReply } from "../src/reply/parse.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
@@ -268,7 +268,6 @@ describe("ChannelStorage", () => {
     const jsonl = createJsonlStorage(join(sessions, "messages.jsonl"));
     const rawReply = "<inner_thought>private reasoning</inner_thought>first<sep/>second";
     const message = createMessage({
-      schemaVersion: 3,
       platform: shared.platform,
       selfId: shared.selfId,
       channel: { id: shared.channelId, type: Universal.Channel.Type.TEXT },
@@ -278,7 +277,6 @@ describe("ChannelStorage", () => {
       timestamp: 1,
     });
     const event = createEvent({
-      schemaVersion: 3,
       platform: shared.platform,
       selfId: shared.selfId,
       channel: { id: shared.channelId, type: Universal.Channel.Type.TEXT },

@@ -7,7 +7,7 @@ Define persisted message and non-message input contracts, their Satori-shaped re
 ## Requirements
 
 ### Requirement: Split Persisted Input Contract
-Core MUST persist ordinary channel messages as `yesimbot.message` and non-message channel events as `yesimbot.event`. Both payloads MUST require the current schema version. Messages MUST contain only the host-owned message contract fields, including `elements`, `messageId`, and frozen `text`. Events MUST contain a closed host-owned event base with `eventType` and frozen `text`, plus the flat declaration-merged variant fields for that `eventType`.
+Core MUST persist ordinary channel messages as `yesimbot.message` and non-message channel events as `yesimbot.event`. Messages MUST contain only the versionless host-owned message contract fields, including `elements` and `messageId`. Events MUST contain a versionless closed host-owned event base with `eventType` and frozen `text`, plus the flat declaration-merged variant fields for that `eventType`.
 
 #### Scenario: Input custom type is selected
 - **WHEN** Core commits an ordinary message or a non-message event
@@ -32,16 +32,9 @@ Core MUST keep using current Satori-shaped resources where they are explicitly p
 - **THEN** it MUST preserve the closed host event base and the declaration-merged variant fields for that event type
 - **AND** it MUST NOT persist unrelated `Universal.Event` resources unless the event contract explicitly includes them
 
-### Requirement: Unsupported Version Rejection
-Core MUST recognize only current `schemaVersion: 1` Message and Event payloads and MUST leave unsupported or missing-version JSONL entries untouched.
-
-#### Scenario: Old payload is read
-- **WHEN** history contains an unsupported or legacy custom payload
-- **THEN** Core MUST not project it, feed it to Will, convert it, or rewrite its JSONL line
-
 ### Requirement: Committed Input Observation
-Core MUST emit `yesimbot/event` after durable append and before Will evaluation for either current input variant.
+Core MUST emit `yesimbot/event` after durable append and before Will evaluation for either input variant.
 
 #### Scenario: Current input is observed
-- **WHEN** a current-format Message or Event is appended
+- **WHEN** a Message or Event is appended
 - **THEN** observers MUST receive the committed input and a throwing observer MUST not undo persistence or prevent Will evaluation

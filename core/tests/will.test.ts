@@ -12,7 +12,7 @@ import {
   type Input,
   type Message,
   type MessageRecord,
-} from "../src/event/index.js";
+} from "../src/input.js";
 import {
   RoutingWillEngine,
   createWillEngine,
@@ -42,7 +42,6 @@ function messageInput(options: {
   readonly elements?: Universal.Message["elements"];
 }): Message {
   return createInput({
-    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
@@ -73,7 +72,6 @@ function ordinaryGroupMessageInput(): Message {
 
 function quotedGroupMessageInput(): Message {
   return createInput({
-    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 123,
@@ -86,7 +84,6 @@ function quotedGroupMessageInput(): Message {
 
 function nonMessageEvent(): Event<"test.notice"> {
   return createInput({
-    schemaVersion: 3,
     eventType: "test.notice",
     platform: "test",
     selfId: "bot-1",
@@ -112,7 +109,6 @@ const willingnessConfig: WillingnessConfig = {
 
 function deliveryFailedEvent(): Event<"delivery.failed"> {
   return createInput({
-    schemaVersion: 3,
     eventType: "delivery.failed",
     platform: "test",
     selfId: "bot-1",

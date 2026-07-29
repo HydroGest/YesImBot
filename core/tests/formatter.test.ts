@@ -14,7 +14,7 @@ import {
   type Event,
   type EventRecord,
   type MessageRecord,
-} from "../src/event/index.js";
+} from "../src/input.js";
 import { selectInputFiles, type MediaSelectionOptions } from "../src/media/index.js";
 
 declare module "koishi-plugin-yesimbot" {
@@ -36,7 +36,6 @@ const FIVE_MIB = 5 * 1024 * 1024;
 
 function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   return {
-    schemaVersion: 3,
     platform: scope.platform,
     selfId: scope.selfId,
     channel: { id: scope.channelId },
@@ -59,7 +58,6 @@ function messageRecordWithText(
 
 function deliveryFailureRecord(): EventRecord<"delivery.failed"> {
   return {
-    schemaVersion: 3,
     eventType: "delivery.failed",
     platform: scope.platform,
     selfId: scope.selfId,
@@ -78,7 +76,6 @@ function deliveryFailureRecord(): EventRecord<"delivery.failed"> {
 
 function formatterVariantRecord(): EventRecord<"formatter.variant"> {
   return {
-    schemaVersion: 3,
     eventType: "formatter.variant",
     platform: scope.platform,
     selfId: scope.selfId,

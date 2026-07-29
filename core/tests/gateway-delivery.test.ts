@@ -11,7 +11,7 @@ import { h } from "koishi";
 
 import type { PacingConfig } from "../src/config.js";
 import { formatInput } from "../src/event/formatter.js";
-import { isInput, type InputRecord, type MessageRecord } from "../src/event/index.js";
+import { isInput, type InputRecord, type MessageRecord } from "../src/input.js";
 import { Gateway } from "../src/gateway/index.js";
 import { RuntimeManager } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
@@ -35,7 +35,6 @@ function session(send = vi.fn(async () => ["receipt-1"])) {
 
 function record(): MessageRecord {
   return {
-    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
@@ -145,7 +144,6 @@ describe("Gateway passive delivery", () => {
     const first = createIntegratedGateway(basePath);
     await first.gateway.handle(session() as never);
     await first.manager.route({
-      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -286,7 +284,6 @@ describe("Gateway passive delivery", () => {
     expect(route.mock.calls[0]?.[0]).not.toHaveProperty("send");
     expect(route.mock.calls[0]?.[0]).not.toBe(inbound);
     expect(binding.fail.mock.calls[0]?.[0]).toMatchObject({
-      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",

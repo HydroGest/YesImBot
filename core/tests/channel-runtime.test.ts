@@ -67,7 +67,7 @@ import {
   type EventRecord,
   type Input,
   type MessageRecord,
-} from "../src/event/index.js";
+} from "../src/input.js";
 import { type MediaSelectionOptions, UnsupportedImageMimeError } from "../src/media/index.js";
 import { ChannelRuntime, ChannelRuntimeDrainingError } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
@@ -75,7 +75,6 @@ import type { WillEngine } from "../src/will/index.js";
 
 function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
-    schemaVersion: 3,
     platform: "test",
     selfId: "bot-1",
     timestamp: 1,
@@ -254,7 +253,6 @@ describe("ChannelRuntime", () => {
     ctx.on("yesimbot/event", () => order.push("event"));
     ctx.on("yesimbot/will", () => order.push("will-observation"));
     const notice: EventRecord<"delivery.failed"> = {
-      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -465,7 +463,6 @@ describe("ChannelRuntime", () => {
     const path = join(directory, "messages.jsonl");
     const message = createInput(record());
     const event = createInput({
-      schemaVersion: 3,
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -983,7 +980,6 @@ describe("ChannelRuntime", () => {
         error: { name: "Error", message: "offline" },
       },
       text: "Delivery failed",
-      schemaVersion: 3,
       eventType: "delivery.failed",
     };
 

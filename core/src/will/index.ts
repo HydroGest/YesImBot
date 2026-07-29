@@ -1,7 +1,7 @@
 import type { Awaitable, Universal } from "koishi";
 
 import type { Config } from "../config.js";
-import { isMessage, type Input } from "../event/index.js";
+import { isMessage, type Input } from "../input.js";
 import {
   createWillingnessConfig,
   isSelfMention,

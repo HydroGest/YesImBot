@@ -6,7 +6,7 @@ import { Universal } from "koishi";
 
 import { channelIdentity, type ChannelScope } from "../channel/index.js";
 import { resolveMultimediaImagePolicy, type Config } from "../config.js";
-import type { EventRecord, InputRecord } from "../event/index.js";
+import type { EventRecord, InputRecord } from "../input.js";
 import type { AssetStore } from "../media/index.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { createWillEngine } from "../will/index.js";
@@ -260,7 +260,10 @@ export class RuntimeManager {
       mediaPolicy: resolveMultimediaImagePolicy(this.opts.config.multimedia),
       agentPlugins: plugins,
       includeMessageId: factories.some((factory) => factory.requiresMessageId === true),
-      storage: createJsonlStorage(await this.opts.storage.ensure(scope, "sessions", "messages.jsonl")),
+      storage: createJsonlStorage(
+        await this.opts.storage.ensure(scope, "sessions", "messages.jsonl"),
+        (cause) => this.warn("storage.line_invalid", { scope, cause }),
+      ),
     };
     const runtime = new ChannelRuntime(options);
     try {
