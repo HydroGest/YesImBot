@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildQqMemosImportPlan, runQqMemosImportCli } from "../scripts/qq-memos-import.js";
 import { deriveMemosIdentity } from "../src/identity.js";

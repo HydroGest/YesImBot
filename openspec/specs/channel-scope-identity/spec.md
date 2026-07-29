@@ -25,3 +25,6 @@ Channel roots MUST use safe readable `shared-*` or `direct-*` directory names un
 
 ### Requirement: No public channel identity exists
 Core MUST NOT expose a ChannelKey, channel identity string, opaque channel identifier, or directory helper as a package API.
+
+### Requirement: Gateway retains Session scope fields
+Gateway MUST construct ChannelScope from a valid Session's platform, selfId, channelId, and directness without replacing the real selfId or isDirect values.

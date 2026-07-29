@@ -21,3 +21,9 @@ Core MUST ignore malformed, mismatched, and legacy channel entries during startu
 
 ### Requirement: Reset preserves non-Core plugin data
 `reset(scope)` MUST remove only `sessions/` and `assets/`, preserving `channel.json` and plugin-created children. Shared reset MUST not require assignee admission.
+
+### Requirement: Channel storage does not use a global registry file
+Core MUST NOT create or read `channels.json`. Legacy directory and Manifest data MUST remain in place without migration or fallback reads.
+
+### Requirement: Channel directory limits are enforced
+Core MUST reject a safe readable channel directory basename longer than 200 characters.
