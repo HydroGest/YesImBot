@@ -1,36 +1,7 @@
-import { createHash } from "node:crypto";
-
 import type { AgentPlugin, AgentToolExecuteContext } from "@yesimbot/agent-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MemosClientConfig } from "../src/types.js";
-
-const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
-
-function mockChannelIdentity(scope: {
-  platform: string;
-  selfId: string;
-  channelId: string;
-  isDirect: boolean;
-}): string {
-  const canonical = scope.isDirect
-    ? ["yesimbot.channel", 1, "direct", scope.platform, scope.selfId, scope.channelId]
-    : ["yesimbot.channel", 1, "shared", scope.platform, null, scope.channelId];
-  const digest = createHash("sha256").update(JSON.stringify(canonical), "utf8").digest();
-  let buffer = 0;
-  let bits = 0;
-  let output = "";
-  for (const byte of digest.subarray(0, 16)) {
-    buffer = (buffer << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      bits -= 5;
-      output += BASE32[(buffer >>> bits) & 31];
-    }
-  }
-  if (bits > 0) output += BASE32[(buffer << (5 - bits)) & 31];
-  return output;
-}
 
 const mocks = vi.hoisted(() => ({
   schema: {
@@ -110,7 +81,7 @@ function createContext() {
     vi.fn<() => ReturnType<typeof createLogger>>(() => scopedLogger),
     createLogger(),
   );
-  const factories: Array<(context: never) => AgentPlugin> = [];
+  const factories: Array<(context: any) => AgentPlugin> = [];
   const dispose = vi.fn<() => void>();
   const post = vi.fn<() => Promise<{ code: number; data: { task_id: string }; message: string }>>(
     async () => ({ code: 0, data: { task_id: "task-1" }, message: "ok" }),
@@ -120,21 +91,12 @@ function createContext() {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      registerAgentPlugin: vi.fn<(factory: (context: never) => AgentPlugin) => () => void>(
+      registerAgentPlugin: vi.fn<(factory: (scope: any, bot: any) => AgentPlugin) => () => void>(
         (factory) => {
-          factories.push(factory);
+          factories.push((context) => factory(context.channel ?? context, context.bot));
           return dispose;
         },
       ),
-      channelIdentity:
-        vi.fn<
-          (scope: {
-            platform: string;
-            selfId: string;
-            channelId: string;
-            isDirect: boolean;
-          }) => string
-        >(mockChannelIdentity),
     },
   };
 

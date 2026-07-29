@@ -39,14 +39,20 @@ function createContext() {
     vi.fn<() => ReturnType<typeof createLogger>>(() => scopedLogger),
     createLogger(),
   );
-  const factories: AgentPluginFactory[] = [];
+  const factories: Array<AgentPluginFactory & ((context: any) => ReturnType<AgentPluginFactory>)> = [];
   const dispose = vi.fn<() => void>();
   const ctx = {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
       registerAgentPlugin: vi.fn((factory: AgentPluginFactory) => {
-        factories.push(factory);
+        factories.push(
+          Object.assign(
+            (context: { channel?: unknown; bot?: unknown }) =>
+              factory((context.channel ?? context) as never, context.bot as never),
+            { requiresMessageId: factory.requiresMessageId },
+          ),
+        );
         return dispose;
       }),
     },

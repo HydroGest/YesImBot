@@ -243,8 +243,8 @@ function createOneBotTools(unsafeBot: unknown): AgentTool[] {
 }
 
 const oneBotPluginFactory = Object.assign(
-  async ({ channel, bot }: { readonly channel: ChannelScope; readonly bot: Bot }) => {
-    if (channel.platform !== "onebot") return null;
+  async (scope: ChannelScope, bot: Bot) => {
+    if (scope.platform !== "onebot") return null;
     return {
       name: "onebot-utils",
       tools: createOneBotTools(bot),

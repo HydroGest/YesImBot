@@ -65,14 +65,12 @@ export default class MemosClientPlugin {
       post: this.ctx.http.post.bind(this.ctx.http),
     });
 
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((channelContext) => {
+    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((channelScope) => {
       let latestAuthorId = "";
       let latestMessageId: string | undefined;
       const resolveIdentity = (turnId: string) => {
-        const channelScope = channelContext.channel;
         return deriveMemosIdentity({
           channelScope,
-          channelHash: this.ctx.yesimbot.channelIdentity(channelScope),
           channelType: channelScope.isDirect ? "private" : "group",
           authorId: latestAuthorId,
           messageId: latestMessageId,

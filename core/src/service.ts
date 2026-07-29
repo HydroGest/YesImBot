@@ -2,13 +2,12 @@ import { resolve } from "node:path";
 
 import { Service, type Context } from "koishi";
 
-import { channelIdentity, type ChannelScope } from "./channel/index.js";
+import { ChannelStorage, type ChannelScope } from "./channel.js";
 import { resolveMultimediaImagePolicy, resolveReplyPacingConfig, type Config } from "./config.js";
 import { Gateway, type SessionResolver } from "./gateway/index.js";
 import { AssetStore } from "./media/index.js";
 import type { ModelService } from "./model/index.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
-import { ChannelStorage } from "./storage/index.js";
 
 declare module "koishi" {
   interface Context {
@@ -99,16 +98,8 @@ export class YesImBotService extends Service<Config> {
     await this.storage.start();
   }
 
-  channelIdentity(scope: ChannelScope): string {
-    return channelIdentity(scope);
-  }
-
-  registerStorage(namespace: string): () => void {
-    return this.storage.register(namespace);
-  }
-
-  ensureStorage(scope: ChannelScope, namespace: string, ...segments: string[]): Promise<string> {
-    return this.storage.ensure(scope, namespace, ...segments);
+  getStoragePath(scope: ChannelScope): Promise<string> {
+    return this.storage.getStoragePath(scope);
   }
 
   registerAgentPlugin(factory: AgentPluginFactory): () => void {

@@ -6,7 +6,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h } from "koishi";
 
-import { type ChannelScope } from "../src/channel/index.js";
+import { type ChannelScope } from "../src/channel.js";
 import { appendModelFiles, formatInput } from "../src/event/formatter.js";
 import {
   createEvent,

@@ -1,38 +1,13 @@
 # workspace-sandbox-tools Specification
 
-## Purpose
-
-Define Workspace sandbox tools, identity-safe channel isolation, virtual filesystem mounts, and operator documentation.
-
 ## Requirements
 
-### Requirement: Channel-Scoped Workspace Isolation
-Workspace MUST register the `workspace` namespace, use `channelIdentity(scope)` only as its in-memory cache key, and use `ensureStorage(scope, "workspace")` as its sole writable-root path source.
+### Requirement: Workspace lives under the channel root
+The workspace plugin MUST obtain `getStoragePath(scope)` and use its `workspace/` child as the sandbox root.
 
-#### Scenario: Workspace is resolved
-- **WHEN** a runtime requests its workspace
-- **THEN** Core MAY expose readable raw channel coordinates in the resolved v1 directory, while the plugin MUST neither construct nor derive that directory protocol
+#### Scenario: A workspace is initialized
+- **WHEN** the workspace plugin creates a sandbox for a channel
+- **THEN** it creates `workspace/` below the returned channel root
 
-#### Scenario: Shared assignee reload
-- **WHEN** an operator reloads a shared channel after Koishi changes its assignee and a later admitted event creates a runtime for the current assignee
-- **THEN** Workspace MUST reuse the same namespace root and cache identity
-### Requirement: Bash Tool Backed Default Tool Set
-Workspace SHALL expose `bash-tool` backed `bash`, `readFile`, and `writeFile` as its default tool set.
-
-#### Scenario: Default tools are registered
-- **WHEN** the Workspace Agent plugin initializes
-- **THEN** its tool set MUST include `bash`, `readFile`, and `writeFile`
-
-### Requirement: Virtual Filesystem Boundary
-Workspace tools MUST operate through the configured `just-bash` virtual filesystem and MUST NOT directly access unmounted host paths.
-
-#### Scenario: A mounted path is written
-- **WHEN** an agent writes through `writeFile`
-- **THEN** the virtual filesystem MUST apply the configured writable, read-only, or overlay mount policy
-
-### Requirement: Workspace Documentation
-Workspace documentation SHALL describe Core-resolved readable storage, default tools, mount safety, and channel isolation without claiming that the plugin derives directory names.
-
-#### Scenario: Operator reads isolation documentation
-- **WHEN** an operator reads Workspace documentation
-- **THEN** it MUST identify `ensureStorage` as the path boundary and `channelIdentity` as the logical identity
+### Requirement: Workspace isolation follows channel tuple semantics
+Shared scopes for different current Bots MUST reuse one workspace root; direct scopes with distinct selfIds MUST use distinct workspace roots.

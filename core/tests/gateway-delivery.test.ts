@@ -15,7 +15,7 @@ import { isInput, type InputRecord, type MessageRecord } from "../src/input.js";
 import { Gateway } from "../src/gateway/index.js";
 import { RuntimeManager } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
-import { ChannelStorage } from "../src/storage/index.js";
+import { ChannelStorage } from "../src/channel.js";
 
 function session(send = vi.fn(async () => ["receipt-1"])) {
   return {
@@ -158,7 +158,7 @@ describe("Gateway passive delivery", () => {
     });
     await first.manager.stop();
 
-    const readableDirectory = join(basePath, "channels", "v1-shared-test-room_1");
+    const readableDirectory = join(basePath, "channels", "shared-test-room~2d~1");
     const currentJsonl = join(readableDirectory, "sessions", "messages.jsonl");
     const firstEntries = await createJsonlStorage(currentJsonl).read();
     const firstInput = firstEntries[0]?.type === "message" ? firstEntries[0].data : undefined;

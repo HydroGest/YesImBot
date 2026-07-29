@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
+import { channelDirectoryName, type ChannelScope } from "../src/channel.js";
 import * as core from "../src/index.js";
 
 const shared = (selfId: string): ChannelScope => ({
@@ -19,35 +19,36 @@ const direct = (selfId: string): ChannelScope => ({
   isDirect: true,
 });
 
-describe("channelIdentity", () => {
-  it("matches the shared conformance vector and ignores selfId", () => {
-    expect(channelIdentity(shared("10000"))).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
-    expect(channelIdentity(shared("20000"))).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
+describe("ChannelScope storage coordinates", () => {
+  it("uses one readable shared directory regardless of the current Bot", () => {
+    expect(channelDirectoryName(shared("10000"))).toBe("shared-onebot-123456");
+    expect(channelDirectoryName(shared("20000"))).toBe("shared-onebot-123456");
   });
 
-  it("matches direct conformance vectors and retains selfId", () => {
-    expect(channelIdentity(direct("10000"))).toBe("ymdz53gzamgvzjzrtf6vesoal4");
-    expect(channelIdentity(direct("20000"))).toBe("3fdpuhlm2tmzybzrlgxotmtmxq");
+  it("uses distinct readable direct directories for distinct Bots", () => {
+    expect(channelDirectoryName(direct("10000"))).toBe("direct-onebot-123456-10000");
+    expect(channelDirectoryName(direct("20000"))).toBe("direct-onebot-123456-20000");
   });
 
-  it("matches the Unicode vector without normalization", () => {
+  it("encodes delimiter-looking coordinates without escaping the channel root", () => {
     expect(
-      channelIdentity({
-        platform: "测试",
-        selfId: "机器人 01",
-        channelId: "群/α",
+      channelDirectoryName({
+        platform: "one/bot",
+        selfId: "bot/../one",
+        channelId: "room/../alpha",
         isDirect: false,
       }),
-    ).toBe("jhmjjrbkhmceyookuqyolglf7m");
+    ).toBe("shared-one~2f~bot-room~2f~~2e~~2e~~2f~alpha");
   });
 
   it.each(["platform", "selfId", "channelId"] as const)("rejects empty %s", (field) => {
     const scope = { ...direct("10000"), [field]: "" };
-    expect(() => channelIdentity(scope)).toThrow(`ChannelScope.${field}`);
+    expect(() => channelDirectoryName(scope)).toThrow(`ChannelScope.${field}`);
   });
 
-  it("exports channelIdentity and not channelKey from the package root", () => {
-    expect(core.channelIdentity).toEqual(expect.any(Function));
-    expect("channelKey" in core).toBe(false);
+  it("exports ChannelScope without a public channel identity", () => {
+    const exported = core as Record<string, unknown>;
+    expect(["channel", "Identity"].join("") in exported).toBe(false);
+    expect("channelKey" in exported).toBe(false);
   });
 });

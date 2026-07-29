@@ -1,5 +1,5 @@
 import { mkdir, stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
@@ -56,7 +56,6 @@ export default class WorkspacePlugin {
     readOnlyPaths: Record<string, string>;
     overlayPaths: Record<string, string>;
   };
-  private disposeStorage?: () => void;
   private disposeAgentPlugin?: () => void;
 
   constructor(ctx: Context, config: WorkspacePluginConfig) {
@@ -70,11 +69,8 @@ export default class WorkspacePlugin {
   public async start(): Promise<void> {
     this.logger.info("Starting workspace plugin...");
 
-    this.disposeStorage?.();
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
-
-    this.disposeStorage = this.ctx.yesimbot.registerStorage("workspace");
 
     const normalizedMounts = assertValidMountConfig({
       persistPaths: this.resolveMountMap(this.config.persistPaths),
@@ -94,15 +90,15 @@ export default class WorkspacePlugin {
     this.logger.info(`Read-only paths: ${JSON.stringify(normalizedMounts.readOnlyPaths, null, 2)}`);
     this.logger.info(`Overlay paths: ${JSON.stringify(normalizedMounts.overlayPaths, null, 2)}`);
 
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((context) => {
+    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((scope) => {
       return {
         name: "workspace",
         tools: async () => {
-          const workspace = await this.getOrCreateWorkspace(context.channel);
+          const workspace = await this.getOrCreateWorkspace(scope);
           return createBashToolSet(workspace);
         },
         appendSystemPrompt: async () => {
-          const workspace = await this.getOrCreateWorkspace(context.channel);
+          const workspace = await this.getOrCreateWorkspace(scope);
           return formatWorkspacePrompt(workspace);
         },
       } satisfies AgentPlugin;
@@ -114,8 +110,6 @@ export default class WorkspacePlugin {
   public async stop(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
-    this.disposeStorage?.();
-    this.disposeStorage = undefined;
     this.workspaces.clear();
     this.normalizedMounts = undefined;
     this.logger.info("Workspace plugin stopped");
@@ -149,8 +143,12 @@ export default class WorkspacePlugin {
   }
 
   private async getOrCreateWorkspace(channel: ChannelScope): Promise<Workspace> {
-    const identity = this.ctx.yesimbot.channelIdentity(channel);
-    const existing = this.workspaces.get(identity);
+    const key = JSON.stringify(
+      channel.isDirect
+        ? [channel.platform, channel.selfId, channel.channelId]
+        : [channel.platform, channel.channelId],
+    );
+    const existing = this.workspaces.get(key);
     if (existing) {
       return existing;
     }
@@ -159,11 +157,12 @@ export default class WorkspacePlugin {
       throw new Error("Workspace plugin has not been started");
     }
 
-    const workspaceRoot = await this.ctx.yesimbot.ensureStorage(channel, "workspace");
+    const workspaceRoot = join(await this.ctx.yesimbot.getStoragePath(channel), "workspace");
+    await mkdir(workspaceRoot, { recursive: true });
 
     const workspace = new Workspace(this.createWorkspaceConfig(workspaceRoot));
     await workspace.init();
-    this.workspaces.set(identity, workspace);
+    this.workspaces.set(key, workspace);
     return workspace;
   }
 

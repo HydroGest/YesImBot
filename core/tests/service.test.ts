@@ -72,10 +72,11 @@ describe("YesImBotService facade", () => {
     expect(ctx.yesimbot.model).toBeDefined();
     expect(ctx.yesimbot.registerResolver).toEqual(expect.any(Function));
     expect(ctx.yesimbot.registerAgentPlugin).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.channelIdentity).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.getStoragePath).toEqual(expect.any(Function));
     expect("channelKey" in ctx.yesimbot).toBe(false);
-    expect(ctx.yesimbot.registerStorage).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.ensureStorage).toEqual(expect.any(Function));
+    expect(["channel", "Identity"].join("") in ctx.yesimbot).toBe(false);
+    expect(["register", "Storage"].join("") in ctx.yesimbot).toBe(false);
+    expect(["ensure", "Storage"].join("") in ctx.yesimbot).toBe(false);
     expect("reload" in ctx.yesimbot).toBe(false);
     expect(ctx.yesimbot.reset).toEqual(expect.any(Function));
     expect(ctx.yesimbot.stop).toEqual(expect.any(Function));
@@ -93,9 +94,9 @@ describe("YesImBotService facade", () => {
     expect(service["gate"]["opts"].allowedChannels).toEqual(allowedChannels);
   });
 
-  it("accepts the public AgentPluginFactory context", () => {
-    const factory: AgentPluginFactory = async ({ channel, bot }) => ({
-      name: `plugin-${channel.platform}`,
+  it("accepts the public AgentPluginFactory parameters", () => {
+    const factory: AgentPluginFactory = async (scope, bot) => ({
+      name: `plugin-${scope.platform}`,
       tools: bot ? [] : [],
     });
 
@@ -155,12 +156,9 @@ describe("YesImBotService facade", () => {
     const scope = { platform: "onebot", selfId: "10000", channelId: "123456", isDirect: false };
 
     await service.start();
-    const dispose = service.registerStorage("workspace");
-    expect(service.channelIdentity(scope)).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
-    await expect(service.ensureStorage(scope, "workspace")).resolves.toBe(
-      "/tmp/yesimbot-service/data/yesimbot-service/channels/v1-shared-onebot-123456/workspace",
+    await expect(service.getStoragePath(scope)).resolves.toBe(
+      "/tmp/yesimbot-service/data/yesimbot-service/channels/shared-onebot-123456",
     );
-    dispose();
   });
 
   it("waits for storage readiness before resolving or routing a Session", async () => {
@@ -184,7 +182,7 @@ describe("YesImBotService facade", () => {
       ctx: ctx as never,
       runtime: runtime as never,
       assets: assets as never,
-      storage: { updateName: vi.fn() } as never,
+       storage: {} as never,
       ready: () => ready,
       allowedChannels: [{ platform: "test", channelId: "room-1" }],
       logger: { warn: vi.fn() } as never,
@@ -230,7 +228,7 @@ describe("YesImBotService facade", () => {
     const plugins = await Promise.all(
       state.runtime?.options
         .getAgentPluginFactories()
-        .map((factory) => factory({} as Parameters<AgentPluginFactory>[0])) ?? [],
+         .map((factory) => factory({} as Parameters<AgentPluginFactory>[0], {} as never)) ?? [],
     );
 
     expect(plugins).toEqual([{ name: "plugin" }]);

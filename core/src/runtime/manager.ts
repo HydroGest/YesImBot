@@ -1,14 +1,13 @@
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 import { Universal } from "koishi";
 
-import { channelIdentity, type ChannelScope } from "../channel/index.js";
+import { scopeMapKey, type ChannelScope, type ChannelStorage } from "../channel.js";
 import { resolveMultimediaImagePolicy, type Config } from "../config.js";
 import type { InputRecord } from "../input.js";
 import type { AssetStore } from "../media/index.js";
-import type { ChannelStorage } from "../storage/index.js";
 import { ChannelRuntime, type ChannelRuntimeOptions, type ChannelRuntimeResult } from "./channel.js";
 import { createJsonlStorage } from "./storage.js";
 import { createWillEngine } from "./will.js";
@@ -23,7 +22,7 @@ export interface RuntimeManagerOptions {
 }
 
 export interface AgentPluginFactory {
-  (context: { readonly channel: ChannelScope; readonly bot: Bot }): Awaitable<AgentPlugin | null>;
+  (scope: ChannelScope, bot: Bot): Awaitable<AgentPlugin | null>;
   readonly requiresMessageId?: boolean;
 }
 
@@ -74,21 +73,21 @@ export class RuntimeManager {
 
   async reset(scope: ChannelScope): Promise<void> {
     this.assertOpen();
-    const identity = channelIdentity(scope);
+    const key = scopeMapKey(scope);
     let failure: unknown;
-    const runtime = this.runtimes.get(identity);
+    const runtime = this.runtimes.get(key);
     if (runtime) {
       try {
         await runtime.stop();
       } catch (cause) {
         failure = cause;
-        this.warn("runtime.stop_failed", { identity, cause });
+        this.warn("runtime.stop_failed", { scope, cause });
       } finally {
-        if (this.runtimes.get(identity) === runtime) this.runtimes.delete(identity);
+        if (this.runtimes.get(key) === runtime) this.runtimes.delete(key);
       }
     }
     try {
-      await createJsonlStorage(await this.opts.storage.ensure(scope, "sessions", "messages.jsonl")).clear();
+      await createJsonlStorage(join(await this.opts.storage.getStoragePath(scope), "sessions", "messages.jsonl")).clear();
     } catch (cause) {
       failure ??= cause;
       this.warn("storage_clear_failed", { scope, cause });
@@ -110,41 +109,41 @@ export class RuntimeManager {
   }
 
   private async getOrCreate(scope: ChannelScope): Promise<ChannelRuntime> {
-    const identity = channelIdentity(scope);
+    const key = scopeMapKey(scope);
     for (;;) {
-      const runtime = this.runtimes.get(identity);
+      const runtime = this.runtimes.get(key);
       if (runtime?.selfId === scope.selfId) return runtime;
 
-      const pending = this.creating.get(identity);
+      const pending = this.creating.get(key);
       if (pending) {
         await pending;
         continue;
       }
 
       const creating = this.replaceRuntime(scope, runtime);
-      this.creating.set(identity, creating);
+      this.creating.set(key, creating);
       try {
         return await creating;
       } finally {
-        if (this.creating.get(identity) === creating) this.creating.delete(identity);
+        if (this.creating.get(key) === creating) this.creating.delete(key);
       }
     }
   }
 
   private async replaceRuntime(scope: ChannelScope, current: ChannelRuntime | undefined): Promise<ChannelRuntime> {
-    const identity = channelIdentity(scope);
+    const key = scopeMapKey(scope);
     if (current && current.selfId !== scope.selfId) {
-      await this.stopRuntime(identity, current);
-      if (this.runtimes.get(identity) === current) this.runtimes.delete(identity);
+      await this.stopRuntime(key, current);
+      if (this.runtimes.get(key) === current) this.runtimes.delete(key);
     }
     const runtime = await this.createRuntime(scope);
     try {
       this.assertOpen();
     } catch (cause) {
-      await this.stopRuntime(identity, runtime);
+      await this.stopRuntime(key, runtime);
       throw cause;
     }
-    this.runtimes.set(identity, runtime);
+    this.runtimes.set(key, runtime);
     return runtime;
   }
 
@@ -156,7 +155,7 @@ export class RuntimeManager {
     if (!bot) throw new Error(`No Bot is available for ${scope.platform}:${scope.selfId}`);
     const resolved = this.opts.ctx["yesimbot.model"].resolveChatModel(this.opts.config.chatModel);
     const factories = this.opts.getAgentPluginFactories();
-    const plugins = (await Promise.all(factories.map((factory) => factory({ channel: scope, bot })))).filter(
+    const plugins = (await Promise.all(factories.map((factory) => factory(scope, bot)))).filter(
       (plugin): plugin is AgentPlugin => plugin !== null,
     );
     const options: ChannelRuntimeOptions = {
@@ -181,7 +180,7 @@ export class RuntimeManager {
       agentPlugins: plugins,
       includeMessageId: factories.some((factory) => factory.requiresMessageId === true),
       storage: createJsonlStorage(
-        await this.opts.storage.ensure(scope, "sessions", "messages.jsonl"),
+        join(await this.opts.storage.getStoragePath(scope), "sessions", "messages.jsonl"),
         (cause) => this.warn("storage.line_invalid", { scope, cause }),
       ),
     };
@@ -201,11 +200,11 @@ export class RuntimeManager {
     this.creating.clear();
   }
 
-  private async stopRuntime(identity: string, runtime: ChannelRuntime): Promise<void> {
+  private async stopRuntime(key: string, runtime: ChannelRuntime): Promise<void> {
     try {
       await runtime.stop();
     } catch (cause) {
-      this.warn("runtime.stop_failed", { identity, cause });
+      this.warn("runtime.stop_failed", { key, cause });
     }
   }
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ChannelScope } from "../src/channel/index.js";
+import type { ChannelScope } from "../src/channel.js";
 import { buildCoreSystemPrompt } from "../src/runtime/prompt.js";
 import { CORE_CONSTITUTION_VERSION } from "../src/runtime/prompts/constitution.js";
 import { readPromptResource } from "../src/runtime/prompts/resource.js";

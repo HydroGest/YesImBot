@@ -1,4 +1,4 @@
-import type { ChannelScope } from "../channel/index.js";
+import type { ChannelScope } from "../channel.js";
 
 export interface ChannelAllowRule {
   readonly platform: string;

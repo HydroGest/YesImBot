@@ -4,7 +4,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h } from "koishi";
 
-import type { ChannelScope } from "../src/channel/index.js";
+import type { ChannelScope } from "../src/channel.js";
 import { Config } from "../src/config.js";
 import {
   createInput,
@@ -16,7 +16,7 @@ import {
 import { matchesAllowedChannel, type ChannelAllowRule } from "../src/gateway/allowlist.js";
 import { Gateway, type SessionResolver } from "../src/gateway/index.js";
 import type { UnifiedImagePolicy } from "../src/media/index.js";
-import { ChannelStorage } from "../src/storage/index.js";
+import { ChannelStorage } from "../src/channel.js";
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
@@ -196,11 +196,10 @@ describe("Channel allowlist", () => {
 describe("Gateway", () => {
   it("rejects an unmatched valid scope before readiness or downstream admission work", async () => {
     const ready = vi.fn(async () => undefined);
-    const { gateway, runtime, assets, database, storage } = createGateway({
+    const { gateway, runtime, assets, database } = createGateway({
       ready,
       allowedChannels: [],
     });
-    const updateName = vi.spyOn(storage, "updateName");
     const resolve = vi.fn(async () => record());
     gateway.register({ platform: "test", resolve });
 
@@ -210,7 +209,6 @@ describe("Gateway", () => {
     expect(database.get).not.toHaveBeenCalled();
     expect(resolve).not.toHaveBeenCalled();
     expect(assets.put).not.toHaveBeenCalled();
-    expect(updateName).not.toHaveBeenCalled();
     expect(runtime.route).not.toHaveBeenCalled();
   });
 
@@ -296,8 +294,7 @@ describe("Gateway", () => {
     const ready = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const { gateway, runtime, assets, database, storage } = createGateway({ ready: () => ready });
-    const updateName = vi.spyOn(storage, "updateName");
+    const { gateway, runtime, assets, database } = createGateway({ ready: () => ready });
     const resolve = vi.fn(async () => record());
     gateway.register({ platform: "test", resolve });
 
@@ -307,7 +304,6 @@ describe("Gateway", () => {
     expect(database.get).not.toHaveBeenCalled();
     expect(resolve).not.toHaveBeenCalled();
     expect(assets.put).not.toHaveBeenCalled();
-    expect(updateName).not.toHaveBeenCalled();
     expect(runtime.route).not.toHaveBeenCalled();
 
     release();
@@ -385,9 +381,8 @@ describe("Gateway", () => {
     expect(runtime.route).toHaveBeenCalledOnce();
   });
 
-  it("updates a resolved non-empty channel name before runtime submission", async () => {
-    const { gateway, runtime, storage } = createGateway();
-    const updateName = vi.spyOn(storage, "updateName");
+  it("routes a resolved channel name without persisting metadata", async () => {
+    const { gateway, runtime } = createGateway();
     gateway.register({
       platform: "test",
       resolve: async () => ({ ...record(), channel: { name: "Room" } }),
@@ -395,10 +390,6 @@ describe("Gateway", () => {
 
     await gateway.handle(session() as never);
 
-    expect(updateName).toHaveBeenCalledWith(
-      { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
-      "Room",
-    );
     expect(runtime.route).toHaveBeenCalledOnce();
   });
 

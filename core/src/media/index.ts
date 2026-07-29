@@ -6,10 +6,9 @@ import type { ModelMessageContext } from "@yesimbot/agent-runtime";
 import type { FilePart } from "ai";
 import { h, type Element } from "koishi";
 
-import type { ChannelScope } from "../channel/index.js";
+import type { ChannelScope, ChannelStorage } from "../channel.js";
 import { normalizeElements, unavailableImage } from "../event/element.js";
 import { isInput, isMessage, type Input } from "../input.js";
-import type { ChannelStorage } from "../storage/index.js";
 
 const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 10_000;
@@ -127,8 +126,8 @@ export class AssetStore {
 
   private async assetPath(scope: ChannelScope, hash?: string): Promise<string> {
     return hash
-      ? this.options.storage.ensure(scope, "assets", hash)
-      : this.options.storage.ensure(scope, "assets");
+      ? join(await this.options.storage.getStoragePath(scope), "assets", hash)
+      : join(await this.options.storage.getStoragePath(scope), "assets");
   }
 }
 

@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,8 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import type { ChannelScope } from "../src/channel/index.js";
-import { channelIdentity } from "../src/channel/index.js";
+import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/channel.js";
 import {
   Config,
   DEFAULT_MULTIMEDIA_IMAGE_POLICY,
@@ -20,8 +19,6 @@ import {
   type ChannelRuntimeOptions,
   RuntimeManager,
 } from "../src/runtime/index.js";
-import { ChannelStorage } from "../src/storage/index.js";
-import { channelRecord } from "../src/storage/manifest.js";
 import { RoutingWillEngine, WillingnessWillEngine } from "../src/runtime/will.js";
 
 function record(channelId: string, overrides: Partial<MessageRecord> = {}): MessageRecord {
@@ -178,8 +175,8 @@ describe("RuntimeManager", () => {
     const shared = (selfId: string): ChannelScope => ({ platform: "test", selfId, channelId: "room", isDirect: false });
     const direct = (selfId: string): ChannelScope => ({ platform: "test", selfId, channelId: "room", isDirect: true });
 
-    expect(channelIdentity(shared("bot-a"))).toBe(channelIdentity(shared("bot-b")));
-    expect(channelIdentity(direct("bot-a"))).not.toBe(channelIdentity(direct("bot-b")));
+    expect(scopeMapKey(shared("bot-a"))).toBe(scopeMapKey(shared("bot-b")));
+    expect(scopeMapKey(direct("bot-a"))).not.toBe(scopeMapKey(direct("bot-b")));
   });
 
   it("does not handle an event before runtime initialization completes", async () => {
@@ -309,7 +306,7 @@ describe("RuntimeManager", () => {
   it("evicts a runtime when reset cleanup fails", async () => {
     const { manager, storage, assets } = createManager();
     await manager.route(record("room"));
-    vi.spyOn(storage, "ensure").mockRejectedValueOnce(new Error("storage clear failed"));
+    vi.spyOn(storage, "getStoragePath").mockRejectedValueOnce(new Error("storage clear failed"));
 
     await expect(manager.reset({ platform: "test", selfId: "bot-1", channelId: "room", isDirect: false })).rejects.toThrow("storage clear failed");
     await manager.route(record("room"));
@@ -321,7 +318,8 @@ describe("RuntimeManager", () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
     const { manager, assets } = createManager(basePath);
     const scope = { platform: "test", selfId: "bot-1", channelId: "uncached", isDirect: false } satisfies ChannelScope;
-    const path = await new ChannelStorage(basePath).ensure(scope, "sessions", "messages.jsonl");
+    const path = join(await new ChannelStorage(basePath).getStoragePath(scope), "sessions", "messages.jsonl");
+    await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "stored\n");
 
     await manager.reset(scope);
@@ -330,30 +328,35 @@ describe("RuntimeManager", () => {
     await expect(access(path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("preserves the manifest workspace and registered namespaces when resetting", async () => {
+  it("preserves the manifest and plugin files when resetting", async () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
     const { manager, assets, storage } = createManager(basePath);
     const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false } satisfies ChannelScope;
-    const dispose = storage.register("workspace");
-    const messages = await storage.ensure(scope, "sessions", "messages.jsonl");
-    const asset = await storage.ensure(scope, "assets", "asset");
-    const workspace = await storage.ensure(scope, "workspace", "keep.txt");
+    const root = await storage.getStoragePath(scope);
+    const messages = join(root, "sessions", "messages.jsonl");
+    const asset = join(root, "assets", "asset");
+    const workspace = join(root, "workspace", "keep.txt");
+    await Promise.all([
+      mkdir(join(root, "sessions"), { recursive: true }),
+      mkdir(join(root, "assets"), { recursive: true }),
+      mkdir(join(root, "workspace"), { recursive: true }),
+    ]);
     await Promise.all([writeFile(messages, "stored"), writeFile(asset, "asset"), writeFile(workspace, "keep")]);
-    assets.clear.mockImplementation(async (target) => rm(await storage.ensure(target, "assets"), { recursive: true, force: true }));
+    assets.clear.mockImplementation(async (target) => rm(join(await storage.getStoragePath(target), "assets"), { recursive: true, force: true }));
 
     await manager.reset(scope);
     await expect(access(messages)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(asset)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(workspace)).resolves.toBeUndefined();
-    await expect(access(join(basePath, "channels", channelRecord(scope).directoryName, "channel.json"))).resolves.toBeUndefined();
-    dispose();
+    await expect(access(join(await storage.getStoragePath(scope), "channel.json"))).resolves.toBeUndefined();
   });
 
   it("rejects reset after stop without clearing persisted data", async () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
     const { manager, assets } = createManager(basePath);
     const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false } satisfies ChannelScope;
-    const path = await new ChannelStorage(basePath).ensure(scope, "sessions", "messages.jsonl");
+    const path = join(await new ChannelStorage(basePath).getStoragePath(scope), "sessions", "messages.jsonl");
+    await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "persisted");
     await manager.route(record("room"));
     await manager.stop();

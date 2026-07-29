@@ -1,28 +1,27 @@
 # channel-scope-identity Specification
 
-## Purpose
-
-Define direct/shared execution scope and the stable logical identity used by Core and plugins.
-
 ## Requirements
 
-### Requirement: Channel Scope Type
-Core MUST expose `ChannelScope` with `platform`, `selfId`, `channelId`, and `isDirect` and MUST exclude author, message, guild, assignee, display-name, and plugin-specific fields.
+### Requirement: Channel scope is the public channel context
+Core MUST expose `ChannelScope` with required `platform`, `selfId`, `channelId`, and `isDirect` fields. `selfId` identifies the current Bot for both direct and shared scopes.
 
-#### Scenario: Scope is created from a Session
-- **WHEN** Gateway derives a scope from a valid Session
-- **THEN** it MUST preserve real `selfId` and direct/shared classification
+#### Scenario: A plugin receives a shared scope
+- **WHEN** Core creates a plugin for a shared channel
+- **THEN** the plugin receives the raw platform, current Bot, channel, and directness fields
 
-### Requirement: Stable Logical Channel Identity
-Core MUST expose `channelIdentity(scope)` as the stable lowercase 26-character logical identifier from the versioned canonical tuple, SHA-256 truncation, and Base32 encoding.
+### Requirement: Persistent channel coordinates follow tuple semantics
+Shared channels MUST use `[platform, channelId]` and direct channels MUST use `[platform, selfId, channelId]` to select persistent state.
 
-#### Scenario: Shared and direct scopes are identified
-- **WHEN** shared scopes differ only by `selfId` or direct scopes differ by `selfId`
-- **THEN** shared scopes MUST share an identity and direct scopes MUST have distinct identities
+#### Scenario: A shared channel changes Bot
+- **WHEN** the current Bot changes for the same shared platform and channel
+- **THEN** its persistent channel state remains the same
 
-### Requirement: No Legacy Identity Compatibility
-Core and plugins MUST use `channelIdentity` for logical identity and MUST NOT expose `channelKey`, legacy path formats, aliases, migration, or fallback identity readers.
+### Requirement: Channel directories are readable and versionless
+Channel roots MUST use safe readable `shared-*` or `direct-*` directory names under `channels/`. Raw coordinates that contain delimiters or traversal-looking text MUST not collide or escape the channels root.
 
-#### Scenario: Plugin requests an identity
-- **WHEN** a plugin needs a stable channel identifier
-- **THEN** it MUST use the Core `channelIdentity` API without assuming a filesystem path
+#### Scenario: A direct channel has unsafe raw coordinates
+- **WHEN** Core creates its channel root
+- **THEN** the resulting directory remains below `channels/` and is distinct from differently-valued raw coordinates
+
+### Requirement: No public channel identity exists
+Core MUST NOT expose a ChannelKey, channel identity string, opaque channel identifier, or directory helper as a package API.

@@ -7,7 +7,7 @@ import {
   Universal,
 } from "koishi";
 
-import type { ChannelScope } from "../channel/index.js";
+import type { ChannelScope, ChannelStorage } from "../channel.js";
 import { resolveReplyPacingConfig, type PacingConfig } from "../config.js";
 import { renderElements, sealElements, unavailableImage } from "../event/element.js";
 import type {
@@ -19,7 +19,6 @@ import type {
 } from "../input.js";
 import { ImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
 import { assertAssignee, type RuntimeManager } from "../runtime/index.js";
-import type { ChannelStorage } from "../storage/index.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "./allowlist.js";
 
 export interface ResolveContext {
@@ -135,7 +134,6 @@ export class Gateway {
     }
     if (!record) return;
     try {
-      await this.opts.storage.updateName(scope, record.channel.name);
       const result = await this.opts.runtime.route(record);
       if (result.kind === "run") {
           let acknowledged = false;

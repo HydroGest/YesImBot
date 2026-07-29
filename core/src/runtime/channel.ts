@@ -14,7 +14,7 @@ import type { FilePart, LanguageModel } from "ai";
 import type { Bot, Context, Element, Logger } from "koishi";
 import { z } from "zod";
 
-import { channelIdentity, type ChannelScope } from "../channel/index.js";
+import { scopeMapKey, type ChannelScope } from "../channel.js";
 import type { Config } from "../config.js";
 import { formatInput } from "../event/formatter.js";
 import type { EventRecord, InputRecord } from "../input.js";
@@ -114,7 +114,7 @@ export class ChannelRuntime {
     };
     const tools: AgentToolSet = [sendMessageTool];
     this.agent = createAgent({
-      id: channelIdentity(this.scope),
+      id: scopeMapKey(this.scope),
       model: opts.model,
       storage: opts.storage,
       systemPrompt: () =>

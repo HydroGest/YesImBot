@@ -10,7 +10,7 @@ export const usage = ``;
 export const inject = ["database"];
 export { Config } from "./config.js";
 
-export { channelIdentity, type ChannelScope } from "./channel/index.js";
+export type { ChannelScope } from "./channel.js";
 export * from "./input.js";
 export type { ResolveContext, SessionResolver } from "./gateway/index.js";
 export type { AgentPluginFactory } from "./runtime/index.js";

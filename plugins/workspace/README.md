@@ -8,13 +8,10 @@ Workspace tools for YesImBot agents, backed by `just-bash` and `bash-tool`.
 - `readFile`: read a known file from the virtual workspace.
 - `writeFile`: write a complete file into the virtual workspace.
 
-The default writable workspace is channel-isolated. Core provides a stable
-Core channel identity from `platform + channelId` (shared) or
-`platform + selfId + channelId` (direct). The workspace plugin uses that
-identity only for its in-memory cache and calls
-`YesImBotService.ensureStorage(channel, "workspace")` for the workspace path.
-Core resolves the readable directory name; this plugin does not know or
-construct the directory protocol.
+The default writable workspace is channel-isolated. The workspace plugin calls
+`YesImBotService.getStoragePath(scope)` and creates its `workspace/` child
+under the returned channel root. Shared scopes use `platform + channelId`;
+direct scopes also include `selfId`.
 
 This plugin no longer exposes the previous default tool names
 `grep`, `glob`, `edit_file`, `read_file`, `write_file`, or `execute_command`.
@@ -33,9 +30,9 @@ tool-name-specific prompts to use `bash`, `readFile`, and `writeFile`.
 | `enableNetwork` | Enables `just-bash` network support. Default: `false`.                                                  |
 
 The default
-writable workspace root is resolved through the Core storage namespace. The
-plugin does not derive it from the Core channel identity and no longer accepts
-a plugin-local `root` option.
+writable workspace root is resolved through the Core channel root. The plugin
+does not derive a directory path and no longer accepts a plugin-local `root`
+option.
 
 ## Examples
 

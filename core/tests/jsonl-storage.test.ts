@@ -8,10 +8,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import type { ChannelScope } from "../src/channel/index.js";
+import type { ChannelScope } from "../src/channel.js";
 import { createEvent, createMessage, type EventRecord, type MessageRecord } from "../src/input.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
-import { ChannelStorage } from "../src/storage/index.js";
+import { ChannelStorage } from "../src/channel.js";
 
 describe("jsonl storage", () => {
   const messageRecord: MessageRecord = {
@@ -125,7 +125,11 @@ describe("jsonl storage", () => {
       "sessions",
       "messages.jsonl",
     );
-    const eventPath = await new ChannelStorage(dir).ensure(scope, "sessions", "messages.jsonl");
+    const eventPath = join(
+      await new ChannelStorage(dir).getStoragePath(scope),
+      "sessions",
+      "messages.jsonl",
+    );
     const legacyEntry = {
       type: "message",
       data: {
@@ -135,7 +139,7 @@ describe("jsonl storage", () => {
     };
 
     expect(eventPath).toBe(
-      join(dir, "channels", "v1-shared-onebot-123456", "sessions", "messages.jsonl"),
+      join(dir, "channels", "shared-onebot-123456", "sessions", "messages.jsonl"),
     );
     await mkdir(dirname(legacyPath), { recursive: true });
     await writeFile(legacyPath, `${JSON.stringify(legacyEntry)}\n`, "utf8");

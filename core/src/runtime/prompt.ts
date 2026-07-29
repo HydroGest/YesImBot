@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { SystemModelMessage } from "ai";
 import type { Logger } from "koishi";
 
-import type { ChannelScope } from "../channel/index.js";
+import type { ChannelScope } from "../channel.js";
 import { readPromptResource } from "./prompts/resource.js";
 
 export interface CoreSystemPromptOptions {

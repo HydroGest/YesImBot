@@ -6,10 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
+import { ChannelStorage, type ChannelScope } from "../src/channel.js";
 import { AssetStore } from "../src/media/index.js";
-import { ChannelStorage } from "../src/storage/index.js";
-import { channelRecord } from "../src/storage/manifest.js";
 
 const scope: ChannelScope = {
   platform: "onebot",
@@ -53,16 +51,12 @@ describe("AssetStore", () => {
   it("round-trips a private image and rejects an invalid asset id", async () => {
     const stored = await assets.put(scope, PNG_BYTES);
     const hash = stored.assetId.slice("asset_".length);
-    const channel = channelRecord(scope);
+    const root = await storage.getStoragePath(scope);
 
     await expect(assets.readByAssetId(scope, stored.assetId)).resolves.toEqual(PNG_BYTES);
     await expect(
-      readFile(join(basePath, "channels", channel.directoryName, "assets", hash)),
+      readFile(join(root, "assets", hash)),
     ).resolves.toEqual(Buffer.from(PNG_BYTES));
-    expect(channel).toMatchObject({
-      identity: channelIdentity(scope),
-      directoryName: "v1-shared-onebot-room_42",
-    });
     await expect(assets.readByAssetId(scope, "asset_invalid")).rejects.toThrow(
       "Invalid platform asset id",
     );

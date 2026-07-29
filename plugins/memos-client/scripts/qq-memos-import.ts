@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { channelIdentity } from "koishi-plugin-yesimbot";
 
 import { deriveMemosImportChunkIdentity } from "../src/identity.js";
 import type { MemosAddMessageRequest, MemosMessage } from "../src/types.js";
@@ -525,7 +524,6 @@ function createChunk(
   };
   const identity = deriveMemosImportChunkIdentity({
     channelScope,
-    channelHash: channelIdentity(channelScope),
     channelType: first.conversationType,
     chunkStartIso: startTime,
     chunkEndIso: endTime,
