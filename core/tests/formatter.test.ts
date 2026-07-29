@@ -87,8 +87,8 @@ function formatterVariantRecord(): EventRecord<"formatter.variant"> {
 }
 
 function assetStore() {
-  const readByAssetId = vi.fn<() => Promise<Uint8Array>>();
-  return { readByAssetId, get: (id: string) => readByAssetId(scope, id) };
+  const get = vi.fn<(id: string) => Promise<Uint8Array>>();
+  return { get };
 }
 
 function pngBytesOfLength(byteLength: number): Uint8Array {
@@ -182,7 +182,7 @@ describe("formatInput", () => {
     it("does not read assets when either global or model image input is disabled", async () => {
       const assets = assetStore();
       const context = selectionContext([
-        createMessage(messageRecordWithText('<img id="asset_disabled"/>')),
+        createMessage(messageRecordWithText('<img id="00000000000000000000000000000000"/>')),
       ]);
 
       await expect(
@@ -196,14 +196,14 @@ describe("formatInput", () => {
           }),
         ),
       ).resolves.toEqual(new Map());
-      expect(assets.readByAssetId).not.toHaveBeenCalled();
+      expect(assets.get).not.toHaveBeenCalled();
     });
 
     it("visits current then history by default and resets its budget for a later empty current step", async () => {
       const assets = assetStore();
-      assets.readByAssetId.mockResolvedValue(pngBytes);
-      const current = createMessage(messageRecordWithText('<img id="asset_current"/>'));
-      const history = createMessage(messageRecordWithText('<img id="asset_history"/>'));
+      assets.get.mockResolvedValue(pngBytes);
+      const current = createMessage(messageRecordWithText('<img id="11111111111111111111111111111111"/>'));
+      const history = createMessage(messageRecordWithText('<img id="22222222222222222222222222222222"/>'));
 
       const initial = await selectInputFiles(
         selectionContext([history], [current]),
@@ -221,19 +221,19 @@ describe("formatInput", () => {
       expect(initial.get(current.id)?.map((file) => file.mediaType)).toEqual(["image/png"]);
       expect(initial.get(history.id)?.length ?? 0).toBe(0);
       expect(later.get(history.id)?.map((file) => file.mediaType)).toEqual(["image/png"]);
-      expect(assets.readByAssetId.mock.calls.map((call) => call[1])).toEqual([
-        "asset_current",
-        "asset_history",
+      expect(assets.get.mock.calls.map((call) => call[0])).toEqual([
+        "11111111111111111111111111111111",
+        "22222222222222222222222222222222",
       ]);
     });
 
     it("uses a fresh unified budget for each model context", async () => {
       const assets = assetStore();
-      assets.readByAssetId.mockResolvedValue(pngBytes);
+      assets.get.mockResolvedValue(pngBytes);
       const first = createMessage(
-        messageRecordWithText('<img id="asset_first"/><img id="asset_second"/>'),
+        messageRecordWithText('<img id="33333333333333333333333333333333"/><img id="44444444444444444444444444444444"/>'),
       );
-      const second = createMessage(messageRecordWithText('<img id="asset_later"/>'));
+      const second = createMessage(messageRecordWithText('<img id="55555555555555555555555555555555"/>'));
       const policy = {
         enabled: true,
         maxCount: 1,
@@ -257,11 +257,11 @@ describe("formatInput", () => {
 
     it("uses FIFO and LIFO event visitation while retaining source order within one Input", async () => {
       const assets = assetStore();
-      assets.readByAssetId.mockResolvedValue(pngBytes);
+      assets.get.mockResolvedValue(pngBytes);
       const first = createMessage(
-        messageRecordWithText('<img id="asset_first_a"/><img id="asset_first_b"/>'),
+        messageRecordWithText('<img id="66666666666666666666666666666666"/><img id="77777777777777777777777777777777"/>'),
       );
-      const second = createMessage(messageRecordWithText('<img id="asset_second"/>'));
+      const second = createMessage(messageRecordWithText('<img id="44444444444444444444444444444444"/>'));
 
       await selectInputFiles(
         selectionContext([first, second]),
@@ -276,25 +276,25 @@ describe("formatInput", () => {
         }),
       );
 
-      expect(assets.readByAssetId.mock.calls.map((call) => call[1])).toEqual([
-        "asset_first_a",
-        "asset_first_b",
-        "asset_second",
-        "asset_second",
-        "asset_first_a",
-        "asset_first_b",
+      expect(assets.get.mock.calls.map((call) => call[0])).toEqual([
+        "66666666666666666666666666666666",
+        "77777777777777777777777777777777",
+        "44444444444444444444444444444444",
+        "44444444444444444444444444444444",
+        "66666666666666666666666666666666",
+        "77777777777777777777777777777777",
       ]);
     });
 
     it("uses the default four-image limit and skips unsupported bytes before later valid images", async () => {
       const assets = assetStore();
       const unsupported = new Uint8Array([0x3c, 0x73, 0x76, 0x67]);
-      assets.readByAssetId.mockImplementation(async (_scope, assetId) =>
-        assetId === "asset_svg" ? unsupported : pngBytes,
+      assets.get.mockImplementation(async (assetId) =>
+        assetId === "88888888888888888888888888888888" ? unsupported : pngBytes,
       );
       const input = createMessage(
         messageRecordWithText(
-          '<img id="asset_svg"/><img id="asset_1"/><img id="asset_2"/><img id="asset_3"/><img id="asset_4"/><img id="asset_5"/>',
+          '<img id="88888888888888888888888888888888"/><img id="99999999999999999999999999999999"/><img id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"/><img id="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"/><img id="cccccccccccccccccccccccccccccccc"/><img id="dddddddddddddddddddddddddddddddd"/>',
         ),
       );
 
@@ -306,19 +306,19 @@ describe("formatInput", () => {
         "image/png",
         "image/png",
       ]);
-      expect(assets.readByAssetId.mock.calls.map((call) => call[1])).toEqual([
-        "asset_svg",
-        "asset_1",
-        "asset_2",
-        "asset_3",
-        "asset_4",
+      expect(assets.get.mock.calls.map((call) => call[0])).toEqual([
+        "88888888888888888888888888888888",
+        "99999999999999999999999999999999",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "cccccccccccccccccccccccccccccccc",
       ]);
     });
 
     it("accepts an image at the exact default five MiB per-image boundary", async () => {
       const assets = assetStore();
-      assets.readByAssetId.mockResolvedValue(fiveMiBPngBytes);
-      const input = createMessage(messageRecordWithText('<img id="asset_boundary"/>'));
+      assets.get.mockResolvedValue(fiveMiBPngBytes);
+      const input = createMessage(messageRecordWithText('<img id="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"/>'));
 
       const selected = await selectInputFiles(selectionContext([input]), selectionOptions(assets));
 
@@ -327,28 +327,28 @@ describe("formatInput", () => {
 
     it("skips an image above the default five MiB boundary and accepts a later fitting image", async () => {
       const assets = assetStore();
-      assets.readByAssetId.mockImplementation(async (_scope, assetId) =>
-        assetId === "asset_oversized" ? oversizedPngBytes : fiveMiBPngBytes,
+      assets.get.mockImplementation(async (assetId) =>
+        assetId === "ffffffffffffffffffffffffffffffff" ? oversizedPngBytes : fiveMiBPngBytes,
       );
       const input = createMessage(
-        messageRecordWithText('<img id="asset_oversized"/><img id="asset_fitting"/>'),
+        messageRecordWithText('<img id="ffffffffffffffffffffffffffffffff"/><img id="10101010101010101010101010101010"/>'),
       );
 
       const selected = await selectInputFiles(selectionContext([input]), selectionOptions(assets));
 
       expect(selected.get(input.id)?.[0]?.data).toBe(fiveMiBPngBytes);
-      expect(assets.readByAssetId.mock.calls.map((call) => call[1])).toEqual([
-        "asset_oversized",
-        "asset_fitting",
+      expect(assets.get.mock.calls.map((call) => call[0])).toEqual([
+        "ffffffffffffffffffffffffffffffff",
+        "10101010101010101010101010101010",
       ]);
     });
 
     it("accepts the exact default ten MiB total boundary and stops before reading later candidates", async () => {
       const assets = assetStore();
-      assets.readByAssetId.mockResolvedValue(fiveMiBPngBytes);
+      assets.get.mockResolvedValue(fiveMiBPngBytes);
       const input = createMessage(
         messageRecordWithText(
-          '<img id="asset_first"/><img id="asset_second"/><img id="asset_unread"/>',
+          '<img id="33333333333333333333333333333333"/><img id="44444444444444444444444444444444"/><img id="11111111111111111111111111111111"/>',
         ),
       );
 
@@ -358,9 +358,9 @@ describe("formatInput", () => {
         FIVE_MIB,
         FIVE_MIB,
       ]);
-      expect(assets.readByAssetId.mock.calls.map((call) => call[1])).toEqual([
-        "asset_first",
-        "asset_second",
+      expect(assets.get.mock.calls.map((call) => call[0])).toEqual([
+        "33333333333333333333333333333333",
+        "44444444444444444444444444444444",
       ]);
     });
 
@@ -368,9 +368,9 @@ describe("formatInput", () => {
       const assets = assetStore();
       const invalidBytes = new Uint8Array([0x3c, 0x73, 0x76, 0x67]);
       const readFailure = new Error("missing");
-      assets.readByAssetId.mockImplementation(async (_scope, assetId) => {
-        if (assetId === "asset_invalid") return invalidBytes;
-        if (assetId === "asset_missing") throw readFailure;
+      assets.get.mockImplementation(async (assetId) => {
+        if (assetId === "12121212121212121212121212121212") return invalidBytes;
+        if (assetId === "13131313131313131313131313131313") throw readFailure;
         return pngBytes;
       });
       const diagnostics = vi.fn(() => {
@@ -378,7 +378,7 @@ describe("formatInput", () => {
       });
       const input = createMessage(
         messageRecordWithText(
-          '<img id="asset_invalid"/><img id="asset_missing"/><img id="asset_valid"/>',
+          '<img id="12121212121212121212121212121212"/><img id="13131313131313131313131313131313"/><img id="14141414141414141414141414141414"/>',
         ),
       );
 
@@ -389,23 +389,23 @@ describe("formatInput", () => {
 
       expect(selected.get(input.id)?.map((file) => file.data)).toEqual([pngBytes]);
       expect(diagnostics).toHaveBeenCalledTimes(2);
-      expect(diagnostics.mock.calls[0]?.[0]).toBe("asset_invalid");
+      expect(diagnostics.mock.calls[0]?.[0]).toBe("12121212121212121212121212121212");
       expect(diagnostics.mock.calls[0]?.[1]).toEqual(
         expect.objectContaining({ name: "UnsupportedImageMimeError" }),
       );
-      expect(diagnostics.mock.calls[1]).toEqual(["asset_missing", readFailure]);
+      expect(diagnostics.mock.calls[1]).toEqual(["13131313131313131313131313131313", readFailure]);
     });
 
     it("charges duplicate references independently and skips failures or oversized candidates for later fitting files", async () => {
       const assets = assetStore();
       const oversized = new Uint8Array(9);
-      assets.readByAssetId.mockImplementation(async (_scope, assetId) => {
-        if (assetId === "asset_missing") throw new Error("missing");
-        return assetId === "asset_large" ? oversized : pngBytes;
+      assets.get.mockImplementation(async (assetId) => {
+        if (assetId === "13131313131313131313131313131313") throw new Error("missing");
+        return assetId === "15151515151515151515151515151515" ? oversized : pngBytes;
       });
       const input = createMessage(
         messageRecordWithText(
-          '<img id="asset_missing"/><img id="asset_large"/><img id="asset_duplicate"/><img id="asset_duplicate"/><img id="asset_svg"/>',
+          '<img id="13131313131313131313131313131313"/><img id="15151515151515151515151515151515"/><img id="16161616161616161616161616161616"/><img id="16161616161616161616161616161616"/><img id="88888888888888888888888888888888"/>',
         ),
       );
 
@@ -421,19 +421,19 @@ describe("formatInput", () => {
         }),
       );
 
-      expect(assets.readByAssetId.mock.calls.map((call) => call[1])).toEqual([
-        "asset_missing",
-        "asset_large",
-        "asset_duplicate",
-        "asset_duplicate",
+      expect(assets.get.mock.calls.map((call) => call[0])).toEqual([
+        "13131313131313131313131313131313",
+        "15151515151515151515151515151515",
+        "16161616161616161616161616161616",
+        "16161616161616161616161616161616",
       ]);
       expect(selected.get(input.id)?.map((file) => file.data)).toEqual([pngBytes, pngBytes]);
     });
 
     it("reads only matching scoped local assets and ignores non-Input custom messages", async () => {
       const assets = assetStore();
-      assets.readByAssetId.mockResolvedValue(pngBytes);
-      const input = createMessage(messageRecordWithText('<img id="asset_local"/>'));
+      assets.get.mockResolvedValue(pngBytes);
+      const input = createMessage(messageRecordWithText('<img id="17171717171717171717171717171717"/>'));
       const unrelated = {
         id: "other",
         timestamp: 0,
@@ -446,7 +446,7 @@ describe("formatInput", () => {
 
       try {
         await selectInputFiles(selectionContext([unrelated, input]), selectionOptions(assets));
-        expect(assets.readByAssetId).toHaveBeenCalledWith(scope, "asset_local");
+        expect(assets.get).toHaveBeenCalledWith("17171717171717171717171717171717");
         expect(platformApi).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
@@ -455,26 +455,26 @@ describe("formatInput", () => {
 
     it("finds frozen assets nested inside message elements", async () => {
       const assets = assetStore();
-      assets.readByAssetId.mockResolvedValue(pngBytes);
+      assets.get.mockResolvedValue(pngBytes);
       const input = createMessage({
         ...messageRecord(),
         elements: [
           h("p", {}, [
-            h("span", {}, [h("img", { id: "asset_nested", mime: "image/png" })]),
+            h("span", {}, [h("img", { id: "18181818181818181818181818181818", mime: "image/png" })]),
           ]),
         ],
       });
 
       await selectInputFiles(selectionContext([input]), selectionOptions(assets));
 
-      expect(input.data.elements[0]?.children[0]?.children[0]?.attrs.id).toBe("asset_nested");
-      expect(assets.readByAssetId).toHaveBeenCalledWith(scope, "asset_nested");
+      expect(input.data.elements[0]?.children[0]?.children[0]?.attrs.id).toBe("18181818181818181818181818181818");
+      expect(assets.get).toHaveBeenCalledWith("18181818181818181818181818181818");
     });
   });
 
   it("preserves the exact frozen message literal and appends selected files", () => {
     const files: readonly FilePart[] = [{ type: "file", data: pngBytes, mediaType: "image/png" }];
-    const elements = [h("p", {}, [h.text("  "), h("img", { id: "asset_1" }), h.text("\n")])];
+    const elements = [h("p", {}, [h.text("  "), h("img", { id: "99999999999999999999999999999999" }), h.text("\n")])];
 
     expect(
       formatInput(createMessage({ ...messageRecord(), elements }), {
@@ -486,7 +486,7 @@ describe("formatInput", () => {
       content: [
         {
           type: "text",
-          text: '[time="2026/7/18 20:34" sender="Alice (10001)" id="m-1"]\n<p>  <img id="asset_1"/>\n</p>',
+          text: '[time="2026/7/18 20:34" sender="Alice (10001)" id="m-1"]\n<p>  <img id="99999999999999999999999999999999"/>\n</p>',
         },
         ...files,
       ],

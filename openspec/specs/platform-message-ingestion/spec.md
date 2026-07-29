@@ -5,7 +5,7 @@
 Define Session Gateway entry points, per-platform Resolver registration, Resolver-owned image persistence, and scoped asset ownership.
 ## Requirements
 ### Requirement: Database-Backed Shared Channel Admission
-Core MUST declare Koishi Database as a required dependency and MUST use the Koishi Channel row as the only assignee authority for shared Sessions. Gateway MUST query that row exactly once for each shared external Session, before Resolver selection, image freezing, persistence, Runtime creation, or other Runtime work. A successful Gateway check establishes the event's assignee snapshot.
+Core MUST declare Koishi Database as a required dependency and MUST use the Koishi Channel row as the only assignee authority for shared Sessions. Gateway MUST query that row exactly once for each shared external Session, before Resolver selection, Store creation, persistence, Runtime creation, or other Runtime work. A successful Gateway check establishes the event's assignee snapshot.
 
 #### Scenario: Current assignee sends an event
 - **WHEN** Gateway receives a shared Session
@@ -15,7 +15,7 @@ Core MUST declare Koishi Database as a required dependency and MUST use the Kois
 
 #### Scenario: Non-assignee sends an event
 - **WHEN** the database assignee differs from `session.selfId`
-- **THEN** Gateway MUST reject the Session before Resolver work, image freezing, persistence, or Runtime creation
+- **THEN** Gateway MUST reject the Session before Resolver work, Store creation, persistence, or Runtime creation
 - **AND** direct mention or command-prefix routing MUST NOT bypass this check for the YesImBot Agent Runtime
 
 #### Scenario: Assignee cannot be resolved
@@ -87,59 +87,59 @@ A registered resolver MUST be authoritative for its platform. If its `resolve` c
 - **WHEN** a Session arrives for a platform without a resolver
 - **THEN** Gateway MUST return without persisting or routing
 
-### Requirement: Element-Based Resolved Message
-A resolved ordinary message MUST carry its content as `elements` only. Gateway MUST seal those elements once at ingress and persist the sealed result as the sole structured content field. A resolver MUST NOT supply a rendered `text`, and Gateway MUST NOT persist one on a Message.
+### Requirement: Resolver-Owned Message Elements
+A resolved ordinary message MUST carry its content as Resolver Draft `elements` only. Gateway MUST preserve successful Resolver elements and MUST NOT source-fill or rewrite image elements, run a second resource load, normalize or freeze elements, or retain the Session after its active handler completes.
 
 #### Scenario: Resolver returns a message draft
 - **WHEN** a resolver returns a message draft with elements
-- **THEN** Gateway MUST persist the sealed elements
+- **THEN** Gateway MUST persist those elements as the sole structured message content
 - **AND** the persisted record MUST NOT contain a `text` field
 
-#### Scenario: Draft contains an image carrying a source URL
-- **WHEN** a message draft contains an image element with a remote source
-- **THEN** the persisted `elements` MUST contain the sealed form of that image
-- **AND** the persisted `elements` MUST NOT retain the original remote source
+#### Scenario: Resolver owns image source handling
+- **WHEN** a Resolver returns an image element
+- **THEN** Gateway MUST preserve that successful Resolver output
+- **AND** it MUST NOT replace source URLs, paths, data URIs, or already-persisted image IDs
 
-#### Scenario: Elements are sealed exactly once
-- **WHEN** Gateway normalizes and seals a draft
-- **THEN** normalization MUST NOT be applied more than once to the same elements
+### Requirement: OneBot Resolver Image Persistence
+The OneBot Resolver MUST recursively persist its `img` elements and return each successfully persisted image as `h("img", { id })`, where `id` is a complete 32-character lowercase hexadecimal ID. A successful persisted image MUST contain no source URL, path, or data URI. OneBot MUST apply no more than 4 images, 5 MiB per image, 10 MiB total bytes, and a 10-second limit per image. Core MUST NOT impose a hand-written image download concurrency requirement.
 
-### Requirement: Resolver-Owned Bounded Image Freezing
-Session resolution MUST finish every eligible image download before first persistence. It MUST enforce a maximum of 4 images, 5 MiB per image, 10 MiB total image bytes, 10 seconds per image, 2 concurrent downloads, and the MIME allowlist `image/jpeg`, `image/png`, `image/webp`, and `image/gif`. `freezeImage()` MUST call its loader as `load(signal, maxBytes)` using the remaining core-controlled budget; loaders MUST honor the signal and cap at transport/decode time. Timeout MUST abort the loader, return unavailable promptly, and retain its concurrency permit until that loader settles. AssetStore MUST determine accepted MIME from actual bytes; the loader MIME is only a hint.
+#### Scenario: OneBot persists an eligible image
+- **WHEN** a OneBot message contains an eligible image within each OneBot limit
+- **THEN** the OneBot Resolver MUST write its bytes through the supplied Store
+- **AND** the returned Draft MUST contain an `img` with its complete persisted ID
 
-#### Scenario: Eligible image is frozen
-- **WHEN** an admitted message contains an allowed image within every limit
-- **THEN** resolution MUST store the bytes in the scoped AssetStore
-- **AND** the frozen content MUST reference the private asset ID
+#### Scenario: OneBot preserves an image that cannot persist
+- **WHEN** one OneBot image load, limit check, or Store write fails
+- **THEN** the OneBot Resolver MUST preserve that original image element
+- **AND** it MUST continue processing sibling elements
 
-#### Scenario: Image cannot be frozen
-- **WHEN** an image download fails, times out, exceeds a limit, or has a disallowed MIME type
-- **THEN** resolution MUST replace it with a permanent unavailable element
-- **AND** later model projection MUST NOT retry the remote resource
+#### Scenario: Resolver failure is authoritative
+- **WHEN** a Resolver itself throws while resolving a Session
+- **THEN** Gateway MUST record a resolver diagnostic
+- **AND** it MUST NOT persist or route that Session
 
 ### Requirement: Fixed Forward and Quote Forms
-Session resolution MUST keep forward elements as ID plus fixed summary and quote elements as ID only. Forward and quote elements MUST bypass binary resource collection.
+Session resolution MUST keep forward elements as ID plus fixed summary and quote elements as ID only. Forward and quote elements MUST bypass image persistence.
 
 #### Scenario: Forward element is accepted
 - **WHEN** an admitted event contains a forward element
-- **THEN** the structured and frozen representations MUST retain only its ID and fixed summary
-- **AND** resolution MUST NOT store forwarded message bodies in AssetStore
+- **THEN** the Resolver output MUST retain only its ID and fixed summary
+- **AND** image persistence MUST NOT expand forwarded message bodies
 
 #### Scenario: Quote element is accepted
 - **WHEN** an admitted event contains a quote element
-- **THEN** the structured and frozen representations MUST retain only its message ID
+- **THEN** the Resolver output MUST retain only its message ID
 
-### Requirement: Shared Scoped Asset Ownership
-One internal AssetStore MUST support Gateway `freezeImage()` writes, Message text projection reads, and ChannelRuntime cleanup. Assets MUST remain private to `channelIdentity` and MUST NOT become a public Koishi service.
+### Requirement: Scoped Asset Service Ownership
+The public AssetService MUST scope Stores by the persistent ChannelScope tuple. Shared Stores MUST use `[platform, channelId]`; a shared Runtime replacement for another Bot MUST use that same persistent tuple.
 
-#### Scenario: Channel runtime projects a frozen image
-- **WHEN** model projection reads a private image reference from persisted Message text
-- **THEN** it MUST load bytes only from the matching channel scope in AssetStore
+#### Scenario: Channel runtime projects a persisted image
+- **WHEN** model projection reads an image reference from a persisted Message
+- **THEN** it MUST load bytes only from the Store for the matching channel scope
 
 #### Scenario: Channel reset clears assets
 - **WHEN** RuntimeManager resets a channel
 - **THEN** the reset MUST clear that channel's scoped assets without clearing another channel
-
 ### Requirement: Strict Channel Allowlist Admission
 Core MUST expose `allowedChannels` as a strict Gateway allowlist. Each rule MUST contain `platform` and `channelId` as an exact string or `*`, and MAY contain boolean `isDirect`; omitted `isDirect` MUST match both direct and shared channels. Rules MUST use OR semantics, while every specified field in one rule MUST match. Missing configuration and an empty list MUST reject all external Sessions.
 
@@ -158,10 +158,9 @@ Core MUST expose `allowedChannels` as a strict Gateway allowlist. Each rule MUST
 #### Scenario: Allowlist is missing or empty
 - **WHEN** Core starts without any allowed channel rule
 - **THEN** Gateway MUST reject every external Session
-
 #### Scenario: No rule matches
 - **WHEN** Gateway derives a valid ChannelScope but no allowlist rule matches it
-- **THEN** Gateway MUST return before storage readiness, database assignee lookup, Resolver work, image freezing, Input creation, persistence, Will evaluation, or Runtime creation
+- **THEN** Gateway MUST return before storage readiness, database assignee lookup, Resolver work, Store creation, Input creation, persistence, Will evaluation, or Runtime creation
 
 #### Scenario: Internal delivery feedback is created
 - **WHEN** an admitted ChannelRuntime reports same-channel `delivery.failed` feedback
@@ -172,6 +171,6 @@ Core MUST replace a cached shared Runtime when an admitted event's `selfId` diff
 
 #### Scenario: Admitted event reaches a Runtime for another self ID
 - **WHEN** Gateway admitted a shared event under its assignee snapshot
-- **AND** a cached Runtime for the same `channelIdentity` has a different `selfId`
+- **AND** a cached Runtime for the same persistent shared tuple `[platform, channelId]` has a different `selfId`
 - **THEN** Runtime routing MUST stop the cached Runtime and create a replacement for the admitted `selfId`
 - **AND** it MUST preserve persisted channel data

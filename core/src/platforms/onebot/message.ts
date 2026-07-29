@@ -25,7 +25,7 @@ export async function resolveOneBotMessage(
     kind: "message",
     messageId: session.messageId,
     elements: await Promise.all(
-      session.elements.map((element) => persistImages(ctx, element, store, budget)),
+      session.elements.map((element) => storeImages(ctx, element, store, budget)),
     ),
     user: {
       id: session.userId || undefined,
@@ -35,7 +35,7 @@ export async function resolveOneBotMessage(
   };
 }
 
-async function persistImages(
+async function storeImages(
   ctx: Context,
   element: Element,
   store: AssetStore,
@@ -61,7 +61,7 @@ async function persistImages(
   return h(
     element.type,
     element.attrs,
-    await Promise.all(element.children.map((child) => persistImages(ctx, child, store, budget))),
+    await Promise.all(element.children.map((child) => storeImages(ctx, child, store, budget))),
   );
 }
 

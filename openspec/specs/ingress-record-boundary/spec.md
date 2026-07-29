@@ -20,17 +20,27 @@ Core MUST define versionless host-owned closed base shapes for persisted ordinar
 - **AND** it MUST NOT inherit arbitrary fields from `session.event`
 
 ### Requirement: Gateway Field Admission Authority
-Gateway MUST be the single authority that converts resolver output into final persisted ingress records. A resolver MUST return a smaller host-defined draft and MUST NOT be trusted to define the complete persisted record envelope.
+Gateway MUST be the single authority that converts a Resolver Draft into a final persisted ingress record. The Draft is the sole record input: Gateway MUST NOT fall back to Session message fields when it is absent or incomplete, and it MUST NOT trust a Draft to define the complete persisted record envelope.
 
 #### Scenario: Resolver returns a message draft
 - **WHEN** a platform resolver accepts a Session as an ordinary message
-- **THEN** Gateway MUST normalize that draft into the final persisted `MessageRecord`
+- **THEN** Gateway MUST assemble the final persisted `MessageRecord` from the Draft and host-owned envelope fields
 - **AND** it MUST apply host field whitelisting before persistence or runtime routing
 
 #### Scenario: Resolver returns an event draft
 - **WHEN** a platform resolver accepts a Session as a non-message event
-- **THEN** Gateway MUST normalize that draft into the final persisted `EventRecord`
+- **THEN** Gateway MUST assemble the final persisted `EventRecord` from the Draft and host-owned envelope fields
 - **AND** it MUST apply host field whitelisting before persistence or runtime routing
+
+#### Scenario: Resolver persists an image
+- **WHEN** a Resolver successfully persists an image in a Message Draft
+- **THEN** that image MUST contain a complete 32-character lowercase hexadecimal ID
+- **AND** Gateway MUST preserve it without Session-field fallback or image rewriting
+
+#### Scenario: Resolver cannot persist one image
+- **WHEN** a Resolver cannot persist one image while resolving a Message Draft
+- **THEN** that Resolver MAY retain the original image source for that element
+- **AND** Gateway MUST preserve the successful Draft rather than applying another image fallback
 
 ### Requirement: Forbidden Platform Residue Exclusion
 Core MUST exclude platform runtime residue such as `_data`, `_type`, `sn`, `login`, `referrer`, `guild`, `member`, `argv`, `friend`, `operator`, `emoji`, `role`, and `button` from persisted ingress records unless a specific host-owned field explicitly reintroduces equivalent information.

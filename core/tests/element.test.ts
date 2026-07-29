@@ -4,16 +4,16 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h } from "koishi";
 
-import { FORWARD_SUMMARY, normalizeElements } from "../src/event/element.js";
+import { FORWARD_SUMMARY, renderElements } from "../src/event/element.js";
 
 describe("non-image ingress elements", () => {
-  it("normalizes quotes to their id only", () => {
-    const [quote] = normalizeElements([h("quote", { id: "q-1", content: "discard" })]);
-    expect(quote).toEqual(h("quote", { id: "q-1" }));
+  it("preserves quote structure", () => {
+    expect(renderElements([h("quote", { id: "q-1" })])).toBe('<quote id="q-1"/>');
   });
 
-  it("keeps the fixed forward summary", () => {
-    const [forward] = normalizeElements([h("message", { forward: true, id: "f-1" })]);
-    expect(forward).toEqual(h("forward", { id: "f-1", summary: FORWARD_SUMMARY }));
+  it("preserves the fixed forward summary", () => {
+    expect(renderElements([h("forward", { id: "f-1", summary: FORWARD_SUMMARY })])).toBe(
+      `<forward id="f-1" summary="${FORWARD_SUMMARY}"/>`,
+    );
   });
 });
