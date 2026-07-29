@@ -6,6 +6,7 @@ import { h, type Context, type Element, type Session } from "koishi";
 
 import type { AssetStore } from "../../asset.js";
 import type { ResolvedMessageDraft } from "../../input.js";
+import { FORWARD_SUMMARY } from "../../event/element.js";
 
 const DATA_URL = /^data:([^;,]+)(;base64)?,([\s\S]*)$/;
 const MAX_IMAGES = 4;
@@ -41,6 +42,10 @@ async function storeImages(
   store: AssetStore,
   budget: { count: number; bytes: number },
 ): Promise<Element> {
+  if (element.type === "quote") return h("quote", { id: elementId(element.attrs.id) });
+  if (element.type === "forward" || (element.type === "message" && element.attrs.forward)) {
+    return h("forward", { id: elementId(element.attrs.id), summary: FORWARD_SUMMARY });
+  }
   if (element.type === "img") {
     if (typeof element.attrs.src !== "string" || budget.count >= MAX_IMAGES) return element;
     budget.count += 1;
@@ -63,6 +68,11 @@ async function storeImages(
     element.attrs,
     await Promise.all(element.children.map((child) => storeImages(ctx, child, store, budget))),
   );
+}
+
+function elementId(value: unknown): string {
+  if (typeof value === "string") return value;
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
 
 async function loadOneBotImage(ctx: Context, src: string, maxBytes: number): Promise<Uint8Array> {

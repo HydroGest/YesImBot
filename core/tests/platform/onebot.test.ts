@@ -12,6 +12,7 @@ import { h, type Session } from "koishi";
 import type { AssetStore } from "../../src/asset.js";
 import { resolveOneBotEvent } from "../../src/platforms/onebot/events.js";
 import { createResolver } from "../../src/platforms/onebot/index.js";
+import { FORWARD_SUMMARY } from "../../src/event/element.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 const ID = "0123456789abcdef0123456789abcdef";
@@ -187,16 +188,33 @@ describe("OneBot resolver", () => {
     expect(assets.put).not.toHaveBeenCalled();
   });
 
-  it("preserves quotes, forwards, and all non-image element structure", async () => {
-    const quote = h("quote", { id: "quoted" });
-    const forward = h("forward", { id: "forward", summary: "fixed" });
+  it("preserves unknown non-image element structure", async () => {
     const text = h("p", { class: "copy" }, [h.text("before"), h("at", { id: "42" }), h.text("after")]);
     const result = await createResolver({ http: vi.fn() } as never).resolve(
-      makeSession({ elements: [quote, forward, text] }),
+      makeSession({ elements: [text] }),
       store(),
     );
 
-    expect(result).toMatchObject({ kind: "message", elements: [quote, forward, text] });
+    expect(result).toMatchObject({ kind: "message", elements: [text] });
+  });
+
+  it("normalizes quote and forward forms before returning a Draft", async () => {
+    const quote = h("quote", { id: 42, content: "discard" }, [h.text("discard")]);
+    const forward = h("forward", { id: "f-1", summary: "untrusted", extra: "discard" }, [h.text("discard")]);
+    const legacyForward = h("message", { forward: true, id: 7 }, [h.text("discard")]);
+    const result = await createResolver({ http: vi.fn() } as never).resolve(
+      makeSession({ elements: [quote, forward, legacyForward] }),
+      store(),
+    );
+
+    expect(result).toMatchObject({
+      kind: "message",
+      elements: [
+        h("quote", { id: "42" }),
+        h("forward", { id: "f-1", summary: FORWARD_SUMMARY }),
+        h("forward", { id: "7", summary: FORWARD_SUMMARY }),
+      ],
+    });
   });
 
   it("persists nested images in document order and returns a host-envelope-free Draft", async () => {
