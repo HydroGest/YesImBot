@@ -87,7 +87,8 @@ function formatterVariantRecord(): EventRecord<"formatter.variant"> {
 }
 
 function assetStore() {
-  return { readByAssetId: vi.fn<() => Promise<Uint8Array>>() };
+  const readByAssetId = vi.fn<() => Promise<Uint8Array>>();
+  return { readByAssetId, get: (id: string) => readByAssetId(scope, id) };
 }
 
 function pngBytesOfLength(byteLength: number): Uint8Array {

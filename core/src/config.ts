@@ -1,6 +1,6 @@
 import { Schema } from "koishi";
 
-import type { ChannelAllowRule } from "./gateway/allowlist.js";
+import type { ChannelAllowRule } from "./gateway.js";
 import type { UnifiedImagePolicy } from "./media/index.js";
 
 export type WillConfig =

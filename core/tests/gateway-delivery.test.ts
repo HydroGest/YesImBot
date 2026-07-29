@@ -12,7 +12,7 @@ import { h } from "koishi";
 import type { PacingConfig } from "../src/config.js";
 import { formatInput } from "../src/event/formatter.js";
 import { isInput, type InputRecord, type MessageRecord } from "../src/input.js";
-import { Gateway } from "../src/gateway/index.js";
+import { Gateway } from "../src/gateway.js";
 import { RuntimeManager } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import { ChannelStorage } from "../src/channel.js";
@@ -84,17 +84,20 @@ function createGateway(
     database: { get: vi.fn(async () => [{ assignee: "bot-1" }]) },
   };
   const storage = new ChannelStorage("/tmp/yesimbot-gateway-delivery-test");
-  return {
-    gateway: new Gateway({
+  const gateway = new Gateway({
       ctx: ctx as never,
       runtime: { route } as never,
-      assets: { put: vi.fn() },
-      storage,
+    assets: { createStore: vi.fn(() => ({ get: vi.fn(), put: vi.fn(), clear: vi.fn() })) },
       allowedChannels: [{ platform: "*", channelId: "*" }],
       ready: () => storage.start(),
       logger,
       ...deliveryOptions,
-    } as never),
+    } as never);
+  gateway.register({ platform: "test", resolve: async (input) => ({
+    kind: "message", messageId: input.messageId, elements: input.elements ?? [],
+  }) });
+  return {
+    gateway,
     logger,
   };
 }
@@ -102,7 +105,7 @@ function createGateway(
 function createIntegratedGateway(basePath: string) {
   const ctx = new Context();
   const storage = new ChannelStorage(basePath);
-  const assets = { clear: vi.fn(async () => undefined), put: vi.fn(), readByAssetId: vi.fn() };
+  const assets = { createStore: vi.fn(() => ({ clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() })) };
   const model = { modelId: "test-model" };
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
   Object.assign(ctx, {
@@ -126,6 +129,14 @@ function createIntegratedGateway(basePath: string) {
     allowedChannels: [{ platform: "test", channelId: "room-1" }],
     ready: () => storage.start(),
     logger: { warn: vi.fn() } as never,
+  });
+  gateway.register({
+    platform: "test",
+    resolve: async (input) => ({
+      kind: "message",
+      messageId: input.messageId,
+      elements: input.elements ?? [],
+    }),
   });
   return { gateway, manager, storage };
 }

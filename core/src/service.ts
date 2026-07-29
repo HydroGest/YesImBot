@@ -2,10 +2,10 @@ import { resolve } from "node:path";
 
 import { Service, type Context } from "koishi";
 
+import { createAssetService, type AssetService } from "./asset.js";
 import { ChannelStorage, type ChannelScope } from "./channel.js";
-import { resolveMultimediaImagePolicy, resolveReplyPacingConfig, type Config } from "./config.js";
-import { Gateway, type SessionResolver } from "./gateway/index.js";
-import { AssetStore } from "./media/index.js";
+import { resolveReplyPacingConfig, type Config } from "./config.js";
+import { Gateway, type SessionResolver } from "./gateway.js";
 import type { ModelService } from "./model/index.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
 
@@ -19,8 +19,8 @@ export class YesImBotService extends Service<Config> {
   static readonly inject = ["yesimbot.model", "database"];
 
   readonly model: ModelService;
+  readonly assets: AssetService;
   private readonly storage: ChannelStorage;
-  private readonly asset: AssetStore;
   private readonly rt: RuntimeManager;
   private readonly gate: Gateway;
   private readonly plugins = new Set<{ readonly factory: AgentPluginFactory }>();
@@ -38,27 +38,22 @@ export class YesImBotService extends Service<Config> {
         this.logger.warn({ code, ...fields });
       },
     );
-    this.asset = new AssetStore({
-      storage: this.storage,
-      policy: resolveMultimediaImagePolicy(config.multimedia),
-    });
+    this.assets = createAssetService(this.storage);
     this.rt = new RuntimeManager({
       ctx,
       config,
       logger: this.logger,
-      assets: this.asset,
+      assets: this.assets,
       storage: this.storage,
       getAgentPluginFactories: () => [...this.plugins].map(({ factory }) => factory),
     });
     this.gate = new Gateway({
       ctx,
-      assets: this.asset,
+      assets: this.assets,
       runtime: this.rt,
-      storage: this.storage,
       ready: () => this.storage.start(),
       allowedChannels: config.allowedChannels ?? [],
       logger: this.logger,
-      mediaPolicy: resolveMultimediaImagePolicy(config.multimedia),
       pacing: resolveReplyPacingConfig(config.reply?.pacing),
     });
 

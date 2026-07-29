@@ -10,7 +10,7 @@ Define closed host-owned base shapes for persisted ordinary messages and non-mes
 Core MUST define versionless host-owned closed base shapes for persisted ordinary messages and persisted non-message events. A message base contains `platform`, `selfId`, `channel`, `user`, `messageId`, `elements`, and `timestamp`; an event base contains `platform`, `selfId`, `channel`, `timestamp`, `eventType`, and `text`. These base shapes MUST be assembled by Core rather than inherited from `Universal.Event`, and they MUST admit only fields explicitly declared by the host contract.
 
 #### Scenario: Gateway assembles a message record
-- **WHEN** Core accepts an ordinary message Session or resolver draft
+- **WHEN** Core accepts an ordinary message resolver draft
 - **THEN** the final persisted message record MUST contain only the fields named by the host message contract
 - **AND** it MUST NOT inherit arbitrary fields from `session.event`
 
@@ -35,9 +35,9 @@ Gateway MUST be the single authority that converts resolver output into final pe
 ### Requirement: Forbidden Platform Residue Exclusion
 Core MUST exclude platform runtime residue such as `_data`, `_type`, `sn`, `login`, `referrer`, `guild`, `member`, `argv`, `friend`, `operator`, `emoji`, `role`, and `button` from persisted ingress records unless a specific host-owned field explicitly reintroduces equivalent information.
 
-#### Scenario: Fallback message path sees platform residue
-- **WHEN** the Session event contains platform-specific runtime fields that are not part of the host message contract
-- **THEN** the fallback message path MUST exclude them from the persisted message record
+#### Scenario: Resolver draft sees platform residue
+- **WHEN** a platform resolver returns platform-specific data outside its declared draft
+- **THEN** Gateway MUST exclude that residue from the persisted message record
 
 #### Scenario: Event variant needs platform-specific data
 - **WHEN** an event variant needs a platform-specific fact such as a reaction list or poke target

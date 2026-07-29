@@ -33,7 +33,7 @@ vi.mock("../src/runtime/index.js", () => ({
 }));
 
 import type { Config } from "../src/config.js";
-import { Gateway } from "../src/gateway/index.js";
+import { Gateway } from "../src/gateway.js";
 import type { AgentPluginFactory } from "../src/index.js";
 import { YesImBotService } from "../src/service.js";
 
@@ -80,7 +80,7 @@ describe("YesImBotService facade", () => {
     expect("reload" in ctx.yesimbot).toBe(false);
     expect(ctx.yesimbot.reset).toEqual(expect.any(Function));
     expect(ctx.yesimbot.stop).toEqual(expect.any(Function));
-    expect("assets" in ctx.yesimbot).toBe(false);
+    expect(ctx.yesimbot.assets).toBeDefined();
     expect("runtime" in ctx.yesimbot).toBe(false);
     expect("gateway" in ctx.yesimbot).toBe(false);
     expect("platform" in ctx.yesimbot).toBe(false);
@@ -177,22 +177,14 @@ describe("YesImBotService facade", () => {
       })),
     };
     const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
-    const assets = { readByAssetId: vi.fn(), clear: vi.fn() };
+    const assets = { createStore: vi.fn(() => ({ get: vi.fn(), put: vi.fn(), clear: vi.fn() })) };
     const gateway = new Gateway({
       ctx: ctx as never,
       runtime: runtime as never,
       assets: assets as never,
-       storage: {} as never,
       ready: () => ready,
       allowedChannels: [{ platform: "test", channelId: "room-1" }],
       logger: { warn: vi.fn() } as never,
-      mediaPolicy: {
-        enabled: true,
-        maxCount: 4,
-        maxBytesPerImage: 5 * 1024 * 1024,
-        maxTotalBytes: 10 * 1024 * 1024,
-        selection: "current-first",
-      },
     });
     gateway.register(resolver);
     const handling = gateway.handle({
@@ -211,7 +203,7 @@ describe("YesImBotService facade", () => {
     await Promise.resolve();
     expect(resolver.resolve).not.toHaveBeenCalled();
     expect(runtime.route).not.toHaveBeenCalled();
-    expect(assets.readByAssetId).not.toHaveBeenCalled();
+    expect(assets.createStore).not.toHaveBeenCalled();
     release();
     await handling;
     expect(resolver.resolve).toHaveBeenCalledOnce();

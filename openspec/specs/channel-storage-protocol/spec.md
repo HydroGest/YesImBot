@@ -27,3 +27,21 @@ Core MUST NOT create or read `channels.json`. Legacy directory and Manifest data
 
 ### Requirement: Channel directory limits are enforced
 Core MUST reject a safe readable channel directory basename longer than 200 characters.
+
+### Requirement: Scoped Asset Service
+The public facade MUST expose `AssetService.createStore(scope)`. A Store is scoped by the channel tuple, exposes `put`, `get`, and `clear`, and its concrete implementation remains private.
+
+#### Scenario: Store persists image bytes
+- **WHEN** a Store receives bytes through `put()`
+- **THEN** it MUST atomically deduplicate them under the first 32 lowercase hexadecimal characters of their SHA-256 digest
+- **AND** return `h("img", { id })` containing that complete ID
+
+#### Scenario: Store resolves an asset reference
+- **WHEN** `get()` receives a 7-32 character lowercase hexadecimal ID or prefix
+- **THEN** an exact ID or unique prefix MUST return the scoped bytes
+- **AND** an absent or ambiguous prefix MUST reject
+
+#### Scenario: Asset reset
+- **WHEN** a scoped Store is cleared
+- **THEN** only that channel's assets are removed
+- **AND** old `asset_` references are not read or migrated

@@ -1,18 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-
 import type { ModelMessageContext } from "@yesimbot/agent-runtime";
 import type { FilePart } from "ai";
-import { h, type Element } from "koishi";
+import type { Element } from "koishi";
 
-import type { ChannelScope, ChannelStorage } from "../channel.js";
-import { normalizeElements, unavailableImage } from "../event/element.js";
+import type { AssetStore } from "../asset.js";
 import { isInput, isMessage, type Input } from "../input.js";
 
 const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
-const IMAGE_DOWNLOAD_TIMEOUT_MS = 10_000;
-const IMAGE_DOWNLOAD_CONCURRENCY = 2;
 
 export type ImageMime = (typeof IMAGE_MIME_TYPES)[number];
 
@@ -68,205 +61,8 @@ export function detectImageMime(data: Uint8Array): ImageMime | undefined {
   return undefined;
 }
 
-export interface AssetStoreOptions {
-  readonly storage: ChannelStorage;
-  readonly policy: UnifiedImagePolicy;
-}
-
-export class AssetStore {
-  private policy: UnifiedImagePolicy;
-
-  constructor(private readonly options: AssetStoreOptions) {
-    this.policy = options.policy;
-  }
-
-  refreshPolicy(policy: UnifiedImagePolicy): void {
-    this.policy = policy;
-  }
-
-  async put(
-    scope: ChannelScope,
-    data: Uint8Array,
-  ): Promise<{ readonly assetId: string; readonly mime: ImageMime }> {
-    if (!(data instanceof Uint8Array)) throw new Error("Asset data must be bytes");
-    const mime = detectImageMime(data);
-    if (!mime) throw new Error("Unsupported image MIME type");
-    if (data.byteLength > this.policy.maxBytesPerImage) {
-      throw new Error(`Image exceeds ${this.policy.maxBytesPerImage} bytes`);
-    }
-
-    const copied = data.slice();
-    const hash = createHash("sha256").update(copied).digest("hex");
-    const path = await this.assetPath(scope, hash);
-    const temporary = join(dirname(path), `.${hash}.${randomUUID()}.tmp`);
-    await mkdir(dirname(path), { recursive: true });
-    try {
-      await writeFile(temporary, copied, { flag: "wx" });
-      await rename(temporary, path);
-    } finally {
-      await rm(temporary, { force: true });
-    }
-
-    return { assetId: `asset_${hash}`, mime };
-  }
-
-  async readByAssetId(scope: ChannelScope, assetId: string): Promise<Uint8Array> {
-    const hash = assetId.startsWith("asset_") ? assetId.slice("asset_".length) : "";
-    if (!/^[a-f0-9]{64}$/.test(hash)) throw new Error("Invalid platform asset id");
-
-    const data = new Uint8Array(await readFile(await this.assetPath(scope, hash)));
-    const actual = createHash("sha256").update(data).digest("hex");
-    if (actual !== hash) throw new Error(`Platform asset ${assetId} failed integrity validation`);
-    return data;
-  }
-
-  async clear(scope: ChannelScope): Promise<void> {
-    await rm(await this.assetPath(scope), { recursive: true, force: true });
-  }
-
-  private async assetPath(scope: ChannelScope, hash?: string): Promise<string> {
-    return hash
-      ? join(await this.options.storage.getStoragePath(scope), "assets", hash)
-      : join(await this.options.storage.getStoragePath(scope), "assets");
-  }
-}
-
-export interface ImageFreezerOptions {
-  readonly scope: ChannelScope;
-  readonly assets: Pick<AssetStore, "put">;
-  readonly policy: UnifiedImagePolicy;
-}
-
-export class ImageFreezer {
-  private totalImages = 0;
-  private totalBytes = 0;
-  private active = 0;
-  private readonly waiting: Array<{ grant(): boolean }> = [];
-  private readonly maxCount: number;
-  private readonly maxBytesPerImage: number;
-  private readonly maxTotalBytes: number;
-  private readonly scope: ChannelScope;
-  private readonly assets: Pick<AssetStore, "put">;
-
-  constructor(options: ImageFreezerOptions) {
-    this.scope = options.scope;
-    this.assets = options.assets;
-    this.maxCount = options.policy.maxCount;
-    this.maxBytesPerImage = options.policy.maxBytesPerImage;
-    this.maxTotalBytes = options.policy.maxTotalBytes;
-  }
-
-  readonly freezeImage = async (
-    element: Element,
-    load: (signal: AbortSignal, maxBytes: number) => Promise<{ data: Uint8Array; mime?: string }>,
-  ): Promise<Element> => {
-    const normalized = normalizeElements([element])[0];
-    if (!normalized) return unavailableImage();
-    if (normalized.type === "quote" || normalized.type === "forward") return normalized;
-    if (normalized.type !== "img" || typeof normalized.attrs.src !== "string") return normalized;
-    if (this.totalImages >= this.maxCount) return unavailableImage();
-    this.totalImages += 1;
-
-    const controller = new AbortController();
-    let permit: ReturnType<ImageFreezer["acquire"]> | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<"timeout">((resolve) => {
-      timer = setTimeout(() => {
-        controller.abort(new DOMException("Image download timed out", "TimeoutError"));
-        permit?.cancel();
-        resolve("timeout");
-      }, IMAGE_DOWNLOAD_TIMEOUT_MS);
-    });
-    permit = this.acquire();
-    let releaseWhenSettled = true;
-    let holdsPermit = false;
-    try {
-      const acquired = await Promise.race([permit.promise, deadline]);
-      if (acquired !== true) return unavailableImage();
-      holdsPermit = true;
-      const maxBytes = Math.min(
-        this.maxBytesPerImage,
-        this.maxTotalBytes - this.totalBytes,
-      );
-      const loaded = Promise.resolve().then(() => load(controller.signal, maxBytes));
-      try {
-        const result = await Promise.race([loaded, deadline]);
-        if (result === "timeout") {
-          releaseWhenSettled = false;
-          void loaded.then(this.release, this.release);
-          return unavailableImage();
-        }
-        return await this.storeImage(result.data, true);
-      } catch {
-        return unavailableImage();
-      }
-    } finally {
-      if (timer) clearTimeout(timer);
-      if (holdsPermit && releaseWhenSettled) this.release();
-    }
-  };
-
-  private async storeImage(data: Uint8Array, reserved: boolean): Promise<Element> {
-    if (!reserved) this.totalImages += 1;
-    if (
-      this.totalImages > this.maxCount ||
-      !(data instanceof Uint8Array) ||
-      data.byteLength > this.maxBytesPerImage ||
-      this.totalBytes + data.byteLength > this.maxTotalBytes
-    ) {
-      return unavailableImage();
-    }
-
-    this.totalBytes += data.byteLength;
-    try {
-      const asset = await this.assets.put(this.scope, data);
-      return h("img", { id: asset.assetId, mime: asset.mime });
-    } catch {
-      return unavailableImage();
-    }
-  }
-
-  private acquire(): { readonly promise: Promise<boolean>; cancel(): void } {
-    if (this.active < IMAGE_DOWNLOAD_CONCURRENCY) {
-      this.active += 1;
-      return { promise: Promise.resolve(true), cancel() {} };
-    }
-    let settled = false;
-    let resolve: (granted: boolean) => void = () => undefined;
-    const waiter = {
-      grant: () => {
-        if (settled) return false;
-        settled = true;
-        this.active += 1;
-        resolve(true);
-        return true;
-      },
-    };
-    const promise = new Promise<boolean>((next) => {
-      resolve = next;
-    });
-    this.waiting.push(waiter);
-    return {
-      promise,
-      cancel: () => {
-        if (settled) return;
-        settled = true;
-        const index = this.waiting.indexOf(waiter);
-        if (index >= 0) this.waiting.splice(index, 1);
-        resolve(false);
-      },
-    };
-  }
-
-  private readonly release = (): void => {
-    this.active -= 1;
-    while (this.waiting.shift()?.grant() !== true && this.waiting.length > 0) {}
-  };
-}
-
 export interface MediaSelectionOptions {
-  readonly scope: ChannelScope;
-  readonly assetStore: Pick<AssetStore, "readByAssetId">;
+  readonly assetStore: Pick<AssetStore, "get">;
   readonly imageInput: boolean;
   readonly policy: UnifiedImagePolicy;
   readonly onAssetFailure?: (assetId: string, cause: unknown) => void;
@@ -337,7 +133,7 @@ export async function selectInputFiles(
 
       let data: Uint8Array;
       try {
-        data = await options.assetStore.readByAssetId(options.scope, assetId);
+        data = await options.assetStore.get(assetId);
       } catch (cause) {
         if (cause instanceof Error) reportAssetFailure(options, assetId, cause);
         else reportAssetFailure(options, assetId, cause);

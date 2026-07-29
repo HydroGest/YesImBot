@@ -4,10 +4,10 @@ import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 import { Universal } from "koishi";
 
+import type { AssetService } from "../asset.js";
 import { scopeMapKey, type ChannelScope, type ChannelStorage } from "../channel.js";
 import { resolveMultimediaImagePolicy, type Config } from "../config.js";
 import type { InputRecord } from "../input.js";
-import type { AssetStore } from "../media/index.js";
 import { ChannelRuntime, type ChannelRuntimeOptions, type ChannelRuntimeResult } from "./channel.js";
 import { createJsonlStorage } from "./storage.js";
 import { createWillEngine } from "./will.js";
@@ -16,7 +16,7 @@ export interface RuntimeManagerOptions {
   readonly ctx: Context;
   readonly config: Config;
   readonly logger: Logger;
-  readonly assets: Pick<AssetStore, "clear" | "readByAssetId">;
+  readonly assets: AssetService;
   readonly storage: ChannelStorage;
   readonly getAgentPluginFactories: () => readonly AgentPluginFactory[];
 }
@@ -93,7 +93,7 @@ export class RuntimeManager {
       this.warn("storage_clear_failed", { scope, cause });
     }
     try {
-      await this.opts.assets.clear(scope);
+      await this.opts.assets.createStore(scope).clear();
     } catch (cause) {
       failure ??= cause;
       this.warn("asset_clear_failed", { scope, cause });
@@ -172,7 +172,7 @@ export class RuntimeManager {
         random: Math.random,
         warn: (event, fields) => this.opts.logger.warn({ event, ...fields }),
       }),
-      assets: this.opts.assets,
+      assets: this.opts.assets.createStore(scope),
       model: resolved.model,
       provider: resolved.providerId,
       imageInput: resolved.entry.modalities?.input?.includes("image") === true,

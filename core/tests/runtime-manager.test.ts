@@ -68,8 +68,11 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager", will?: CoreCo
     database,
     "yesimbot.model": { resolveChatModel },
   });
-  const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
   const storage = new ChannelStorage(basePath);
+  const assets = {
+    clear: vi.fn(async () => undefined),
+    createStore: vi.fn(() => ({ clear: assets.clear, get: vi.fn(), put: vi.fn() })),
+  };
   const getAgentPluginFactories = vi.fn(() => []);
   const config: CoreConfig = { basePath, chatModel: "test:model", will };
   return {
@@ -299,6 +302,7 @@ describe("RuntimeManager", () => {
     await manager.route(record("room"));
 
     expect(state.stop).toHaveBeenCalledOnce();
+    expect(assets.createStore).toHaveBeenCalledWith(scope);
     expect(assets.clear).toHaveBeenCalledOnce();
     expect(state.runtimes).toHaveLength(2);
   });
@@ -324,7 +328,8 @@ describe("RuntimeManager", () => {
 
     await manager.reset(scope);
     expect(state.runtimes).toHaveLength(0);
-    expect(assets.clear).toHaveBeenCalledWith(scope);
+    expect(assets.createStore).toHaveBeenCalledWith(scope);
+    expect(assets.clear).toHaveBeenCalledWith();
     await expect(access(path)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -342,7 +347,11 @@ describe("RuntimeManager", () => {
       mkdir(join(root, "workspace"), { recursive: true }),
     ]);
     await Promise.all([writeFile(messages, "stored"), writeFile(asset, "asset"), writeFile(workspace, "keep")]);
-    assets.clear.mockImplementation(async (target) => rm(join(await storage.getStoragePath(target), "assets"), { recursive: true, force: true }));
+    assets.createStore.mockImplementation((target) => ({
+      get: vi.fn(),
+      put: vi.fn(),
+      clear: async () => rm(join(await storage.getStoragePath(target), "assets"), { recursive: true, force: true }),
+    }));
 
     await manager.reset(scope);
     await expect(access(messages)).rejects.toMatchObject({ code: "ENOENT" });

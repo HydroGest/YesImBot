@@ -94,7 +94,7 @@ function createRuntime(
 ) {
   const ctx = new Context();
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
-  const assets = { clear: vi.fn(async () => undefined), readByAssetId: vi.fn() };
+  const assets = { clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() };
   const runtime = new ChannelRuntime({
     ctx,
     config: { basePath, chatModel: "test:model" },
@@ -203,7 +203,7 @@ describe("ChannelRuntime", () => {
       scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
       bot: { sendMessage: vi.fn() } as never,
       will: { decide: async () => "wait" },
-      assets: { clear: vi.fn(), readByAssetId: vi.fn() } as never,
+      assets: { clear: vi.fn(), get: vi.fn(), put: vi.fn() } as never,
       model: {} as never,
       provider: "test",
       imageInput: false,
@@ -545,7 +545,7 @@ describe("ChannelRuntime", () => {
       scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
       bot: { sendMessage: vi.fn() } as never,
       will: { decide: async () => "wait" },
-      assets: { clear: vi.fn(), readByAssetId: vi.fn() } as never,
+      assets: { clear: vi.fn(), get: vi.fn(), put: vi.fn() } as never,
       model: {} as never,
       provider: "test",
       imageInput: false,

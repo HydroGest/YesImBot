@@ -11,8 +11,9 @@ export const inject = ["database"];
 export { Config } from "./config.js";
 
 export type { ChannelScope } from "./channel.js";
+export type { AssetService, AssetStore } from "./asset.js";
 export * from "./input.js";
-export type { ResolveContext, SessionResolver } from "./gateway/index.js";
+export type { SessionResolver } from "./gateway.js";
 export type { AgentPluginFactory } from "./runtime/index.js";
 export type { YesImBotService } from "./service.js";
 

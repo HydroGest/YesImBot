@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define Session Gateway entry points, per-platform SessionResolver registration, atomic Session resolution, Satori message fallback, resolver-owned bounded image freezing, fixed forward/quote forms, and shared scoped asset ownership.
+Define Session Gateway entry points, per-platform Resolver registration, Resolver-owned image persistence, and scoped asset ownership.
 ## Requirements
 ### Requirement: Database-Backed Shared Channel Admission
 Core MUST declare Koishi Database as a required dependency and MUST use the Koishi Channel row as the only assignee authority for shared Sessions. Gateway MUST query that row exactly once for each shared external Session, before Resolver selection, image freezing, persistence, Runtime creation, or other Runtime work. A successful Gateway check establishes the event's assignee snapshot.
@@ -64,11 +64,11 @@ The public YesImBot facade MUST allow at most one `SessionResolver` registration
 - **THEN** registration MUST fail without replacing the active resolver
 
 ### Requirement: Atomic Session Resolution
-Gateway MUST call the selected resolver once with ResolveContext containing the Session, an optional Satori-derived message base, and `freezeImage()`. The resolver MUST return `MessageRecord | EventRecord` or `null`.
+Gateway MUST call the selected resolver once with `(session, store)`. The resolver MUST return a typed Message Draft, Event Draft, or `null`.
 
 #### Scenario: Resolver accepts a Session
-- **WHEN** a resolver returns a resolved input record
-- **THEN** Gateway MUST pass the MessageRecord or EventRecord to RuntimeManager
+- **WHEN** a resolver returns a Draft
+- **THEN** Gateway MUST construct the canonical MessageRecord or EventRecord and pass it to RuntimeManager
 - **AND** it MUST NOT invoke a separate refine, prepare, or model-projector stage
 
 #### Scenario: Resolver skips a Session
@@ -83,16 +83,8 @@ A registered resolver MUST be authoritative for its platform. If its `resolve` c
 - **THEN** Gateway MUST record a resolver diagnostic
 - **AND** it MUST NOT create a fallback MessageRecord
 
-### Requirement: Satori Message Fallback
-When no resolver is registered for a platform, Gateway MUST assemble a message record from explicitly selected Session fields, requiring a routable scope, an `elements` array, and a non-empty platform message id. Gateway MUST seal the selected elements and persist them as the sole structured content field, and MUST NOT persist a rendered `text`.
-
-#### Scenario: Fallback message is persisted
-- **WHEN** Gateway assembles a fallback message record
-- **THEN** it MUST contain only the literal host fields plus sealed `elements`
-- **AND** it MUST NOT contain a `text` field or any platform event residue
-
-#### Scenario: Non-message session without a resolver
-- **WHEN** a non-message Session arrives and no resolver is registered
+#### Scenario: No resolver is registered
+- **WHEN** a Session arrives for a platform without a resolver
 - **THEN** Gateway MUST return without persisting or routing
 
 ### Requirement: Element-Based Resolved Message

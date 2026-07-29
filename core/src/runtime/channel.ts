@@ -14,12 +14,12 @@ import type { FilePart, LanguageModel } from "ai";
 import type { Bot, Context, Element, Logger } from "koishi";
 import { z } from "zod";
 
+import type { AssetStore } from "../asset.js";
 import { scopeMapKey, type ChannelScope } from "../channel.js";
 import type { Config } from "../config.js";
 import { formatInput } from "../event/formatter.js";
 import type { EventRecord, InputRecord } from "../input.js";
 import { createInput, isInput, type Input } from "../input.js";
-import type { AssetStore } from "../media/index.js";
 import {
   selectInputFiles,
   UnsupportedImageMimeError,
@@ -37,7 +37,7 @@ export interface ChannelRuntimeOptions {
   readonly scope: ChannelScope;
   readonly bot: Bot;
   readonly will: WillEngine;
-  readonly assets: Pick<AssetStore, "clear" | "readByAssetId">;
+  readonly assets: AssetStore;
   readonly model: LanguageModel;
   readonly provider: string;
   readonly imageInput: boolean;
@@ -129,7 +129,6 @@ export class ChannelRuntime {
             let selectedFiles = selectedFilesByContext.get(context);
             if (!selectedFiles) {
               selectedFiles = selectInputFiles(context, {
-                scope: this.scope,
                 assetStore: opts.assets,
                 imageInput: opts.imageInput,
                 policy: opts.mediaPolicy,

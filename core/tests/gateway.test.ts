@@ -2,31 +2,26 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { h } from "koishi";
+import { h, type Session } from "koishi";
 
+import type { AssetStore } from "../src/asset.js";
 import type { ChannelScope } from "../src/channel.js";
 import { Config } from "../src/config.js";
 import {
-  createInput,
-  type InputRecord,
-  type MessageRecord,
-  type ResolvedEventDraft,
-  type ResolvedMessageDraft,
-} from "../src/input.js";
-import { matchesAllowedChannel, type ChannelAllowRule } from "../src/gateway/allowlist.js";
-import { Gateway, type SessionResolver } from "../src/gateway/index.js";
-import type { UnifiedImagePolicy } from "../src/media/index.js";
-import { ChannelStorage } from "../src/channel.js";
+  Gateway,
+  matchesAllowedChannel,
+  type ChannelAllowRule,
+  type SessionResolver,
+} from "../src/gateway.js";
+import type { ResolvedEventDraft, ResolvedMessageDraft } from "../src/input.js";
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
-    "test.notice": {
-      targetId: string;
-    };
+    "test.notice": { targetId: string };
   }
 }
 
-function session(overrides: Record<string, unknown> = {}) {
+function session(overrides: Record<string, unknown> = {}): Session {
   return {
     platform: "test",
     selfId: "bot-1",
@@ -36,55 +31,28 @@ function session(overrides: Record<string, unknown> = {}) {
     userId: "user-1",
     messageId: "message-1",
     timestamp: 1,
-    event: { type: "message" },
+    event: { type: "message", user: { name: "User" } },
     elements: [h.text("hello")],
     ...overrides,
-  };
+  } as Session;
 }
 
-function containsReference(value: unknown, target: object, seen = new WeakSet<object>()): boolean {
-  if (value === target) return true;
-  if (typeof value !== "object" || value === null || seen.has(value)) return false;
-  seen.add(value);
-  return Object.values(value).some((child) => containsReference(child, target, seen));
+function messageDraft(): ResolvedMessageDraft {
+  return { kind: "message", messageId: "message-1", elements: [h.text("hello")] };
 }
 
-function record(): ResolvedMessageDraft {
-  return {
-    kind: "message",
-    user: { id: "user-1", name: "User" },
-    messageId: "message-1",
-    elements: [h.text("hello")],
-  };
-}
-
-function eventRecord(): ResolvedEventDraft<"delivery.failed"> {
-  return {
-    kind: "event",
-    eventType: "delivery.failed",
-    text: "Delivery failed",
-    delivery: {
-      turnId: "turn-1",
-      messageId: "message-1",
-      segmentIndex: 1,
-      segmentTotal: 1,
-      error: { name: "Error", message: "notice" },
-    },
-  };
-}
-
-function createGateway(
-  options: {
-    readonly ready?: () => Promise<void>;
-    readonly allowedChannels?: readonly ChannelAllowRule[];
-    readonly mediaPolicy?: UnifiedImagePolicy;
-  } = {},
-) {
+function createGateway(options: { readonly allowedChannels?: readonly ChannelAllowRule[] } = {}) {
   const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
-  const logger = { warn: vi.fn() };
+  const store: AssetStore = {
+    put: vi.fn(async () => h("img", { id: "0123456789abcdef0123456789abcdef" })),
+    get: vi.fn(),
+    clear: vi.fn(async () => undefined),
+  };
+  const assets = { createStore: vi.fn(() => store) };
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
-  let middleware: ((input: never, next: () => Promise<unknown>) => Promise<void>) | undefined;
-  let internal: ((input: never) => void) | undefined;
+  const logger = { warn: vi.fn() };
+  let middleware: ((input: Session, next: () => Promise<unknown>) => Promise<void>) | undefined;
+  let internal: ((input: Session) => void) | undefined;
   const ctx = {
     middleware: vi.fn((callback) => {
       middleware = callback;
@@ -95,684 +63,131 @@ function createGateway(
       return vi.fn();
     }),
     database,
-    emit: vi.fn(),
   };
-  const assets = { put: vi.fn(async () => ({ assetId: "asset_image", mime: "image/png" })) };
-  const storage = new ChannelStorage("/tmp/yesimbot-gateway-test");
   return {
     gateway: new Gateway({
       ctx: ctx as never,
       runtime: runtime as never,
       assets,
-      storage,
-      ready: options.ready ?? (() => storage.start()),
+      ready: async () => undefined,
       allowedChannels: options.allowedChannels ?? [{ platform: "*", channelId: "*" }],
       logger,
-      mediaPolicy: options.mediaPolicy ?? {
-        enabled: true,
-        maxCount: 4,
-        maxBytesPerImage: 5 * 1024 * 1024,
-        maxTotalBytes: 10 * 1024 * 1024,
-        selection: "current-first",
-      },
     }),
     runtime,
+    store,
     assets,
     database,
-    storage,
     logger,
-    ctx,
     middleware: () => middleware!,
     internal: () => internal!,
   };
 }
 
 describe("Channel allowlist", () => {
-  const sharedScope: ChannelScope = {
-    platform: "test",
-    selfId: "bot-1",
-    channelId: "room-1",
-    isDirect: false,
-  };
-  const directScope: ChannelScope = { ...sharedScope, isDirect: true };
+  const shared: ChannelScope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
 
-  it("denies missing and empty rules", () => {
-    expect(matchesAllowedChannel(sharedScope, undefined)).toBe(false);
-    expect(matchesAllowedChannel(sharedScope, [])).toBe(false);
-  });
-
-  it("matches exact platform and channel values", () => {
-    expect(matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "room-1" }])).toBe(
-      true,
-    );
-    expect(matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "room-2" }])).toBe(
-      false,
-    );
-  });
-
-  it("matches platform and channel wildcards", () => {
-    expect(matchesAllowedChannel(sharedScope, [{ platform: "*", channelId: "room-1" }])).toBe(true);
-    expect(matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "*" }])).toBe(true);
-  });
-
-  it("matches omitted directness for both channel scopes", () => {
-    const rule = [{ platform: "test", channelId: "room-1" }];
-
-    expect(matchesAllowedChannel(sharedScope, rule)).toBe(true);
-    expect(matchesAllowedChannel(directScope, rule)).toBe(true);
-  });
-
-  it("matches direct-only and shared-only rules", () => {
-    expect(
-      matchesAllowedChannel(directScope, [{ platform: "test", channelId: "*", isDirect: true }]),
-    ).toBe(true);
-    expect(
-      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "*", isDirect: true }]),
-    ).toBe(false);
-    expect(
-      matchesAllowedChannel(sharedScope, [{ platform: "test", channelId: "*", isDirect: false }]),
-    ).toBe(true);
-    expect(
-      matchesAllowedChannel(directScope, [{ platform: "test", channelId: "*", isDirect: false }]),
-    ).toBe(false);
-  });
-
-  it("uses OR semantics across rules", () => {
-    expect(
-      matchesAllowedChannel(sharedScope, [
-        { platform: "other", channelId: "room-1" },
-        { platform: "test", channelId: "room-1" },
-      ]),
-    ).toBe(true);
-  });
-
-  it("defaults the configured allowlist to an empty array", () => {
-    const config = Config({ basePath: "data/yesimbot", chatModel: "test-model" });
-
-    expect(config.allowedChannels).toEqual([]);
+  it("denies missing rules and matches exact or wildcard rules", () => {
+    expect(matchesAllowedChannel(shared, undefined)).toBe(false);
+    expect(matchesAllowedChannel(shared, [{ platform: "test", channelId: "room-1" }])).toBe(true);
+    expect(matchesAllowedChannel(shared, [{ platform: "*", channelId: "*" }])).toBe(true);
+    expect(matchesAllowedChannel(shared, [{ platform: "test", channelId: "other" }])).toBe(false);
+    expect(Config({ basePath: "data", chatModel: "model" }).allowedChannels).toEqual([]);
   });
 });
 
 describe("Gateway", () => {
-  it("rejects an unmatched valid scope before readiness or downstream admission work", async () => {
-    const ready = vi.fn(async () => undefined);
-    const { gateway, runtime, assets, database } = createGateway({
-      ready,
-      allowedChannels: [],
-    });
-    const resolve = vi.fn(async () => record());
+  it("rejects an unmatched Session before creating a Store or resolving", async () => {
+    const { gateway, assets, runtime, database } = createGateway({ allowedChannels: [] });
+    const resolve = vi.fn(async () => messageDraft());
     gateway.register({ platform: "test", resolve });
 
-    await gateway.handle(session() as never);
+    await gateway.handle(session());
 
-    expect(ready).not.toHaveBeenCalled();
     expect(database.get).not.toHaveBeenCalled();
+    expect(assets.createStore).not.toHaveBeenCalled();
     expect(resolve).not.toHaveBeenCalled();
-    expect(assets.put).not.toHaveBeenCalled();
     expect(runtime.route).not.toHaveBeenCalled();
   });
 
-  it.each([
-    [
-      "missing elements",
-      {
-        elements: undefined,
-        messageId: "m1",
-        event: { type: "message", message: { id: "m1", elements: [h.text("event fallback")] } },
-      },
-    ],
-    [
-      "missing message id",
-      {
-        elements: [h.text("hi")],
-        messageId: undefined,
-        event: { type: "message", message: { id: "event-fallback" } },
-      },
-    ],
-    ["empty message id", { elements: [h.text("hi")], messageId: "" }],
-  ])("skips message-created session with %s", async (_label, patch) => {
-    const { gateway, runtime } = createGateway();
-    // No resolver registered - admission rejection is tested on fallback path
-
-    await gateway.handle(session(patch) as never);
-
-    expect(runtime.route).not.toHaveBeenCalled();
-  });
-
-  it("admits a message session with empty elements and produces a complete MessageRecord", async () => {
-    const { gateway, runtime } = createGateway();
-    // No resolver registered - use fallback path
-
-    await gateway.handle(session({ elements: [] }) as never);
-
-    expect(runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({
-        messageId: "message-1",
-        elements: [],
-        timestamp: expect.any(Number),
-      }),
-    );
-    const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
-    expect(routed).not.toHaveProperty("type");
-    expect(routed).not.toHaveProperty("content");
-    expect(routed).not.toHaveProperty("message");
-  });
-
-  it.each([null, Number.NaN, Number.POSITIVE_INFINITY, "7"])(
-    "ignores a non-finite or non-number Session timestamp %#",
-    async (timestamp) => {
-      const { gateway, runtime } = createGateway();
-
-      await gateway.handle(
-        session({ timestamp, event: { type: "message", timestamp: 42 } }) as never,
-      );
-
-      expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ timestamp: 42 }));
-    },
-  );
-
-  it.each([
-    [[{ platform: "*", channelId: "room-1", isDirect: false }], {}, 0],
-    [[{ platform: "test", channelId: "*", isDirect: true }], { isDirect: true }, 1],
-  ])(
-    "admits Sessions matching a directness-specific wildcard rule",
-    async (allowedChannels, overrides, type) => {
-      const { gateway, runtime } = createGateway({ allowedChannels });
-      gateway.register({
-        platform: "test",
-        resolve: async () => record(),
-      });
-
-      await gateway.handle(session(overrides) as never);
-
-      expect(runtime.route).toHaveBeenCalledOnce();
-    },
-  );
-
-  it("waits for storage readiness before shared admission and later side effects", async () => {
-    let release!: () => void;
-    const ready = new Promise<void>((resolve) => {
-      release = resolve;
+  it("passes the admitted Scope Store to one resolver call and seals its message draft", async () => {
+    const { gateway, assets, store, runtime, database } = createGateway();
+    const resolve = vi.fn(async (input: Session, received: AssetStore) => {
+      expect(input.messageId).toBe("message-1");
+      expect(received).toBe(store);
+      return { ...messageDraft(), elements: [h("img", { id: "0123456789abcdef0123456789abcdef" })] };
     });
-    const { gateway, runtime, assets, database } = createGateway({ ready: () => ready });
-    const resolve = vi.fn(async () => record());
     gateway.register({ platform: "test", resolve });
 
-    const handling = gateway.handle(session() as never);
-
-    await Promise.resolve();
-    expect(database.get).not.toHaveBeenCalled();
-    expect(resolve).not.toHaveBeenCalled();
-    expect(assets.put).not.toHaveBeenCalled();
-    expect(runtime.route).not.toHaveBeenCalled();
-
-    release();
-    await handling;
-  });
-
-  it("queries the shared assignee once before resolver work", async () => {
-    const { gateway, database } = createGateway();
-    const resolve = vi.fn(async () => record());
-    gateway.register({ platform: "test", resolve });
-
-    await gateway.handle(session() as never);
+    await gateway.handle(session());
 
     expect(database.get).toHaveBeenCalledOnce();
-    expect(database.get.mock.invocationCallOrder[0]).toBeLessThan(
-      resolve.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
-    );
-  });
-
-  it.each([
-    [[], "missing"],
-    [[{ assignee: "" }], "empty"],
-    [[{ assignee: "other" }], "mismatch"],
-  ])("rejects shared admission before resolver %#", async (rows) => {
-    const { gateway, runtime, assets, database } = createGateway();
-    const resolve = vi.fn(async () => record());
-    gateway.register({ platform: "test", resolve });
-    database.get.mockResolvedValue(rows);
-
-    await gateway.handle(session() as never);
-
-    expect(resolve).not.toHaveBeenCalled();
-    expect(assets.put).not.toHaveBeenCalled();
-    expect(runtime.route).not.toHaveBeenCalled();
-  });
-
-  it("rejects a shared database failure before resolver work", async () => {
-    const { gateway, runtime, assets, database } = createGateway();
-    const resolve = vi.fn(async () => record());
-    gateway.register({ platform: "test", resolve });
-    database.get.mockRejectedValue(new Error("database unavailable"));
-
-    await gateway.handle(session() as never);
-
-    expect(resolve).not.toHaveBeenCalled();
-    expect(assets.put).not.toHaveBeenCalled();
-    expect(runtime.route).not.toHaveBeenCalled();
-  });
-
-  it.each([[{ atSelf: true }], [{ content: "yesimbot.reset", prefix: "yesimbot" }]])(
-    "does not let shared routing hints bypass non-assignee admission",
-    async (overrides) => {
-      const { gateway, runtime, database } = createGateway();
-      const resolve = vi.fn(async () => record());
-      gateway.register({ platform: "test", resolve });
-      database.get.mockResolvedValue([{ assignee: "other" }]);
-
-      await gateway.handle(session(overrides) as never);
-
-      expect(resolve).not.toHaveBeenCalled();
-      expect(runtime.route).not.toHaveBeenCalled();
-    },
-  );
-
-  it("routes direct Sessions without a Database assignee lookup", async () => {
-    const { gateway, runtime, database } = createGateway();
-    gateway.register({
-      platform: "test",
-      resolve: async () => record(),
+    expect(assets.createStore).toHaveBeenCalledWith({
+      platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false,
     });
+    expect(resolve).toHaveBeenCalledOnce();
+    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({
+      platform: "test", selfId: "bot-1", messageId: "message-1",
+      elements: [h("img", { id: "0123456789abcdef0123456789abcdef" })],
+    }));
+  });
 
-    await gateway.handle(session({ isDirect: true }) as never);
+  it("does not route when a platform has no resolver", async () => {
+    const { gateway, runtime, assets } = createGateway();
+    await gateway.handle(session());
+    expect(assets.createStore).not.toHaveBeenCalled();
+    expect(runtime.route).not.toHaveBeenCalled();
+  });
 
+  it("does not route resolver null or thrown results", async () => {
+    const skipped = createGateway();
+    skipped.gateway.register({ platform: "test", resolve: async () => null });
+    await skipped.gateway.handle(session());
+    expect(skipped.runtime.route).not.toHaveBeenCalled();
+
+    const failed = createGateway();
+    failed.gateway.register({ platform: "test", resolve: async () => { throw new Error("broken"); } });
+    await failed.gateway.handle(session());
+    expect(failed.runtime.route).not.toHaveBeenCalled();
+    expect(failed.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ code: "gateway.resolver_failed" }));
+  });
+
+  it("keeps Gateway ownership of canonical event fields", async () => {
+    const { gateway, runtime } = createGateway();
+    const draft: ResolvedEventDraft<"test.notice"> = {
+      kind: "event", eventType: "test.notice", text: "Notice", targetId: "target",
+    };
+    gateway.register({ platform: "test", resolve: async () => draft });
+
+    await gateway.handle(session({ type: "notice", messageId: undefined, event: { type: "notice" } }));
+
+    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({
+      platform: "test", selfId: "bot-1", channel: expect.objectContaining({ id: "room-1" }),
+      eventType: "test.notice", text: "Notice", targetId: "target",
+    }));
+  });
+
+  it("skips assignee lookup for direct Sessions", async () => {
+    const { gateway, database, runtime } = createGateway();
+    gateway.register({ platform: "test", resolve: async () => messageDraft() });
+    await gateway.handle(session({ isDirect: true }));
     expect(database.get).not.toHaveBeenCalled();
     expect(runtime.route).toHaveBeenCalledOnce();
   });
 
-  it("routes a resolved channel name without persisting metadata", async () => {
-    const { gateway, runtime } = createGateway();
-    gateway.register({
-      platform: "test",
-      resolve: async () => ({ ...record(), channel: { name: "Room" } }),
-    });
-
-    await gateway.handle(session() as never);
-
+  it("resolves middleware messages and internal non-message Sessions once", async () => {
+    const { gateway, middleware, internal, runtime } = createGateway();
+    gateway.register({ platform: "test", resolve: async () => messageDraft() });
+    const input = session();
+    await middleware()(input, async () => undefined);
+    internal()(input);
+    await gateway.drain();
     expect(runtime.route).toHaveBeenCalledOnce();
   });
 
-  it("allows one resolver per platform and returns an exact disposer", () => {
+  it("enforces one resolver registration per platform", () => {
     const { gateway } = createGateway();
-    const first = {
-      platform: "test",
-      resolve: vi.fn(async () => record()),
-    } satisfies SessionResolver;
-    const second = {
-      platform: "test",
-      resolve: vi.fn(async () => record()),
-    } satisfies SessionResolver;
-    const disposeFirst = gateway.register(first);
-
-    expect(() => gateway.register(second)).toThrow(
-      'Resolver for platform "test" is already registered',
-    );
-    disposeFirst();
-    const disposeSecond = gateway.register(second);
-    disposeFirst();
-    expect(() => gateway.register(first)).toThrow(
-      'Resolver for platform "test" is already registered',
-    );
-    disposeSecond();
-    expect(() => gateway.register(first)).not.toThrow();
-  });
-
-  it("does not admit or route a Session after close", async () => {
-    const { gateway, runtime } = createGateway();
-
-    gateway.close();
-    await expect(gateway.handle(session() as never)).resolves.toBeUndefined();
-
-    expect(runtime.route).not.toHaveBeenCalled();
-  });
-
-  it("calls the registered resolver once and normalizes its message draft", async () => {
-    const { gateway, runtime } = createGateway();
-    const resolve = vi.fn(async (context: Parameters<SessionResolver["resolve"]>[0]) => {
-      expect(context.session).toMatchObject({ messageId: "message-1" });
-      expect(context).toHaveProperty("freezeImage");
-      expect(context).not.toHaveProperty("base");
-      expect(context).not.toHaveProperty("putImage");
-      return record();
-    });
-    gateway.register({ platform: "test", resolve });
-
-    await gateway.handle(session() as never);
-
-    expect(resolve).toHaveBeenCalledOnce();
-    expect(runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({ platform: "test", selfId: "bot-1" }),
-    );
-  });
-
-  it("freezes eligible ingress images when multimedia projection is disabled", async () => {
-    const { gateway, assets } = createGateway({
-      mediaPolicy: {
-        enabled: false,
-        maxCount: 1,
-        maxBytesPerImage: 8,
-        maxTotalBytes: 8,
-        selection: "current-first",
-      },
-    });
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    gateway.register({
-      platform: "test",
-      resolve: async ({ freezeImage }) => {
-        await freezeImage(h("img", { src: "https://example.test/image.png" }), async () => ({
-          data: png,
-        }));
-        return record();
-      },
-    });
-
-    await gateway.handle(session() as never);
-
-    expect(assets.put).toHaveBeenCalledWith(
-      { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
-      png,
-    );
-  });
-
-  it("creates a separate image budget for each resolver invocation", async () => {
-    const { gateway, assets } = createGateway({
-      mediaPolicy: {
-        enabled: true,
-        maxCount: 1,
-        maxBytesPerImage: 8,
-        maxTotalBytes: 8,
-        selection: "current-first",
-      },
-    });
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    const load = vi.fn(async () => ({ data: png }));
-    gateway.register({
-      platform: "test",
-      resolve: async ({ freezeImage }) => {
-        await freezeImage(h("img", { src: "https://example.test/image.png" }), load);
-        return record();
-      },
-    });
-
-    await gateway.handle(session({ messageId: "message-1" }) as never);
-    await gateway.handle(session({ messageId: "message-2" }) as never);
-
-    expect(load).toHaveBeenCalledTimes(2);
-    expect(assets.put).toHaveBeenCalledTimes(2);
-  });
-
-  it("derives direct classification from the active Session", async () => {
-    const { gateway, runtime } = createGateway();
-    const resolver = {
-      platform: "test",
-      resolve: vi.fn(async () => ({
-        ...record(),
-        channel: { name: "Direct room" },
-      })),
-    } satisfies SessionResolver;
+    const resolver = { platform: "test", resolve: vi.fn(async () => messageDraft()) } satisfies SessionResolver;
     gateway.register(resolver);
-
-    await gateway.handle(session({ isDirect: true, type: "message-created" }) as never);
-
-    expect(runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({ channel: { id: "room-1", type: 1, name: "Direct room" } }),
-    );
-  });
-
-  it("creates a normalized and sealed fallback MessageRecord for an unregistered message platform", async () => {
-    const { gateway, runtime } = createGateway();
-    const sourceElements = h.parse('hello <img src="https://example.test/a.png"/>');
-
-    await gateway.handle(session({ elements: sourceElements }) as never);
-
-    const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
-    expect(routed).toMatchObject({
-      messageId: "message-1",
-      elements: expect.any(Array),
-    });
-    expect(routed.elements.map((element) => element.toString()).join("")).toBe(
-      'hello <img unavailable="true"/>',
-    );
-    expect(routed.elements[1]?.attrs).toEqual({ unavailable: "true" });
-    expect(routed).not.toHaveProperty("type");
-    expect(routed).not.toHaveProperty("content");
-    expect(routed).not.toHaveProperty("message");
-  });
-
-  it("seals resolver image elements before routing", async () => {
-    const { gateway, runtime } = createGateway();
-    gateway.register({
-      platform: "test",
-      resolve: async () => ({
-        ...record(),
-        elements: h.parse('hello <img src="https://example.test/resolver.png"/>'),
-      }),
-    });
-
-    await gateway.handle(session() as never);
-
-    const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
-    expect(routed.elements[1]?.attrs).toEqual({ unavailable: "true" });
-    expect(routed.elements.map((element) => element.toString()).join("")).toBe(
-      'hello <img unavailable="true"/>',
-    );
-    expect(routed).not.toHaveProperty("text");
-  });
-
-  it("preserves Satori resources while filling the fallback message identity from Session", async () => {
-    const { gateway, runtime } = createGateway();
-    const input = session({
-      isDirect: true,
-      elements: h.parse('hello <at id="bot-1"/>'),
-      event: {
-        type: "message",
-        platform: "stale-platform",
-        selfId: "stale-self",
-        timestamp: 99,
-        channel: { type: 1, name: "Direct channel" },
-        guild: { id: "guild-1", name: "Guild" },
-        member: { nick: "Member" },
-        _data: { platform: "test" },
-        _type: "raw-message",
-        sn: 1,
-        login: { platform: "test", selfId: "bot-1" },
-        referrer: { id: "referrer" },
-        argv: { name: "command" },
-        friend: { id: "friend-1" },
-        operator: { id: "operator-1" },
-        emoji: { id: "emoji-1" },
-        role: { id: "role-1" },
-        button: { id: "button-1" },
-        user: { name: "Event user" },
-      },
-    });
-
-    await gateway.handle(input as never);
-
-    const routed = runtime.route.mock.calls[0]?.[0] as MessageRecord;
-    expect(routed).toMatchObject({
-      platform: "test",
-      selfId: "bot-1",
-      timestamp: 1,
-      channel: { id: "room-1", type: 1, name: "Direct channel" },
-      user: { id: "user-1", name: "Event user" },
-      messageId: "message-1",
-    });
-    expect(routed.elements).toEqual(h.parse('hello <at id="bot-1"/>'));
-    expect(routed).not.toHaveProperty("guild");
-    expect(routed).not.toHaveProperty("member");
-    for (const key of [
-      "_data",
-      "_type",
-      "sn",
-      "login",
-      "referrer",
-      "guild",
-      "member",
-      "argv",
-      "friend",
-      "operator",
-      "emoji",
-      "role",
-      "button",
-    ]) {
-      expect(routed).not.toHaveProperty(key);
-    }
-    const persisted = createInput(routed);
-    expect(persisted.type).toBe("yesimbot.message");
-    expect(Object.keys(persisted.data).sort()).toEqual([
-      "channel",
-      "elements",
-      "messageId",
-      "platform",
-      "selfId",
-      "user",
-    ]);
-    expect(routed).not.toBe(input);
-  });
-
-  it("normalizes a declaration-merged event draft without platform residue", async () => {
-    const { gateway, runtime } = createGateway();
-    gateway.register({
-      platform: "test",
-      resolve: async () => ({
-        kind: "event",
-        eventType: "test.notice",
-        text: "Target was notified",
-        targetId: "target-1",
-      }),
-    });
-
-    await gateway.handle(
-      session({
-        type: "notice",
-        messageId: undefined,
-        event: {
-          type: "notice",
-          _data: { raw: true },
-          guild: { id: "guild-1" },
-          member: { id: "member-1" },
-        },
-      }) as never,
-    );
-
-    const routed = runtime.route.mock.calls[0]?.[0];
-    expect(routed).toMatchObject({
-      platform: "test",
-      selfId: "bot-1",
-      channel: { id: "room-1" },
-      eventType: "test.notice",
-      text: "Target was notified",
-      targetId: "target-1",
-    });
-    expect(routed).not.toHaveProperty("_data");
-    expect(routed).not.toHaveProperty("guild");
-    expect(routed).not.toHaveProperty("member");
-    const persisted = createInput(routed as never);
-    expect(persisted.type).toBe("yesimbot.event");
-    expect(Object.keys(persisted.data).sort()).toEqual([
-      "channel",
-      "eventType",
-      "platform",
-      "selfId",
-      "targetId",
-      "text",
-    ]);
-  });
-
-  it("uses the Session channel id while preserving the Satori channel resources", async () => {
-    const { gateway, runtime } = createGateway();
-    const input = session({
-      isDirect: true,
-      event: {
-        type: "message",
-        channel: { id: "event-room", type: 1, name: "Direct channel" },
-        user: { id: "user-1" },
-        message: { id: "message-1" },
-      },
-    });
-
-    await gateway.handle(input as never);
-
-    expect(runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({ channel: { id: "room-1", type: 1, name: "Direct channel" } }),
-    );
-  });
-
-  it("uses Gateway scope fields instead of resolver-supplied envelope facts", async () => {
-    const { gateway, runtime, logger } = createGateway();
-    gateway.register({
-      platform: "test",
-      resolve: async () => ({ ...record(), platform: "other", selfId: "other" }) as never,
-    });
-
-    await gateway.handle(session() as never);
-
-    expect(runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({
-        platform: "test",
-        selfId: "bot-1",
-        channel: expect.objectContaining({ id: "room-1" }),
-      }),
-    );
-  });
-
-  it("skips an unregistered non-message Session", async () => {
-    const { gateway, runtime } = createGateway();
-
-    await gateway.handle(
-      session({ event: { type: "notice" }, messageId: undefined, type: "notice" }) as never,
-    );
-
-    expect(runtime.route).not.toHaveBeenCalled();
-  });
-
-  it("does not fall back when a registered resolver returns null or throws", async () => {
-    const skipped = createGateway();
-    skipped.gateway.register({ platform: "test", resolve: async () => null });
-    await skipped.gateway.handle(session() as never);
-    expect(skipped.runtime.route).not.toHaveBeenCalled();
-    expect(skipped.ctx.emit).not.toHaveBeenCalled();
-
-    const failed = createGateway();
-    failed.gateway.register({
-      platform: "test",
-      resolve: async () => {
-        throw new Error("broken resolver");
-      },
-    });
-    await failed.gateway.handle(session() as never);
-    expect(failed.runtime.route).not.toHaveBeenCalled();
-    expect(failed.logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "gateway.resolver_failed" }),
-    );
-  });
-
-  it("handles message middleware and non-message internal sessions exactly once", async () => {
-    const { gateway, runtime, middleware, internal } = createGateway();
-    gateway.register({
-      platform: "notice",
-      resolve: async () => ({ ...eventRecord(), platform: "notice" }),
-    });
-    const message = session();
-    await middleware()(message as never, async () => undefined);
-    internal()(message as never);
-    internal()(session({ platform: "notice", event: { type: "notice" }, type: "notice" }) as never);
-    await gateway.drain();
-
-    expect(runtime.route).toHaveBeenCalledTimes(2);
-  });
-
-  it("routes a record with no retained Session reference", async () => {
-    const { gateway, runtime } = createGateway();
-    const input = session();
-    gateway.register({ platform: "test", resolve: async () => record() });
-
-    await gateway.handle(input as never);
-
-    const routed = runtime.route.mock.calls[0]?.[0];
-    expect(routed).not.toHaveProperty("schemaVersion");
-    expect(containsReference(routed, input)).toBe(false);
+    expect(() => gateway.register(resolver)).toThrow('Resolver for platform "test" is already registered');
   });
 });

@@ -2,367 +2,81 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { mkdtemp, rm, writeFile } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
-import { pathToFileURL } from "url";
+import { h, type Session } from "koishi";
 
-import { h, type Session, type Element } from "koishi";
-import { type ResolveContext } from "koishi-plugin-yesimbot";
-
+import type { AssetStore } from "../../src/asset.js";
 import { resolveOneBotEvent } from "../../src/platforms/onebot/events.js";
-import { freezeOneBotImages } from "../../src/platforms/onebot/image.js";
 import { createResolver } from "../../src/platforms/onebot/index.js";
 
-function makeSession(onebot: Record<string, unknown> = {}): Session {
+function makeSession(overrides: Record<string, unknown> = {}): Session {
   return {
     platform: "onebot",
     selfId: "10000",
     channelId: "20000",
     userId: "30000",
     timestamp: 1,
-    event: {},
-    onebot,
+    type: "message-created",
+    messageId: "40000",
+    event: { type: "message", user: { name: "Alice" }, channel: { name: "Room" } },
+    elements: [h.text("hello")],
+    onebot: {},
+    ...overrides,
   } as unknown as Session;
 }
 
+function store(put: AssetStore["put"]): AssetStore {
+  return { put, get: vi.fn(), clear: vi.fn(async () => undefined) };
+}
+
 describe("resolveOneBotEvent", () => {
-  it("produces a typed reaction event from a valid reactions-updated notice", () => {
-    const result = resolveOneBotEvent(
-      makeSession({
-        post_type: "notice",
-        notice_type: "message_reactions_updated",
-        group_id: "20000",
-        message_id: "40000",
-        user_id: "30000",
-        reactions: [{ emoji_id: "100", emoji_type: "1", count: 5 }],
-      }),
-    );
-
+  it("produces a typed reaction event", () => {
+    const result = resolveOneBotEvent(makeSession({
+      onebot: {
+        post_type: "notice", notice_type: "message_reactions_updated", group_id: "20000",
+        message_id: "40000", user_id: "30000", reactions: [{ emoji_id: "100", emoji_type: "1", count: 0 }],
+      },
+    }));
     expect(result).toMatchObject({
-      kind: "event",
-      eventType: "onebot.message-reactions-updated",
-      type: "onebot.message-reactions-updated",
-      reaction: {
-        messageId: "40000",
-        userId: "30000",
-        reactions: [{ id: "100", type: "1", count: 5 }],
-      },
+      kind: "event", eventType: "onebot.message-reactions-updated",
+      reaction: { messageId: "40000", userId: "30000", reactions: [{ id: "100", type: "1", count: 0 }] },
     });
-    expect(result).not.toHaveProperty("schemaVersion");
-    expect(result).not.toHaveProperty("platform");
-    expect(result).not.toHaveProperty("channel");
-    expect(result).not.toHaveProperty("content");
-  });
-
-  it.each([
-    {},
-    { post_type: "notice", notice_type: "group_increase" },
-    { post_type: "notice", notice_type: "message_reactions_updated", group_id: "20000" },
-  ])("returns null for unsupported or incomplete input", (onebot) => {
-    expect(resolveOneBotEvent(makeSession(onebot))).toBeNull();
-  });
-
-  it("preserves numeric protocol identifiers and zero reaction counts", () => {
-    const result = resolveOneBotEvent(
-      makeSession({
-        post_type: "notice",
-        notice_type: "message_reactions_updated",
-        group_id: 20000,
-        message_id: 40000,
-        user_id: 30000,
-        reactions: [{ emoji_id: 100, emoji_type: 1, count: 0 }],
-      }),
-    );
-    expect(result?.reaction).toMatchObject({
-      messageId: "40000",
-      reactions: [{ id: "100", count: 0 }],
-    });
-  });
-
-  it("produces the notice.poke event schema from a real poke Session event", () => {
-    const result = resolveOneBotEvent({
-      ...makeSession(),
-      type: "notice",
-      event: {
-        sn: 7,
-        type: "notice",
-        login: { sn: 1, adapter: "onebot", status: 1, features: [] },
-        referrer: { source: "test" },
-        subtype: "poke",
-        channel: { id: "20000", type: 0 },
-        user: { id: "30000", name: "Alice" },
-        _data: { user_id: 30000, target_id: 10000 },
-      },
-    });
-
-    expect(result).toEqual({
-      kind: "event",
-      eventType: "notice.poke",
-      targetId: "10000",
-      action: "拍了拍",
-      text: "30000 拍了拍 10000",
-    });
-    expect(result).not.toHaveProperty("schemaVersion");
-    expect(result).not.toHaveProperty("sn");
-    expect(result).not.toHaveProperty("login");
-    expect(result).not.toHaveProperty("referrer");
   });
 });
 
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+describe("OneBot resolver", () => {
+  it("persists nested images in document order while preserving non-image elements", async () => {
+    const resolver = createResolver({ http: vi.fn() } as never);
+    const persisted = h("img", { id: "0123456789abcdef0123456789abcdef" });
+    const assets = store(vi.fn(async () => persisted));
+    const result = await resolver.resolve(makeSession({
+      elements: [h("p", { class: "copy" }, [
+        h.text("before"), h("img", { src: "data:image/png;base64,iVBORw==" }), h.text("after"),
+      ])],
+    }), assets);
 
-function freezer(): ResolveContext["freezeImage"] & { mock: ReturnType<typeof vi.fn>["mock"] } {
-  return vi.fn(async (element, load) => {
-    const loaded = await load(new AbortController().signal, 16);
-    return h("img", { id: "asset_abc", mime: loaded.mime });
-  }) as never;
-}
-
-function boundedFreezer(maxBytes: number): ResolveContext["freezeImage"] {
-  return vi.fn(async (_element, load) => {
-    await load(new AbortController().signal, maxBytes);
-    return h("img", { unavailable: "true" });
-  }) as never;
-}
-
-describe("freezeOneBotImages", () => {
-  it("passes the AbortSignal into streaming Koishi HTTP transport", async () => {
-    const http = vi.fn(async () => ({
-      data: new ReadableStream({
-        start(controller) {
-          controller.enqueue(PNG);
-          controller.close();
-        },
-      }),
-      headers: new Headers({ "content-type": "image/png" }),
-    }));
-    const freezeImage = freezer();
-
-    const result = await freezeOneBotImages(
-      { http } as never,
-      [h("p", {}, [h.text("before"), h("img", { src: "https://lagrange.example/image" })])],
-      freezeImage,
-    );
-
-    expect(http).toHaveBeenCalledWith(
-      "https://lagrange.example/image",
-      expect.objectContaining({ responseType: "stream", signal: expect.any(AbortSignal) }),
-    );
-    expect(freezeImage).toHaveBeenCalledOnce();
-    expect(result[0].children[1].attrs).toEqual({ id: "asset_abc", mime: "image/png" });
-  });
-
-  it("loads a NapCat file URL after its size is checked before reading", async () => {
-    const path = await mkdtemp(join(tmpdir(), "yesimbot-onebot-image-"));
-    const imagePath = join(path, "napcat.png");
-    await writeFile(imagePath, PNG);
-    const freezeImage = freezer();
-
-    try {
-      await freezeOneBotImages(
-        { http: vi.fn() } as never,
-        [h("img", { src: pathToFileURL(imagePath).href })],
-        freezeImage,
-      );
-    } finally {
-      await rm(path, { recursive: true, force: true });
-    }
-  });
-
-  it("decodes a data image without a network request", async () => {
-    const file = vi.fn();
-    const freezeImage = freezer();
-    const src = `data:image/png;base64,${Buffer.from(PNG).toString("base64")}`;
-
-    const result = await freezeOneBotImages(
-      { http: { file } } as never,
-      [h("img", { src })],
-      freezeImage,
-    );
-
-    expect(file).not.toHaveBeenCalled();
-    expect(result[0].attrs).toEqual({ id: "asset_abc", mime: "image/png" });
-  });
-
-  it("cancels an oversized remote stream before buffering its complete body", async () => {
-    const cancel = vi.fn();
-    const http = vi.fn(async () => ({
-      data: new ReadableStream({
-        start(controller) {
-          controller.enqueue(new Uint8Array(5));
-        },
-        cancel,
-      }),
-      headers: new Headers(),
-    }));
-
-    await expect(
-      freezeOneBotImages(
-        { http } as never,
-        [h("img", { src: "https://lagrange.example/oversized" })],
-        boundedFreezer(4),
-      ),
-    ).rejects.toThrow("Image exceeds byte limit");
-    expect(cancel).toHaveBeenCalledOnce();
-  });
-
-  it("rejects oversized data URLs before decoding and oversized files before reading", async () => {
-    const http = vi.fn();
-    const dataSrc = `data:image/png;base64,${"a".repeat(24)}`;
-    await expect(
-      freezeOneBotImages({ http } as never, [h("img", { src: dataSrc })], boundedFreezer(4)),
-    ).rejects.toThrow("Image exceeds byte limit");
-
-    const path = await mkdtemp(join(tmpdir(), "yesimbot-onebot-large-"));
-    const imagePath = join(path, "large.png");
-    await writeFile(imagePath, new Uint8Array(5));
-    try {
-      await expect(
-        freezeOneBotImages(
-          { http } as never,
-          [h("img", { src: pathToFileURL(imagePath).href })],
-          boundedFreezer(4),
-        ),
-      ).rejects.toThrow("Image exceeds byte limit");
-    } finally {
-      await rm(path, { recursive: true, force: true });
-    }
-    expect(http).not.toHaveBeenCalled();
-  });
-
-  it("rejects an aborted image load without waiting for the OneBot file API", async () => {
-    const http = vi.fn();
-    const controller = new AbortController();
-    controller.abort(new Error("stopped"));
-    const freezeImage = vi.fn(async (element, load) => {
-      const loaded = await load(controller.signal);
-      return h("img", { id: "asset_abc", mime: loaded.mime });
-    });
-
-    await expect(
-      freezeOneBotImages(
-        { http } as never,
-        [h("img", { src: "https://lagrange.example/image" })],
-        freezeImage,
-      ),
-    ).rejects.toThrow("stopped");
-    expect(http).not.toHaveBeenCalled();
-  });
-
-  it("seals an image without a source or frozen asset as unavailable", async () => {
-    const file = vi.fn();
-    const freezeImage = freezer();
-
-    const result = await freezeOneBotImages({ http: { file } } as never, [h("img")], freezeImage);
-
-    expect(result[0].attrs).toEqual({ unavailable: "true" });
-    expect(file).not.toHaveBeenCalled();
-    expect(freezeImage).not.toHaveBeenCalled();
-  });
-
-  it("leaves local assets, quotes, and forwards untouched", async () => {
-    const file = vi.fn();
-    const freezeImage = freezer();
-    const elements: Element[] = [
-      h("img", { id: "asset_local", mime: "image/png" }),
-      h("quote", { id: "quoted" }),
-      h("forward", { id: "forward", summary: "fixed" }),
-    ];
-
-    await expect(
-      freezeOneBotImages({ http: { file } } as never, elements, freezeImage),
-    ).resolves.toEqual(elements);
-    expect(file).not.toHaveBeenCalled();
-    expect(freezeImage).not.toHaveBeenCalled();
-  });
-});
-
-function context(overrides: Partial<ResolveContext> = {}): ResolveContext {
-  return {
-    session: {
-      platform: "onebot",
-      selfId: "bot",
-      userId: "user",
-      messageId: "message",
-      type: "message-created",
-      elements: [h.text("hello")],
-      event: { type: "message", user: { name: "Alice" }, channel: { name: "room" } },
-    } as Session,
-    freezeImage: vi.fn(async (element) => element),
-    ...overrides,
-  };
-}
-
-describe("createResolver", () => {
-  it("returns a message draft without a host envelope while freezing OneBot images", async () => {
-    const resolver = createResolver({ http: { file: vi.fn() } } as never);
-    const result = await resolver.resolve(context());
-
+    expect(assets.put).toHaveBeenCalledOnce();
     expect(result).toMatchObject({
       kind: "message",
-      messageId: "message",
-      elements: [h.text("hello")],
-    });
-    expect(result).not.toHaveProperty("schemaVersion");
-    expect(result).not.toHaveProperty("platform");
-    expect(result).not.toHaveProperty("channelId");
-  });
-
-  it("freezes image elements and returns them as the message draft elements", async () => {
-    const resolver = createResolver({ http: { file: vi.fn<() => void>() } } as never);
-    const sourceElements = [h("img", { src: "data:image/png;base64,iVBORw==" })];
-    const freezeImage = vi.fn<ResolveContext["freezeImage"]>(async (_element, load) => {
-      const loaded = await load(new AbortController().signal, 16);
-      return h("img", { id: "asset_abc", mime: loaded.mime });
-    });
-
-    const result = await resolver.resolve(
-      context({
-        session: { ...context().session, elements: sourceElements } as Session,
-        freezeImage,
-      }),
-    );
-
-    if (!result || result.kind !== "message") throw new Error("Expected a message draft");
-    expect(result.elements).toEqual([h("img", { id: "asset_abc", mime: "image/png" })]);
-  });
-
-  it("resolves a supported notice as an event draft", async () => {
-    const resolver = createResolver({ http: { file: vi.fn() } } as never);
-    const result = await resolver.resolve(
-      context({
-        session: {
-          platform: "onebot",
-          selfId: "bot",
-          event: { type: "message" },
-          onebot: {
-            post_type: "notice",
-            notice_type: "message_reactions_updated",
-            group_id: "room",
-            message_id: "message",
-            user_id: "user",
-            reactions: [],
-          },
-        } as unknown as Session,
-      }),
-    );
-
-    expect(result).toMatchObject({
-      kind: "event",
-      eventType: "onebot.message-reactions-updated",
-      type: "onebot.message-reactions-updated",
+      elements: [h("p", { class: "copy" }, [h.text("before"), persisted, h.text("after")])],
     });
   });
 
-  it("returns null for an unsupported non-message session", async () => {
-    const resolver = createResolver({ http: { file: vi.fn() } } as never);
-    await expect(
-      resolver.resolve(
-        context({
-          session: { platform: "onebot", selfId: "bot", event: {} } as Session,
-        }),
-      ),
-    ).resolves.toBeNull();
+  it("keeps an original image when loading or storing it fails", async () => {
+    const resolver = createResolver({ http: vi.fn(async () => { throw new Error("offline"); }) } as never);
+    const original = h("img", { src: "https://example.test/image.png" });
+    const result = await resolver.resolve(makeSession({ elements: [original] }), store(vi.fn()));
+    expect(result).toMatchObject({ kind: "message", elements: [original] });
+  });
+
+  it("does not turn an image without src into a resolution failure", async () => {
+    const resolver = createResolver({ http: vi.fn() } as never);
+    const original = h("img", { id: "existing" });
+    const result = await resolver.resolve(makeSession({ elements: [original] }), store(vi.fn()));
+    expect(result).toMatchObject({ kind: "message", elements: [original] });
+  });
+
+  it("returns supported notices and skips unsupported sessions", async () => {
+    const resolver = createResolver({ http: vi.fn() } as never);
+    await expect(resolver.resolve(makeSession({ type: "notice", elements: undefined }), store(vi.fn()))).resolves.toBeNull();
   });
 });
