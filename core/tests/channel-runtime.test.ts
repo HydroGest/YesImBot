@@ -71,7 +71,7 @@ import {
 import { type MediaSelectionOptions, UnsupportedImageMimeError } from "../src/media/index.js";
 import { ChannelRuntime, ChannelRuntimeDrainingError } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
-import type { WillEngine } from "../src/will/index.js";
+import type { WillEngine } from "../src/runtime/will.js";
 
 function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {

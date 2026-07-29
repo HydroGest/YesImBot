@@ -23,7 +23,7 @@ import {
 } from "../src/runtime/index.js";
 import { ChannelStorage } from "../src/storage/index.js";
 import { channelRecord } from "../src/storage/manifest.js";
-import { RoutingWillEngine, WillingnessWillEngine } from "../src/will/index.js";
+import { RoutingWillEngine, WillingnessWillEngine } from "../src/runtime/will.js";
 
 function record(channelId: string, overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
@@ -232,7 +232,7 @@ describe("RuntimeManager", () => {
 
   it("uses routing by default and willingness only when selected", async () => {
     const routing = createManager();
-    const willingness = createManager("/tmp/yesimbot-willingness", { engine: "willingness", base: { text: 12 } });
+    const willingness = createManager("/tmp/yesimbot-willingness", { engine: "willingness" });
 
     await routing.manager.route(record("routing"));
     await willingness.manager.route(record("willingness"));

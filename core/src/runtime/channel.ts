@@ -26,10 +26,10 @@ import {
   type UnifiedImagePolicy,
 } from "../media/index.js";
 import { parseReply } from "../reply/parse.js";
-import type { WillEngine, WillEngineObservation } from "../will/index.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
 import { createDeliveryState, OutputQueue } from "./delivery.js";
 import { serialQueue, type SerialQueue } from "./serial-queue.js";
+import type { WillEngine, WillEngineObservation } from "./will.js";
 
 export interface ChannelRuntimeOptions {
   readonly ctx: Context;

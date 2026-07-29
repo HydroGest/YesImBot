@@ -67,7 +67,7 @@ When WillEngine triggers while the channel Agent is busy, ChannelRuntime MUST jo
 - **AND** the Gateway for the joined event MUST receive no outbound iterable
 
 ### Requirement: Default Will Routing Configuration
-Core WillEngine configuration MUST select `routing` or `willingness`, defaulting to `routing`. Routing configuration MUST map direct messages, group mentions, and ordinary group messages independently to `wait` or `trigger`; its defaults MUST trigger direct and mentioned messages and wait for ordinary group messages. Willingness configuration MUST use static values snapshotted by the ChannelRuntime. Self-message admission MUST remain non-configurable.
+Core Will configuration MUST be a discriminated union selecting `routing` or `willingness`, defaulting to `routing`. Routing configuration MUST map direct messages, group mentions, and ordinary group messages independently to `wait` or `trigger`; its defaults MUST trigger direct and mentioned messages and wait for ordinary group messages. Willingness configuration MUST expose `probabilityThreshold`, `decayHalfLifeSeconds`, and `replyCost`. Self-message admission MUST remain non-configurable.
 
 #### Scenario: Default routing is used
 - **WHEN** no engine or routing override is configured
@@ -76,7 +76,7 @@ Core WillEngine configuration MUST select `routing` or `willingness`, defaulting
 
 #### Scenario: Willingness engine is selected
 - **WHEN** configuration explicitly selects `willingness`
-- **THEN** RuntimeManager MUST construct the temporary static willingness WillEngine for future ChannelRuntimes
+- **THEN** future ChannelRuntimes MUST use willingness with the configured controls
 
 ### Requirement: Channel Runtime Reset
 RuntimeManager MUST validate current assignment, drain and stop a cached ChannelRuntime if present, revalidate assignment before destructive cleanup, clear `sessions/messages.jsonl` and scoped assets through one RuntimeManager-owned cleanup path, and remove the cache entry. The cleanup path MUST apply to cached and uncached channels. JSONL and asset cleanup MUST be independently attempted in that order; a cleanup error MUST be reported only after later mandatory cleanup and cache deletion complete. Reset MUST preserve the Manifest, workspace, and every other registered storage namespace.

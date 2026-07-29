@@ -9,7 +9,6 @@ import { resolveMultimediaImagePolicy, type Config } from "../config.js";
 import type { EventRecord, InputRecord } from "../input.js";
 import type { AssetStore } from "../media/index.js";
 import type { ChannelStorage } from "../storage/index.js";
-import { createWillEngine } from "../will/index.js";
 import {
   ChannelRuntime,
   ChannelRuntimeDrainingError,
@@ -18,6 +17,7 @@ import {
 } from "./channel.js";
 import { serialQueue, type SerialQueue } from "./serial-queue.js";
 import { createJsonlStorage } from "./storage.js";
+import { createWillEngine } from "./will.js";
 
 export interface RuntimeManagerOptions {
   readonly ctx: Context;

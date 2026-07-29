@@ -6,7 +6,7 @@ vi.mock("../src/runtime/channel.js", () => ({
   ChannelRuntimeDrainingError: class extends Error {},
 }));
 vi.mock("../src/runtime/storage.js", () => ({ createJsonlStorage: vi.fn() }));
-vi.mock("../src/will/index.js", () => ({ createWillEngine: vi.fn() }));
+vi.mock("../src/runtime/will.js", () => ({ createWillEngine: vi.fn() }));
 
 import { assertAssignee, AssigneeAdmissionError } from "../src/runtime/index.js";
 
