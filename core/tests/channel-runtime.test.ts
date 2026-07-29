@@ -69,7 +69,7 @@ import {
   type MessageRecord,
 } from "../src/input.js";
 import { type MediaSelectionOptions, UnsupportedImageMimeError } from "../src/media/index.js";
-import { ChannelRuntime, ChannelRuntimeDrainingError } from "../src/runtime/index.js";
+import { ChannelRuntime } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import type { WillEngine } from "../src/runtime/will.js";
 
@@ -126,9 +126,10 @@ function streamFrom(events: readonly unknown[]): AsyncIterable<unknown> {
   })();
 }
 
-async function beginReply(runtime: ChannelRuntime): Promise<void> {
+async function beginReply(runtime: ChannelRuntime) {
   const result = await runtime.handle(record());
   if (result.kind !== "run") throw new Error("Expected a running reply");
+  return result;
 }
 
 function deferred<T = void>() {
@@ -380,34 +381,6 @@ describe("ChannelRuntime", () => {
     ]);
   });
 
-  it("keeps a delivery lease active while a segmented reply output is consumed", async () => {
-    state.stream = streamFrom([
-      {
-        type: "message.appended",
-        id: "event-1",
-        timestamp: 1,
-        turnId: "turn-1",
-        message: { id: "assistant-1", role: "assistant", content: "first<sep/>second" },
-      },
-      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
-    ]);
-    const { runtime } = createRuntime({ decide: async () => "trigger" });
-    const result = await runtime.handle(record());
-    const release = runtime.acquireDeliveryLease();
-    const stopping = runtime.drainAndStop();
-
-    expect(result.kind).toBe("run");
-    if (result.kind !== "run") return;
-    await expect(Array.fromAsync(result.output)).resolves.toHaveLength(1);
-    await Promise.resolve();
-    expect(state.agent?.stop).not.toHaveBeenCalled();
-
-    release();
-    await stopping;
-
-    expect(state.agent?.stop).toHaveBeenCalledOnce();
-  });
-
   it("terminates output when the Agent turn fails", async () => {
     state.stream = streamFrom([
       {
@@ -607,13 +580,21 @@ describe("ChannelRuntime", () => {
     ]);
   });
 
-  it("notifies Will once for repeated acknowledgements of the same active delivery", async () => {
+  it("returns result-local delivery operations for a running reply", async () => {
     const onReply = vi.fn(async () => undefined);
     const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
-    await beginReply(runtime);
-    await runtime.complete("turn-1");
-    await runtime.complete("turn-1");
+    const result = await beginReply(runtime);
 
+    expect(result).toMatchObject({
+      kind: "run",
+      delivery: {
+        signal: expect.any(AbortSignal),
+        onDelivered: expect.any(Function),
+        fail: expect.any(Function),
+      },
+    });
+    expect(result).not.toHaveProperty("delivery.release");
+    await result.delivery.onDelivered();
     expect(onReply).toHaveBeenCalledOnce();
   });
 
@@ -651,29 +632,17 @@ describe("ChannelRuntime", () => {
     if (result.kind !== "run") throw new Error("Expected a running reply");
     const iterator = result.output[Symbol.asyncIterator]();
     await expect(iterator.next()).resolves.toMatchObject({ value: expect.any(Object) });
-    await runtime.complete("turn-1");
+    await result.delivery.onDelivered();
     continueAbort.resolve();
     await expect(iterator.next()).rejects.toThrow("Agent turn aborted");
 
     expect(onReply).toHaveBeenCalledOnce();
   });
 
-  it("releases acknowledgement state with the delivery", async () => {
-    const onReply = vi.fn(async () => undefined);
-    const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
-
-    await beginReply(runtime);
-    await runtime.complete("turn-1");
-    runtime.releaseDelivery("turn-1");
-    await runtime.complete("turn-1");
-
-    expect(onReply).toHaveBeenCalledTimes(2);
-  });
-
   it("accepts acknowledgement when Will has no reply callback", async () => {
     const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
-    await beginReply(runtime);
-    await expect(runtime.complete("turn-1")).resolves.toBeUndefined();
+    const result = await beginReply(runtime);
+    await expect(result.delivery.onDelivered()).resolves.toBeUndefined();
 
     expect(logger.warn).not.toHaveBeenCalledWith(
       expect.objectContaining({ event: "will_reply_failed" }),
@@ -686,8 +655,8 @@ describe("ChannelRuntime", () => {
     });
     const { logger, runtime } = createRuntime({ decide: async () => "trigger", onReply });
 
-    await beginReply(runtime);
-    await expect(runtime.complete("turn-1")).resolves.toBeUndefined();
+    const result = await beginReply(runtime);
+    await expect(result.delivery.onDelivered()).resolves.toBeUndefined();
 
     expect(onReply).toHaveBeenCalledOnce();
     expect(logger.warn).toHaveBeenCalledWith(
@@ -884,117 +853,6 @@ describe("ChannelRuntime", () => {
     release.resolve();
     await Promise.all([handling, first, second]);
     expect(order).toEqual(["will", "interrupt", "agent.stop", "will.stop"]);
-  });
-
-  it("waits for delivery release before graceful stop", async () => {
-    const { runtime } = createRuntime({ decide: async () => "wait" });
-    const release = runtime.acquireDeliveryLease();
-    const stopping = runtime.drainAndStop();
-
-    await Promise.resolve();
-    expect(state.agent?.stop).not.toHaveBeenCalled();
-    expect(state.agent?.interrupt).not.toHaveBeenCalled();
-
-    release();
-    await stopping;
-    expect(state.agent?.wait).toHaveBeenCalledOnce();
-    expect(state.agent?.stop).toHaveBeenCalledOnce();
-    expect(state.agent?.interrupt).not.toHaveBeenCalled();
-  });
-
-  it("keeps a delivery lease release idempotent", async () => {
-    const { runtime } = createRuntime({ decide: async () => "wait" });
-    const first = runtime.acquireDeliveryLease();
-    first();
-    first();
-    const second = runtime.acquireDeliveryLease();
-    const stopping = runtime.drainAndStop();
-
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(state.agent?.stop).not.toHaveBeenCalled();
-
-    second();
-    await stopping;
-    expect(state.agent?.stop).toHaveBeenCalledOnce();
-  });
-
-  it("keeps a draining waiter live when concurrent stop clears delivery state", async () => {
-    const { runtime } = createRuntime({ decide: async () => "wait" });
-    const release = runtime.acquireDeliveryLease();
-    const draining = runtime.drainAndStop();
-
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    await runtime.stop();
-    expect(state.agent?.wait).not.toHaveBeenCalled();
-
-    release();
-    release();
-    await expect(
-      Promise.race([
-        draining.then(() => "completed"),
-        new Promise<"timed out">((resolve) => setTimeout(() => resolve("timed out"), 50)),
-      ]),
-    ).resolves.toBe("completed");
-  });
-
-  it("waits for committed FIFO work before graceful stop", async () => {
-    const entered = deferred();
-    const release = deferred();
-    const order: string[] = [];
-    const { runtime } = createRuntime({
-      decide: async () => {
-        order.push("will");
-        entered.resolve();
-        await release.promise;
-        return "wait";
-      },
-    });
-    state.agent?.wait.mockImplementation(async () => order.push("agent.wait"));
-    state.agent?.stop.mockImplementation(async () => order.push("agent.stop"));
-    const handling = runtime.handle(record());
-    await entered.promise;
-    const stopping = runtime.drainAndStop();
-
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(state.agent?.wait).not.toHaveBeenCalled();
-
-    release.resolve();
-    order.push("release");
-    await Promise.all([handling, stopping]);
-    expect(order).toEqual(["will", "release", "agent.wait", "agent.stop"]);
-  });
-
-  it("accepts internal completion while rejecting new platform events during drain", async () => {
-    const { runtime } = createRuntime({ decide: async () => "wait" });
-    const failure = {
-      type: "delivery.failed",
-      platform: "test",
-      selfId: "bot-1",
-      timestamp: 2,
-      channel: { id: "room-1", type: 0 },
-      delivery: {
-        turnId: "turn-1",
-        messageId: "assistant-1",
-        segmentIndex: 1,
-        segmentTotal: 1,
-        error: { name: "Error", message: "offline" },
-      },
-      text: "Delivery failed",
-      eventType: "delivery.failed",
-    };
-
-    runtime.beginDrain();
-
-    await expect(runtime.handle(record())).rejects.toBeInstanceOf(ChannelRuntimeDrainingError);
-    await expect(runtime.handleInternal(failure)).resolves.toMatchObject({ kind: "wait" });
-  });
-
-  it("rejects external events with a dedicated error before persistence while draining", async () => {
-    const { runtime } = createRuntime({ decide: async () => "wait" });
-    runtime.beginDrain();
-
-    await expect(runtime.handle(record())).rejects.toBeInstanceOf(ChannelRuntimeDrainingError);
-    expect(state.agent?.append).not.toHaveBeenCalled();
   });
 
   it("isolates Agent and Will stop failures while waiting for an active stream", async () => {

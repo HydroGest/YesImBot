@@ -18,7 +18,6 @@ import type {
   ResolvedMessageDraft,
 } from "../input.js";
 import { ImageFreezer, type AssetStore, type UnifiedImagePolicy } from "../media/index.js";
-import { nextSegmentDelayMs } from "../reply/pacing.js";
 import { assertAssignee, type RuntimeManager } from "../runtime/index.js";
 import type { ChannelStorage } from "../storage/index.js";
 import { matchesAllowedChannel, type ChannelAllowRule } from "./allowlist.js";
@@ -49,7 +48,6 @@ export interface GatewayOptions {
 }
 
 export class Gateway {
-  private mediaPolicy: UnifiedImagePolicy;
   private readonly pacing: PacingConfig;
   private resolvers = new Map<string, SessionResolver>();
   private sessions = new WeakSet<object>();
@@ -58,7 +56,6 @@ export class Gateway {
   private closed = false;
 
   constructor(private readonly opts: GatewayOptions) {
-    this.mediaPolicy = opts.mediaPolicy;
     this.pacing = resolveReplyPacingConfig(opts.pacing);
     const middleware = opts.ctx.middleware(async (session, next) => {
       try {
@@ -90,10 +87,6 @@ export class Gateway {
         this.resolvers.delete(resolver.platform);
       }
     };
-  }
-
-  refreshMediaPolicy(policy: UnifiedImagePolicy): void {
-    this.mediaPolicy = policy;
   }
 
   async handle(session: Session): Promise<void> {
@@ -145,7 +138,6 @@ export class Gateway {
       await this.opts.storage.updateName(scope, record.channel.name);
       const result = await this.opts.runtime.route(record);
       if (result.kind === "run") {
-        try {
           let acknowledged = false;
           let consumedDeliveryMs = 0;
           let stopped = false;
@@ -171,7 +163,7 @@ export class Gateway {
                 await session.send(segment);
                 if (!acknowledged) {
                   acknowledged = true;
-                  await result.delivery.complete(output.turnId);
+                  await result.delivery.onDelivered();
                 }
               } catch (cause) {
                 await this.failDelivery(
@@ -191,9 +183,6 @@ export class Gateway {
             }
             if (stopped) break;
           }
-        } finally {
-          result.delivery.release();
-        }
       }
     } catch (cause) {
       this.warn("gateway.route_failed", cause, session.platform);
@@ -209,7 +198,7 @@ export class Gateway {
       readonly segmentTotal: number;
     },
     cause: unknown,
-    delivery: RuntimeManager.Delivery,
+    delivery: { fail(record: EventRecord<"delivery.failed">): Promise<void> },
   ): Promise<void> {
     const error = normalizeDeliveryError(cause);
     const failure: EventRecord<"delivery.failed"> = {
@@ -238,7 +227,7 @@ export class Gateway {
     const resolver = this.resolvers.get(session.platform);
     if (!resolver) return resolveFallbackMessage(session, scope);
     const freezeImage = scope
-      ? new ImageFreezer({ scope, assets: this.opts.assets, policy: this.mediaPolicy }).freezeImage
+      ? new ImageFreezer({ scope, assets: this.opts.assets, policy: this.opts.mediaPolicy }).freezeImage
       : async () => unavailableImage();
     const draft = await resolver.resolve({ session, freezeImage });
     return draft ? normalizeDraft(session, scope, draft) : null;
@@ -257,6 +246,18 @@ export class Gateway {
   private elapsedSince(startedAt: number): number {
     return Math.max(0, Date.now() - startedAt);
   }
+}
+
+function nextSegmentDelayMs(input: {
+  readonly text: string;
+  readonly consumedDeliveryMs: number;
+  readonly config: PacingConfig;
+}): number {
+  const jitter = 0.85 + (1.15 - 0.85) * Math.random();
+  const typingMs = ([...input.text].length / input.config.charactersPerSecond) * 1_000 * jitter;
+  const delayMs = Math.min(Math.max(typingMs, 250), 10_000);
+  if (input.consumedDeliveryMs + delayMs >= input.config.maxTotalDelayMs) return 250;
+  return Math.round(delayMs);
 }
 
 function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {

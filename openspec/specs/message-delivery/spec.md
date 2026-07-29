@@ -103,7 +103,7 @@ When the producing runtime reports a skipped turn, Gateway MUST deliver no messa
 #### Scenario: Runtime reports a skipped turn
 - **WHEN** a turn resolves to a skip decision
 - **THEN** Gateway MUST send no platform message
-- **AND** it MUST release its delivery lease normally
+- **AND** it MUST not require a delivery lease release operation
 
 ### Requirement: Current-Bot Active Send Tool
 Core MUST provide an Agent tool that sends through the current bot to an explicit channel and returns normalized success IDs or an error without selecting another bot.

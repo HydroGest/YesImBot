@@ -30,8 +30,8 @@ Gateway MUST isolate direct Sessions by their real `selfId` and MUST NOT use Koi
 - **THEN** it MUST skip shared-channel assignee lookup
 - **AND** it MUST preserve `session.selfId` in `ChannelScope`
 
-### Requirement: Assignee Revalidation
-Core MUST use Gateway admission as the assignee snapshot for an ordinary admitted event and MUST NOT query shared-channel assignee state again before that event reaches Runtime submission or persistence. Reload, reset, and any other shared-channel lifecycle mutation MUST query current database assignee state inside the per-identity lifecycle operation before changing a Runtime or persisted state.
+### Requirement: Assignee Admission Snapshot
+Core MUST use Gateway admission as the assignee snapshot for an ordinary admitted event and MUST NOT query shared-channel assignee state again before that event reaches Runtime submission or persistence. Reset does not require assignee validation.
 
 #### Scenario: Assignment changes after Gateway admission
 - **WHEN** Gateway admitted a shared Session
@@ -39,9 +39,6 @@ Core MUST use Gateway admission as the assignee snapshot for an ordinary admitte
 - **THEN** Core MUST continue to use the Gateway admission snapshot for that event
 - **AND** it MUST NOT issue a second assignee query for that event
 
-#### Scenario: State-changing command runs
-- **WHEN** a Koishi command attempts to reload, reset, or otherwise mutate YesImBot shared-channel state
-- **THEN** Core MUST apply a current database assignee check inside the lifecycle operation before the mutation
 ### Requirement: Session Gateway Entry Points
 Core MUST admit ordinary messages through Koishi middleware and non-message Satori Sessions through `internal/session`. Gateway MUST ensure that one Session is resolved at most once and MUST NOT cache a resolved result for later lookup by Session identity.
 
@@ -179,15 +176,10 @@ Core MUST expose `allowedChannels` as a strict Gateway allowlist. Each rule MUST
 - **THEN** Core MUST complete that internal Event through the producing Runtime without applying external Session allowlist admission again
 
 ### Requirement: Cached Runtime Assignee Mismatch
-Core MUST fail closed when an admitted shared event's `selfId` differs from the cached Runtime's `selfId`. Core MUST detect that mismatch before persistence, MUST NOT automatically drain, replace, retry, or create a Runtime from the event route, and MUST require an explicit reload for the channel.
+Core MUST replace a cached shared Runtime when an admitted event's `selfId` differs from that Runtime's `selfId`. Core MUST stop the old Runtime before creating the replacement, without changing the channel's persisted data.
 
 #### Scenario: Admitted event reaches a Runtime for another self ID
 - **WHEN** Gateway admitted a shared event under its assignee snapshot
 - **AND** a cached Runtime for the same `channelIdentity` has a different `selfId`
-- **THEN** Runtime routing MUST reject the event with a reload-required error before persistence
-- **AND** it MUST preserve the cached Runtime and persisted channel data
-
-#### Scenario: Operator reloads after an assignee change
-- **WHEN** an operator explicitly reloads the shared channel
-- **THEN** Core MUST validate the current database assignee before changing the cached Runtime
-- **AND** the next admitted event MUST lazily create a Runtime with the reloaded scope's `selfId`
+- **THEN** Runtime routing MUST stop the cached Runtime and create a replacement for the admitted `selfId`
+- **AND** it MUST preserve persisted channel data

@@ -66,9 +66,7 @@ function deferred<T = void>() {
 function delivery(signal?: AbortSignal) {
   return {
     fail: vi.fn(async () => ({ kind: "wait" as const, eventId: "failure-1" })),
-    complete: vi.fn(async () => undefined),
-    observe: vi.fn(),
-    release: vi.fn(),
+    onDelivered: vi.fn(async () => undefined),
     signal: signal ?? new AbortController().signal,
   };
 }
@@ -215,9 +213,7 @@ describe("Gateway passive delivery", () => {
     expect(send).toHaveBeenNthCalledWith(1, [h.text("first")]);
     expect(send).toHaveBeenNthCalledWith(2, [h.text("second")]);
     expect(route).toHaveBeenCalledOnce();
-    expect(binding.complete).toHaveBeenCalledTimes(1);
-    expect(binding.complete).toHaveBeenCalledWith("turn-1");
-    expect(binding.release).toHaveBeenCalledOnce();
+    expect(binding.onDelivered).toHaveBeenCalledOnce();
   });
 
   it("keeps sending at the minimum interval after the host delivery budget is exhausted", async () => {
@@ -280,7 +276,7 @@ describe("Gateway passive delivery", () => {
     expect(send).toHaveBeenNthCalledWith(1, [h.text("first")]);
     expect(send).toHaveBeenCalledTimes(1);
     expect(route).toHaveBeenCalledOnce();
-    expect(binding.complete).not.toHaveBeenCalled();
+    expect(binding.onDelivered).not.toHaveBeenCalled();
     expect(route.mock.calls[0]?.[0]).not.toHaveProperty("send");
     expect(route.mock.calls[0]?.[0]).not.toBe(inbound);
     expect(binding.fail.mock.calls[0]?.[0]).toMatchObject({
@@ -340,7 +336,6 @@ describe("Gateway passive delivery", () => {
     expect(send).toHaveBeenNthCalledWith(1, [h.text("first")]);
     expect(send).toHaveBeenCalledTimes(1);
     expect(route).toHaveBeenCalledOnce();
-    expect(binding.release).toHaveBeenCalledOnce();
   });
 
   it("does not send when the runtime cancelled before the segment delay", async () => {
@@ -361,9 +356,8 @@ describe("Gateway passive delivery", () => {
       await gateway.handle(session(send) as never);
 
       expect(send).not.toHaveBeenCalled();
-      expect(binding.complete).not.toHaveBeenCalled();
+      expect(binding.onDelivered).not.toHaveBeenCalled();
       expect(binding.fail).not.toHaveBeenCalled();
-      expect(binding.release).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }
@@ -390,9 +384,8 @@ describe("Gateway passive delivery", () => {
       await handling;
 
       expect(send).not.toHaveBeenCalled();
-      expect(binding.complete).not.toHaveBeenCalled();
+      expect(binding.onDelivered).not.toHaveBeenCalled();
       expect(binding.fail).not.toHaveBeenCalled();
-      expect(binding.release).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }
@@ -419,7 +412,7 @@ describe("Gateway passive delivery", () => {
       await handling;
 
       expect(send).not.toHaveBeenCalled();
-      expect(binding.complete).not.toHaveBeenCalled();
+      expect(binding.onDelivered).not.toHaveBeenCalled();
       expect(binding.fail).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
@@ -442,7 +435,7 @@ describe("Gateway passive delivery", () => {
 
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith([h.text("  ordinary reply\n")]);
-    expect(binding.complete).toHaveBeenCalledOnce();
+    expect(binding.onDelivered).toHaveBeenCalledOnce();
   });
 
   it("retains the originating Session only while consuming its active output", async () => {

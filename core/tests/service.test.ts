@@ -6,7 +6,6 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 const state = vi.hoisted(() => ({
   runtime: undefined as
     | {
-        reload: ReturnType<typeof vi.fn>;
         reset: ReturnType<typeof vi.fn>;
         stop: ReturnType<typeof vi.fn>;
         options: { getAgentPluginFactories(): readonly AgentPluginFactory[] };
@@ -24,7 +23,6 @@ type RegisteredCommand = {
 vi.mock("../src/runtime/index.js", () => ({
   assertAssignee: vi.fn(async () => undefined),
   RuntimeManager: class {
-    reload = vi.fn(async () => undefined);
     reset = vi.fn(async () => undefined);
     stop = vi.fn(async () => undefined);
 
@@ -78,7 +76,7 @@ describe("YesImBotService facade", () => {
     expect("channelKey" in ctx.yesimbot).toBe(false);
     expect(ctx.yesimbot.registerStorage).toEqual(expect.any(Function));
     expect(ctx.yesimbot.ensureStorage).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.reload).toEqual(expect.any(Function));
+    expect("reload" in ctx.yesimbot).toBe(false);
     expect(ctx.yesimbot.reset).toEqual(expect.any(Function));
     expect(ctx.yesimbot.stop).toEqual(expect.any(Function));
     expect("assets" in ctx.yesimbot).toBe(false);
@@ -113,51 +111,6 @@ describe("YesImBotService facade", () => {
     expect(state.runtime?.reset).toHaveBeenCalledWith(scope);
   });
 
-  it("delegates reload through the composed boundary", async () => {
-    const { service } = createService();
-    const scope = {
-      platform: "test",
-      selfId: "bot-1",
-      channelId: "room-1",
-      isDirect: false,
-    };
-
-    await service.reload(scope);
-
-    expect(state.runtime?.reload).toHaveBeenCalledWith(scope);
-  });
-
-  it("refreshes ingress and asset media policies when reloading a channel", async () => {
-    const serviceConfig: Config = {
-      ...config,
-      multimedia: { enabled: true, image: { maxCount: 1 } },
-    };
-    const { service } = createService(serviceConfig);
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
-
-    serviceConfig.multimedia = {
-      enabled: false,
-      image: {
-        maxCount: 2,
-        maxBytesPerImage: 20,
-        maxTotalBytes: 30,
-        selection: "lifo",
-      },
-    };
-
-    await service.reload(scope);
-
-    const expectedPolicy = {
-      enabled: false,
-      maxCount: 2,
-      maxBytesPerImage: 20,
-      maxTotalBytes: 30,
-      selection: "lifo",
-    };
-    expect(service["gate"]["mediaPolicy"]).toEqual(expectedPolicy);
-    expect(service["asset"]["policy"]).toEqual(expectedPolicy);
-  });
-
   it("registers the authority-4 modality command without replacing active runtimes", async () => {
     const addChatModelInputModality = vi.fn(async () => "added" as const);
     const { commands } = createService(config, { addChatModelInputModality });
@@ -167,9 +120,10 @@ describe("YesImBotService facade", () => {
 
     expect(command?.options).toEqual({ authority: 4 });
     const action = command?.action.mock.calls[0]?.[0];
-    await expect(action({}, "vision", "image")).resolves.toContain("added");
+    await expect(action({}, "vision", "image")).resolves.toContain(
+      "Active runtimes keep their snapshot until replacement.",
+    );
     expect(addChatModelInputModality).toHaveBeenCalledWith("vision", "image");
-    expect(state.runtime?.reload).not.toHaveBeenCalled();
   });
 
   it("reports an idempotent modality command no-op and invalid command error", async () => {
@@ -185,20 +139,6 @@ describe("YesImBotService facade", () => {
 
     await expect(action({}, "vision", "image")).resolves.toContain("unchanged");
     await expect(action({}, "vision", "unknown")).resolves.toContain("invalid modality");
-  });
-
-  it("delegates shared reload assignee validation to RuntimeManager", async () => {
-    const { service, database } = createService();
-    const scope = {
-      platform: "test",
-      selfId: "bot-1",
-      channelId: "room-1",
-      isDirect: false,
-    };
-    await service.reload(scope);
-
-    expect(database.get).not.toHaveBeenCalled();
-    expect(state.runtime?.reload).toHaveBeenCalledWith(scope);
   });
 
   it("delegates shared reset assignee validation to RuntimeManager", async () => {

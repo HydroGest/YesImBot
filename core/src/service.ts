@@ -83,7 +83,7 @@ export class YesImBotService extends Service<Config> {
     modalityCommand.action(async (_, model, modality) => {
       try {
         const result = await this.model.addChatModelInputModality(model, modality);
-        return `Input modality ${result}. Active ChannelRuntimes require reload or replacement.`;
+        return `Input modality ${result}. Active runtimes keep their snapshot until replacement.`;
       } catch (error) {
         return `Failed to add input modality: ${error instanceof Error ? error.message : String(error)}`;
       }
@@ -119,13 +119,6 @@ export class YesImBotService extends Service<Config> {
 
   async reset(scope: ChannelScope): Promise<void> {
     return this.rt.reset(scope);
-  }
-
-  async reload(scope: ChannelScope): Promise<void> {
-    await this.rt.reload(scope);
-    const mediaPolicy = resolveMultimediaImagePolicy(this.config.multimedia);
-    this.gate.refreshMediaPolicy(mediaPolicy);
-    this.asset.refreshPolicy(mediaPolicy);
   }
 
   override stop(): Promise<void> {

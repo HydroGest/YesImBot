@@ -7,14 +7,14 @@ Define how `koishi-plugin-yesimbot` integrates Koishi with `@yesimbot/agent-runt
 ## Requirements
 
 ### Requirement: Core Runtime Facade
-`YesImBotService` MUST remain a thin Koishi composition facade in top-level `service.ts`. It MUST expose SessionResolver and Agent plugin registration plus channel reset and reload, and MUST delegate Session handling and runtime lifecycle to internal modules. It MUST NOT expose Will or WillEngine factory registration.
+`YesImBotService` MUST remain a thin Koishi composition facade in top-level `service.ts`. It MUST expose SessionResolver and Agent plugin registration plus channel reset, and MUST delegate Session handling and runtime lifecycle to internal modules. It MUST NOT expose runtime reload, Will, or WillEngine factory registration.
 
 #### Scenario: Platform plugin registers a resolver
 - **WHEN** a plugin calls `ctx.yesimbot.registerResolver()`
 - **THEN** the facade MUST delegate registration to Gateway
 
 ### Requirement: Runtime Manager Ownership
-RuntimeManager MUST own the map from `channelIdentity` to ChannelRuntime, concurrent get-or-create behavior, per-identity lifecycle serialization, explicit reload, channel reset, and global stop. It MUST NOT accept Session, call SessionResolver, send platform messages, or serve as an event broadcast bus.
+RuntimeManager MUST own channel Runtime creation, replacement, reset, and global stop. It MUST share concurrent first creation for one identity. It MUST NOT accept Session, call SessionResolver, send platform messages, or serve as an event broadcast bus.
 
 #### Scenario: First event reaches a channel
 - **WHEN** RuntimeManager routes the first resolved event for a channel
@@ -34,8 +34,7 @@ Each ChannelRuntime MUST represent exactly one Core `channelIdentity` and MUST o
 
 #### Scenario: Shared assignee differs from cached runtime
 - **WHEN** RuntimeManager routes an admitted shared event whose `selfId` differs from the cached Runtime's `selfId`
-- **THEN** it MUST fail before persistence with a dedicated reload-required error
-- **AND** it MUST NOT drain, retry, replace, or create a Runtime from that route
+- **THEN** it MUST stop the cached Runtime, replace it with one bound to the admitted `selfId`, and handle the event through that replacement
 
 ### Requirement: FIFO Input Lifecycle
 ChannelRuntime MUST serialize accepted `MessageRecord | EventRecord` values through one channel FIFO for Input creation, persistence, committed-input observation, and WillEngine decision. It MUST persist Input before calling WillEngine.
@@ -47,7 +46,7 @@ ChannelRuntime MUST serialize accepted `MessageRecord | EventRecord` values thro
 - **AND** it MUST then evaluate WillEngine and emit `yesimbot/will`
 
 ### Requirement: Message-Level Outbound Ownership
-When WillEngine triggers an idle Agent, ChannelRuntime MUST own the sole consumer of the Agent internal stream and MUST expose only complete renderable assistant messages as `AsyncIterable<ChannelRuntime.Output>`. Each output MUST carry ordered element segments parsed exactly once from that assistant message. ChannelRuntime MUST NOT re-parse an assistant message it has already parsed, and MUST NOT expose token deltas, tool events, or raw Agent internal events to Gateway.
+When WillEngine triggers an idle Agent, ChannelRuntime MUST own the sole consumer of the Agent internal stream and MUST expose only complete renderable assistant messages as `AsyncIterable<ChannelRuntime.Output>`. Each run result MUST include that iterable and a delivery interface containing an abort signal, first-success notification, and same-runtime failure feedback. Each output MUST carry ordered element segments parsed exactly once from that assistant message. ChannelRuntime MUST NOT re-parse an assistant message it has already parsed, and MUST NOT expose token deltas, tool events, or raw Agent internal events to Gateway.
 
 #### Scenario: Assistant message is appended
 - **WHEN** the Agent appends a complete assistant message with renderable content
@@ -79,16 +78,16 @@ Core Will configuration MUST be a discriminated union selecting `routing` or `wi
 - **THEN** future ChannelRuntimes MUST use willingness with the configured controls
 
 ### Requirement: Channel Runtime Reset
-RuntimeManager MUST validate current assignment, drain and stop a cached ChannelRuntime if present, revalidate assignment before destructive cleanup, clear `sessions/messages.jsonl` and scoped assets through one RuntimeManager-owned cleanup path, and remove the cache entry. The cleanup path MUST apply to cached and uncached channels. JSONL and asset cleanup MUST be independently attempted in that order; a cleanup error MUST be reported only after later mandatory cleanup and cache deletion complete. Reset MUST preserve the Manifest, workspace, and every other registered storage namespace.
+RuntimeManager MUST stop and remove a cached ChannelRuntime if present, then clear `sessions/messages.jsonl` and scoped assets. Reset MUST NOT revalidate shared-channel assignment. The cleanup path MUST apply to cached and uncached channels. JSONL and asset cleanup MUST be independently attempted in that order; a cleanup error MUST be reported only after later mandatory cleanup and cache deletion complete. Reset MUST preserve the Manifest, workspace, and every other registered storage namespace.
 
 #### Scenario: Cached channel is reset
 - **WHEN** reset targets an active channel
-- **THEN** RuntimeManager MUST drain and stop it before revalidating assignment and using the shared sessions-and-assets cleanup path
+- **THEN** RuntimeManager MUST stop it before using the shared sessions-and-assets cleanup path
 - **AND** it MUST remove the cached runtime after cleanup is attempted
 
 #### Scenario: Uncached channel is reset
 - **WHEN** reset targets a channel without a cached runtime
-- **THEN** RuntimeManager MUST validate assignment and use the same sessions-and-assets cleanup path
+- **THEN** RuntimeManager MUST use the same sessions-and-assets cleanup path
 - **AND** it MUST preserve the Manifest, workspace, and every other registered storage namespace
 
 ### Requirement: Runtime Stop Ordering
@@ -132,74 +131,9 @@ Core MUST use one append-only JSONL storage file per channel identity at the pat
 - **WHEN** Core recreates a ChannelRuntime whose current Manifest-backed JSONL file already exists
 - **THEN** the Runtime storage MUST read current-format previously appended entries and MUST not read legacy JSONL
 
-#### Scenario: Shared assignee reload recreates Runtime
-- **WHEN** an operator explicitly reloads a shared channel after Koishi changes its assignee
-- **THEN** the next admitted event MUST lazily create a Runtime for the current assignee
-- **AND** that Runtime MUST read the same JSONL history
-
-### Requirement: Non-Destructive Runtime Refresh
-`YesImBotService` MUST expose `reload(scope): Promise<void>` as the explicit trusted path to refresh one ChannelRuntime after a stable prompt, persona, plugin-instruction, tool, model, provider, or shared-assignee change. Reload MUST validate current assignment, coalesce concurrent reloads for one identity, mark a cached Runtime as reloading in the per-identity lifecycle queue, drain and stop it outside that queue, and remove its cache entry. Reload MUST NOT clear channel history, assets, workspace, Manifest, or registered storage namespaces, and it MUST NOT construct a replacement. The next accepted event MUST build the fresh runtime snapshot lazily.
-
-#### Scenario: Trusted source requests refresh
-- **WHEN** an operator-managed path or optional persona-management plugin activates new trusted persona content
-- **THEN** Core MUST validate current assignment
-- **AND** it MUST drain and stop the cached Runtime before removing its cache entry
-- **AND** the next accepted event MUST lazily create a Runtime that reads the existing channel JSONL history
-
-#### Scenario: Assignee change requires refresh
-- **WHEN** an admitted shared event has a `selfId` that differs from its cached Runtime
-- **THEN** Core MUST return a dedicated reload-required error before persistence
-- **AND** an operator MUST invoke `reload(scope)` before Core can create a Runtime for the new assignee
-
-#### Scenario: Refresh fails while draining
-- **WHEN** the cached ChannelRuntime cannot drain or stop cleanly
-- **THEN** Core MUST remain fail closed for that channel identity
-- **AND** it MUST NOT publish a concurrent replacement runtime
-- **AND** it MUST preserve persisted channel data
-
-#### Scenario: Refresh differs from reset
-- **WHEN** a caller requests a stable prompt refresh
-- **THEN** Core MUST NOT invoke channel reset semantics
-- **AND** it MUST NOT clear sessions or assets
-
-#### Scenario: Refresh targets an uncached channel
-- **WHEN** a trusted caller requests refresh for a channel with no cached runtime
-- **THEN** Core MUST validate current assignment and return without creating a runtime
-- **AND** the next accepted event MUST create the runtime from the latest stable sources
-
-#### Scenario: Input routes during reload
-- **WHEN** an admitted InputRecord routes for an identity whose cached Runtime is reloading
-- **THEN** RuntimeManager MUST reject it with a dedicated reload-in-progress error before persistence
-- **AND** it MUST NOT wait or retry that InputRecord
-
-#### Scenario: Concurrent reload calls coalesce
-- **WHEN** multiple callers request reload for the same channel identity
-- **THEN** they MUST await the same reload operation
-- **AND** Core MUST NOT create an additional runtime solely for each concurrent call
-
 ### Requirement: Immutable Runtime Media Snapshot
-RuntimeManager MUST snapshot the resolved image-input capability and configured model-call media policy when creating a ChannelRuntime. ChannelRuntime MUST reuse that snapshot for its lifetime, and a changed capability or policy MUST activate only through explicit non-destructive reload.
+RuntimeManager MUST snapshot the resolved image-input capability and configured model-call media policy when creating a ChannelRuntime. ChannelRuntime MUST reuse that snapshot for its lifetime, and a changed capability or policy MUST activate when a Runtime is replaced.
 
 #### Scenario: Existing runtime handles another model call
 - **WHEN** model metadata or multimedia configuration changes after ChannelRuntime initialization
 - **THEN** the active runtime MUST retain its existing media capability and policy snapshot
-
-#### Scenario: Runtime is reloaded
-- **WHEN** a trusted caller reloads the channel after a media policy change
-- **THEN** the next lazily created runtime MUST use the latest resolved capability and policy without clearing history or assets
-
-### Requirement: Single Serialization Primitive
-Core MUST serialize per-identity lifecycle operations, per-channel input handling, and delivery bookkeeping through one shared serialization primitive. Core MUST NOT maintain separate duplicated promise-chain schedulers for these concerns.
-
-#### Scenario: Concurrent operations on one channel
-- **WHEN** two operations targeting the same channel are submitted concurrently
-- **THEN** they MUST execute in submission order
-- **AND** a rejected operation MUST NOT prevent the next operation from running
-
-### Requirement: Runtime Module Seams
-Core MUST separate cross-channel lifecycle orchestration, per-channel session ownership, and delivery transport into distinct modules with explicit interfaces. Core MUST NOT require a test-only construction seam to substitute a channel runtime.
-
-#### Scenario: Channel runtime is constructed in a test
-- **WHEN** a test constructs a channel runtime
-- **THEN** it MUST be constructible through its real interface
-- **AND** no injection option MUST exist solely to replace it

@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("koishi", async () => import("@koishijs/core"));
 vi.mock("../src/runtime/channel.js", () => ({
   ChannelRuntime: class {},
-  ChannelRuntimeDrainingError: class extends Error {},
 }));
 vi.mock("../src/runtime/storage.js", () => ({ createJsonlStorage: vi.fn() }));
 vi.mock("../src/runtime/will.js", () => ({ createWillEngine: vi.fn() }));

@@ -17,7 +17,6 @@ import {
 import type { MessageRecord } from "../src/input.js";
 import {
   ChannelRuntime,
-  ChannelRuntimeDrainingError,
   type ChannelRuntimeOptions,
   RuntimeManager,
 } from "../src/runtime/index.js";
@@ -56,7 +55,6 @@ const state = vi.hoisted(() => ({
   runtimes: [] as ChannelRuntime[],
   init: vi.fn(async () => undefined),
   handle: vi.fn(async () => ({ kind: "wait" as const, eventId: "event-1" })),
-  drainAndStop: vi.fn(async () => undefined),
   stop: vi.fn(async () => undefined),
 }));
 
@@ -107,15 +105,12 @@ describe("RuntimeManager", () => {
     state.runtimes = [];
     state.init.mockReset().mockResolvedValue(undefined);
     state.handle.mockReset().mockResolvedValue({ kind: "wait", eventId: "event-1" });
-    state.drainAndStop.mockReset().mockResolvedValue(undefined);
     state.stop.mockReset().mockResolvedValue(undefined);
     vi.spyOn(ChannelRuntime.prototype, "init").mockImplementation(function () {
       state.runtimes.push(this);
       return state.init();
     });
     vi.spyOn(ChannelRuntime.prototype, "handle").mockImplementation(async () => state.handle());
-    vi.spyOn(ChannelRuntime.prototype, "beginDrain");
-    vi.spyOn(ChannelRuntime.prototype, "drainAndStop").mockImplementation(() => state.drainAndStop());
     vi.spyOn(ChannelRuntime.prototype, "stop").mockImplementation(() => state.stop());
   });
 
@@ -155,32 +150,6 @@ describe("RuntimeManager", () => {
     await first;
 
     expect(state.runtimes).toHaveLength(2);
-  });
-
-  it("drains a cached runtime before reset removes it", async () => {
-    const { manager, assets } = createManager();
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false } satisfies ChannelScope;
-    const release = deferred();
-    await manager.route(record("room"));
-    state.drainAndStop.mockImplementationOnce(async () => release.promise);
-
-    const resetting = manager.reset(scope);
-    await vi.waitFor(() => expect(state.drainAndStop).toHaveBeenCalledOnce());
-    expect(assets.clear).not.toHaveBeenCalled();
-    release.resolve();
-    await resetting;
-
-    expect(assets.clear).toHaveBeenCalledOnce();
-  });
-
-  it("keeps reload fail-closed after drain rejection", async () => {
-    const { manager } = createManager();
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false } satisfies ChannelScope;
-    await manager.route(record("room"));
-    state.drainAndStop.mockRejectedValueOnce(new Error("drain failed"));
-
-    await expect(manager.reload(scope)).rejects.toThrow("drain failed");
-    await expect(manager.route(record("room"))).rejects.toThrow("Runtime reload failed; restart required");
   });
 
   it("stops every cached runtime when one stop rejects", async () => {
@@ -257,29 +226,16 @@ describe("RuntimeManager", () => {
     expect(database.get).not.toHaveBeenCalled();
   });
 
-  it("requires explicit reload before a shared identity changes self id", async () => {
+  it("stops and replaces a shared runtime when selfId changes", async () => {
     const { manager } = createManager();
     await manager.route(record("room"));
+    const first = state.runtimes[0];
 
-    await expect(manager.route(record("room", { selfId: "other" }))).rejects.toMatchObject({
-      name: "RuntimeReloadRequiredError",
-    });
-    expect(state.runtimes).toHaveLength(1);
-    expect(state.drainAndStop).not.toHaveBeenCalled();
-  });
+    await manager.route(record("room", { selfId: "other" }));
 
-  it("rejects admitted routing while an explicit reload drains", async () => {
-    const { manager } = createManager();
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false } satisfies ChannelScope;
-    const release = deferred();
-    await manager.route(record("room"));
-    vi.spyOn(state.runtimes[0]!, "drainAndStop").mockImplementationOnce(async () => release.promise);
-
-    const reloading = manager.reload(scope);
-    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
-    await expect(manager.route(record("room"))).rejects.toMatchObject({ name: "RuntimeReloadInProgressError" });
-    release.resolve();
-    await reloading;
+    expect(first?.stop).toHaveBeenCalledOnce();
+    expect(state.runtimes).toHaveLength(2);
+    expect(state.runtimes[1]?.selfId).toBe("other");
   });
 
   it("keeps different canonical identities isolated", async () => {
@@ -303,9 +259,8 @@ describe("RuntimeManager", () => {
     expect(runtimeOptions(state.runtimes[1]!)).toMatchObject({ model, agentPlugins: [second] });
   });
 
-  it("snapshots multimedia capability and policy until reload", async () => {
+  it("snapshots multimedia capability and policy until replacement", async () => {
     const { manager, config, setEntry } = createManager();
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false } satisfies ChannelScope;
     await manager.route(record("room"));
     const first = runtimeOptions(state.runtimes[0]!);
 
@@ -316,8 +271,7 @@ describe("RuntimeManager", () => {
     await manager.route(record("room"));
     expect(state.runtimes).toHaveLength(1);
 
-    await manager.reload(scope);
-    await manager.route(record("room"));
+    await manager.route(record("room", { selfId: "other" }));
     expect(runtimeOptions(state.runtimes[1]!)).toMatchObject({ imageInput: true, mediaPolicy: { enabled: false, selection: "fifo" } });
   });
 
@@ -340,14 +294,14 @@ describe("RuntimeManager", () => {
     expect(runtimeOptions(state.runtimes[0]!).storage).toEqual(expect.objectContaining({ append: expect.any(Function) }));
   });
 
-  it("drains clears and recreates a cached runtime on reset", async () => {
+  it("stops clears and recreates a cached runtime on reset", async () => {
     const { manager, assets } = createManager();
     const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false } satisfies ChannelScope;
     await manager.route(record("room"));
     await manager.reset(scope);
     await manager.route(record("room"));
 
-    expect(state.drainAndStop).toHaveBeenCalledOnce();
+    expect(state.stop).toHaveBeenCalledOnce();
     expect(assets.clear).toHaveBeenCalledOnce();
     expect(state.runtimes).toHaveLength(2);
   });
@@ -374,80 +328,6 @@ describe("RuntimeManager", () => {
     expect(state.runtimes).toHaveLength(0);
     expect(assets.clear).toHaveBeenCalledWith(scope);
     await expect(access(path)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("preserves persisted data while reloading an active runtime", async () => {
-    const basePath = await mkdtemp(join(tmpdir(), "yesimbot-reload-"));
-    const { manager, assets, storage } = createManager(basePath);
-    storage.register("workspace");
-    storage.register("custom");
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false } satisfies ChannelScope;
-    const files = await Promise.all([storage.ensure(scope, "sessions", "messages.jsonl"), storage.ensure(scope, "assets", "asset.bin"), storage.ensure(scope, "workspace", "state.txt"), storage.ensure(scope, "custom", "state.json")]);
-    await Promise.all(files.map((path) => writeFile(path, "keep")));
-    await manager.route(record("room"));
-    await manager.reload(scope);
-
-    expect(assets.clear).not.toHaveBeenCalled();
-    await Promise.all(files.map(async (path) => expect(access(path)).resolves.toBeUndefined()));
-    await manager.route(record("room"));
-    expect(state.runtimes).toHaveLength(2);
-  });
-
-  it("validates an uncached reload without constructing a runtime", async () => {
-    const { manager, database, resolveChatModel } = createManager();
-    await manager.reload({ platform: "test", selfId: "bot-1", channelId: "room", isDirect: false });
-
-    expect(database.get).toHaveBeenCalledOnce();
-    expect(resolveChatModel).not.toHaveBeenCalled();
-    expect(state.runtimes).toHaveLength(0);
-  });
-
-  it("coalesces concurrent reload calls", async () => {
-    const { manager } = createManager();
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room", isDirect: false } satisfies ChannelScope;
-    const release = deferred();
-    await manager.route(record("room"));
-    vi.spyOn(state.runtimes[0]!, "drainAndStop").mockImplementationOnce(async () => release.promise);
-
-    const first = manager.reload(scope);
-    const second = manager.reload(scope);
-    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
-    release.resolve();
-    await Promise.all([first, second]);
-    expect(state.runtimes[0]?.drainAndStop).toHaveBeenCalledOnce();
-  });
-
-  it("keeps another channel routable after one reload fails", async () => {
-    const { manager } = createManager();
-    await manager.route(record("room-a"));
-    await manager.route(record("room-b"));
-    vi.spyOn(state.runtimes[0]!, "drainAndStop").mockRejectedValueOnce(new Error("drain failed"));
-
-    await expect(manager.reload({ platform: "test", selfId: "bot-1", channelId: "room-a", isDirect: false })).rejects.toThrow("drain failed");
-    await expect(manager.route(record("room-b"))).resolves.toMatchObject({ kind: "wait" });
-  });
-
-  it("does not retry an event that races with reload", async () => {
-    const { manager } = createManager();
-    const handleEntered = deferred();
-    const releaseHandle = deferred();
-    const releaseDrain = deferred();
-    await manager.route(record("room"));
-    vi.spyOn(state.runtimes[0]!, "handle").mockImplementationOnce(async () => {
-      handleEntered.resolve();
-      await releaseHandle.promise;
-      throw new ChannelRuntimeDrainingError();
-    });
-    vi.spyOn(state.runtimes[0]!, "drainAndStop").mockImplementationOnce(async () => releaseDrain.promise);
-
-    const racing = manager.route(record("room", { messageId: "race" }));
-    await handleEntered.promise;
-    const reloading = manager.reload({ platform: "test", selfId: "bot-1", channelId: "room", isDirect: false });
-    await vi.waitFor(() => expect(state.runtimes[0]?.beginDrain).toHaveBeenCalledOnce());
-    releaseHandle.resolve();
-    releaseDrain.resolve();
-    await reloading;
-    await expect(racing).rejects.toMatchObject({ name: "RuntimeReloadInProgressError" });
   });
 
   it("preserves the manifest workspace and registered namespaces when resetting", async () => {

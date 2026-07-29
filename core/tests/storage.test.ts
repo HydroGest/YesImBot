@@ -21,7 +21,7 @@ import { h, Universal } from "koishi";
 import { channelIdentity, type ChannelScope } from "../src/channel/index.js";
 import { createEvent, createMessage } from "../src/input.js";
 import { detectImageMime } from "../src/media/index.js";
-import { parseReply } from "../src/reply/parse.js";
+import { parseReply } from "../src/runtime/reply.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import { ChannelStorage } from "../src/storage/index.js";
 

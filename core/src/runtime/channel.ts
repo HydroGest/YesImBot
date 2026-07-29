@@ -25,10 +25,9 @@ import {
   UnsupportedImageMimeError,
   type UnifiedImagePolicy,
 } from "../media/index.js";
-import { parseReply } from "../reply/parse.js";
+import { parseReply } from "./reply.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
-import { createDeliveryState, OutputQueue } from "./delivery.js";
-import { serialQueue, type SerialQueue } from "./serial-queue.js";
+import { OutputQueue } from "./output-queue.js";
 import type { WillEngine, WillEngineObservation } from "./will.js";
 
 export interface ChannelRuntimeOptions {
@@ -62,38 +61,28 @@ export type ChannelRuntimeResult =
       readonly eventId: string;
       readonly turnId: string;
       readonly output: AsyncIterable<ChannelOutput>;
+      readonly delivery: {
+        readonly signal: AbortSignal;
+        onDelivered(): Promise<void>;
+        fail(record: EventRecord<"delivery.failed">): Promise<void>;
+      };
     };
-
-export class ChannelRuntimeDrainingError extends Error {
-  constructor() {
-    super("Channel runtime is draining");
-    this.name = "ChannelRuntimeDrainingError";
-  }
-}
 
 export class ChannelRuntime {
   readonly scope: ChannelScope;
+  readonly selfId: string;
 
-  private readonly queue: SerialQueue = serialQueue();
+  private tail: Promise<void> = Promise.resolve();
   private stopped = false;
   private stopTask: Promise<void> | undefined;
-  private draining = false;
-  private drainTask: Promise<void> | undefined;
   private streams = new Set<Promise<void>>();
+  private controllers = new Set<AbortController>();
   private readonly agent: Agent;
-  private readonly delivery;
   private initTask: Promise<void> | undefined;
 
   constructor(private readonly opts: ChannelRuntimeOptions) {
-    this.scope = Object.freeze({ ...opts.scope });
-    this.delivery = createDeliveryState({
-      onReply: opts.will.onReply
-        ? async () => {
-            await opts.will.onReply?.();
-          }
-        : undefined,
-      warn: (event, fields) => this.warn(event, fields),
-    });
+    this.scope = { ...opts.scope };
+    this.selfId = opts.bot.selfId;
     const selectedFilesByContext = new WeakMap<
       ModelMessageContext,
       Promise<ReadonlyMap<Input["id"], readonly FilePart[]>>
@@ -177,64 +166,25 @@ export class ChannelRuntime {
   }
 
   handle(record: InputRecord): Promise<ChannelRuntimeResult> {
-    return this.handleRecord(record, false);
+    return this.handleRecord(record);
   }
 
   handleInternal(record: EventRecord): Promise<ChannelRuntimeResult> {
-    return this.handleRecord(record, true);
-  }
-
-  beginDrain(): void {
-    if (this.stopped) throw new Error("Channel runtime is stopped");
-    this.draining = true;
-  }
-
-  acquireDeliveryLease(): () => void {
-    if (this.stopped) throw new Error("Channel runtime is stopped");
-    return this.delivery.acquireDeliveryLease();
-  }
-
-  complete(turnId: string): Promise<void> {
-    return this.delivery.complete(turnId);
-  }
-
-  deliverySignal(turnId: string): AbortSignal {
-    return this.delivery.deliverySignal(turnId);
-  }
-
-  releaseDelivery(turnId: string): void {
-    this.delivery.releaseDelivery(turnId);
-  }
-
-  drainAndStop(): Promise<void> {
-    if (this.drainTask) return this.drainTask;
-    this.beginDrain();
-    this.drainTask = (async () => {
-      await this.queue.run(async () => undefined);
-      await this.delivery.waitForDeliveries();
-      await this.agent.wait();
-      await Promise.allSettled([...this.streams]);
-      this.stopped = true;
-      await this.agent.stop();
-      await this.opts.will.stop?.();
-      this.delivery.clear();
-    })();
-    return this.drainTask;
+    return this.handleRecord(record);
   }
 
   stop(): Promise<void> {
     if (this.stopTask) return this.stopTask;
     this.stopped = true;
-    this.stopTask = this.queue.run(async () => this.teardown("stop"));
+    for (const controller of this.controllers) controller.abort();
+    this.stopTask = this.schedule(async () => this.teardown("stop"));
     return this.stopTask;
   }
 
-  private handleRecord(record: InputRecord, internal: boolean): Promise<ChannelRuntimeResult> {
+  private handleRecord(record: InputRecord): Promise<ChannelRuntimeResult> {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
-    if (this.draining && !internal) return Promise.reject(new ChannelRuntimeDrainingError());
-    return this.queue.run(async () => {
+    return this.schedule(async () => {
       this.assertOpen();
-      if (this.draining && !internal) throw new ChannelRuntimeDrainingError();
       const input = createInput(record);
       await this.agent.append(input);
       this.emit("yesimbot/event", input);
@@ -267,24 +217,43 @@ export class ChannelRuntime {
       this.warn("will_stop_failed", { cause, reason });
     }
     await Promise.allSettled([...this.streams]);
-    this.delivery.clear();
   }
 
   private startRun(input: Input): ChannelRuntimeResult {
     const output = new OutputQueue<ChannelOutput>();
+    const controller = new AbortController();
+    this.controllers.add(controller);
     const stream = this.agent.run(input);
     const turnId = this.agent.getActiveTurnId();
     if (turnId === null) throw new Error("Agent did not expose an active turn after run");
-    this.delivery.openDelivery(turnId);
-    const task = this.consumeStream(stream, output);
+    const task = this.consumeStream(stream, output, controller);
     this.streams.add(task);
     void task.finally(() => this.streams.delete(task));
-    return { kind: "run", eventId: input.id, turnId, output };
+    return {
+      kind: "run",
+      eventId: input.id,
+      turnId,
+      output: this.withDelivery(output, controller),
+      delivery: {
+        signal: controller.signal,
+        onDelivered: async () => {
+          try {
+            await this.opts.will.onReply?.();
+          } catch (cause) {
+            this.warn("will_reply_failed", { cause });
+          }
+        },
+        fail: async (record) => {
+          void this.handleInternal(record).catch((cause) => this.warn("delivery.failed", { cause }));
+        },
+      },
+    };
   }
 
   private async consumeStream(
     stream: AsyncIterable<AgentInternalEvent>,
     output: OutputQueue<ChannelOutput>,
+    controller: AbortController,
   ): Promise<void> {
     try {
       for await (const event of stream) {
@@ -293,11 +262,11 @@ export class ChannelRuntime {
           if (segments !== undefined) output.push({ turnId: event.turnId, messageId: event.message.id, segments });
         }
         if (event.type === "turn.failed") {
-          this.delivery.abortDelivery(event.turnId);
+          controller.abort();
           throw new Error(event.error.message);
         }
         if (event.type === "turn.aborted") {
-          this.delivery.abortDelivery(event.turnId);
+          controller.abort();
           throw new Error("Agent turn aborted");
         }
       }
@@ -308,7 +277,27 @@ export class ChannelRuntime {
   }
 
   private readState(): WillEngine.State {
-    return Object.freeze({ activeTurnId: this.agent.getActiveTurnId() });
+    return { activeTurnId: this.agent.getActiveTurnId() };
+  }
+
+  private async *withDelivery(
+    output: OutputQueue<ChannelOutput>,
+    controller: AbortController,
+  ): AsyncIterable<ChannelOutput> {
+    try {
+      yield* output;
+    } finally {
+      this.controllers.delete(controller);
+    }
+  }
+
+  private schedule<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(task, task);
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   private emit(channel: "yesimbot/event" | "yesimbot/will", value: unknown): void {
