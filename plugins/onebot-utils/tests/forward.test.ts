@@ -103,14 +103,14 @@ describe("createForwardReader", () => {
     expect(JSON.stringify(result)).not.toContain("sub_type");
   });
 
-  it("returns nested forward IDs without expanding their content", async () => {
-    const { reader } = createReader([
+  it("caches expanded nested forwards under their forward ID", async () => {
+    const { reader, getForwardMsg } = createReader([
       node([
         {
           type: "forward",
           data: {
             id: "child-forward",
-            content: [node([{ type: "text", data: { text: "must not appear" } }])],
+            content: [node([{ type: "text", data: { text: "cached child" } }])],
           },
         },
       ]),
@@ -119,6 +119,10 @@ describe("createForwardReader", () => {
     await expect(reader({ messageId: "forward" })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), [{ forward: "child-forward" }]]],
     });
+    await expect(reader({ forwardId: "child-forward" })).resolves.toEqual({
+      messages: [["Alice (10001)", expect.any(String), ["cached child"]]],
+    });
+    expect(getForwardMsg).toHaveBeenCalledOnce();
   });
 
   it("caches normalized records while paging from the requested offset", async () => {
@@ -150,17 +154,20 @@ describe("createForwardReader", () => {
     });
   });
 
-  it("clamps direct page inputs and returns an empty terminal page", async () => {
+  it("defaults to thirty records, clamps direct page inputs, and returns an empty terminal page", async () => {
     const { reader } = createReader(
-      Array.from({ length: 21 }, (_, index) =>
+      Array.from({ length: 61 }, (_, index) =>
         node([{ type: "text", data: { text: String(index) } }]),
       ),
     );
 
-    const firstPage = await reader({ messageId: "forward", offset: -3, limit: 99 });
+    const defaultPage = await reader({ messageId: "forward" });
+    const clampedPage = await reader({ messageId: "forward", offset: -3, limit: 99 });
 
-    expect(firstPage.messages).toHaveLength(20);
-    expect(firstPage.nextOffset).toBe(20);
+    expect(defaultPage.messages).toHaveLength(30);
+    expect(defaultPage.nextOffset).toBe(30);
+    expect(clampedPage.messages).toHaveLength(60);
+    expect(clampedPage.nextOffset).toBe(60);
     await expect(reader({ messageId: "forward", offset: 99 })).resolves.toEqual({ messages: [] });
   });
 

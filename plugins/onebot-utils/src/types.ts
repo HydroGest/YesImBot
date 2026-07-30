@@ -22,11 +22,19 @@ export interface ForwardReaderConfig {
   maxForwardPageChars: number;
 }
 
-export interface ForwardToolInput {
-  messageId: string;
-  offset?: number;
-  limit?: number;
-}
+export type ForwardToolInput =
+  | {
+      messageId: string;
+      forwardId?: never;
+      offset?: number;
+      limit?: number;
+    }
+  | {
+      forwardId: string;
+      messageId?: never;
+      offset?: number;
+      limit?: number;
+    };
 
 export interface OneBotForwardNode {
   sender: OneBot.SenderInfo;

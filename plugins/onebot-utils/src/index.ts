@@ -19,7 +19,11 @@ const FORWARD_MESSAGE_SCHEMA = jsonSchema({
   properties: {
     messageId: {
       type: "string",
-      description: "合并转发消息的 ID",
+      description: "顶层合并转发消息的 ID",
+    },
+    forwardId: {
+      type: "string",
+      description: "首次读取时已展开并缓存的嵌套转发 ID",
     },
     offset: {
       type: "integer",
@@ -29,11 +33,11 @@ const FORWARD_MESSAGE_SCHEMA = jsonSchema({
     limit: {
       type: "integer",
       minimum: 1,
-      maximum: 20,
-      description: "每页条数，默认 10，最大 20",
+      maximum: 60,
+      description: "每页条数，默认 30，最大 60",
     },
   },
-  required: ["messageId"],
+  oneOf: [{ required: ["messageId"] }, { required: ["forwardId"] }],
   additionalProperties: false,
 }) as AgentTool<ForwardToolInput>["inputSchema"];
 
@@ -77,7 +81,7 @@ function createOneBotTools(bot: Bot, config: Readonly<ForwardReaderConfig>): Age
   const getForwardMessageTool: AgentTool<ForwardToolInput, ForwardPage> = {
     name: "onebot_get_forward_message",
     description:
-      "分页获取合并转发消息的紧凑元组。若结果含 nextOffset，请使用相同 messageId 和该 nextOffset 继续读取；嵌套转发仅返回子转发 ID。",
+      "分页获取合并转发消息的紧凑元组。首次读取使用 messageId；若嵌套转发已展开，可使用缓存的 forwardId。若结果含 nextOffset，请使用相同 ID 和该 nextOffset 继续读取。",
     inputSchema: FORWARD_MESSAGE_SCHEMA,
     execute: async (input) => {
       forwardReader ??= createForwardReader(getOneBotInternal(bot), config);

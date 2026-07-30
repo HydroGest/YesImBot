@@ -24,30 +24,53 @@ export function createForwardReader(
   internal: OneBot.Internal,
   config: Readonly<ForwardReaderConfig>,
 ): (input: ForwardToolInput) => Promise<ForwardPage> {
-  const cache = new Map<string, readonly ForwardMessage[]>();
+  const messageCache = new Map<string, readonly ForwardMessage[]>();
+  const forwardCache = new Map<string, readonly ForwardMessage[]>();
 
   return async function readForwardPage(input) {
     const start = clampOffset(input.offset);
     const limit = clampLimit(input.limit);
-    const records = cache.get(input.messageId) ?? (await loadAndNormalize(input.messageId));
+    const records = isMessageForwardInput(input)
+      ? messageCache.get(input.messageId) ?? (await loadAndNormalize(input.messageId))
+      : getCachedForward(input.forwardId);
 
     return page(records, start, limit, config.maxForwardPageChars);
   };
 
   async function loadAndNormalize(messageId: string): Promise<readonly ForwardMessage[]> {
     const nodes = (await internal.getForwardMsg(messageId)) as unknown as readonly OneBotForwardNode[];
-    const records = nodes.map((node) => normalizeNode(node, config));
+    const nestedForwards = new Map<string, readonly ForwardMessage[]>();
+    const records = nodes.map((node) => normalizeNode(node, config, nestedForwards));
 
-    cache.set(messageId, records);
+    messageCache.set(messageId, records);
+    for (const [forwardId, nestedRecords] of nestedForwards) {
+      forwardCache.set(forwardId, nestedRecords);
+    }
     return records;
   }
+
+  function getCachedForward(forwardId: string): readonly ForwardMessage[] {
+    const records = forwardCache.get(forwardId);
+    if (!records) throw new Error(`未找到已缓存的嵌套转发消息: ${forwardId}`);
+    return records;
+  }
+}
+function isMessageForwardInput(
+  input: ForwardToolInput,
+): input is Extract<ForwardToolInput, { messageId: string }> {
+  return typeof input.messageId === "string";
 }
 
 function normalizeNode(
   node: OneBotForwardNode,
   config: Readonly<ForwardReaderConfig>,
+  nestedForwards: Map<string, readonly ForwardMessage[]>,
 ): ForwardMessage {
-  return [formatSender(node.sender), formatTime(node.time), normalizeSegments(node.message, config)];
+  return [
+    formatSender(node.sender),
+    formatTime(node.time),
+    normalizeSegments(node.message, config, nestedForwards),
+  ];
 }
 
 function formatSender(sender: OneBot.SenderInfo): string {
@@ -67,6 +90,7 @@ function formatTime(value: number): string | null {
 function normalizeSegments(
   segments: readonly OneBotForwardSegment[],
   config: Readonly<ForwardReaderConfig>,
+  nestedForwards: Map<string, readonly ForwardMessage[]>,
 ): readonly ForwardPart[] {
   const parts: ForwardPart[] = [];
 
@@ -92,9 +116,20 @@ function normalizeSegments(
         break;
       }
       case "forward": {
-        const id = (segment.data as { id?: unknown } | undefined)?.id;
-        if (typeof id === "string") parts.push({ forward: id });
-        else appendString(parts, "[未知消息段]");
+        const data = segment.data as
+          | { id?: unknown; content?: readonly OneBotForwardNode[] }
+          | undefined;
+        if (typeof data?.id !== "string") {
+          appendString(parts, "[未知消息段]");
+          break;
+        }
+        if (Array.isArray(data.content) && !nestedForwards.has(data.id)) {
+          nestedForwards.set(
+            data.id,
+            data.content.map((node) => normalizeNode(node, config, nestedForwards)),
+          );
+        }
+        parts.push({ forward: data.id });
         break;
       }
       case "record":
@@ -145,8 +180,8 @@ function clampOffset(value: number | undefined): number {
 }
 
 function clampLimit(value: number | undefined): number {
-  if (value === undefined || !Number.isFinite(value)) return 10;
-  return Math.min(20, Math.max(1, Math.trunc(value)));
+  if (value === undefined || !Number.isFinite(value)) return 30;
+  return Math.min(60, Math.max(1, Math.trunc(value)));
 }
 
 function page(
