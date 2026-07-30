@@ -21,6 +21,17 @@ Core MUST project Messages from persisted sealed `elements`, rendering their tex
 - **WHEN** the same persisted Message is projected on two different turns
 - **THEN** the rendered text MUST be byte-identical
 
+
+### Requirement: Message Header Always Includes ID
+
+Core MUST include the stored raw message ID in every projected Message header, together with its time and sender.
+
+#### Scenario: A message is projected
+
+- **WHEN** Core projects a persisted Message for a model call
+- **THEN** its header MUST contain `time`, `sender`, and `id`
+- **AND** this MUST NOT depend on the active Agent plugins or tools
+
 ### Requirement: Replay Uses Persisted Data
 Projection MUST NOT invoke a SessionResolver, Session, platform API, or replay-time formatter, and MUST NOT mutate persisted `elements`. Rendering MUST be a pure function of persisted `elements`.
 

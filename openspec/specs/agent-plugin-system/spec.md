@@ -416,7 +416,7 @@ AgentPlugin MUST NOT add a media-specific or side-effect-only model-message prep
 - **AND** it MUST NOT mutate, delete, replace, or reorder source AgentMessages
 
 ### Requirement: Core Plugin Factory Host Contract
-Core MUST call each AgentPluginFactory as `factory(scope, bot)`, where `scope` is the immutable ChannelScope and `bot` is the current Bot. A factory MAY declare the optional static `requiresMessageId` capability.
+Core MUST call each AgentPluginFactory as `factory(scope, bot)`, where `scope` is the immutable ChannelScope and `bot` is the current Bot. Core MUST NOT inspect factory properties to vary model message projection.
 
 #### Scenario: Core initializes channel plugins
 - **WHEN** a ChannelRuntime is created
