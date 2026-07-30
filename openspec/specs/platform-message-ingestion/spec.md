@@ -76,7 +76,7 @@ Gateway MUST call the selected resolver once with `(session, store)`. The resolv
 - **THEN** core MUST NOT persist, route, or broadcast an Event for that Session
 
 ### Requirement: Authoritative Resolver Failure
-A registered resolver MUST be authoritative for its platform. If its `resolve` call throws or returns an invalid input record, Gateway MUST record a diagnostic and skip the Session without falling back to generic Satori conversion.
+A registered resolver MUST be authoritative for its platform. If its `resolve` call throws, Gateway MUST record a diagnostic and skip the Session without falling back to generic Satori conversion.
 
 #### Scenario: Resolver throws
 - **WHEN** the registered resolver throws while resolving a Session
@@ -101,15 +101,14 @@ A resolved ordinary message MUST carry its content as Resolver Draft `elements` 
 - **AND** it MUST NOT replace source URLs, paths, data URIs, or already-persisted image IDs
 
 ### Requirement: OneBot Resolver Image Persistence
-The OneBot Resolver MUST recursively persist its `img` elements and return each successfully persisted image as `h("img", { id })`, where `id` is a complete 32-character lowercase hexadecimal ID. A successful persisted image MUST contain no source URL, path, or data URI. OneBot MUST apply no more than 4 images, 5 MiB per image, 10 MiB total bytes, and a 10-second limit per image. Core MUST NOT impose a hand-written image download concurrency requirement.
-
-#### Scenario: OneBot persists an eligible image
-- **WHEN** a OneBot message contains an eligible image within each OneBot limit
+The OneBot Resolver MUST recursively persist `img` elements that it can load and return each successfully persisted image as `h("img", { id })`, where `id` is a complete 32-character lowercase hexadecimal ID. A successful persisted image MUST contain no source URL, path, or data URI. The Resolver MAY apply platform-specific download limits; Core MUST NOT impose an inbound image-download policy.
+#### Scenario: OneBot persists an image
+- **WHEN** a OneBot message contains an image whose bytes the Resolver successfully persists
 - **THEN** the OneBot Resolver MUST write its bytes through the supplied Store
 - **AND** the returned Draft MUST contain an `img` with its complete persisted ID
 
 #### Scenario: OneBot preserves an image that cannot persist
-- **WHEN** one OneBot image load, limit check, or Store write fails
+- **WHEN** one OneBot image load or Store write fails
 - **THEN** the OneBot Resolver MUST preserve that original image element
 - **AND** it MUST continue processing sibling elements
 
@@ -119,12 +118,12 @@ The OneBot Resolver MUST recursively persist its `img` elements and return each 
 - **AND** it MUST NOT persist or route that Session
 
 ### Requirement: OneBot Non-Image Element Preservation
-The OneBot Resolver MUST transform only `img` elements. It MUST preserve every non-image Element's original type, attributes, and children unchanged while recursively processing images within those children.
+The OneBot Resolver MUST transform only `img` elements. It MUST preserve every non-image Element's original type, attributes, and children unchanged while recursively processing images within those children. Session quote data is not an Element input protocol and receives no quote-specific normalization.
 
-#### Scenario: Quote or forward element is accepted
-- **WHEN** an admitted OneBot message contains quote, forward, or any other non-image elements
+#### Scenario: Forward or unknown element is accepted
+- **WHEN** an admitted OneBot message contains forward or any other non-image elements
 - **THEN** the Resolver output MUST retain their original type, attributes, and children
-- **AND** it MUST NOT apply quote or forward-specific normalization
+- **AND** it MUST NOT apply forward-specific normalization
 ### Requirement: Scoped Asset Service Ownership
 The public AssetService MUST scope Stores by the persistent ChannelScope tuple. Shared Stores MUST use `[platform, channelId]`; a shared Runtime replacement for another Bot MUST use that same persistent tuple.
 

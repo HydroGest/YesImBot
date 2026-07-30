@@ -7,7 +7,7 @@ Define how `koishi-plugin-yesimbot` integrates Koishi with `@yesimbot/agent-runt
 ## Requirements
 
 ### Requirement: Core Runtime Facade
-`YesImBotService` MUST remain a thin Koishi composition facade in top-level `service.ts`. It MUST expose SessionResolver and Agent plugin registration, `getStoragePath(scope)`, and channel reset, and MUST delegate Session handling and runtime lifecycle to internal modules. It MUST NOT expose runtime reload, Will, or WillEngine factory registration.
+`YesImBotService` MUST expose SessionResolver and Agent plugin registration, `getStoragePath(scope)`, and channel reset, and MUST delegate Session handling and runtime lifecycle to internal modules. It MUST NOT expose runtime reload, Will, or WillEngine factory registration.
 
 #### Scenario: Platform plugin registers a resolver
 - **WHEN** a plugin calls `ctx.yesimbot.registerResolver()`
@@ -78,16 +78,16 @@ Core Will configuration MUST be a discriminated union selecting `routing` or `wi
 - **THEN** future ChannelRuntimes MUST use willingness with the configured controls
 
 ### Requirement: Channel Runtime Reset
-RuntimeManager MUST stop and remove a cached ChannelRuntime if present, then clear `sessions/messages.jsonl` and scoped assets. Reset MUST NOT revalidate shared-channel assignment. The cleanup path MUST apply to cached and uncached channels. JSONL and asset cleanup MUST be independently attempted in that order; a cleanup error MUST be reported only after later mandatory cleanup and cache deletion complete. Reset MUST preserve the Manifest and every plugin-created child.
+RuntimeManager MUST stop and remove a cached ChannelRuntime if present, then clear that channel's persisted JSONL history and scoped assets. Reset MUST NOT revalidate shared-channel assignment. The cleanup path MUST apply to cached and uncached channels. JSONL and asset cleanup MUST be independently attempted in that order; a cleanup error MUST be reported only after later mandatory cleanup and cache deletion complete. Reset MUST preserve the Manifest and every plugin-created child.
 
 #### Scenario: Cached channel is reset
 - **WHEN** reset targets an active channel
-- **THEN** RuntimeManager MUST stop it before using the shared sessions-and-assets cleanup path
+- **THEN** RuntimeManager MUST stop it before using the shared history-and-assets cleanup path
 - **AND** it MUST remove the cached runtime after cleanup is attempted
 
 #### Scenario: Uncached channel is reset
 - **WHEN** reset targets a channel without a cached runtime
-- **THEN** RuntimeManager MUST use the same sessions-and-assets cleanup path
+- **THEN** RuntimeManager MUST use the same history-and-assets cleanup path
 - **AND** it MUST preserve the Manifest, workspace, and every other plugin-created child
 
 ### Requirement: Runtime Stop Ordering
@@ -115,11 +115,11 @@ Core MUST isolate failures so one channel's error cannot stop another channel. C
 - **THEN** other channel runtimes MUST continue operating
 
 ### Requirement: Channel JSONL Storage
-Core MUST use one append-only JSONL storage file per persistent channel tuple at `getStoragePath(scope)/sessions/messages.jsonl`.
+Core MUST use one append-only JSONL storage stream per persistent channel tuple below its channel root.
 
 #### Scenario: Storage path construction
 - **WHEN** Core creates storage for a ChannelRuntime
-- **THEN** it MUST obtain the `sessions/messages.jsonl` path through the Core channel storage protocol
+- **THEN** it MUST obtain the storage location through the Core channel storage protocol
 - **AND** it MUST NOT derive, sanitize, hash, or append raw platform coordinates locally
 
 #### Scenario: Storage contract

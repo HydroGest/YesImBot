@@ -20,22 +20,22 @@ Core MUST define versionless host-owned closed base shapes for persisted ordinar
 - **AND** it MUST NOT inherit arbitrary fields from `session.event`
 
 ### Requirement: Gateway Field Admission Authority
-Gateway MUST be the single authority that converts a Resolver Draft into a final persisted ingress record. The Draft is the sole record input: Gateway MUST NOT fall back to Session message fields when it is absent or incomplete, and it MUST NOT trust a Draft to define the complete persisted record envelope.
+Gateway MUST be the single authority that converts a Resolver Draft and host-owned Session envelope into a final persisted ingress record. Gateway MUST derive the canonical platform, current Bot, channel, user, timestamp, and message-ID boundary fields from the active Session and ChannelScope; it MUST NOT trust a Draft to define the complete persisted record envelope.
 
 #### Scenario: Resolver returns a message draft
 - **WHEN** a platform resolver accepts a Session as an ordinary message
 - **THEN** Gateway MUST assemble the final persisted `MessageRecord` from the Draft and host-owned envelope fields
-- **AND** it MUST apply host field whitelisting before persistence or runtime routing
+- **AND** it MUST persist only the fields declared by the message contract
 
 #### Scenario: Resolver returns an event draft
 - **WHEN** a platform resolver accepts a Session as a non-message event
 - **THEN** Gateway MUST assemble the final persisted `EventRecord` from the Draft and host-owned envelope fields
-- **AND** it MUST apply host field whitelisting before persistence or runtime routing
+- **AND** it MUST persist only the host event base and declaration-merged variant fields
 
 #### Scenario: Resolver persists an image
 - **WHEN** a Resolver successfully persists an image in a Message Draft
 - **THEN** that image MUST contain a complete 32-character lowercase hexadecimal ID
-- **AND** Gateway MUST preserve it without Session-field fallback or image rewriting
+- **AND** Gateway MUST preserve it without image rewriting
 
 #### Scenario: Resolver cannot persist one image
 - **WHEN** a Resolver cannot persist one image while resolving a Message Draft

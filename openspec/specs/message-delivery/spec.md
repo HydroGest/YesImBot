@@ -96,14 +96,13 @@ Gateway MUST apply a delay before each segment derived from that segment's visib
 - **WHEN** a segment contains both text and non-text elements
 - **THEN** the delay MUST be derived from the segment's visible text content
 
-### Requirement: Skipped Turn Delivers Nothing
+### Requirement: Empty Turn Delivers Nothing
 
-When the producing runtime reports a skipped turn, Gateway MUST deliver no message and MUST NOT emit a delivery-failure record.
+When a producing runtime yields no output, Gateway MUST deliver no message and MUST NOT emit a delivery-failure record.
 
-#### Scenario: Runtime reports a skipped turn
-- **WHEN** a turn resolves to a skip decision
+#### Scenario: Runtime yields no output
+- **WHEN** a turn completes without a renderable assistant output
 - **THEN** Gateway MUST send no platform message
-- **AND** it MUST not require a delivery lease release operation
 
 ### Requirement: Current-Bot Active Send Tool
 Core MUST provide an Agent tool that sends through the current bot to an explicit channel and returns normalized success IDs or an error without selecting another bot.
