@@ -4,9 +4,9 @@
 
 Athena / YesImBot v4 is a Yarn 4 monorepo for Koishi-based LLM chat agents. The current codebase is centered on a message-first `@yesimbot/agent-runtime` and a slim Koishi core service.
 
-- `core/` is the main `koishi-plugin-yesimbot` package: Koishi integration, model registry, Session Gateway, split Message/Event routing, RuntimeManager/ChannelRuntime ownership, channel storage, prompt files, and JSONL history.
+- `core/` is the main `koishi-plugin-yesimbot` package: Koishi integration, model registry, `gateway.ts`, channel storage, `asset.ts`, and RuntimeManager/ChannelRuntime ownership.
 - `packages/agent-runtime/` is the generic runtime core: `createAgent`, turn queue, message storage, plugin hooks, tools, state, channel events, and dogfood plugins.
-- `platforms/*` are platform-input adapters. They register one `SessionResolver` per platform through `ctx.yesimbot.registerResolver()` and keep platform-specific Session resolution outside Core.
+- `core/src/platforms/` contains built-in platform Resolvers. They register through `ctx.yesimbot.registerResolver()` and own platform-specific input resolution and image persistence.
 - `plugins/*` are optional Koishi integrations that register `@yesimbot/agent-runtime` `AgentPlugin`s through `ctx.yesimbot.registerAgentPlugin()`.
 - `providers/*` are model provider plugins built on AI SDK providers and registered into `ctx["yesimbot.model"]`.
 
@@ -59,23 +59,21 @@ yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/tools.t
 
 ## Current Architecture
 
-- `core/src/index.ts` is the Koishi entrypoint. It registers `ModelService` and `YesImBotService`; Database is a required injection.
-- `core/src/service.ts` owns the public `ctx.yesimbot` facade: model, resolver/Agent plugin registration, `channelIdentity`/storage methods, non-destructive `reload(scope)`, reset, and stop. Gateway, RuntimeManager, ChannelRuntime, ChannelStorage, AssetStore, and assignee helpers stay private.
-- `core/src/gateway/index.ts` owns Koishi middleware and `internal/session` admission, one Resolver call, bounded image freezing, passive `Session.send()`, and same-channel `delivery.failed` feedback. A Session never leaves its active Gateway handle.
-- `core/src/runtime/manager.ts` owns RuntimeManager: one Runtime entry per `channelIdentity`, per-identity lifecycle coordination, Database assignee revalidation, reset, global stop, and explicit reload. `runtime/channel.ts` owns ChannelRuntime: one channel FIFO, Agent, WillEngine, JSONL storage, prompt/plugin assembly, atomic append/join/run submission, one stream consumer, graceful drain, and stop. `runtime/delivery.ts` owns delivery state; `runtime/serial-queue.ts` owns rejection-safe FIFO scheduling; `runtime/index.ts` is the barrel.
-- `core/src/media/index.ts` owns the unified multimedia policy consumers: Gateway image freezing, AssetStore persistence, MIME detection, and model-call image selection. `reload(scope)` refreshes Gateway and AssetStore from the current policy after draining the scoped runtime.
-- Channel runtime identities are unified 26-character lowercase Base32 `channelIdentity` values derived from a versioned canonical tuple. Shared identity = `platform + channelId`; direct identity = `platform + selfId + channelId`. JSONL history lives under `<basePath>/channels/v1-shared-*/` or `v1-direct-*/sessions/messages.jsonl`.
-- The storage layout is channel-first: each readable `v1-shared-<platform>-<channelId>` or `v1-direct-<platform>-<channelId>-<selfId>` directory has an authoritative `channel.json`. Startup scans valid Manifests into memory; `channels.json` is not created. Session storage lives under `sessions/`, assets under `assets/`, workspace under `workspace/`, and registered module namespaces are isolated per channel.
-- Ordinary inputs persist as `yesimbot.message` with `elements` as the sole structured message field, frozen `text`, and `messageId`. Non-message inputs persist as `yesimbot.event` with `eventType` and frozen `text`. Database is a required injection (`"database"`); shared-channel admission queries the Koishi Channel row by `(platform, channelId)` and requires `assignee === session.selfId`. Direct events skip assignee lookup.
-- After a shared assignee change, the old Runtime is drained via explicit `reload(scope)`. The next admitted event lazily creates a new Runtime for the current assignee without changing `channelIdentity`, JSONL, assets, or workspace.
-- The message pipeline is: Session admission -> Resolver or Satori fallback -> sealed MessageRecord/EventRecord -> RuntimeManager -> ChannelRuntime persist/observe/WillEngine FIFO -> idle run or busy join -> one internal stream consumer -> Gateway passive delivery. Delivery failure is persisted through the producing Runtime's completion lane.
-- Reset checks assignment, stops the matching Runtime, clears only `sessions` and `assets`, and preserves the Manifest, workspace, and other namespaces. Global stop rejects new admission, tears down runtimes, waits active Gateway handlers, and preserves persisted data. Old hash directories and old JSONL remain on disk but are unread; no migration, dual read, alias, or fallback exists.
-- ChannelRuntime initialization freezes Constitution version 1, optional `<agents>`, exactly one `<persona>`, `<runtime_context>`, plugin instructions, native tools, model, and provider in that order. Do not confuse runtime `AGENTS.md` and `PERSONA.md` prompt files with this repository developer guide.
+- `core/src/index.ts` is the Koishi entrypoint. It registers `ModelService`, `YesImBotService`, and built-in platform registration; Database is a required injection.
+- `core/src/service.ts` owns the public `ctx.yesimbot` facade: `model`, `assets`, Resolver/Agent-plugin registration, `getStoragePath(scope)`, reset, and stop. It has no public identity, storage namespace, or reload API. Gateway, RuntimeManager, ChannelRuntime, ChannelStorage, concrete AssetStore, and assignee admission stay private.
+- `core/src/gateway.ts` owns Koishi middleware and `internal/session` admission. It checks allowlist and shared assignee before creating the Resolver-owned `AssetStore`, invokes the one registered Resolver, assembles host-owned records, and sends passively through `Session.send()`. Unregistered platforms have no fallback.
+- `core/src/runtime/manager.ts` owns RuntimeManager creation, replacement, reset, and global stop. It uses a private persistent-tuple key. When the Bot for a shared scope changes, it stops the old Runtime, deletes it, creates the new Runtime, and handles the current record. `runtime/channel.ts` owns one channel FIFO, Agent, WillEngine, JSONL, prompt/plugin assembly, model input, output queue, and stop. `runtime/prompt.ts` owns Constitution version 3 and package resource loading; `runtime/index.ts` exports RuntimeManager, AgentPluginFactory, ChannelRuntime, and their option/result types only.
+- `core/src/channel.ts` keeps the public raw `ChannelScope` and private tuple, directory, Manifest, and ChannelStorage helpers. Shared storage derives from `platform + channelId`; direct storage includes `selfId`. No public or persistent channel identity exists. Readable `shared-*` / `direct-*` channel roots hold versionless `channel.json`, `sessions/`, `assets/`, and plugin-selected child directories.
+- `core/src/input.ts` owns versionless public Message/Event records and Drafts. `runtime/storage.ts` reads JSONL with `JSON.parse`, warns and skips invalid JSON syntax, and does no semantic validation on successfully parsed lines.
+- `core/src/asset.ts` implements the public `AssetService` / `AssetStore` interfaces exposed at `ctx.yesimbot.assets`. Resolver code owns image downloads and decides which bytes to persist; `runtime/model-input.ts` projects persisted asset images for model calls.
+- The input pipeline is: allowlist -> shared assignee admission -> channel AssetStore -> registered Resolver -> host-owned InputRecord -> RuntimeManager -> ChannelRuntime FIFO -> wait, join, or one output consumer -> passive Gateway delivery. A delivery failure returns through the producing Runtime.
+- Reset stops a cached Runtime and clears only `sessions/` and `assets`, preserving the Manifest, workspace, and plugin-selected children. Global stop closes admission, stops runtimes, waits active Gateway handlers, and preserves data. Old layouts and JSONL remain unread; no migration, dual read, alias, or fallback exists.
+- ChannelRuntime initialization uses Constitution version 3, optional `<agents>`, exactly one `<persona>`, and `<runtime_context>` from ChannelScope plus Bot selfId before plugin instructions, native tools, and model. Do not confuse runtime `AGENTS.md` and `PERSONA.md` prompt files with this repository developer guide.
 - `core/src/model/` owns `ctx["yesimbot.model"]`, `models.json` loading, aliases/defaults, Koishi schema refresh, and provider registration.
 - Provider packages use `createProviderPlugin()` from `koishi-plugin-yesimbot/model` and AI SDK provider packages.
 - `packages/agent-runtime/src/agent.ts` owns the turn lifecycle: `append()`, `send()`, `run()`, idle `wait()`, interruption, storage serialization, tool wrapping, streamed model execution, and terminal events. `Agent.setModel()` and `Agent.setTools()` no longer exist; runtime replacement activates stable resource changes.
 - `packages/agent-runtime/src/plugin.ts` owns ordered plugin hooks: append/message transforms, model projection, prompt/tool extension, tool call hooks, and turn finish hooks.
-- Optional plugins register Agent behavior through `ctx.yesimbot.registerAgentPlugin(factory)` and channel storage through a unique `registerStorage(namespace)` registration.
+- Optional plugins register Agent behavior through `ctx.yesimbot.registerAgentPlugin(factory)`; trusted plugins use `getStoragePath(scope)` and select their own channel-root child paths.
 
 ## Workspace Package Names
 
@@ -83,7 +81,6 @@ yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/tools.t
 | ------------------------- | -------------------------------------------- |
 | `core/`                   | `koishi-plugin-yesimbot`                     |
 | `packages/agent-runtime/` | `@yesimbot/agent-runtime`                    |
-| `platforms/onebot/`       | `koishi-plugin-yesimbot-platform-onebot`     |
 | `plugins/workspace/`      | `koishi-plugin-yesimbot-workspace`           |
 | `plugins/skills/`         | `koishi-plugin-yesimbot-skills`              |
 | `plugins/mcp-client/`     | `koishi-plugin-yesimbot-mcp-client`          |
@@ -100,20 +97,19 @@ yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/tools.t
 
 Load these on demand when deeper context is needed:
 
-- `core/src/service.ts` — public YesImBot facade, reset command, storage ownership, and Gateway/RuntimeManager composition.
-- `core/src/gateway/index.ts` — Session admission, Resolver selection, Satori fallback, image freezing, passive delivery, and Session lifetime.
-- `core/src/event/` — declaration-mergeable EventMap/EventRecord contracts, message sealing, and model formatting.
+- `core/src/service.ts` — public YesImBot facade, assets, reset command, storage ownership, and Gateway/RuntimeManager composition.
+- `core/src/gateway.ts` — Session admission, registered Resolver selection, private shared-assignee admission, passive delivery, and Session lifetime.
+- `core/src/input.ts` — declaration-mergeable EventMap, versionless Message/Event records, Drafts, and Agent custom-message helpers.
+- `core/src/channel.ts` — raw ChannelScope plus private tuple, Manifest, safe channel paths, and storage.
+- `core/src/asset.ts` — AssetService/AssetStore interfaces and private content-addressed implementation.
 - `core/src/runtime/manager.ts` — RuntimeManager lifecycle and runtime construction.
-- `core/src/runtime/channel.ts` — ChannelRuntime FIFO, Agent assembly, prompt and JSONL ownership.
-- `core/src/runtime/delivery.ts` — delivery leases, abort signals, and output queue state.
-- `core/src/runtime/serial-queue.ts` — rejection-safe FIFO scheduling.
-- `core/src/runtime/index.ts` — runtime barrel; `core/src/runtime/prompts/` and `core/src/runtime/storage.ts` provide prompt and JSONL support.
-- `core/src/storage/` and `core/src/channel/` — canonical `channelIdentity`, readable Manifest-backed directories, namespace registry, and safe channel paths.
-- `core/src/media/index.ts` — internal AssetStore, image freezing, MIME detection, and model-call image selection; `core/src/event/element.ts` and `core/src/runtime/index.ts` provide element helpers and Database assignee assertion.
-- `core/src/model/` — model config, provider contracts, schema helpers, model resolution.
-- `packages/agent-runtime/src/` — runtime core, plugin host, tools, storage, messages, events, turn queue, state.
+- `core/src/runtime/channel.ts` — ChannelRuntime FIFO, Agent assembly, model input, output ownership, and delivery feedback.
+- `core/src/runtime/prompt.ts` — package prompt resources and core system-prompt construction.
+- `core/src/runtime/storage.ts` — JSONL append and parse-only read-back.
+- `core/src/runtime/{will,reply,output-queue,model-input}.ts` — ChannelRuntime-internal decision, output, and model projection helpers.
+- `core/src/model/` — model config, provider contracts, schema helpers, and model resolution.
+- `core/src/platforms/*/` — built-in Resolver entrypoints.
 - `plugins/*/src/index.ts` — Koishi optional plugin entrypoints and `registerAgentPlugin()` usage.
-- `platforms/*/src/index.ts` — platform Resolver entrypoints and `ctx.yesimbot.registerResolver()` usage.
 - `providers/*/src/index.ts` — provider plugin definitions and default model schemas.
 
 ## Reporting

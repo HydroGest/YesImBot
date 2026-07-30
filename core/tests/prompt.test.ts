@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ChannelScope } from "../src/channel.js";
-import { buildCoreSystemPrompt } from "../src/runtime/prompt.js";
-import { CORE_CONSTITUTION_VERSION } from "../src/runtime/prompts/constitution.js";
-import { readPromptResource } from "../src/runtime/prompts/resource.js";
+import {
+  buildCoreSystemPrompt,
+  CORE_CONSTITUTION_VERSION,
+  readPromptResource,
+} from "../src/runtime/prompt.js";
 
 const roots: string[] = [];
 const scope = {
@@ -149,16 +151,7 @@ describe("buildCoreSystemPrompt", () => {
   });
 
   it("rejects when a packaged prompt resource is missing", async () => {
-    const basePath = await createBasePath();
-    const resourceModule = await import("../src/runtime/prompts/resource.js");
-    const spy = vi
-      .spyOn(resourceModule, "readPromptResource")
-      .mockRejectedValueOnce(new Error("Prompt resource constitution not found"));
-
-    await expect(buildCoreSystemPrompt({ basePath, channel: scope })).rejects.toThrow(
-      "Prompt resource constitution not found",
-    );
-
-    spy.mockRestore();
+    await expect(readPromptResource("missing" as never)).rejects.toMatchObject({ code: "ENOENT" });
   });
+
 });

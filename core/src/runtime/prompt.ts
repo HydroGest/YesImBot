@@ -1,11 +1,28 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
 import type { SystemModelMessage } from "ai";
 import type { Logger } from "koishi";
 
 import type { ChannelScope } from "../channel.js";
-import { readPromptResource } from "./prompts/resource.js";
+
+export const CORE_CONSTITUTION_VERSION = 3 as const;
+
+export type PromptResource = "constitution" | "athena-persona";
+
+// Resolve the package root by name instead of a relative path from this module's own
+// location: pkgroll bundles this module into a single dist/index.js at the package root,
+// while vitest runs it unbundled from src/runtime/, so no fixed `..` depth is correct
+// in both places. Package-name resolution is depth-independent in both cases.
+const require = createRequire(import.meta.url);
+const resourceRoot = join(dirname(require.resolve("koishi-plugin-yesimbot/package.json")), "resources");
+
+export async function readPromptResource(name: PromptResource): Promise<string> {
+  const content = (await readFile(join(resourceRoot, `${name}.md`), "utf8")).trim();
+  if (content.length === 0) throw new Error(`Prompt resource ${name} is empty`);
+  return content;
+}
 
 export interface CoreSystemPromptOptions {
   readonly basePath: string;

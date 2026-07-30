@@ -21,7 +21,6 @@ type RegisteredCommand = {
 };
 
 vi.mock("../src/runtime/index.js", () => ({
-  assertAssignee: vi.fn(async () => undefined),
   RuntimeManager: class {
     reset = vi.fn(async () => undefined);
     stop = vi.fn(async () => undefined);

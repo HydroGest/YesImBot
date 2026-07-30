@@ -21,11 +21,11 @@ _让 AI 更像人类，让聊天更有温度_
 
 ## Features
 
-- **消息优先的运行时** — `@yesimbot/agent-runtime` 将"观察"与"发言"分离：普通消息进入频道历史，Will 决定等待或触发模型回合；忙时事件加入当前 turn，不创建第二个流消费者。
+- **消息优先的运行时** — `@yesimbot/agent-runtime` 将“观察”与“发言”分离：普通消息进入频道历史，Will 决定等待或触发模型回合；忙时事件加入当前 turn，不创建第二个流消费者。
 - **多模型即插即用** — 通过 provider 插件接入 OpenAI、Anthropic、DeepSeek、Google 等模型，并通过 `models.json` 管理模型注册与默认值。
-- **强大的插件体系** — 工具、提示词、消息转换、生命周期钩子，每个维度都可扩展。插件按 `pre` / normal / `post` 顺序编排，互不干扰。
-- **上下文持久化** — Core 以稳定的 26 字符 `channelIdentity` 识别频道，并将 Manifest、JSONL、assets、workspace 和插件 namespace 放在可读的 `<basePath>/channels/v1-shared-*/` 或 `v1-direct-*/` 目录。`channel.json` 是唯一权威来源，启动时扫描 Manifest，不创建 `channels.json`。
-- **平台输入边界** — 平台插件注册 `SessionResolver`，Gateway 在 Session 生命周期内完成解析、图片冻结和被动回复。普通消息以 `yesimbot.message` 持久化唯一结构化 `elements`、冻结的 `text` 和 `messageId`；非消息输入以 `yesimbot.event` 及 `eventType`、冻结的 `text` 持久化。
+- **强大的插件体系** — 工具、提示词、消息转换、生命周期钩子，每个维度都可扩展。插件按 `pre` / normal / `post` 顺序编排。
+- **频道存储与资源** — 公开的 `ChannelScope` 只携带当前 `platform`、`selfId`、`channelId` 与 `isDirect`。Core 在内部由 shared/direct tuple 推导存储目录；不会公开频道 identity。每个频道目录保存 `channel.json`、JSONL、assets、workspace 与插件数据。
+- **平台输入边界** — 平台注册 `SessionResolver`；未注册 Resolver 的平台不会进入 Core。Gateway 在 Session 生命周期内创建频道 `AssetStore`，Resolver 自行持久化需要保留的图片，并返回 message 或 event Draft。Gateway 再组装 host-owned record 并负责被动回复。
 - **丰富的能力插件** — 虚拟文件系统与 Bash 沙箱、MCP 客户端、Skill 加载、Web 搜索、MemOS Cloud 记忆、OneBot 工具、贴纸处理等。
 - **Koishi 原生集成** — 作为 `koishi-plugin-yesimbot` 运行，复用 Koishi 生态的适配器、中间件和插件体系。
 
@@ -94,16 +94,9 @@ allowedChannels:
 yesimbot.model.add-input-modality provider:model image
 ```
 
-多媒体模型调用默认启用，每次最多 4 张图片、单张 5 MiB、单次 10 MiB，
-选择策略为 `current-first`。该策略先访问本次请求的新消息批次，再按 FIFO
-访问历史；批次为空时回退到历史 FIFO。`fifo` 和 `lifo` 是 Event 访问顺序，
-其中 `lifo` 从新到旧；每个 Event 内的图片引用仍保持源顺序。图片选择和文件
-part 只属于本次模型调用，不会改写持久化历史。
+模型调用按 FIFO 投影历史与当前输入。模型声明图片输入能力且 `imageInput` 未关闭时，每次调用最多读取 4 张图片、单张 5 MiB、总计 10 MiB；图片选择不会改写 JSONL 历史。Resolver 自己决定入站图片下载与持久化。
 
-活动 Runtime 会快照模型能力、多媒体策略和 Will 引擎。配置或模型能力变更后，
-使用非破坏性的 `ctx.yesimbot.reload(scope)` 应用新快照；它保留历史、assets
-和 workspace。回滚时将 `will.engine` 设为 `routing`，或将
-`multimedia.enabled` 设为 `false`，再 reload 受影响频道。
+活动 Runtime 会在创建时快照模型能力、`imageInput`、Will、提示词与插件。Core 不提供 `reload()`：配置、模型或插件变化会在 Runtime 因停止或 shared Bot 变更而替换后生效。
 
 ## Plugins
 

@@ -1,6 +1,4 @@
 export {
-  AssigneeAdmissionError,
-  assertAssignee,
   RuntimeManager,
   type AgentPluginFactory,
   type RuntimeManagerOptions,
