@@ -12,6 +12,7 @@ import {
   Config,
   DEFAULT_IMAGE_BUDGET,
   resolveImageBudget,
+  resolveReplyPacingConfig,
   type Config as CoreConfig,
 } from "../src/config.js";
 import type { MessageRecord } from "../src/input.js";
@@ -281,6 +282,10 @@ describe("RuntimeManager", () => {
       maxBytesPerImage: 1024,
       maxTotalBytes: 2048,
     });
+  });
+
+  it("returns a mutable resolved pacing configuration", () => {
+    expect(Object.isFrozen(resolveReplyPacingConfig())).toBe(false);
   });
 
   it("uses factory message-id capability from each creation snapshot", async () => {

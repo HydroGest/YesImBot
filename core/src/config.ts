@@ -47,7 +47,7 @@ export const DEFAULT_REPLY_PACING_CONFIG: PacingConfig = {
 };
 
 export function resolveReplyPacingConfig(pacing?: Partial<PacingConfig>): PacingConfig {
-  return Object.freeze({ ...DEFAULT_REPLY_PACING_CONFIG, ...pacing });
+  return { ...DEFAULT_REPLY_PACING_CONFIG, ...pacing };
 }
 
 export interface Config {
