@@ -166,6 +166,7 @@ describe("onebot-utils plugin", () => {
       messages: [["Alice (1)", expect.any(String), ["hello[图片]"]]],
     });
     expect(tool.description).toContain("nextOffset");
+    expect(tool.description).toContain("tips");
     expect(tool.description).toContain("forwardId");
     expect(tool.description).not.toContain("messageId");
   });

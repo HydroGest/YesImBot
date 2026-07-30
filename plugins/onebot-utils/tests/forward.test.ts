@@ -145,6 +145,7 @@ describe("createForwardReader", () => {
     await expect(reader({ forwardId: "forward" })).resolves.toMatchObject({
       messages: [["Alice (10001)", expect.any(String), ["a".repeat(3500)]]],
       nextOffset: 1,
+      tips: "还有 1 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset 1。",
     });
     await expect(reader({ forwardId: "forward", offset: 1 })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), ["b".repeat(3500)]]],
@@ -162,6 +163,7 @@ describe("createForwardReader", () => {
       messages: [["Alice (10001)", expect.any(String), ["a".repeat(6001)]]],
       nextOffset: 1,
       overLimit: true,
+      tips: "还有 1 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset 1。",
     });
   });
 
@@ -177,8 +179,14 @@ describe("createForwardReader", () => {
 
     expect(defaultPage.messages).toHaveLength(30);
     expect(defaultPage.nextOffset).toBe(30);
+    expect(defaultPage.tips).toBe(
+      "还有 31 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset 30。",
+    );
     expect(clampedPage.messages).toHaveLength(60);
     expect(clampedPage.nextOffset).toBe(60);
+    expect(clampedPage.tips).toBe(
+      "还有 1 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset 60。",
+    );
     await expect(reader({ forwardId: "forward", offset: 99 })).resolves.toEqual({ messages: [] });
   });
 

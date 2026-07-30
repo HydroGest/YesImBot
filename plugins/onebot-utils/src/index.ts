@@ -77,7 +77,7 @@ function createOneBotTools(bot: Bot, config: Readonly<ForwardReaderConfig>): Age
   const getForwardMessageTool: AgentTool<ForwardToolInput, ForwardResult> = {
     name: "onebot_get_forward_message",
     description:
-      "分页获取合并转发消息的紧凑元组。使用 forwardId；若结果含 nextOffset，请使用相同 forwardId 和该 nextOffset 继续读取。",
+      "分页获取合并转发消息的紧凑元组。使用 forwardId；若返回 tips，表示还有剩余内容，可按其中的 nextOffset 使用相同 forwardId 继续读取。",
     inputSchema: FORWARD_MESSAGE_SCHEMA,
     execute: async (input) => {
       forwardReader ??= createForwardReader(getOneBotInternal(bot), config);

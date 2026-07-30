@@ -200,7 +200,7 @@ function page(
     if (messages.length === 0 && recordChars > budget) {
       return {
         messages: [record],
-        ...(index + 1 < records.length ? { nextOffset: index + 1 } : {}),
+        ...continuation(index + 1, records.length),
         overLimit: true,
       };
     }
@@ -213,6 +213,14 @@ function page(
 
   return {
     messages,
-    ...(index < records.length ? { nextOffset: index } : {}),
+    ...continuation(index, records.length),
+  };
+}
+function continuation(nextOffset: number, totalRecords: number) {
+  if (nextOffset >= totalRecords) return {};
+
+  return {
+    nextOffset,
+    tips: `还有 ${totalRecords - nextOffset} 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset ${nextOffset}。`,
   };
 }

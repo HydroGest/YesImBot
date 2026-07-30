@@ -14,6 +14,7 @@ export type ForwardMessage = readonly [
 export interface ForwardPage {
   messages: readonly ForwardMessage[];
   nextOffset?: number;
+  tips?: string;
   overLimit?: true;
 }
 

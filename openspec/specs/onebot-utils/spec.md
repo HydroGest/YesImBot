@@ -56,13 +56,14 @@ type ForwardMessage = readonly [
 type ForwardPage = {
   messages: readonly ForwardMessage[]
   nextOffset?: number
+  tips?: string
   overLimit?: true
 }
 
 type ForwardResult = ForwardPage | { error: string }
 ```
 
-`nextOffset`, when present, MUST be the next input offset for the same `forwardId`; it replaces a boolean continuation flag. `overLimit` MUST be present only when one complete first record exceeds the configured text budget and is returned as its own page.
+`nextOffset` 和 `tips` 仅在仍有未读取的顶层消息时出现。`tips` MUST 明确告知剩余消息数，并说明使用相同 `forwardId` 和 `nextOffset` 继续读取；`nextOffset` 是下一页的输入偏移。`overLimit` MUST be present only when one complete first record exceeds the configured text budget and is returned as its own page.
 
 #### Scenario: Fetch first forward page
 
@@ -73,8 +74,8 @@ type ForwardResult = ForwardPage | { error: string }
 
 #### Scenario: Continue a forward page
 
-- **WHEN** a page contains `nextOffset`
-- **THEN** the tool description MUST direct the model to call the same `forwardId` with that offset
+- **WHEN** a page contains `nextOffset` and `tips`
+- **THEN** the tool description and `tips` MUST direct the model to call the same `forwardId` with that offset
 - **AND** the following page MUST continue at that top-level message index
 
 #### Scenario: Content reaches a page bound
