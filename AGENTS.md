@@ -111,6 +111,8 @@ Load these on demand when deeper context is needed:
 - `core/src/platforms/*/` — built-in Resolver entrypoints.
 - `plugins/*/src/index.ts` — Koishi optional plugin entrypoints and `registerAgentPlugin()` usage.
 - `providers/*/src/index.ts` — provider plugin definitions and default model schemas.
+- `docs/athena-v4-vision-and-evolution-notes.md` — stable product direction, accepted engineering boundaries, and deferred directions; it is not an implementation specification.
+- `docs/athena-development-log.md` — dated architectural decisions and evidence; do not add task progress, review process, test runs, or ordinary fixes.
 
 ## Reporting
 

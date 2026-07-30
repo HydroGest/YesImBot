@@ -109,9 +109,10 @@ YesImBot 的能力通过插件系统按需加载。
 | 技能        | `koishi-plugin-yesimbot-skills`          | 动态加载与执行预定义技能            |
 | MemOS       | `koishi-plugin-yesimbot-memos-client`    | 接入 MemOS Cloud 长期记忆           |
 | 搜索        | `koishi-plugin-yesimbot-search-service`  | 网络搜索与信息检索                  |
-| OneBot 平台 | `koishi-plugin-yesimbot-platform-onebot` | OneBot 入站消息、图片准备与事件适配 |
 | OneBot 工具 | `koishi-plugin-yesimbot-onebot-utils`    | OneBot 平台工具集成                 |
 | 贴纸        | `koishi-plugin-yesimbot-sticker`         | 表情与贴纸处理                      |
+
+OneBot Resolver 内置于 `koishi-plugin-yesimbot`，通过同一 Resolver 边界注册，不是可选的平台包。
 
 ### LLM Provider
 
@@ -124,7 +125,15 @@ YesImBot 的能力通过插件系统按需加载。
 
 ## Architecture
 
-Athena 是一个 message-first Koishi agent runtime。当前架构见 [AGENTS.md](./AGENTS.md#current-architecture)。
+Athena 是一个 message-first Koishi agent runtime。入站路径如下：
+
+```text
+Session -> allowlist -> shared assignee admission -> AssetStore -> SessionResolver
+        -> host-owned InputRecord -> RuntimeManager -> ChannelRuntime FIFO
+        -> wait | join | one output consumer -> passive Gateway delivery
+```
+
+Gateway 持有 live Session、Resolver 调用、canonical record 与被动回复。ChannelRuntime 持有 FIFO、Agent 状态、JSONL、Will、模型输入投影与 delivery feedback，不保留 Session。参见 [Core API](./core/README.md)、[维护者指南](./AGENTS.md#current-architecture) 和 [架构愿景与演进说明](./docs/athena-v4-vision-and-evolution-notes.md)。
 
 ## Development
 

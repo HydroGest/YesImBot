@@ -9,47 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **platform-onebot**: New `koishi-plugin-yesimbot-platform-onebot` adapter registers OneBot input through `ctx.yesimbot.registerResolver()`
-- **agent-runtime**: New `@yesimbot/agent-runtime` package — standalone agent runtime with createAgent, turn queue, message storage, plugin hooks, tool registry, channel events, and state management
-- **workspace**: bash-tool sandbox integration with virtual filesystem mounts, channel-scoped workspace, and AbortSignal timeout bridge
-- **memos-client**: New `koishi-plugin-yesimbot-memos-client` plugin — MemOS Cloud memory integration with CRUD operations, identity generation, QQ chat memory import script, and debug channel memory search
-- **onebot-utils**: Channel platform context extraction and platform-aware message handling
-- **sticker**: New `koishi-plugin-yesimbot-sticker` plugin for sticker message handling
-- **core**: Added canonical 26-character Channel Keys, authoritative channel Manifests, a rebuildable Catalog, and registered per-channel storage namespaces
-- **core**: Added Database-backed shared-channel admission and explicit `reload(scope)` workflow for assignee changes and config updates
+- **agent-runtime**: Added the standalone `@yesimbot/agent-runtime` package for turn lifecycle, message storage, ordered plugins, tools, and streamed model execution.
+- **core**: Added public scoped `AssetService` / `AssetStore` access through `ctx.yesimbot.assets`.
+- **plugins**: Added optional workspace, MCP, skills, MemOS, search, OneBot utilities, and sticker integrations around the AgentPlugin boundary.
 
 ### Changed
 
-- **core**: **Breaking**: Replaced the public Platform and Delivery services with one Session Gateway, declaration-mergeable EventRecords, and a slim `ctx.yesimbot` facade
-- **core**: **Breaking**: Moved all local channel data to `<basePath>/channels/<key>/`; legacy `channel_v2_*`, `workspace_v2_*`, `ch_v1_*`, and old JSONL layouts are not read or migrated
-- **core**: Moved per-channel FIFO, Agent/Will ownership, JSONL, stream consumption, delivery completion, reset, and stop behind internal RuntimeManager and ChannelRuntime modules
-- **core**: Added independent direct, group-mention, and ordinary-group routing policies while keeping self-message ignore fixed
-- **core**: Stores only verified, channel-local inbound image assets; preparation permits four images, 5 MiB per image, 10 MiB per message, two concurrent downloads, and a 10-second timeout
-- **core**: Unified multimedia image budget with `multimedia.image.maxCount`, `maxBytesPerImage`, and `maxTotalBytes` config keys; removed old `maxCountPerCall` and `maxBytesPerCall` aliases
-- **onebot-utils**: `onebot_get_forward_message` now returns sanitized, bounded, paginated text from raw or structured OneBot forward payloads without URLs, raw fields, child IDs, media bytes, or asset IDs
-- **core**: Migrated from legacy `packages/agent/` to `@yesimbot/agent-runtime` as the foundation; rebuilt `service.ts` as slim Koishi wrapper; removed `internal/` and `services/extension/` legacy modules
-- **workspace**: Replaced custom tool implementations (`edit-file`, `execute-command`, `glob`, `grep`, `read-file`, `write-file`) with just-bash sandbox
-- **workspace**: Removed the plugin-local `root` and channel hash; the default writable workspace now uses Core's registered `workspace` namespace
-- **memos-client**: Uses the Core Channel Key for `channel_hash` while retaining plugin-owned user, conversation, agent, author, and message identities
-- **mcp-client**: Tool refresh support and transport configuration updates
-- **search-service**: Backend updates for searxng and tavily
-- **skill**: Refactored plugin registration with typed contracts
-- **providers**: Updated anthropic, deepseek, google, openai providers with new model configuration schema
-- **docs**: Updated AGENTS.md and README.md to reflect current architecture
-
-### Fixed
-
-- **memos-client**: Read sender and message IDs from the current EventRecord resources
-- **agent-runtime**: Deduplicate tool messages in multi-step loops
-- **core**: Preserve direct-message classification as `ChannelScope.isDirect` from the live Session and reject resolver classification mismatches
-- **core**: Reject storage namespace and path symlink escapes before creating external directories
+- **core**: **Breaking**: Replaced public channel identity and storage-namespace APIs with raw `ChannelScope` and `getStoragePath(scope)`. Shared storage uses `platform + channelId`; direct storage also includes `selfId`.
+- **core**: **Breaking**: Replaced PlatformService and DeliveryService with one Session Gateway, per-platform `SessionResolver`, host-owned Message/Event records, and passive `Session.send()` delivery.
+- **core**: Resolver-owned image persistence now writes scoped assets during live Session resolution. Model input later reads local image assets in history-then-current order under `imageInput` call budgets.
+- **core**: RuntimeManager replaces a shared channel Runtime when its current Bot changes. Core has no `reload()`; stable model, prompt, tool, and plugin resources apply on Runtime replacement.
+- **core**: Channel roots are readable versionless `shared-*` / `direct-*` directories with authoritative `channel.json`, `sessions/`, `assets/`, and plugin-selected children. Prior layouts and JSONL are not read or migrated.
+- **onebot-utils**: `onebot_get_forward_message` returns sanitized, bounded, paginated forward records.
 
 ### Removed
 
-- **agent**: Removed deprecated `packages/agent/` package (replaced by `@yesimbot/agent-runtime`)
-- **core**: Removed legacy `core/src/internal/`, `core/src/services/extension/`, `core/src/shared/platform-event.ts`
-- **workspace**: Removed legacy custom tools directory and associated tests
-- **docs**: Removed `CONTEXT.md`, `NOTICE`, `ROADMAP.md`
-- **core**: Removed `registerWill()` and Will factory registration from public facade; Will engine is configured via `will.engine` config key
-- **core**: Removed `listChannels()` from public facade
-- **core**: Removed automatic online Runtime handover; use explicit `reload(scope)` after shared assignee changes
+- **core**: Removed public `ChannelKey`, channel identity, storage registration, `ensureStorage()`, reload, Will factory registration, and channel listing APIs.
+- **core**: Removed generic Satori fallback, PlatformService, DeliveryService, image freezer/media policy, legacy formatter modules, and JSONL semantic validation.
+- **core**: Removed compatibility readers, aliases, and migrations for old channel directories, asset IDs, records, and JSONL formats.

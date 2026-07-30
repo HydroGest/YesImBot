@@ -277,6 +277,18 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 
 普通消息改为 `yesimbot.message`，以原始 `elements` 作为唯一结构化事实，并在准入时保存冻结 `text`；非消息输入保留给带 `eventType` 的 `yesimbot.event`。同一时期，26 字符 `channelIdentity` 明确只承担逻辑身份，可读 `v1-shared-*` / `v1-direct-*` 目录由 `channel.json` 绑定，启动扫描 Manifest 而不再维护 `channels.json`。这接受了旧 hash 目录和旧 JSONL 保留但不可达的 clean break，避免身份哈希、目录名和历史格式再次相互承担兼容责任。
 
+### 2026-07-29：Core 收敛为 Gateway、Runtime 与本地资产边界
+
+证据：`7fbb66e` 至 `59c9da9` `[C]`；`core-runtime-integration`、`platform-message-ingestion`、`model-input-media-budgeting`、`message-delivery` 主规格和 `.superpowers/架构瘦身重构方案.md` `[D]`。
+
+这次收敛放弃了最后一批会让 Core 重新变厚的中间协议：公开频道 identity、storage namespace registry、PlatformService、DeliveryService、reload/drain、通用 media policy 和跨模块 formatter。它们都曾试图为未来平台、资源或生命周期预留空间，但当前没有足够消费者，也让 Session、目录和模型输入的 owner 变得模糊。
+
+新的基线把事实收回到更小的边界：Gateway 在 live Session 内完成准入、shared assignee 检查、绑定 AssetStore、Resolver 调用、canonical record 组装和被动回复；RuntimeManager 只管理频道 Runtime 的创建、替换、reset 与 stop；ChannelRuntime 独占 FIFO、Agent、Will、JSONL、模型输入和 output ownership。Resolver 决定入站图片如何下载并持久化，模型调用只读取频道本地资产。
+
+频道不再有公开或持久化的 opaque identity。`ChannelScope` 保持原始字段，shared/direct tuple 和可读 versionless channel root 留在 Core 内部。稳定模型、图片预算、prompt、tools 和插件在 Runtime 创建时快照，shared Bot 变化时停止旧 Runtime 并创建新 Runtime，而不是让 reload 协调一组可变资源。
+
+这次决定把下一阶段的门槛抬高了：任何新的平台、媒体、主动性或跨频道能力都必须先证明现有 Gateway、Runtime、AssetStore 和 AgentPlugin seam 无法承载，再提出独立设计。
+
 ## 4. 决策索引
 
 ### 当前有效
@@ -290,26 +302,26 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 | P-05 | 可选能力进入 `plugins/*`，模型进入 `providers/*` | 已实施 |
 | P-06 | 平台输入进入 `platforms/*` | 已实施 |
 | P-07 | 频道 Event 使用 JSONL，长期记忆由插件负责 | 已实施 |
-| P-11 | 资源在首次持久化前冻结，历史投影不得请求平台 | 已实施 |
+| P-11 | Resolver 持久化图片，Runtime 投影本地资产 | 入站下载属于平台；历史和模型调用不请求平台 |
 | P-12 | Forward 和 quote 不自动展开 | 已实施 |
 | P-13 | 每频道 FIFO 管理持久化、观察、Will 判断和首次提交 | 已实施 |
 | P-14 | 模型流消费在 FIFO 外 | 已实施 |
 | P-15 | 消息 formatter 由 core 固定 | 已实施 |
 | P-17 | 未发布旧格式不提供兼容层 | 当前分支明确偏好 |
-| P-18 | Prompt 使用固定 core prompt 加 `AGENTS.md`、`PERSONA.md` | 已实施 |
+| P-18 | Prompt 由 Constitution、persona、可选 agents 和 runtime context 固定排序 | Runtime 创建时快照稳定资源 |
 | P-19 | 公共 API 只为现有用例服务 | KISS / YAGNI 原则 |
 | P-22 | `ChannelRuntime` 独占频道 Agent 生命周期 | `YesImBotService` 只做 Koishi composition 与 delegation |
 | P-24 | `EventRecord` 是路由、持久化和 Will 判断的唯一事实 | 结构复用 Satori `Universal.Event`，不再维护 Platform 消息代数 |
-| P-25 | 每个平台最多注册一个 `SessionResolver` | resolver 返回 null 或抛错时不 fallback；无 resolver 的标准消息由 core 构造 fallback Event |
-| P-26 | Gateway 是 Session 和被动回复的唯一 owner | 资源冻结与 `Session.send()` 在活动 handle 内完成，Session 不进入 runtime 或 JSONL |
-| P-27 | Will 是每频道的最小参与判断 seam | 首版只公开 `wait | trigger`、只读状态和可替换 factory |
+| P-25 | 每个平台最多注册一个 `SessionResolver` | 无 resolver 不接入；resolver 返回 null 或抛错都不 fallback |
+| P-26 | Gateway 是 Session 和被动回复的唯一 owner | Resolver、AssetStore 和 `Session.send()` 都在活动 handler 内完成 |
+| P-27 | Will 是每频道的最小参与判断 seam | routing 为默认；willingness 仅公开阈值、半衰期和回复成本 |
 | P-28 | 出站能力保持内部拆分 | Gateway 处理被动回复与失败 Event；Agent tool 使用 current Bot 主动发送 |
-| P-29 | `ctx.yesimbot` 只公开已确认 facade | model、resolver/Will/Agent plugin 注册、Channel Key/storage 查询、reset 和 stop |
-| P-30 | 频道身份使用 26 字符 lowercase Base32 Key，非 `ch_v1_` 前缀或原始坐标 | 确定性不可逆向 Key，验证 Manifest 身份后打开目录 |
-| P-31 | Core 频道存储为 channel-first 布局 | `<basePath>/channels/<key>/` 统管 channel.json、sessions、assets、workspace、已注册 namespace |
+| P-29 | `ctx.yesimbot` 只公开已确认 facade | model、assets、Resolver/Agent plugin 注册、channel root、reset 和 stop |
+| P-30 | `ChannelScope` 保持原始字段 | 不公开或持久化 Channel Key、identity、tuple key 或 directory helper |
+| P-31 | Core 使用可读 versionless channel root | `channel.json`、sessions、assets 和插件子目录共存；tuple 仅属实现 |
 | P-32 | Database 是必需依赖，shared 频道 assignee admission fail closed | Koishi 拥有分配权；Core 不重复存储 assignee |
-| P-33 | Online handover 在生命周期协调器外 drain，保留历史数据 | 最多保留五个等待事件；避免死锁，不打断正常 turn 输出 |
-| P-34 | Channel Key 在 consumer 中复用 | Workspace、MemOS 不再自定义频道 hash，但它不替代 MemOS 自有身份字段 |
+| P-33 | shared Bot 变化时停旧建新 | 当前 record 进入新 Runtime；不提供 reload 或 drain 协调 |
+| P-34 | AssetStore 是公开的 scoped byte store | Resolver 写入、Runtime 读取；具体存储与路径 helper 保持私有 |
 
 ### 明确延后
 
@@ -343,7 +355,7 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 | R-14 | `ctx.yesimbot.platform` 公共服务 | 插件改用 `registerResolver()` 与 Agent plugin factory context |
 | R-15 | `Platform.Message` 作为路由真相 | EventRecord 成为唯一 canonical input |
 | R-16 | 公共 `DeliveryService` | Gateway 被动回复和 current-bot Agent tool 已覆盖当前用例 |
-| R-17 | `ChannelScopeId` 及 `ch_v1_` 前缀格式 | 被无前缀 26 字符 lowercase Base32 Key 取代，`ChannelScopeId` 名称不在公共 API 中出现 |
+| R-17 | 公共或持久化 Channel Key、`ChannelScopeId` 与 versioned directory 格式 | 被 raw ChannelScope、私有 canonical tuple 和 versionless readable root 取代 |
 
 ## 5. 明确表达过的偏好
 
