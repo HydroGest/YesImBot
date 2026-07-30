@@ -146,7 +146,9 @@ function readChatOverrides(
       hidden: readBoolean(value.hidden),
       limit: value.limit === undefined ? undefined : readLimit(value.limit, fullId, warnings),
       modalities:
-        value.modalities === undefined ? undefined : readModalities(value.modalities, fullId, warnings),
+        value.modalities === undefined
+          ? undefined
+          : readModalities(value.modalities, fullId, warnings),
       variants: readVariants(value.variants),
     };
   }
@@ -222,7 +224,10 @@ async function loadModelsConfig(filePath?: string): Promise<ModelsConfigLoadResu
 
   return {
     config: {
-      defaults: { chat: readString(defaultsSection.chat), embedding: readString(defaultsSection.embedding) },
+      defaults: {
+        chat: readString(defaultsSection.chat),
+        embedding: readString(defaultsSection.embedding),
+      },
       aliases,
       chat: readChatOverrides(chatSection, warnings),
       embedding: readEmbeddingOverrides(embeddingSection, warnings),

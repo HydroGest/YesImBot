@@ -8,7 +8,11 @@ import type { AssetService } from "../asset.js";
 import { scopeMapKey, type ChannelScope, type ChannelStorage } from "../channel.js";
 import { resolveImageBudget, type Config } from "../config.js";
 import type { InputRecord } from "../input.js";
-import { ChannelRuntime, type ChannelRuntimeOptions, type ChannelRuntimeResult } from "./channel.js";
+import {
+  ChannelRuntime,
+  type ChannelRuntimeOptions,
+  type ChannelRuntimeResult,
+} from "./channel.js";
 import { createJsonlStorage } from "./storage.js";
 import { createWillEngine } from "./will.js";
 
@@ -25,7 +29,6 @@ export interface AgentPluginFactory {
   (scope: ChannelScope, bot: Bot): Awaitable<AgentPlugin | null>;
   readonly requiresMessageId?: boolean;
 }
-
 
 export class RuntimeManager {
   private readonly runtimes = new Map<string, ChannelRuntime>();
@@ -67,7 +70,9 @@ export class RuntimeManager {
       }
     }
     try {
-      await createJsonlStorage(join(await this.opts.storage.getStoragePath(scope), "sessions", "messages.jsonl")).clear();
+      await createJsonlStorage(
+        join(await this.opts.storage.getStoragePath(scope), "sessions", "messages.jsonl"),
+      ).clear();
     } catch (cause) {
       failure ??= cause;
       this.warn("storage_clear_failed", { scope, cause });
@@ -110,7 +115,10 @@ export class RuntimeManager {
     }
   }
 
-  private async replaceRuntime(scope: ChannelScope, current: ChannelRuntime | undefined): Promise<ChannelRuntime> {
+  private async replaceRuntime(
+    scope: ChannelScope,
+    current: ChannelRuntime | undefined,
+  ): Promise<ChannelRuntime> {
     const key = scopeMapKey(scope);
     if (current && current.selfId !== scope.selfId) {
       await this.stopRuntime(key, current);
@@ -142,7 +150,10 @@ export class RuntimeManager {
       ctx: this.opts.ctx,
       config: {
         ...this.opts.config,
-        basePath: resolve(this.opts.ctx.baseDir, this.opts.config.basePath || this.opts.ctx.baseDir),
+        basePath: resolve(
+          this.opts.ctx.baseDir,
+          this.opts.config.basePath || this.opts.ctx.baseDir,
+        ),
       },
       logger: this.opts.logger,
       scope,
@@ -176,7 +187,11 @@ export class RuntimeManager {
   }
 
   private async stopInternal(): Promise<void> {
-    await Promise.all([...this.runtimes.entries()].map(([identity, runtime]) => this.stopRuntime(identity, runtime)));
+    await Promise.all(
+      [...this.runtimes.entries()].map(([identity, runtime]) =>
+        this.stopRuntime(identity, runtime),
+      ),
+    );
     this.runtimes.clear();
     this.creating.clear();
   }

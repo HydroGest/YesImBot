@@ -23,7 +23,6 @@ const shared = {
 
 const direct = { ...shared, isDirect: true } satisfies ChannelScope;
 
-
 describe("ChannelStorage", () => {
   let basePath: string;
   let storage: ChannelStorage;
@@ -57,7 +56,9 @@ describe("ChannelStorage", () => {
     await expect(storage.getStoragePath(otherShared)).resolves.toBe(
       await storage.getStoragePath(shared),
     );
-    expect(await storage.getStoragePath(otherDirect)).not.toBe(await storage.getStoragePath(direct));
+    expect(await storage.getStoragePath(otherDirect)).not.toBe(
+      await storage.getStoragePath(direct),
+    );
   });
 
   it("writes selfId only in a direct Manifest", async () => {
@@ -87,7 +88,9 @@ describe("ChannelStorage", () => {
     } satisfies ChannelScope;
 
     await expect(storage.getStoragePath(maximum)).resolves.toBeDefined();
-    await expect(storage.getStoragePath({ ...maximum, channelId: `${maximum.channelId}x` })).rejects.toThrow(/200/);
+    await expect(
+      storage.getStoragePath({ ...maximum, channelId: `${maximum.channelId}x` }),
+    ).rejects.toThrow(/200/);
   });
 
   it("uses collision-free readable names for unsafe raw coordinates", async () => {
@@ -108,7 +111,11 @@ describe("ChannelStorage", () => {
     await mkdir(root, { recursive: true });
     await writeFile(
       join(root, "channel.json"),
-      JSON.stringify({ platform: "onebot", channelId: "123456", createdAt: "2026-07-29T00:00:00.000Z" }),
+      JSON.stringify({
+        platform: "onebot",
+        channelId: "123456",
+        createdAt: "2026-07-29T00:00:00.000Z",
+      }),
     );
     await mkdir(legacy, { recursive: true });
     await writeFile(join(legacy, "channel.json"), "{old", "utf8");
@@ -161,7 +168,9 @@ describe("ChannelStorage", () => {
     await new ChannelStorage(basePath, warn).start();
 
     await expect(readFile(join(directory, "channel.json"), "utf8")).resolves.toBe("{old");
-    expect(warn).toHaveBeenCalledWith("storage.directory_invalid", { entry: "a5vnf2ijd75c2ibyo2s5czdir4" });
+    expect(warn).toHaveBeenCalledWith("storage.directory_invalid", {
+      entry: "a5vnf2ijd75c2ibyo2s5czdir4",
+    });
   });
 
   it("rejects a channel root symlink", async () => {
@@ -193,15 +202,32 @@ describe("ChannelStorage", () => {
       eventType: "delivery.failed",
       text: "Delivery failed",
       timestamp: 2,
-      delivery: { turnId: "turn-1", messageId: "assistant-1", segmentIndex: 1, segmentTotal: 1, error: { name: "Error", message: "offline" } },
+      delivery: {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        segmentIndex: 1,
+        segmentTotal: 1,
+        error: { name: "Error", message: "offline" },
+      },
     });
     await jsonl.append(createMessageEntry(message, { id: "entry-message", timestamp: 1 }));
     await jsonl.append(createMessageEntry(event, { id: "entry-event", timestamp: 2 }));
-    await jsonl.append(createMessageEntry({ id: "assistant-1", timestamp: 3, role: "assistant", content: reply }, { id: "entry-assistant", timestamp: 3 }));
+    await jsonl.append(
+      createMessageEntry(
+        { id: "assistant-1", timestamp: 3, role: "assistant", content: reply },
+        { id: "entry-assistant", timestamp: 3 },
+      ),
+    );
 
     const entries = await jsonl.read();
-    expect(entries[0]).toMatchObject({ type: "message", data: { type: "yesimbot.message", data: { messageId: "message-1" } } });
-    expect(entries[1]).toMatchObject({ type: "message", data: { type: "yesimbot.event", data: { eventType: "delivery.failed" } } });
+    expect(entries[0]).toMatchObject({
+      type: "message",
+      data: { type: "yesimbot.message", data: { messageId: "message-1" } },
+    });
+    expect(entries[1]).toMatchObject({
+      type: "message",
+      data: { type: "yesimbot.event", data: { eventType: "delivery.failed" } },
+    });
     expect(entries[2]).toMatchObject({ type: "message", data: { content: reply } });
     expect(parseReply(reply)).toEqual([[h.text("first")], [h.text("second")]]);
   });

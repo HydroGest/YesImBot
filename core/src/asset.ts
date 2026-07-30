@@ -50,7 +50,8 @@ class ScopedAssetStore implements AssetStore {
   }
 
   async get(idOrPrefix: string): Promise<Uint8Array> {
-    if (COMPLETE_ID.test(idOrPrefix)) return new Uint8Array(await readFile(await this.path(idOrPrefix)));
+    if (COMPLETE_ID.test(idOrPrefix))
+      return new Uint8Array(await readFile(await this.path(idOrPrefix)));
     if (!PREFIX_ID.test(idOrPrefix)) throw new Error("Invalid asset id");
     const directory = await this.path();
     let candidates: string[];

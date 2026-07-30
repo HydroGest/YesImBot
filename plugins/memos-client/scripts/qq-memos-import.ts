@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-
 import { deriveMemosImportChunkIdentity } from "../src/identity.js";
 import type { MemosAddMessageRequest, MemosMessage } from "../src/types.js";
 

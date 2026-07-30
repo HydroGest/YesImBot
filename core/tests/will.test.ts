@@ -318,7 +318,6 @@ describe("WillingnessWillEngine", () => {
     await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
     await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
   });
-
 });
 
 describe("Will contract", () => {

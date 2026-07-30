@@ -60,16 +60,14 @@ export interface BaseProviderConfig {
   embeddingModels?: EmbeddingModelConfig[];
 }
 
-export function createProviderPlugin<TConfig extends BaseProviderConfig, TClient>(
-  options: {
-    name: string;
-    capabilities: { chat: boolean; embedding: boolean };
-    Config: unknown;
-    createClient: (config: { apiKey: string; baseURL?: string }) => TClient;
-    chat: (client: TClient, modelId: string, config: TConfig) => LanguageModel;
-    embedding?: (client: TClient, modelId: string, config: TConfig) => EmbeddingModel;
-  },
-): {
+export function createProviderPlugin<TConfig extends BaseProviderConfig, TClient>(options: {
+  name: string;
+  capabilities: { chat: boolean; embedding: boolean };
+  Config: unknown;
+  createClient: (config: { apiKey: string; baseURL?: string }) => TClient;
+  chat: (client: TClient, modelId: string, config: TConfig) => LanguageModel;
+  embedding?: (client: TClient, modelId: string, config: TConfig) => EmbeddingModel;
+}): {
   name: string;
   reusable: boolean;
   inject: string[];

@@ -58,6 +58,10 @@ prompt, tool, and plugin changes apply when a runtime is replaced.
 prompt assembly, model input projection, output queue, and delivery feedback.
 It holds no live Koishi Session.
 
+## Model input
+
+`runtime/model-input.ts` formats persisted input and projects local image assets for a model call. It scans history before current input, reads only the channel-scoped `AssetStore`, recognizes JPEG, PNG, WebP, and GIF bytes, and applies a per-call `imageInput` budget. Model image capability comes only from `models.json`; `imageInput: false` disables image projection. Resolver download limits remain platform policy.
+
 ## Prompt resources
 
 `core/resources/constitution.md` and `core/resources/athena-persona.md` are

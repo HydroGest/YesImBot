@@ -153,5 +153,4 @@ describe("buildCoreSystemPrompt", () => {
   it("rejects when a packaged prompt resource is missing", async () => {
     await expect(readPromptResource("missing" as never)).rejects.toMatchObject({ code: "ENOENT" });
   });
-
 });

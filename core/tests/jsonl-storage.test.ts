@@ -9,9 +9,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { ChannelScope } from "../src/channel.js";
+import { ChannelStorage } from "../src/channel.js";
 import { createEvent, createMessage, type EventRecord, type MessageRecord } from "../src/input.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
-import { ChannelStorage } from "../src/channel.js";
 
 describe("jsonl storage", () => {
   const messageRecord: MessageRecord = {

@@ -49,7 +49,10 @@ function messageDraft(overrides: Partial<ResolvedMessageDraft> = {}): ResolvedMe
 }
 
 function createGateway(
-  options: { readonly allowedChannels?: readonly ChannelAllowRule[]; readonly ready?: () => Promise<void> } = {},
+  options: {
+    readonly allowedChannels?: readonly ChannelAllowRule[];
+    readonly ready?: () => Promise<void>;
+  } = {},
 ) {
   const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
   const store: AssetStore = {
@@ -93,7 +96,12 @@ function createGateway(
 }
 
 describe("Channel allowlist", () => {
-  const shared: ChannelScope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
+  const shared: ChannelScope = {
+    platform: "test",
+    selfId: "bot-1",
+    channelId: "room-1",
+    isDirect: false,
+  };
   const direct: ChannelScope = { ...shared, isDirect: true };
 
   it("denies missing and empty rules", () => {
@@ -118,17 +126,27 @@ describe("Channel allowlist", () => {
   });
 
   it("matches direct-only and shared-only rules", () => {
-    expect(matchesAllowedChannel(direct, [{ platform: "test", channelId: "*", isDirect: true }])).toBe(true);
-    expect(matchesAllowedChannel(shared, [{ platform: "test", channelId: "*", isDirect: true }])).toBe(false);
-    expect(matchesAllowedChannel(shared, [{ platform: "test", channelId: "*", isDirect: false }])).toBe(true);
-    expect(matchesAllowedChannel(direct, [{ platform: "test", channelId: "*", isDirect: false }])).toBe(false);
+    expect(
+      matchesAllowedChannel(direct, [{ platform: "test", channelId: "*", isDirect: true }]),
+    ).toBe(true);
+    expect(
+      matchesAllowedChannel(shared, [{ platform: "test", channelId: "*", isDirect: true }]),
+    ).toBe(false);
+    expect(
+      matchesAllowedChannel(shared, [{ platform: "test", channelId: "*", isDirect: false }]),
+    ).toBe(true);
+    expect(
+      matchesAllowedChannel(direct, [{ platform: "test", channelId: "*", isDirect: false }]),
+    ).toBe(false);
   });
 
   it("uses OR semantics across rules and defaults configuration to no access", () => {
-    expect(matchesAllowedChannel(shared, [
-      { platform: "other", channelId: "room-1" },
-      { platform: "test", channelId: "room-1" },
-    ])).toBe(true);
+    expect(
+      matchesAllowedChannel(shared, [
+        { platform: "other", channelId: "room-1" },
+        { platform: "test", channelId: "room-1" },
+      ]),
+    ).toBe(true);
     expect(Config({ basePath: "data", chatModel: "model" }).allowedChannels).toEqual([]);
   });
 });
@@ -155,19 +173,23 @@ describe("Gateway", () => {
 
     await gateway.handle(session());
 
-    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({
-      messageId: "message-1",
-      elements: [],
-      platform: "test",
-      selfId: "bot-1",
-      channel: expect.objectContaining({ id: "room-1", type: Universal.Channel.Type.TEXT }),
-      user: { id: "user-1", name: "User" },
-    }));
+    expect(runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: "message-1",
+        elements: [],
+        platform: "test",
+        selfId: "bot-1",
+        channel: expect.objectContaining({ id: "room-1", type: Universal.Channel.Type.TEXT }),
+        user: { id: "user-1", name: "User" },
+      }),
+    );
   });
 
   it("waits for readiness before shared admission and resolver work", async () => {
     let release!: () => void;
-    const ready = new Promise<void>((resolve) => { release = resolve; });
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const { gateway, database, assets, runtime } = createGateway({ ready: () => ready });
     const resolve = vi.fn(async () => messageDraft());
     gateway.register({ platform: "test", resolve });
@@ -191,7 +213,9 @@ describe("Gateway", () => {
     await gateway.handle(session());
 
     expect(database.get).toHaveBeenCalledOnce();
-    expect(database.get.mock.invocationCallOrder[0]).toBeLessThan(resolve.mock.invocationCallOrder[0] ?? Infinity);
+    expect(database.get.mock.invocationCallOrder[0]).toBeLessThan(
+      resolve.mock.invocationCallOrder[0] ?? Infinity,
+    );
   });
 
   it.each([[], [{ assignee: "" }], [{ assignee: "other" }]])(
@@ -225,15 +249,20 @@ describe("Gateway", () => {
 
   it("skips assignee lookup for direct Sessions and preserves direct classification", async () => {
     const { gateway, database, assets, runtime } = createGateway();
-    gateway.register({ platform: "test", resolve: async () => messageDraft({ channel: { name: "Direct room" } }) });
+    gateway.register({
+      platform: "test",
+      resolve: async () => messageDraft({ channel: { name: "Direct room" } }),
+    });
 
     await gateway.handle(session({ isDirect: true }));
 
     expect(database.get).not.toHaveBeenCalled();
     expect(assets.createStore).toHaveBeenCalledWith(expect.objectContaining({ isDirect: true }));
-    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({
-      channel: { id: "room-1", type: Universal.Channel.Type.DIRECT, name: "Direct room" },
-    }));
+    expect(runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: { id: "room-1", type: Universal.Channel.Type.DIRECT, name: "Direct room" },
+      }),
+    );
   });
 
   it("passes the admitted Scope Store to exactly one resolver call without rewriting Draft elements", async () => {
@@ -249,7 +278,10 @@ describe("Gateway", () => {
     await gateway.handle(session());
 
     expect(assets.createStore).toHaveBeenCalledWith({
-      platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false,
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room-1",
+      isDirect: false,
     });
     expect(resolve).toHaveBeenCalledOnce();
     expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ elements: [image] }));
@@ -259,27 +291,46 @@ describe("Gateway", () => {
     const { gateway, runtime } = createGateway();
     gateway.register({
       platform: "test",
-      resolve: async () => ({ ...messageDraft({ channel: { name: "Room" } }), platform: "other", selfId: "other" }) as never,
+      resolve: async () =>
+        ({
+          ...messageDraft({ channel: { name: "Room" } }),
+          platform: "other",
+          selfId: "other",
+        }) as never,
     });
 
     await gateway.handle(session());
 
-    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({
-      platform: "test", selfId: "bot-1", channel: expect.objectContaining({ id: "room-1", name: "Room" }),
-    }));
+    expect(runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "test",
+        selfId: "bot-1",
+        channel: expect.objectContaining({ id: "room-1", name: "Room" }),
+      }),
+    );
   });
 
   it("disposes only the resolver instance it registered and closes admission", async () => {
     const { gateway, runtime } = createGateway();
-    const first = { platform: "test", resolve: vi.fn(async () => messageDraft()) } satisfies SessionResolver;
-    const second = { platform: "test", resolve: vi.fn(async () => messageDraft()) } satisfies SessionResolver;
+    const first = {
+      platform: "test",
+      resolve: vi.fn(async () => messageDraft()),
+    } satisfies SessionResolver;
+    const second = {
+      platform: "test",
+      resolve: vi.fn(async () => messageDraft()),
+    } satisfies SessionResolver;
     const disposeFirst = gateway.register(first);
 
-    expect(() => gateway.register(second)).toThrow('Resolver for platform "test" is already registered');
+    expect(() => gateway.register(second)).toThrow(
+      'Resolver for platform "test" is already registered',
+    );
     disposeFirst();
     const disposeSecond = gateway.register(second);
     disposeFirst();
-    expect(() => gateway.register(first)).toThrow('Resolver for platform "test" is already registered');
+    expect(() => gateway.register(first)).toThrow(
+      'Resolver for platform "test" is already registered',
+    );
     disposeSecond();
     expect(() => gateway.register(first)).not.toThrow();
 
@@ -291,15 +342,20 @@ describe("Gateway", () => {
   it("constructs declaration-merged event records without Session residue", async () => {
     const { gateway, runtime } = createGateway();
     const draft: ResolvedEventDraft<"test.notice"> = {
-      kind: "event", eventType: "test.notice", text: "Notice", targetId: "target",
+      kind: "event",
+      eventType: "test.notice",
+      text: "Notice",
+      targetId: "target",
     };
     gateway.register({ platform: "test", resolve: async () => draft });
 
-    await gateway.handle(session({
-      type: "notice",
-      messageId: undefined,
-      event: { type: "notice", _data: { raw: true }, guild: { id: "guild-1" } },
-    }));
+    await gateway.handle(
+      session({
+        type: "notice",
+        messageId: undefined,
+        event: { type: "notice", _data: { raw: true }, guild: { id: "guild-1" } },
+      }),
+    );
 
     const routed = runtime.route.mock.calls[0]?.[0];
     expect(routed).toMatchObject({ eventType: "test.notice", text: "Notice", targetId: "target" });
@@ -310,15 +366,25 @@ describe("Gateway", () => {
   it("uses Session resources while Scope owns envelope fields", async () => {
     const { gateway, runtime } = createGateway();
     gateway.register({ platform: "test", resolve: async () => messageDraft() });
-    await gateway.handle(session({
-      isDirect: true,
-      event: { type: "message", channel: { id: "stale", type: Universal.Channel.Type.DIRECT, name: "Direct channel" }, user: { name: "Event user" } },
-    }));
+    await gateway.handle(
+      session({
+        isDirect: true,
+        event: {
+          type: "message",
+          channel: { id: "stale", type: Universal.Channel.Type.DIRECT, name: "Direct channel" },
+          user: { name: "Event user" },
+        },
+      }),
+    );
 
-    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({
-      platform: "test", selfId: "bot-1", channel: { id: "room-1", type: Universal.Channel.Type.DIRECT, name: "Direct channel" },
-      user: { id: "user-1", name: "Event user" },
-    }));
+    expect(runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "test",
+        selfId: "bot-1",
+        channel: { id: "room-1", type: Universal.Channel.Type.DIRECT, name: "Direct channel" },
+        user: { id: "user-1", name: "Event user" },
+      }),
+    );
   });
 
   it("skips an unregistered platform and authoritative null or thrown resolver results", async () => {
@@ -333,16 +399,27 @@ describe("Gateway", () => {
     expect(skipped.runtime.route).not.toHaveBeenCalled();
 
     const failed = createGateway();
-    failed.gateway.register({ platform: "test", resolve: async () => { throw new Error("broken"); } });
+    failed.gateway.register({
+      platform: "test",
+      resolve: async () => {
+        throw new Error("broken");
+      },
+    });
     await failed.gateway.handle(session());
     expect(failed.runtime.route).not.toHaveBeenCalled();
-    expect(failed.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ code: "gateway.resolver_failed" }));
+    expect(failed.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "gateway.resolver_failed" }),
+    );
   });
 
   it("deduplicates middleware and internal message admission while routing non-message internally", async () => {
     const { gateway, middleware, internal, runtime } = createGateway();
-    gateway.register({ platform: "test", resolve: async (input) =>
-      input.type === "notice" ? { kind: "event", eventType: "test.notice", text: "Notice", targetId: "target" } : messageDraft(),
+    gateway.register({
+      platform: "test",
+      resolve: async (input) =>
+        input.type === "notice"
+          ? { kind: "event", eventType: "test.notice", text: "Notice", targetId: "target" }
+          : messageDraft(),
     });
     const input = session();
 

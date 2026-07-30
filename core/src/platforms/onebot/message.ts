@@ -65,10 +65,12 @@ async function storeImages(
   );
 }
 
-
 async function loadOneBotImage(ctx: Context, src: string, maxBytes: number): Promise<Uint8Array> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(new Error("Image download timed out")), IMAGE_TIMEOUT_MS);
+  const timeout = setTimeout(
+    () => controller.abort(new Error("Image download timed out")),
+    IMAGE_TIMEOUT_MS,
+  );
   try {
     return await loadOneBotImageBytes(ctx, src, controller.signal, maxBytes);
   } finally {
@@ -90,7 +92,11 @@ async function loadOneBotImageBytes(
   return readBoundedStream(response.data, signal, maxBytes);
 }
 
-async function loadFileImage(src: string, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
+async function loadFileImage(
+  src: string,
+  signal: AbortSignal,
+  maxBytes: number,
+): Promise<Uint8Array> {
   const path = fileURLToPath(src);
   const entry = await stat(path);
   if (entry.size > maxBytes) throw new Error("Image exceeds byte limit");

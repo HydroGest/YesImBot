@@ -1,10 +1,4 @@
-import {
-  type Awaitable,
-  type Context,
-  type Logger,
-  type Session,
-  Universal,
-} from "koishi";
+import { type Awaitable, type Context, type Logger, type Session, Universal } from "koishi";
 
 import type { AssetService, AssetStore } from "./asset.js";
 import type { ChannelScope } from "./channel.js";
@@ -92,7 +86,8 @@ export class Gateway {
     }
     this.resolvers.set(resolver.platform, resolver);
     return () => {
-      if (this.resolvers.get(resolver.platform) === resolver) this.resolvers.delete(resolver.platform);
+      if (this.resolvers.get(resolver.platform) === resolver)
+        this.resolvers.delete(resolver.platform);
     };
   }
 
@@ -175,7 +170,11 @@ export class Gateway {
 
   private async failDelivery(
     record: InputRecord,
-    output: { readonly turnId: string; readonly messageId: string; readonly segments: readonly unknown[] },
+    output: {
+      readonly turnId: string;
+      readonly messageId: string;
+      readonly segments: readonly unknown[];
+    },
     index: number,
     cause: unknown,
     delivery: { fail(record: EventRecord<"delivery.failed">): Promise<void> },
@@ -232,7 +231,8 @@ function createRecord(
   scope: ChannelScope,
   draft: ResolvedMessageDraft | ResolvedEventDraft,
 ): InputRecord {
-  const timestamp = numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
+  const timestamp =
+    numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
   const channel = {
     id: scope.channelId,
     type:
@@ -252,32 +252,51 @@ function createRecord(
       channel,
       user: {
         id: draft.user?.id ?? session.userId ?? session.event.user?.id ?? session.author?.id ?? "",
-        ...(draft.user?.name ?? session.event.user?.name ?? session.author?.name) === undefined
+        ...((draft.user?.name ?? session.event.user?.name ?? session.author?.name) === undefined
           ? {}
-          : { name: draft.user?.name ?? session.event.user?.name ?? session.author?.name },
+          : { name: draft.user?.name ?? session.event.user?.name ?? session.author?.name }),
       },
       messageId: draft.messageId,
       elements: draft.elements,
     };
   }
   const { kind: _kind, eventType, text, ...variant } = draft;
-  return { platform: scope.platform, selfId: scope.selfId, timestamp, channel, eventType, text, ...variant } as EventRecord;
+  return {
+    platform: scope.platform,
+    selfId: scope.selfId,
+    timestamp,
+    channel,
+    eventType,
+    text,
+    ...variant,
+  } as EventRecord;
 }
 
 function scopeFromSession(session: Session): ChannelScope | null {
   if (!session.platform || !session.selfId || !session.channelId) return null;
-  return { platform: session.platform, selfId: session.selfId, channelId: session.channelId, isDirect: session.isDirect };
+  return {
+    platform: session.platform,
+    selfId: session.selfId,
+    channelId: session.channelId,
+    isDirect: session.isDirect,
+  };
 }
 
 function isMessageSession(session: Session): boolean {
   return session.type === "message-created";
 }
 
-function nextSegmentDelayMs(input: { readonly text: string; readonly consumedDeliveryMs: number; readonly config: PacingConfig }): number {
+function nextSegmentDelayMs(input: {
+  readonly text: string;
+  readonly consumedDeliveryMs: number;
+  readonly config: PacingConfig;
+}): number {
   const jitter = 0.85 + (1.15 - 0.85) * Math.random();
   const typingMs = ([...input.text].length / input.config.charactersPerSecond) * 1_000 * jitter;
   const delayMs = Math.min(Math.max(typingMs, 250), 10_000);
-  return input.consumedDeliveryMs + delayMs >= input.config.maxTotalDelayMs ? 250 : Math.round(delayMs);
+  return input.consumedDeliveryMs + delayMs >= input.config.maxTotalDelayMs
+    ? 250
+    : Math.round(delayMs);
 }
 
 function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -300,6 +319,9 @@ function numberValue(value: unknown): number | undefined {
 
 function normalizeDeliveryError(cause: unknown): { name: string; message: string; code?: string } {
   const error = cause instanceof Error ? cause : new Error(String(cause));
-  const code = typeof (cause as { code?: unknown } | null)?.code === "string" ? (cause as { code: string }).code : undefined;
+  const code =
+    typeof (cause as { code?: unknown } | null)?.code === "string"
+      ? (cause as { code: string }).code
+      : undefined;
   return { name: error.name, message: error.message, ...(code === undefined ? {} : { code }) };
 }

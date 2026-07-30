@@ -38,16 +38,27 @@ function store(put: AssetStore["put"] = vi.fn(async () => h("img", { id: ID })))
 
 describe("resolveOneBotEvent", () => {
   it("produces a typed reaction event from a valid reactions-updated notice", () => {
-    const result = resolveOneBotEvent(makeSession({
-      onebot: {
-        post_type: "notice", notice_type: "message_reactions_updated", group_id: "20000",
-        message_id: "40000", user_id: "30000", reactions: [{ emoji_id: "100", emoji_type: "1", count: 5 }],
-      },
-    }));
+    const result = resolveOneBotEvent(
+      makeSession({
+        onebot: {
+          post_type: "notice",
+          notice_type: "message_reactions_updated",
+          group_id: "20000",
+          message_id: "40000",
+          user_id: "30000",
+          reactions: [{ emoji_id: "100", emoji_type: "1", count: 5 }],
+        },
+      }),
+    );
 
     expect(result).toMatchObject({
-      kind: "event", eventType: "onebot.message-reactions-updated",
-      reaction: { messageId: "40000", userId: "30000", reactions: [{ id: "100", type: "1", count: 5 }] },
+      kind: "event",
+      eventType: "onebot.message-reactions-updated",
+      reaction: {
+        messageId: "40000",
+        userId: "30000",
+        reactions: [{ id: "100", type: "1", count: 5 }],
+      },
     });
   });
 
@@ -60,33 +71,48 @@ describe("resolveOneBotEvent", () => {
   });
 
   it("preserves numeric identifiers and zero reaction counts", () => {
-    const result = resolveOneBotEvent(makeSession({
-      onebot: {
-        post_type: "notice", notice_type: "message_reactions_updated", group_id: 20000,
-        message_id: 40000, user_id: 30000, reactions: [{ emoji_id: 100, emoji_type: 1, count: 0 }],
-      },
-    }));
+    const result = resolveOneBotEvent(
+      makeSession({
+        onebot: {
+          post_type: "notice",
+          notice_type: "message_reactions_updated",
+          group_id: 20000,
+          message_id: 40000,
+          user_id: 30000,
+          reactions: [{ emoji_id: 100, emoji_type: 1, count: 0 }],
+        },
+      }),
+    );
 
-    expect(result?.reaction).toMatchObject({ messageId: "40000", reactions: [{ id: "100", count: 0 }] });
+    expect(result?.reaction).toMatchObject({
+      messageId: "40000",
+      reactions: [{ id: "100", count: 0 }],
+    });
   });
 
   it("produces the typed poke event without raw platform residue", () => {
-    const result = resolveOneBotEvent(makeSession({
-      type: "notice",
-      event: {
-        sn: 7,
+    const result = resolveOneBotEvent(
+      makeSession({
         type: "notice",
-        login: { sn: 1, adapter: "onebot", status: 1, features: [] },
-        referrer: { source: "test" },
-        subtype: "poke",
-        channel: { id: "20000", type: 0 },
-        user: { id: "30000", name: "Alice" },
-        _data: { user_id: 30000, target_id: 10000 },
-      },
-    }));
+        event: {
+          sn: 7,
+          type: "notice",
+          login: { sn: 1, adapter: "onebot", status: 1, features: [] },
+          referrer: { source: "test" },
+          subtype: "poke",
+          channel: { id: "20000", type: 0 },
+          user: { id: "30000", name: "Alice" },
+          _data: { user_id: 30000, target_id: 10000 },
+        },
+      }),
+    );
 
     expect(result).toEqual({
-      kind: "event", eventType: "notice.poke", targetId: "10000", action: "拍了拍", text: "30000 拍了拍 10000",
+      kind: "event",
+      eventType: "notice.poke",
+      targetId: "10000",
+      action: "拍了拍",
+      text: "30000 拍了拍 10000",
     });
   });
 });
@@ -94,16 +120,28 @@ describe("resolveOneBotEvent", () => {
 describe("OneBot resolver", () => {
   it("passes an AbortSignal to streaming HTTP and persists a complete image ID", async () => {
     const http = vi.fn(async () => ({
-      data: new ReadableStream({ start(controller) { controller.enqueue(PNG); controller.close(); } }),
+      data: new ReadableStream({
+        start(controller) {
+          controller.enqueue(PNG);
+          controller.close();
+        },
+      }),
     }));
     const assets = store();
     const resolver = createResolver({ http } as never);
 
-    const result = await resolver.resolve(makeSession({ elements: [h("img", { src: "https://onebot.example/image" })] }), assets);
+    const result = await resolver.resolve(
+      makeSession({ elements: [h("img", { src: "https://onebot.example/image" })] }),
+      assets,
+    );
 
-    expect(http).toHaveBeenCalledWith("https://onebot.example/image", expect.objectContaining({
-      responseType: "stream", signal: expect.any(AbortSignal),
-    }));
+    expect(http).toHaveBeenCalledWith(
+      "https://onebot.example/image",
+      expect.objectContaining({
+        responseType: "stream",
+        signal: expect.any(AbortSignal),
+      }),
+    );
     expect(assets.put).toHaveBeenCalledWith(PNG);
     expect(result).toMatchObject({ kind: "message", elements: [h("img", { id: ID })] });
   });
@@ -116,7 +154,10 @@ describe("OneBot resolver", () => {
     const assets = store();
     try {
       const resolver = createResolver({ http } as never);
-      await resolver.resolve(makeSession({ elements: [h("img", { src: pathToFileURL(path).href })] }), assets);
+      await resolver.resolve(
+        makeSession({ elements: [h("img", { src: pathToFileURL(path).href })] }),
+        assets,
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -140,11 +181,18 @@ describe("OneBot resolver", () => {
   it("keeps the original image when a remote stream exceeds the per-image limit", async () => {
     const original = h("img", { src: "https://onebot.example/oversized" });
     const http = vi.fn(async () => ({
-      data: new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(5 * 1024 * 1024 + 1)); } }),
+      data: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(5 * 1024 * 1024 + 1));
+        },
+      }),
     }));
     const assets = store();
 
-    const result = await createResolver({ http } as never).resolve(makeSession({ elements: [original] }), assets);
+    const result = await createResolver({ http } as never).resolve(
+      makeSession({ elements: [original] }),
+      assets,
+    );
 
     expect(result).toMatchObject({ kind: "message", elements: [original] });
     expect(assets.put).not.toHaveBeenCalled();
@@ -188,7 +236,11 @@ describe("OneBot resolver", () => {
   });
 
   it("preserves unknown non-image element structure", async () => {
-    const text = h("p", { class: "copy" }, [h.text("before"), h("at", { id: "42" }), h.text("after")]);
+    const text = h("p", { class: "copy" }, [
+      h.text("before"),
+      h("at", { id: "42" }),
+      h.text("after"),
+    ]);
     const result = await createResolver({ http: vi.fn() } as never).resolve(
       makeSession({ elements: [text] }),
       store(),
@@ -199,7 +251,9 @@ describe("OneBot resolver", () => {
 
   it("preserves quote and forward elements unchanged", async () => {
     const quote = h("quote", { id: 42, content: "preserve" }, [h.text("preserve")]);
-    const forward = h("forward", { id: "f-1", summary: "untrusted", extra: "preserve" }, [h.text("preserve")]);
+    const forward = h("forward", { id: "f-1", summary: "untrusted", extra: "preserve" }, [
+      h.text("preserve"),
+    ]);
     const legacyForward = h("message", { forward: true, id: 7 }, [h.text("preserve")]);
     const result = await createResolver({ http: vi.fn() } as never).resolve(
       makeSession({ elements: [quote, forward, legacyForward] }),
@@ -219,13 +273,23 @@ describe("OneBot resolver", () => {
     const assets = store(put);
     const resolver = createResolver({ http: vi.fn() } as never);
 
-    const result = await resolver.resolve(makeSession({ elements: [h("p", {}, [
-      h("img", { src: "data:image/png;base64,iVBORw==" }),
-      h("span", {}, [h("img", { src: "data:image/png;base64,iVBORw==" })]),
-    ])] }), assets);
+    const result = await resolver.resolve(
+      makeSession({
+        elements: [
+          h("p", {}, [
+            h("img", { src: "data:image/png;base64,iVBORw==" }),
+            h("span", {}, [h("img", { src: "data:image/png;base64,iVBORw==" })]),
+          ]),
+        ],
+      }),
+      assets,
+    );
 
     expect(put).toHaveBeenCalledTimes(2);
-    expect(result).toMatchObject({ kind: "message", elements: [h("p", {}, [first, h("span", {}, [second])])] });
+    expect(result).toMatchObject({
+      kind: "message",
+      elements: [h("p", {}, [first, h("span", {}, [second])])],
+    });
     expect(result).not.toHaveProperty("platform");
     expect(result).not.toHaveProperty("selfId");
   });
@@ -235,14 +299,21 @@ describe("OneBot resolver", () => {
     const saved = h("img", { id: ID });
     const http = vi.fn(async (url: string) => {
       if (url.includes("fail")) throw new Error("offline");
-      return { data: new ReadableStream({ start(controller) { controller.enqueue(PNG); controller.close(); } }) };
+      return {
+        data: new ReadableStream({
+          start(controller) {
+            controller.enqueue(PNG);
+            controller.close();
+          },
+        }),
+      };
     });
     const assets = store(vi.fn(async () => saved));
 
-    const result = await createResolver({ http } as never).resolve(makeSession({ elements: [
-      failed,
-      h("img", { src: "https://onebot.example/saved" }),
-    ] }), assets);
+    const result = await createResolver({ http } as never).resolve(
+      makeSession({ elements: [failed, h("img", { src: "https://onebot.example/saved" })] }),
+      assets,
+    );
 
     expect(result).toMatchObject({ kind: "message", elements: [failed, saved] });
     expect(assets.put).toHaveBeenCalledOnce();
@@ -250,15 +321,24 @@ describe("OneBot resolver", () => {
 
   it("returns supported notice Drafts and skips unsupported Sessions", async () => {
     const resolver = createResolver({ http: vi.fn() } as never);
-    const notice = await resolver.resolve(makeSession({
-      type: "notice",
-      elements: undefined,
-      onebot: {
-        post_type: "notice", notice_type: "message_reactions_updated", group_id: "20000",
-        message_id: "40000", user_id: "30000", reactions: [],
-      },
-    }), store());
+    const notice = await resolver.resolve(
+      makeSession({
+        type: "notice",
+        elements: undefined,
+        onebot: {
+          post_type: "notice",
+          notice_type: "message_reactions_updated",
+          group_id: "20000",
+          message_id: "40000",
+          user_id: "30000",
+          reactions: [],
+        },
+      }),
+      store(),
+    );
     expect(notice).toMatchObject({ kind: "event", eventType: "onebot.message-reactions-updated" });
-    await expect(resolver.resolve(makeSession({ type: "notice", elements: undefined }), store())).resolves.toBeNull();
+    await expect(
+      resolver.resolve(makeSession({ type: "notice", elements: undefined }), store()),
+    ).resolves.toBeNull();
   });
 });

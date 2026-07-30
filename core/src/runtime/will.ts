@@ -60,7 +60,9 @@ const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
   group: "wait",
 };
 
-function resolveWillingnessConfig(config: Extract<Config["will"], { readonly engine: "willingness" }>): WillingnessConfig {
+function resolveWillingnessConfig(
+  config: Extract<Config["will"], { readonly engine: "willingness" }>,
+): WillingnessConfig {
   return {
     probabilityThreshold: config.probabilityThreshold ?? 55,
     decayHalfLifeSeconds: config.decayHalfLifeSeconds ?? 600,
@@ -152,7 +154,12 @@ function decayScore(
   const weightedSeconds = weightedSilenceSeconds(lastDecayAt, lastMessageAt, now);
   const decayed =
     score > config.probabilityThreshold && config.probabilityThreshold > 0
-      ? decayHighScore(score, weightedSeconds, config.probabilityThreshold, config.decayHalfLifeSeconds)
+      ? decayHighScore(
+          score,
+          weightedSeconds,
+          config.probabilityThreshold,
+          config.decayHalfLifeSeconds,
+        )
       : score * 0.5 ** (weightedSeconds / config.decayHalfLifeSeconds);
   return decayed < 0.01 ? 0 : Math.max(0, decayed);
 }
@@ -169,7 +176,12 @@ function weightedSilenceSeconds(lastDecayAt: number, lastMessageAt: number, now:
   );
 }
 
-function decayHighScore(score: number, weightedSeconds: number, threshold: number, halfLife: number): number {
+function decayHighScore(
+  score: number,
+  weightedSeconds: number,
+  threshold: number,
+  halfLife: number,
+): number {
   const weightedSecondsToThreshold = 2 * halfLife * Math.log2(score / threshold);
   if (weightedSeconds <= weightedSecondsToThreshold) {
     return score * 0.5 ** ((0.5 * weightedSeconds) / halfLife);
@@ -201,7 +213,10 @@ function dynamicGainMultiplier(ratio: number): number {
 }
 
 function isSelfMention(selfId: string, elements: readonly Element[] | undefined): boolean {
-  return elements?.some((element) => element.type === "at" && String(element.attrs.id) === selfId) ?? false;
+  return (
+    elements?.some((element) => element.type === "at" && String(element.attrs.id) === selfId) ??
+    false
+  );
 }
 
 function assertValidConfig(config: WillingnessConfig): void {

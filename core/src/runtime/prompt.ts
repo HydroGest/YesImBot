@@ -16,7 +16,10 @@ export type PromptResource = "constitution" | "athena-persona";
 // while vitest runs it unbundled from src/runtime/, so no fixed `..` depth is correct
 // in both places. Package-name resolution is depth-independent in both cases.
 const require = createRequire(import.meta.url);
-const resourceRoot = join(dirname(require.resolve("koishi-plugin-yesimbot/package.json")), "resources");
+const resourceRoot = join(
+  dirname(require.resolve("koishi-plugin-yesimbot/package.json")),
+  "resources",
+);
 
 export async function readPromptResource(name: PromptResource): Promise<string> {
   const content = (await readFile(join(resourceRoot, `${name}.md`), "utf8")).trim();

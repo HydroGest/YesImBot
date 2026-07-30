@@ -19,9 +19,9 @@ import type { Config, ImageBudget } from "../config.js";
 import type { EventRecord, InputRecord } from "../input.js";
 import { createInput, type Input } from "../input.js";
 import { createModelInputPlugin } from "./model-input.js";
-import { parseReply } from "./reply.js";
-import { buildCoreSystemPrompt } from "./prompt.js";
 import { OutputQueue } from "./output-queue.js";
+import { buildCoreSystemPrompt } from "./prompt.js";
+import { parseReply } from "./reply.js";
 import type { WillEngine, WillEngineObservation } from "./will.js";
 
 export interface ChannelRuntimeOptions {
@@ -205,7 +205,9 @@ export class ChannelRuntime {
           }
         },
         fail: async (record) => {
-          void this.handleInternal(record).catch((cause) => this.warn("delivery.failed", { cause }));
+          void this.handleInternal(record).catch((cause) =>
+            this.warn("delivery.failed", { cause }),
+          );
         },
       },
     };
@@ -220,7 +222,8 @@ export class ChannelRuntime {
       for await (const event of stream) {
         if (isAssistantMessage(event)) {
           const segments = parseAssistantContent(event.message.content);
-          if (segments !== undefined) output.push({ turnId: event.turnId, messageId: event.message.id, segments });
+          if (segments !== undefined)
+            output.push({ turnId: event.turnId, messageId: event.message.id, segments });
         }
         if (event.type === "turn.failed") {
           controller.abort();
@@ -289,7 +292,9 @@ export function isAssistantMessage(event: AgentInternalEvent): event is AgentInt
   readonly turnId: string;
   readonly message: { readonly id: string; readonly role: "assistant"; readonly content: unknown };
 } {
-  return event.type === "message.appended" && "turnId" in event && event.message.role === "assistant";
+  return (
+    event.type === "message.appended" && "turnId" in event && event.message.role === "assistant"
+  );
 }
 
 export function renderAssistantText(content: unknown): string | undefined {

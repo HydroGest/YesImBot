@@ -219,7 +219,7 @@ describe("YesImBotService facade", () => {
     const plugins = await Promise.all(
       state.runtime?.options
         .getAgentPluginFactories()
-         .map((factory) => factory({} as Parameters<AgentPluginFactory>[0], {} as never)) ?? [],
+        .map((factory) => factory({} as Parameters<AgentPluginFactory>[0], {} as never)) ?? [],
     );
 
     expect(plugins).toEqual([{ name: "plugin" }]);

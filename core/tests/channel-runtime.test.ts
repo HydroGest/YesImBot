@@ -3,10 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
-import {
-  createMessageEntry,
-  orderPlugins,
-} from "@yesimbot/agent-runtime";
+import { createMessageEntry, orderPlugins } from "@yesimbot/agent-runtime";
 import type { AgentPlugin, ModelMessageContext } from "@yesimbot/agent-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,7 +49,6 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
     }),
   };
 });
-
 
 import { h } from "koishi";
 
@@ -632,7 +628,6 @@ describe("ChannelRuntime", () => {
       expect.objectContaining({ event: "will_reply_failed", cause: expect.any(Error) }),
     );
   });
-
 
   it("returns active-send errors without creating delivery events", async () => {
     const { ctx, runtime } = createRuntime(

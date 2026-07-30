@@ -29,7 +29,8 @@ function assertScope(scope: ChannelScope): void {
     if (typeof scope[field] !== "string" || scope[field].length === 0)
       throw new TypeError(`ChannelScope.${field} must be a non-empty string`);
   }
-  if (typeof scope.isDirect !== "boolean") throw new TypeError("ChannelScope.isDirect must be a boolean");
+  if (typeof scope.isDirect !== "boolean")
+    throw new TypeError("ChannelScope.isDirect must be a boolean");
 }
 
 function encodeDirectoryComponent(value: string): string {
@@ -87,16 +88,20 @@ function parseManifest(value: unknown): ChannelManifest {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new TypeError("Channel manifest must be an object");
   const fields = value as Record<string, unknown>;
-  const allowed = fields.selfId === undefined
-    ? ["platform", "channelId", "createdAt"]
-    : ["platform", "channelId", "selfId", "createdAt"];
+  const allowed =
+    fields.selfId === undefined
+      ? ["platform", "channelId", "createdAt"]
+      : ["platform", "channelId", "selfId", "createdAt"];
   if (Object.keys(fields).length !== allowed.length || !allowed.every((field) => field in fields))
     throw new TypeError("Channel manifest fields are invalid");
   for (const field of ["platform", "channelId", "createdAt"] as const) {
     if (typeof fields[field] !== "string" || fields[field].length === 0)
       throw new TypeError(`Channel manifest ${field} is invalid`);
   }
-  if (fields.selfId !== undefined && (typeof fields.selfId !== "string" || fields.selfId.length === 0))
+  if (
+    fields.selfId !== undefined &&
+    (typeof fields.selfId !== "string" || fields.selfId.length === 0)
+  )
     throw new TypeError("Channel manifest selfId is invalid");
   return {
     platform: fields.platform as string,
@@ -109,7 +114,10 @@ function parseManifest(value: unknown): ChannelManifest {
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   const temporary = `${path}.${randomUUID()}.tmp`;
   try {
-    await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+    });
     await fs.rename(temporary, path);
   } finally {
     await fs.rm(temporary, { force: true });
@@ -147,13 +155,18 @@ export class ChannelStorage {
   private async startInternal(): Promise<void> {
     await fs.mkdir(this.channelsPath, { recursive: true });
     for (const entry of await fs.readdir(this.channelsPath, { withFileTypes: true })) {
-      if (!entry.isDirectory() || (!entry.name.startsWith("shared-") && !entry.name.startsWith("direct-"))) {
+      if (
+        !entry.isDirectory() ||
+        (!entry.name.startsWith("shared-") && !entry.name.startsWith("direct-"))
+      ) {
         this.warn("storage.directory_invalid", { entry: entry.name });
         continue;
       }
       try {
         const manifest = parseManifest(
-          JSON.parse(await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")),
+          JSON.parse(
+            await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8"),
+          ),
         );
         const scope = scopeFromManifest(manifest);
         if (channelDirectoryName(scope) !== entry.name)
@@ -175,7 +188,9 @@ export class ChannelStorage {
       const stat = await fs.lstat(destination);
       if (!stat.isDirectory() || stat.isSymbolicLink())
         throw new Error("Channel storage destination is not a directory");
-      const manifest = parseManifest(JSON.parse(await fs.readFile(join(destination, "channel.json"), "utf8")));
+      const manifest = parseManifest(
+        JSON.parse(await fs.readFile(join(destination, "channel.json"), "utf8")),
+      );
       if (scopeMapKey(scopeFromManifest(manifest)) !== key)
         throw new Error("Channel storage integrity mismatch");
       this.manifests.set(key, manifest);
@@ -206,7 +221,10 @@ export class ChannelStorage {
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.tail.then(operation);
-    this.tail = result.then(() => undefined, () => undefined);
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
   }
 

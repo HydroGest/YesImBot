@@ -39,7 +39,8 @@ function createContext() {
     vi.fn<() => ReturnType<typeof createLogger>>(() => scopedLogger),
     createLogger(),
   );
-  const factories: Array<AgentPluginFactory & ((context: any) => ReturnType<AgentPluginFactory>)> = [];
+  const factories: Array<AgentPluginFactory & ((context: any) => ReturnType<AgentPluginFactory>)> =
+    [];
   const dispose = vi.fn<() => void>();
   const ctx = {
     logger: rootLogger,
