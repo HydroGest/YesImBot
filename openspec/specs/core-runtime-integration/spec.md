@@ -131,9 +131,9 @@ Core MUST use one append-only JSONL storage file per persistent channel tuple at
 - **WHEN** Core recreates a ChannelRuntime whose current Manifest-backed JSONL file already exists
 - **THEN** the Runtime storage MUST read current-format previously appended entries and MUST not read legacy JSONL
 
-### Requirement: Immutable Runtime Media Snapshot
-RuntimeManager MUST snapshot the resolved image-input capability and configured model-call media policy when creating a ChannelRuntime. ChannelRuntime MUST reuse that snapshot for its lifetime, and a changed capability or policy MUST activate when a Runtime is replaced.
+### Requirement: Immutable Runtime Image Budget Snapshot
+RuntimeManager MUST resolve explicit model image capability and `ImageBudget | null` when creating a ChannelRuntime. ChannelRuntime MUST reuse that snapshot for its lifetime; changed model metadata or `imageInput` configuration MUST activate only when the Runtime is replaced.
 
 #### Scenario: Existing runtime handles another model call
-- **WHEN** model metadata or multimedia configuration changes after ChannelRuntime initialization
-- **THEN** the active runtime MUST retain its existing media capability and policy snapshot
+- **WHEN** model metadata or imageInput configuration changes after ChannelRuntime initialization
+- **THEN** the active Runtime MUST retain its existing `ImageBudget | null` snapshot

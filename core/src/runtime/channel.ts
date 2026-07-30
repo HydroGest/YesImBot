@@ -8,23 +8,17 @@ import {
   type AgentStorage,
   type AgentTool,
   type AgentToolSet,
-  type ModelMessageContext,
 } from "@yesimbot/agent-runtime";
-import type { FilePart, LanguageModel } from "ai";
+import type { LanguageModel } from "ai";
 import type { Bot, Context, Element, Logger } from "koishi";
 import { z } from "zod";
 
 import type { AssetStore } from "../asset.js";
 import { scopeMapKey, type ChannelScope } from "../channel.js";
-import type { Config } from "../config.js";
-import { formatInput } from "../event/formatter.js";
+import type { Config, ImageBudget } from "../config.js";
 import type { EventRecord, InputRecord } from "../input.js";
-import { createInput, isInput, type Input } from "../input.js";
-import {
-  selectInputFiles,
-  UnsupportedImageMimeError,
-  type UnifiedImagePolicy,
-} from "../media/index.js";
+import { createInput, type Input } from "../input.js";
+import { createModelInputPlugin } from "./model-input.js";
 import { parseReply } from "./reply.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
 import { OutputQueue } from "./output-queue.js";
@@ -39,9 +33,7 @@ export interface ChannelRuntimeOptions {
   readonly will: WillEngine;
   readonly assets: AssetStore;
   readonly model: LanguageModel;
-  readonly provider: string;
-  readonly imageInput: boolean;
-  readonly mediaPolicy: UnifiedImagePolicy;
+  readonly imageBudget: ImageBudget | null;
   readonly agentPlugins: readonly AgentPlugin[];
   readonly includeMessageId: boolean;
   readonly storage: AgentStorage;
@@ -83,10 +75,6 @@ export class ChannelRuntime {
   constructor(private readonly opts: ChannelRuntimeOptions) {
     this.scope = { ...opts.scope };
     this.selfId = opts.bot.selfId;
-    const selectedFilesByContext = new WeakMap<
-      ModelMessageContext,
-      Promise<ReadonlyMap<Input["id"], readonly FilePart[]>>
-    >();
     const basePath = isAbsolute(opts.config.basePath)
       ? opts.config.basePath
       : resolve(opts.ctx.baseDir, opts.config.basePath);
@@ -121,38 +109,12 @@ export class ChannelRuntime {
         buildCoreSystemPrompt({ basePath, channel: this.scope, logger: opts.logger }),
       tools,
       plugins: [
-        {
-          name: "core.event-format",
-          enforce: "pre",
-          toModelMessages: async (message, context) => {
-            if (!isInput(message)) return [];
-            let selectedFiles = selectedFilesByContext.get(context);
-            if (!selectedFiles) {
-              selectedFiles = selectInputFiles(context, {
-                assetStore: opts.assets,
-                imageInput: opts.imageInput,
-                policy: opts.mediaPolicy,
-                onAssetFailure: (assetId, cause) =>
-                  this.warn(
-                    cause instanceof UnsupportedImageMimeError
-                      ? "asset_invalid_mime"
-                      : "asset_read_failed",
-                    { assetId, cause },
-                  ),
-              }).catch((cause: unknown) => {
-                this.warn("media_selection_failed", { cause });
-                return new Map();
-              });
-              selectedFilesByContext.set(context, selectedFiles);
-            }
-            return [
-              formatInput(message, {
-                includeMessageId: opts.includeMessageId,
-                files: (await selectedFiles).get(message.id),
-              }),
-            ];
-          },
-        },
+        createModelInputPlugin({
+          assets: opts.assets,
+          imageBudget: opts.imageBudget,
+          includeMessageId: opts.includeMessageId,
+          warn: (event, fields) => this.warn(event, fields),
+        }),
         ...opts.agentPlugins,
       ],
       terminalTool: true,

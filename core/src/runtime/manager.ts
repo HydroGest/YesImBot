@@ -6,7 +6,7 @@ import { Universal } from "koishi";
 
 import type { AssetService } from "../asset.js";
 import { scopeMapKey, type ChannelScope, type ChannelStorage } from "../channel.js";
-import { resolveMultimediaImagePolicy, type Config } from "../config.js";
+import { resolveImageBudget, type Config } from "../config.js";
 import type { InputRecord } from "../input.js";
 import { ChannelRuntime, type ChannelRuntimeOptions, type ChannelRuntimeResult } from "./channel.js";
 import { createJsonlStorage } from "./storage.js";
@@ -174,9 +174,10 @@ export class RuntimeManager {
       }),
       assets: this.opts.assets.createStore(scope),
       model: resolved.model,
-      provider: resolved.providerId,
-      imageInput: resolved.entry.modalities?.input?.includes("image") === true,
-      mediaPolicy: resolveMultimediaImagePolicy(this.opts.config.multimedia),
+      imageBudget: resolveImageBudget(
+        this.opts.config.imageInput,
+        resolved.entry.modalities?.input?.includes("image") === true,
+      ),
       agentPlugins: plugins,
       includeMessageId: factories.some((factory) => factory.requiresMessageId === true),
       storage: createJsonlStorage(

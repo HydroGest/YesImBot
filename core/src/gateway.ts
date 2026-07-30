@@ -9,7 +9,6 @@ import {
 import type { AssetService, AssetStore } from "./asset.js";
 import type { ChannelScope } from "./channel.js";
 import { resolveReplyPacingConfig, type PacingConfig } from "./config.js";
-import { renderElements } from "./event/element.js";
 import type {
   EventRecord,
   InputRecord,
@@ -131,7 +130,7 @@ export class Gateway {
       for (const [index, segment] of output.segments.entries()) {
         if (result.delivery.signal.aborted) return;
         const delayMs = nextSegmentDelayMs({
-          text: renderElements(segment),
+          text: segment.join(""),
           consumedDeliveryMs,
           config: this.pacing,
         });

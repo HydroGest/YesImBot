@@ -1,7 +1,6 @@
 import { Schema } from "koishi";
 
 import type { ChannelAllowRule } from "./gateway.js";
-import type { UnifiedImagePolicy } from "./media/index.js";
 
 export type WillConfig =
   | {
@@ -17,23 +16,35 @@ export type WillConfig =
       readonly replyCost?: number;
     };
 
-export const DEFAULT_MULTIMEDIA_IMAGE_POLICY: UnifiedImagePolicy = Object.freeze({
-  enabled: true,
+export interface ImageBudget {
+  readonly maxCount: number;
+  readonly maxBytesPerImage: number;
+  readonly maxTotalBytes: number;
+}
+
+export type ImageInputConfig =
+  | false
+  | {
+      readonly maxCount?: number;
+      readonly maxBytesPerImage?: number;
+      readonly maxTotalBytes?: number;
+    };
+
+export const DEFAULT_IMAGE_BUDGET: ImageBudget = {
   maxCount: 4,
   maxBytesPerImage: 5 * 1024 * 1024,
   maxTotalBytes: 10 * 1024 * 1024,
-  selection: "current-first",
-});
+};
 
 export interface PacingConfig {
   charactersPerSecond: number;
   maxTotalDelayMs: number;
 }
 
-export const DEFAULT_REPLY_PACING_CONFIG: PacingConfig = Object.freeze({
+export const DEFAULT_REPLY_PACING_CONFIG: PacingConfig = {
   charactersPerSecond: 8,
   maxTotalDelayMs: 60_000,
-});
+};
 
 export function resolveReplyPacingConfig(pacing?: Partial<PacingConfig>): PacingConfig {
   return Object.freeze({ ...DEFAULT_REPLY_PACING_CONFIG, ...pacing });
@@ -44,30 +55,23 @@ export interface Config {
   chatModel: string;
   logLevel?: number;
   allowedChannels?: ChannelAllowRule[];
-  multimedia?: {
-    enabled?: boolean;
-    image?: {
-      selection?: "current-first" | "fifo" | "lifo";
-      maxCount?: number;
-      maxBytesPerImage?: number;
-      maxTotalBytes?: number;
-    };
-  };
+  imageInput?: ImageInputConfig;
   will?: WillConfig;
   reply?: {
     pacing?: Partial<PacingConfig>;
   };
 }
 
-export function resolveMultimediaImagePolicy(multimedia: Config["multimedia"]): UnifiedImagePolicy {
-  const image = multimedia?.image;
-  return Object.freeze({
-    enabled: multimedia?.enabled ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.enabled,
-    maxCount: image?.maxCount ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxCount,
-    maxBytesPerImage: image?.maxBytesPerImage ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxBytesPerImage,
-    maxTotalBytes: image?.maxTotalBytes ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxTotalBytes,
-    selection: image?.selection ?? DEFAULT_MULTIMEDIA_IMAGE_POLICY.selection,
-  });
+export function resolveImageBudget(
+  imageInput: ImageInputConfig | undefined,
+  modelSupportsImages: boolean,
+): ImageBudget | null {
+  if (imageInput === false || !modelSupportsImages) return null;
+  return {
+    maxCount: imageInput?.maxCount ?? DEFAULT_IMAGE_BUDGET.maxCount,
+    maxBytesPerImage: imageInput?.maxBytesPerImage ?? DEFAULT_IMAGE_BUDGET.maxBytesPerImage,
+    maxTotalBytes: imageInput?.maxTotalBytes ?? DEFAULT_IMAGE_BUDGET.maxTotalBytes,
+  };
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -91,18 +95,15 @@ export const Config: Schema<Config> = Schema.intersect([
       .default([]),
   }).description("基础配置"),
   Schema.object({
-    multimedia: Schema.object({
-      enabled: Schema.boolean().default(DEFAULT_MULTIMEDIA_IMAGE_POLICY.enabled),
-      image: Schema.object({
-        selection: Schema.union(["current-first", "fifo", "lifo"]).default(
-          DEFAULT_MULTIMEDIA_IMAGE_POLICY.selection,
-        ),
-        maxCount: Schema.number().default(DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxCount),
-        maxBytesPerImage: Schema.number().default(DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxBytesPerImage),
-        maxTotalBytes: Schema.number().default(DEFAULT_MULTIMEDIA_IMAGE_POLICY.maxTotalBytes),
+    imageInput: Schema.union([
+      Schema.const(false),
+      Schema.object({
+        maxCount: Schema.number(),
+        maxBytesPerImage: Schema.number(),
+        maxTotalBytes: Schema.number(),
       }),
-    }),
-  }).description("模型多媒体输入"),
+    ]),
+  }).description("模型图片输入"),
   Schema.object({
     will: Schema.union([
       Schema.object({

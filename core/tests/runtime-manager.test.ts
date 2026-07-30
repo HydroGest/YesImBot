@@ -10,7 +10,8 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/channel.js";
 import {
   Config,
-  DEFAULT_MULTIMEDIA_IMAGE_POLICY,
+  DEFAULT_IMAGE_BUDGET,
+  resolveImageBudget,
   type Config as CoreConfig,
 } from "../src/config.js";
 import type { MessageRecord } from "../src/input.js";
@@ -259,20 +260,27 @@ describe("RuntimeManager", () => {
     expect(runtimeOptions(state.runtimes[1]!)).toMatchObject({ model, agentPlugins: [second] });
   });
 
-  it("snapshots multimedia capability and policy until replacement", async () => {
+  it("resolves imageInput disablement and defaults before snapshotting each runtime", async () => {
     const { manager, config, setEntry } = createManager();
+
+    expect(resolveImageBudget(false, true)).toBeNull();
+    expect(resolveImageBudget(undefined, true)).toEqual(DEFAULT_IMAGE_BUDGET);
+    expect(resolveImageBudget({}, false)).toBeNull();
     await manager.route(record("room"));
     const first = runtimeOptions(state.runtimes[0]!);
 
-    expect(first.imageInput).toBe(false);
-    expect(first.mediaPolicy).toEqual(DEFAULT_MULTIMEDIA_IMAGE_POLICY);
+    expect(first.imageBudget).toBeNull();
     setEntry({ modalities: { input: ["image"] } });
-    config.multimedia = { enabled: false, image: { selection: "fifo", maxCount: 2, maxBytesPerImage: 1024, maxTotalBytes: 2048 } };
+    config.imageInput = { maxCount: 2, maxBytesPerImage: 1024, maxTotalBytes: 2048 };
     await manager.route(record("room"));
     expect(state.runtimes).toHaveLength(1);
 
     await manager.route(record("room", { selfId: "other" }));
-    expect(runtimeOptions(state.runtimes[1]!)).toMatchObject({ imageInput: true, mediaPolicy: { enabled: false, selection: "fifo" } });
+    expect(runtimeOptions(state.runtimes[1]!).imageBudget).toEqual({
+      maxCount: 2,
+      maxBytesPerImage: 1024,
+      maxTotalBytes: 2048,
+    });
   });
 
   it("uses factory message-id capability from each creation snapshot", async () => {

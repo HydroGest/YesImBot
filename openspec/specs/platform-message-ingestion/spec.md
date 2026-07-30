@@ -118,18 +118,13 @@ The OneBot Resolver MUST recursively persist its `img` elements and return each 
 - **THEN** Gateway MUST record a resolver diagnostic
 - **AND** it MUST NOT persist or route that Session
 
-### Requirement: Fixed Forward and Quote Forms
-Session resolution MUST keep forward elements as ID plus fixed summary and quote elements as ID only. Forward and quote elements MUST bypass image persistence.
+### Requirement: OneBot Non-Image Element Preservation
+The OneBot Resolver MUST transform only `img` elements. It MUST preserve every non-image Element's original type, attributes, and children unchanged while recursively processing images within those children.
 
-#### Scenario: Forward element is accepted
-- **WHEN** an admitted event contains a forward element
-- **THEN** the Resolver output MUST retain only its ID and fixed summary
-- **AND** image persistence MUST NOT expand forwarded message bodies
-
-#### Scenario: Quote element is accepted
-- **WHEN** an admitted event contains a quote element
-- **THEN** the Resolver output MUST retain only its message ID
-
+#### Scenario: Quote or forward element is accepted
+- **WHEN** an admitted OneBot message contains quote, forward, or any other non-image elements
+- **THEN** the Resolver output MUST retain their original type, attributes, and children
+- **AND** it MUST NOT apply quote or forward-specific normalization
 ### Requirement: Scoped Asset Service Ownership
 The public AssetService MUST scope Stores by the persistent ChannelScope tuple. Shared Stores MUST use `[platform, channelId]`; a shared Runtime replacement for another Bot MUST use that same persistent tuple.
 

@@ -10,8 +10,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { h } from "koishi";
 
 import type { PacingConfig } from "../src/config.js";
-import { formatInput } from "../src/event/formatter.js";
-import { isInput, type InputRecord, type MessageRecord } from "../src/input.js";
+import type { InputRecord, MessageRecord } from "../src/input.js";
 import { Gateway } from "../src/gateway.js";
 import { RuntimeManager } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
@@ -193,13 +192,6 @@ describe("Gateway passive delivery", () => {
     const restarted = createIntegratedGateway(basePath);
     await restarted.gateway.handle(session() as never);
     const replay = await createJsonlStorage(currentJsonl).read();
-    const persistedMessage = replay[0]?.type === "message" ? replay[0].data : undefined;
-    if (!persistedMessage || !isInput(persistedMessage))
-      throw new Error("Expected persisted input");
-
-    expect(formatInput(persistedMessage, { includeMessageId: true }).content).toBe(
-      '[time="1970/1/1 08:00" sender="user-1" id="message-1"]\nhello',
-    );
     expect(replay).toHaveLength(3);
     expect(await readFile(oldJsonl, "utf8")).toBe(oldPayload);
     await restarted.manager.stop();
