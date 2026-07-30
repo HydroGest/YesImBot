@@ -148,7 +148,7 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({});
 
     await expect(
-      runtime.getForwardTool().execute?.({ messageId: "forward" }, {} as never),
+      runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never),
     ).rejects.toThrow("当前频道适配器不支持 OneBot 协议内部接口");
   });
 
@@ -162,12 +162,12 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({ internal: { getForwardMsg } });
     const tool = runtime.getForwardTool();
 
-    await expect(tool.execute?.({ messageId: "forward" }, {} as never)).resolves.toEqual({
+    await expect(tool.execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({
       messages: [["Alice (1)", expect.any(String), ["hello[图片]"]]],
     });
     expect(tool.description).toContain("nextOffset");
     expect(tool.description).toContain("forwardId");
-    expect(tool.description).toContain("messageId");
+    expect(tool.description).not.toContain("messageId");
   });
 
   it("changes only image parts when image parsing is enabled", async () => {
@@ -184,7 +184,7 @@ describe("onebot-utils plugin", () => {
     );
 
     await expect(
-      runtime.getForwardTool().execute?.({ messageId: "forward" }, {} as never),
+      runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never),
     ).resolves.toEqual({
       messages: [
         [
@@ -214,7 +214,7 @@ describe("onebot-utils plugin", () => {
     });
 
     await expect(
-      runtime.getForwardTool().execute?.({ messageId: "forward" }, {} as never),
+      runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never),
     ).resolves.toEqual({ messages: [["Alice (1)", expect.any(String), [{ forward: "child" }]]] });
   });
 
@@ -226,8 +226,8 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({ internal: { getForwardMsg } });
     const tool = runtime.getForwardTool();
 
-    await tool.execute?.({ messageId: "forward" }, {} as never);
-    await tool.execute?.({ messageId: "forward", offset: 1 }, {} as never);
+    await tool.execute?.({ forwardId: "forward" }, {} as never);
+    await tool.execute?.({ forwardId: "forward", offset: 1 }, {} as never);
 
     expect(getForwardMsg).toHaveBeenCalledOnce();
   });

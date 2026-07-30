@@ -37,7 +37,7 @@ The plugin MUST expose `parseImages`, defaulting to `false`, and a positive `max
 
 ### Requirement: OneBot Forward Message Tool
 
-The OneBot utils plugin MUST provide `onebot_get_forward_message`. A first read MUST use required `messageId`, call the current Bot's OneBot `internal.getForwardMsg(messageId)`, and read only the returned array-form `message` segments, never `raw_message` or CQ text. A later read of nested content MUST use required `forwardId` and its Runtime-scoped cache without calling the OneBot API. Exactly one ID kind MUST be supplied. Both kinds accept optional non-negative integer `offset` defaulting to zero and optional integer `limit` defaulting to thirty and clamped to sixty.
+The OneBot utils plugin MUST provide `onebot_get_forward_message`. Input MUST accept required `forwardId`, an optional non-negative integer `offset` defaulting to zero, and an optional integer `limit` defaulting to thirty and clamped to sixty. The tool MUST first use a Runtime-scoped cache for that ID; on a cache miss it MUST call the current Bot's OneBot `internal.getForwardMsg(forwardId)` once and read only its returned array-form `message` segments, never `raw_message` or CQ text.
 
 The result MUST have this compact shape:
 
@@ -58,21 +58,23 @@ type ForwardPage = {
   nextOffset?: number
   overLimit?: true
 }
+
+type ForwardResult = ForwardPage | { error: string }
 ```
 
-`nextOffset`, when present, MUST be the next input offset for the same supplied ID kind and value; it replaces a boolean continuation flag. `overLimit` MUST be present only when one complete first record exceeds the configured text budget and is returned as its own page.
+`nextOffset`, when present, MUST be the next input offset for the same `forwardId`; it replaces a boolean continuation flag. `overLimit` MUST be present only when one complete first record exceeds the configured text budget and is returned as its own page.
 
 #### Scenario: Fetch first forward page
 
-- **WHEN** the model calls `onebot_get_forward_message` with only a `messageId`
-- **THEN** the tool MUST call the current Bot's OneBot internal with that ID
+- **WHEN** the model calls `onebot_get_forward_message` with only a `forwardId`
+- **THEN** the tool MUST call the current Bot's OneBot internal with that ID when the ID is not cached
 - **AND** it MUST start at offset zero and use limit thirty
 - **AND** it MUST return compact message tuples without echoing the input ID or offset
 
 #### Scenario: Continue a forward page
 
 - **WHEN** a page contains `nextOffset`
-- **THEN** the tool description MUST direct the model to call the same ID kind and value with that offset
+- **THEN** the tool description MUST direct the model to call the same `forwardId` with that offset
 - **AND** the following page MUST continue at that top-level message index
 
 #### Scenario: Content reaches a page bound
@@ -99,7 +101,7 @@ Forward content normalization MUST retain `text` segment text exactly and preser
 
 With `parseImages: false`, an image segment MUST become `[图片]`. With `parseImages: true`, it MUST become `{ image: [summary, file, size] }` without an image URL or subtype. `file_size` MUST become a decimal human-readable literal: bytes below 1,000 use integer `B`; larger values use `KB`, `MB`, or `GB` with one decimal place, an ASCII space before the unit, and a base of 1,000. An invalid source or one that is not a non-negative safe integer MUST produce `null` for `size`.
 
-A nested `forward` segment MUST become `{ forward: id }`. The tool MUST NOT inline its nested content, but when that content is already included in the first response, it MUST normalize and cache the content by `forwardId` for a later call to the same tool. Normal text URLs MUST remain intact. The tool MUST NOT download media, write channel assets, return media bytes, or stringify raw OneBot objects.
+A nested `forward` segment MUST become `{ forward: id }`. The tool MUST NOT inline its nested content, but when that content is already included in the same forward response, it MUST normalize and cache the content by that nested `forwardId` for a later call to the same tool. Normal text URLs MUST remain intact. The tool MUST NOT download media, write channel assets, return media bytes, or stringify raw OneBot objects.
 
 #### Scenario: Image parsing is disabled
 
@@ -120,7 +122,7 @@ A nested `forward` segment MUST become `{ forward: id }`. The tool MUST NOT inli
 
 #### Scenario: Expanded nested forward is read from cache
 
-- **WHEN** a first `messageId` response includes a nested forward's expanded content
+- **WHEN** a `forwardId` response includes a nested forward's expanded content
 - **THEN** the tool MUST cache its normalized top-level messages under that nested `forwardId`
 - **WHEN** the model later calls the tool with that `forwardId`
 - **THEN** the tool MUST return the cached messages without calling `getForwardMsg`
@@ -132,13 +134,18 @@ A nested `forward` segment MUST become `{ forward: id }`. The tool MUST NOT inli
 
 ### Requirement: Runtime-Scoped Forward Cache
 
-For each ChannelRuntime, the tool MUST cache every successfully normalized top-level result by `messageId` and every included expanded nested result by `forwardId` for that Runtime's lifetime. Later pages and repeated reads of either ID MUST use the matching cached result rather than call the OneBot API again. Failed reads and failed normalization MUST NOT be cached. The cache MUST have no capacity or time-expiration limit and MUST be released when its Runtime is released.
+For each ChannelRuntime, the tool MUST cache every successfully normalized top-level result and every included expanded nested result by `forwardId` for that Runtime's lifetime. Later pages and repeated reads of a cached ID MUST use its cached result rather than call the OneBot API again. On an uncached ID, the tool MUST call the OneBot API once; if it returns no array-form forward message, the tool MUST return `{ error: "未找到合并转发消息: <forwardId>" }`. Failed reads and failed normalization MUST NOT be cached. The cache MUST have no capacity or time-expiration limit and MUST be released when its Runtime is released.
 
-#### Scenario: Later page uses cached result
+#### Scenario: Cached result is reused
 
-- **WHEN** the model requests a later page for a previously successful `messageId`
+- **WHEN** the model requests a later page for a previously successful `forwardId`
 - **THEN** the tool MUST serve that page from the Runtime-scoped cached result
 - **AND** it MUST NOT call `getForwardMsg` again
+
+#### Scenario: Unavailable forward returns a tool result
+
+- **WHEN** an uncached `forwardId` has no array-form result from the OneBot API
+- **THEN** the tool MUST return `{ error: "未找到合并转发消息: <forwardId>" }`
 
 ### Requirement: OneBot Reaction Tool
 

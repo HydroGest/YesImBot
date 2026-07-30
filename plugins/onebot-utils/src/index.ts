@@ -4,7 +4,7 @@ import type { OneBot, OneBotBot } from "koishi-plugin-adapter-onebot";
 import type { AgentPluginFactory, ChannelScope } from "koishi-plugin-yesimbot";
 
 import { createForwardReader } from "./forward.js";
-import type { ForwardPage, ForwardReaderConfig, ForwardToolInput } from "./types.js";
+import type { ForwardReaderConfig, ForwardResult, ForwardToolInput } from "./types.js";
 
 export interface OnebotUtilsConfig {
   parseImages: boolean;
@@ -17,13 +17,9 @@ const ONEBOT_REQUEST_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 
 const FORWARD_MESSAGE_SCHEMA = jsonSchema({
   type: "object",
   properties: {
-    messageId: {
-      type: "string",
-      description: "顶层合并转发消息的 ID",
-    },
     forwardId: {
       type: "string",
-      description: "首次读取时已展开并缓存的嵌套转发 ID",
+      description: "合并转发消息的 ID",
     },
     offset: {
       type: "integer",
@@ -37,7 +33,7 @@ const FORWARD_MESSAGE_SCHEMA = jsonSchema({
       description: "每页条数，默认 30，最大 60",
     },
   },
-  oneOf: [{ required: ["messageId"] }, { required: ["forwardId"] }],
+  required: ["forwardId"],
   additionalProperties: false,
 }) as AgentTool<ForwardToolInput>["inputSchema"];
 
@@ -78,10 +74,10 @@ function getOneBotInternal(bot: Bot): OneBot.Internal {
 function createOneBotTools(bot: Bot, config: Readonly<ForwardReaderConfig>): AgentTool[] {
   let forwardReader: ReturnType<typeof createForwardReader> | undefined;
 
-  const getForwardMessageTool: AgentTool<ForwardToolInput, ForwardPage> = {
+  const getForwardMessageTool: AgentTool<ForwardToolInput, ForwardResult> = {
     name: "onebot_get_forward_message",
     description:
-      "分页获取合并转发消息的紧凑元组。首次读取使用 messageId；若嵌套转发已展开，可使用缓存的 forwardId。若结果含 nextOffset，请使用相同 ID 和该 nextOffset 继续读取。",
+      "分页获取合并转发消息的紧凑元组。使用 forwardId；若结果含 nextOffset，请使用相同 forwardId 和该 nextOffset 继续读取。",
     inputSchema: FORWARD_MESSAGE_SCHEMA,
     execute: async (input) => {
       forwardReader ??= createForwardReader(getOneBotInternal(bot), config);

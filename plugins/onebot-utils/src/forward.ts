@@ -3,6 +3,7 @@ import type { OneBot } from "koishi-plugin-adapter-onebot";
 import type {
   ForwardMessage,
   ForwardPage,
+  ForwardResult,
   ForwardPart,
   ForwardReaderConfig,
   ForwardToolInput,
@@ -23,43 +24,36 @@ const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
 export function createForwardReader(
   internal: OneBot.Internal,
   config: Readonly<ForwardReaderConfig>,
-): (input: ForwardToolInput) => Promise<ForwardPage> {
-  const messageCache = new Map<string, readonly ForwardMessage[]>();
-  const forwardCache = new Map<string, readonly ForwardMessage[]>();
+): (input: ForwardToolInput) => Promise<ForwardResult> {
+  const cache = new Map<string, readonly ForwardMessage[]>();
 
   return async function readForwardPage(input) {
     const start = clampOffset(input.offset);
     const limit = clampLimit(input.limit);
-    const records = isMessageForwardInput(input)
-      ? messageCache.get(input.messageId) ?? (await loadAndNormalize(input.messageId))
-      : getCachedForward(input.forwardId);
+    const records = cache.get(input.forwardId) ?? (await loadAndNormalize(input.forwardId));
+    if (!records) return { error: `未找到合并转发消息: ${input.forwardId}` };
 
     return page(records, start, limit, config.maxForwardPageChars);
   };
 
-  async function loadAndNormalize(messageId: string): Promise<readonly ForwardMessage[]> {
-    const nodes = (await internal.getForwardMsg(messageId)) as unknown as readonly OneBotForwardNode[];
+  async function loadAndNormalize(
+    forwardId: string,
+  ): Promise<readonly ForwardMessage[] | undefined> {
+    const response = await internal.getForwardMsg(forwardId);
+    if (!Array.isArray(response)) return undefined;
+
+    const nodes = response as unknown as readonly OneBotForwardNode[];
     const nestedForwards = new Map<string, readonly ForwardMessage[]>();
     const records = nodes.map((node) => normalizeNode(node, config, nestedForwards));
 
-    messageCache.set(messageId, records);
-    for (const [forwardId, nestedRecords] of nestedForwards) {
-      forwardCache.set(forwardId, nestedRecords);
+    cache.set(forwardId, records);
+    for (const [nestedForwardId, nestedRecords] of nestedForwards) {
+      cache.set(nestedForwardId, nestedRecords);
     }
     return records;
   }
+}
 
-  function getCachedForward(forwardId: string): readonly ForwardMessage[] {
-    const records = forwardCache.get(forwardId);
-    if (!records) throw new Error(`未找到已缓存的嵌套转发消息: ${forwardId}`);
-    return records;
-  }
-}
-function isMessageForwardInput(
-  input: ForwardToolInput,
-): input is Extract<ForwardToolInput, { messageId: string }> {
-  return typeof input.messageId === "string";
-}
 
 function normalizeNode(
   node: OneBotForwardNode,

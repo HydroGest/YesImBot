@@ -17,24 +17,22 @@ export interface ForwardPage {
   overLimit?: true;
 }
 
+export interface ForwardFailure {
+  error: string;
+}
+
+export type ForwardResult = ForwardPage | ForwardFailure;
+
 export interface ForwardReaderConfig {
   parseImages: boolean;
   maxForwardPageChars: number;
 }
 
-export type ForwardToolInput =
-  | {
-      messageId: string;
-      forwardId?: never;
-      offset?: number;
-      limit?: number;
-    }
-  | {
-      forwardId: string;
-      messageId?: never;
-      offset?: number;
-      limit?: number;
-    };
+export interface ForwardToolInput {
+  forwardId: string;
+  offset?: number;
+  limit?: number;
+}
 
 export interface OneBotForwardNode {
   sender: OneBot.SenderInfo;

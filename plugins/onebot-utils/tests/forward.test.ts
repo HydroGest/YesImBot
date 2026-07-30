@@ -35,7 +35,7 @@ describe("createForwardReader", () => {
       node([{ type: "text", data: { text: "https://example.test/docs" } }]),
     ]);
 
-    await expect(reader({ messageId: "forward" })).resolves.toEqual({
+    await expect(reader({ forwardId: "forward" })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), ["https://example.test/docs"]]],
     });
   });
@@ -51,7 +51,7 @@ describe("createForwardReader", () => {
       ]),
     ]);
 
-    await expect(reader({ messageId: "forward" })).resolves.toEqual({
+    await expect(reader({ forwardId: "forward" })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), ["hello[图片] world[文件][未知消息段]"]]],
     });
   });
@@ -85,7 +85,7 @@ describe("createForwardReader", () => {
       { parseImages: true, maxForwardPageChars: 6000 },
     );
 
-    const result = await reader({ messageId: "forward" });
+    const result = await reader({ forwardId: "forward" });
 
     expect(result).toEqual({
       messages: [
@@ -116,7 +116,7 @@ describe("createForwardReader", () => {
       ]),
     ]);
 
-    await expect(reader({ messageId: "forward" })).resolves.toEqual({
+    await expect(reader({ forwardId: "forward" })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), [{ forward: "child-forward" }]]],
     });
     await expect(reader({ forwardId: "child-forward" })).resolves.toEqual({
@@ -125,17 +125,28 @@ describe("createForwardReader", () => {
     expect(getForwardMsg).toHaveBeenCalledOnce();
   });
 
+  it("returns a clear error result when neither cache nor OneBot has a forward", async () => {
+    const reader = createForwardReader(
+      { getForwardMsg: vi.fn(async () => undefined) } as OneBot.Internal,
+      { parseImages: false, maxForwardPageChars: 6000 },
+    );
+
+    await expect(reader({ forwardId: "missing" })).resolves.toEqual({
+      error: "未找到合并转发消息: missing",
+    });
+  });
+
   it("caches normalized records while paging from the requested offset", async () => {
     const { reader, getForwardMsg } = createReader([
       node([{ type: "text", data: { text: "a".repeat(3500) } }]),
       node([{ type: "text", data: { text: "b".repeat(3500) } }]),
     ]);
 
-    await expect(reader({ messageId: "forward" })).resolves.toMatchObject({
+    await expect(reader({ forwardId: "forward" })).resolves.toMatchObject({
       messages: [["Alice (10001)", expect.any(String), ["a".repeat(3500)]]],
       nextOffset: 1,
     });
-    await expect(reader({ messageId: "forward", offset: 1 })).resolves.toEqual({
+    await expect(reader({ forwardId: "forward", offset: 1 })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), ["b".repeat(3500)]]],
     });
     expect(getForwardMsg).toHaveBeenCalledTimes(1);
@@ -147,7 +158,7 @@ describe("createForwardReader", () => {
       node([{ type: "text", data: { text: "later" } }]),
     ]);
 
-    await expect(reader({ messageId: "forward" })).resolves.toMatchObject({
+    await expect(reader({ forwardId: "forward" })).resolves.toMatchObject({
       messages: [["Alice (10001)", expect.any(String), ["a".repeat(6001)]]],
       nextOffset: 1,
       overLimit: true,
@@ -161,14 +172,14 @@ describe("createForwardReader", () => {
       ),
     );
 
-    const defaultPage = await reader({ messageId: "forward" });
-    const clampedPage = await reader({ messageId: "forward", offset: -3, limit: 99 });
+    const defaultPage = await reader({ forwardId: "forward" });
+    const clampedPage = await reader({ forwardId: "forward", offset: -3, limit: 99 });
 
     expect(defaultPage.messages).toHaveLength(30);
     expect(defaultPage.nextOffset).toBe(30);
     expect(clampedPage.messages).toHaveLength(60);
     expect(clampedPage.nextOffset).toBe(60);
-    await expect(reader({ messageId: "forward", offset: 99 })).resolves.toEqual({ messages: [] });
+    await expect(reader({ forwardId: "forward", offset: 99 })).resolves.toEqual({ messages: [] });
   });
 
   it("retries failed loads and keeps cache entries independent by forward ID", async () => {
@@ -182,11 +193,11 @@ describe("createForwardReader", () => {
       { parseImages: false, maxForwardPageChars: 6000 },
     );
 
-    await expect(reader({ messageId: "first" })).rejects.toThrow("temporary");
-    await expect(reader({ messageId: "first" })).resolves.toEqual({
+    await expect(reader({ forwardId: "first" })).rejects.toThrow("temporary");
+    await expect(reader({ forwardId: "first" })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), ["first"]]],
     });
-    await expect(reader({ messageId: "second" })).resolves.toEqual({
+    await expect(reader({ forwardId: "second" })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), ["second"]]],
     });
     expect(getForwardMsg).toHaveBeenCalledTimes(3);
