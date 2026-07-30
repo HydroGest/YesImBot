@@ -2,6 +2,7 @@ import { isAbsolute, resolve } from "node:path";
 
 import {
   createAgent,
+  jsonSchema,
   type Agent,
   type AgentInternalEvent,
   type AgentPlugin,
@@ -11,23 +12,27 @@ import {
 } from "@yesimbot/agent-runtime";
 import type { LanguageModel } from "ai";
 import type { Bot, Context, Element, Logger } from "koishi";
-import { z } from "zod";
 
 import type { AssetStore } from "../asset.js";
 import { scopeMapKey, type ChannelScope } from "../channel.js";
 import type { Config, ImageBudget } from "../config.js";
-import type { EventRecord, InputRecord } from "../input.js";
-import { createInput, type Input } from "../input.js";
+import {
+  createEvent,
+  createMessage,
+  isMessageRecord,
+  type Message,
+  type EventRecord,
+  type Event,
+  type MessageRecord,
+} from "../messages.js";
 import { createModelInputPlugin } from "./model-input.js";
 import { OutputQueue } from "./output-queue.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
 import { parseReply } from "./reply.js";
-import type { WillEngine, WillEngineObservation } from "./will.js";
+import type { WillEngine } from "./will.js";
 
 export interface ChannelRuntimeOptions {
-  readonly ctx: Context;
   readonly config: Config;
-  readonly logger: Logger;
   readonly scope: ChannelScope;
   readonly bot: Bot;
   readonly will: WillEngine;
@@ -60,9 +65,23 @@ export type ChannelRuntimeResult =
       };
     };
 
+interface SendMessageInput {
+  channelId: string;
+  content: string;
+}
+
+type SendMessageResult =
+  | { ok: true; messageIds: string[] }
+  | { ok: false; error: { name: string; message: string } };
+
 export class ChannelRuntime {
   readonly scope: ChannelScope;
   readonly selfId: string;
+
+  private readonly ctx: Context;
+  private readonly logger: Logger;
+
+  private readonly opts: ChannelRuntimeOptions;
 
   private tail: Promise<void> = Promise.resolve();
   private stopped = false;
@@ -72,26 +91,39 @@ export class ChannelRuntime {
   private readonly agent: Agent;
   private initTask: Promise<void> | undefined;
 
-  constructor(private readonly opts: ChannelRuntimeOptions) {
+  constructor(ctx: Context, opts: ChannelRuntimeOptions) {
+    this.ctx = ctx;
+    this.logger = this.ctx.logger("yesimbot/channel-runtime");
+    this.opts = opts;
+
     this.scope = { ...opts.scope };
     this.selfId = opts.bot.selfId;
     const basePath = isAbsolute(opts.config.basePath)
       ? opts.config.basePath
-      : resolve(opts.ctx.baseDir, opts.config.basePath);
-    const sendMessageTool: AgentTool<
-      { readonly channelId: string; readonly content: string },
-      | { readonly ok: true; readonly messageIds: string[] }
-      | { readonly ok: false; readonly error: { readonly name: string; readonly message: string } }
-    > = {
+      : resolve(this.ctx.baseDir, opts.config.basePath);
+    const sendMessageTool: AgentTool<SendMessageInput, SendMessageResult> = {
       name: "sendMessage",
       description: "Send a message to an explicit channel using the current bot.",
-      inputSchema: z.object({ channelId: z.string().min(1), content: z.string() }),
+      inputSchema: jsonSchema<SendMessageInput>({
+        type: "object",
+        properties: {
+          channelId: {
+            type: "string",
+            minLength: 1,
+            description: "The ID of the channel to send the message to",
+          },
+          content: { type: "string", description: "The content of the message" },
+        },
+        required: ["channelId", "content"],
+      }),
       execute: async ({ channelId, content }) => {
+        this.logger.info({ event: "send_message", channelId, content });
         try {
-          return { ok: true as const, messageIds: await opts.bot.sendMessage(channelId, content) };
+          const messageIds = await opts.bot.sendMessage(channelId, content);
+          return { ok: true, messageIds };
         } catch (cause) {
           return {
-            ok: false as const,
+            ok: false,
             error: {
               name: cause instanceof Error ? cause.name : "Error",
               message: errorMessage(cause),
@@ -106,14 +138,14 @@ export class ChannelRuntime {
       model: opts.model,
       storage: opts.storage,
       systemPrompt: () =>
-        buildCoreSystemPrompt({ basePath, channel: this.scope, logger: opts.logger }),
+        buildCoreSystemPrompt({ basePath, channel: this.scope, logger: this.logger }),
       tools,
       plugins: [
         createModelInputPlugin({
           assets: opts.assets,
           imageBudget: opts.imageBudget,
           includeMessageId: opts.includeMessageId,
-          warn: (event, fields) => this.warn(event, fields),
+          warn: (event, fields) => this.logger.warn({ event, ...fields }),
         }),
         ...opts.agentPlugins,
       ],
@@ -126,11 +158,7 @@ export class ChannelRuntime {
     return this.initTask;
   }
 
-  handle(record: InputRecord): Promise<ChannelRuntimeResult> {
-    return this.handleRecord(record);
-  }
-
-  handleInternal(record: EventRecord): Promise<ChannelRuntimeResult> {
+  handle(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
     return this.handleRecord(record);
   }
 
@@ -142,15 +170,15 @@ export class ChannelRuntime {
     return this.stopTask;
   }
 
-  private handleRecord(record: InputRecord): Promise<ChannelRuntimeResult> {
+  private handleRecord(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
     return this.schedule(async () => {
       this.assertOpen();
-      const input = createInput(record);
+      const input = isMessageRecord(record) ? createMessage(record) : createEvent(record);
       await this.agent.append(input);
-      this.emit("yesimbot/event", input);
+      this.logger.info({ event: "append_input", input });
       const decision = await this.opts.will.decide(input, this.readState());
-      this.emit("yesimbot/will", { event: input, decision } satisfies WillEngineObservation);
+      this.logger.info({ event: "decide", input, decision });
       if (decision === "wait") return { kind: "wait", eventId: input.id };
       const activeTurnId = this.agent.getActiveTurnId();
       if (activeTurnId !== null) {
@@ -165,22 +193,22 @@ export class ChannelRuntime {
     try {
       await this.agent.interrupt(reason);
     } catch (cause) {
-      this.warn("agent_interrupt_failed", { cause, reason });
+      this.logger.warn("agent_interrupt_failed", { cause, reason });
     }
     try {
       await this.agent.stop();
     } catch (cause) {
-      this.warn("agent_stop_failed", { cause, reason });
+      this.logger.warn("agent_stop_failed", { cause, reason });
     }
     try {
       await this.opts.will.stop?.();
     } catch (cause) {
-      this.warn("will_stop_failed", { cause, reason });
+      this.logger.warn("will_stop_failed", { cause, reason });
     }
     await Promise.allSettled([...this.streams]);
   }
 
-  private startRun(input: Input): ChannelRuntimeResult {
+  private startRun(input: Message | Event): ChannelRuntimeResult {
     const output = new OutputQueue<ChannelOutput>();
     const controller = new AbortController();
     this.controllers.add(controller);
@@ -201,13 +229,11 @@ export class ChannelRuntime {
           try {
             await this.opts.will.onReply?.();
           } catch (cause) {
-            this.warn("will_reply_failed", { cause });
+            this.logger.warn("will_reply_failed", { cause });
           }
         },
         fail: async (record) => {
-          void this.handleInternal(record).catch((cause) =>
-            this.warn("delivery.failed", { cause }),
-          );
+          void this.handle(record).catch((cause) => this.logger.warn("delivery.failed", { cause }));
         },
       },
     };
@@ -262,20 +288,6 @@ export class ChannelRuntime {
       () => undefined,
     );
     return result;
-  }
-
-  private emit(channel: "yesimbot/event" | "yesimbot/will", value: unknown): void {
-    try {
-      this.opts.ctx.emit(channel, value as never);
-    } catch (cause) {
-      this.warn("listener_failed", { channel, cause });
-    }
-  }
-
-  private warn(event: string, fields: Record<string, unknown>): void {
-    try {
-      this.opts.logger.warn({ event, ...fields });
-    } catch {}
   }
 
   private assertOpen(): void {

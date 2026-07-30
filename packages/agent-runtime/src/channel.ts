@@ -1,15 +1,13 @@
 import { Awaitable } from "./types/base.js";
 import type { AgentCustomChannelEvent, AgentCustomChannelEvents } from "./types/event.js";
 
-type AgentChannelEvent<K extends string> = K extends keyof AgentCustomChannelEvents
-  ? AgentCustomChannelEvent<K>
-  : unknown;
+type AgentChannelEvent<K extends keyof AgentCustomChannelEvents> = AgentCustomChannelEvent<K>;
 
 export interface AgentChannel {
   /* prettier-ignore */
-  emit: <K extends string>(channel: K, event: AgentChannelEvent<K>, options?: { save?: boolean }) => Awaitable<void>;
+  emit: <K extends keyof AgentCustomChannelEvents>(channel: K, event: AgentChannelEvent<K>, options?: { save?: boolean }) => Awaitable<void>;
   /* prettier-ignore */
-  subscribe: <K extends string>(channel: K, listener: K extends keyof AgentCustomChannelEvents ? AgentEventListener<AgentCustomChannelEvent<K>> : AgentEventListener) => () => void;
+  subscribe: <K extends keyof AgentCustomChannelEvents>(channel: K, listener: K extends keyof AgentCustomChannelEvents ? AgentEventListener<AgentCustomChannelEvent<K>> : AgentEventListener) => () => void;
 }
 
 export type AgentEventListener<T = unknown> = (event: T) => Awaitable<void>;

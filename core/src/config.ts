@@ -1,20 +1,7 @@
 import { Schema } from "koishi";
 
 import type { ChannelAllowRule } from "./gateway.js";
-
-export type WillConfig =
-  | {
-      readonly engine?: "routing";
-      readonly direct?: "wait" | "trigger";
-      readonly mention?: "wait" | "trigger";
-      readonly group?: "wait" | "trigger";
-    }
-  | {
-      readonly engine: "willingness";
-      readonly probabilityThreshold?: number;
-      readonly decayHalfLifeSeconds?: number;
-      readonly replyCost?: number;
-    };
+import { WillConfig } from "./runtime/will.js";
 
 export interface ImageBudget {
   readonly maxCount: number;
@@ -30,47 +17,20 @@ export type ImageInputConfig =
       readonly maxTotalBytes?: number;
     };
 
-export const DEFAULT_IMAGE_BUDGET: ImageBudget = {
-  maxCount: 4,
-  maxBytesPerImage: 5 * 1024 * 1024,
-  maxTotalBytes: 10 * 1024 * 1024,
-};
-
 export interface PacingConfig {
   charactersPerSecond: number;
   maxTotalDelayMs: number;
 }
 
-export const DEFAULT_REPLY_PACING_CONFIG: PacingConfig = {
-  charactersPerSecond: 8,
-  maxTotalDelayMs: 60_000,
-};
-
-export function resolveReplyPacingConfig(pacing?: Partial<PacingConfig>): PacingConfig {
-  return { ...DEFAULT_REPLY_PACING_CONFIG, ...pacing };
-}
-
 export interface Config {
   basePath: string;
   chatModel: string;
-  logLevel?: number;
-  allowedChannels?: ChannelAllowRule[];
-  imageInput?: ImageInputConfig;
-  will?: WillConfig;
-  reply?: {
-    pacing?: Partial<PacingConfig>;
-  };
-}
-
-export function resolveImageBudget(
-  imageInput: ImageInputConfig | undefined,
-  modelSupportsImages: boolean,
-): ImageBudget | null {
-  if (imageInput === false || !modelSupportsImages) return null;
-  return {
-    maxCount: imageInput?.maxCount ?? DEFAULT_IMAGE_BUDGET.maxCount,
-    maxBytesPerImage: imageInput?.maxBytesPerImage ?? DEFAULT_IMAGE_BUDGET.maxBytesPerImage,
-    maxTotalBytes: imageInput?.maxTotalBytes ?? DEFAULT_IMAGE_BUDGET.maxTotalBytes,
+  logLevel: number;
+  allowedChannels: ChannelAllowRule[];
+  imageInput: ImageInputConfig;
+  will: WillConfig;
+  reply: {
+    pacing: PacingConfig;
   };
 }
 
@@ -96,44 +56,42 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description("基础配置"),
   Schema.object({
     imageInput: Schema.union([
-      Schema.const(false),
+      Schema.const(false).description("禁用"),
       Schema.object({
-        maxCount: Schema.number(),
-        maxBytesPerImage: Schema.number(),
-        maxTotalBytes: Schema.number(),
-      }),
+        maxCount: Schema.number().default(3),
+        maxBytesPerImage: Schema.number().default(5 * 1024 * 1024),
+        maxTotalBytes: Schema.number().default(10 * 1024 * 1024),
+      }).description("启用"),
     ]),
   }).description("模型图片输入"),
   Schema.object({
-    will: Schema.union([
+    will: Schema.intersect([
       Schema.object({
-        engine: Schema.const("routing").default("routing"),
-        direct: Schema.union(["wait", "trigger"]).default("trigger"),
-        mention: Schema.union(["wait", "trigger"]).default("trigger"),
-        group: Schema.union(["wait", "trigger"]).default("wait"),
+        engine: Schema.union([Schema.const("routing"), Schema.const("willingness")]).default(
+          "routing",
+        ),
       }),
-      Schema.object({
-        engine: Schema.const("willingness"),
-        probabilityThreshold: Schema.number().default(55),
-        decayHalfLifeSeconds: Schema.number().default(600),
-        replyCost: Schema.number().default(35),
-      }),
-    ]).default({
-      engine: "routing",
-      direct: "trigger",
-      mention: "trigger",
-      group: "wait",
-    }) as Schema<WillConfig>,
+      Schema.union([
+        Schema.object({
+          engine: Schema.const("routing"),
+          direct: Schema.union(["wait", "trigger"]).default("trigger"),
+          mention: Schema.union(["wait", "trigger"]).default("trigger"),
+          group: Schema.union(["wait", "trigger"]).default("wait"),
+        }),
+        Schema.object({
+          engine: Schema.const("willingness"),
+          probabilityThreshold: Schema.number().default(55),
+          decayHalfLifeSeconds: Schema.number().default(600),
+          replyCost: Schema.number().default(35),
+        }),
+      ]),
+    ]),
   }).description("消息路由"),
   Schema.object({
     reply: Schema.object({
       pacing: Schema.object({
-        charactersPerSecond: Schema.number()
-          .min(1)
-          .default(DEFAULT_REPLY_PACING_CONFIG.charactersPerSecond),
-        maxTotalDelayMs: Schema.number()
-          .min(1)
-          .default(DEFAULT_REPLY_PACING_CONFIG.maxTotalDelayMs),
+        charactersPerSecond: Schema.number().min(1).default(8),
+        maxTotalDelayMs: Schema.number().min(1).default(60_000),
       }),
     }),
   }).description("回复分段与节奏"),

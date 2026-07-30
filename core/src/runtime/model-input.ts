@@ -4,12 +4,12 @@ import { h, type Element } from "koishi";
 
 import type { AssetStore } from "../asset.js";
 import type { ImageBudget } from "../config.js";
-import { isInput, isMessage, type Input } from "../input.js";
+import { EventRecord, isEvent, isMessage, Message, MessageRecord, Event } from "../messages.js";
 
 const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 
 type ImageMime = (typeof IMAGE_MIME_TYPES)[number];
-type SelectedFiles = ReadonlyMap<Input["id"], readonly FilePart[]>;
+type SelectedFiles = ReadonlyMap<string, readonly FilePart[]>;
 
 export interface ModelInputPluginOptions {
   readonly assets: AssetStore;
@@ -25,7 +25,7 @@ export function createModelInputPlugin(options: ModelInputPluginOptions): AgentP
     name: "core.model-input",
     enforce: "pre",
     toModelMessages: async (message, context) => {
-      if (!isInput(message)) return [];
+      if (!isMessage(message) && !isEvent(message)) return [];
       let selectedFiles = selectedFilesByContext.get(context);
       if (!selectedFiles) {
         selectedFiles = selectInputFiles(context, options);
@@ -44,11 +44,11 @@ async function selectInputFiles(
 ): Promise<SelectedFiles> {
   if (!options.imageBudget) return new Map();
 
-  const selected = new Map<Input["id"], readonly FilePart[]>();
+  const selected = new Map<string, readonly FilePart[]>();
   let imageCount = 0;
   let totalBytes = 0;
   for (const input of [...context.history, ...context.current]) {
-    if (!isInput(input)) continue;
+    if (!isMessage(input) && !isEvent(input)) continue;
     for (const assetId of assetIds(input)) {
       if (
         imageCount >= options.imageBudget.maxCount ||
@@ -83,7 +83,7 @@ async function selectInputFiles(
   return selected;
 }
 
-function assetIds(input: Input): readonly string[] {
+function assetIds(input: Message | Event): readonly string[] {
   if (!isMessage(input)) return [];
   const ids: string[] = [];
   collectAssetIds(input.data.elements, ids);
@@ -138,7 +138,7 @@ function detectImageMime(data: Uint8Array): ImageMime | undefined {
 }
 
 function formatInput(
-  input: Input,
+  input: Message | Event,
   includeMessageId: boolean,
   files: readonly FilePart[],
 ): UserModelMessage {
@@ -158,7 +158,7 @@ function appendFiles(
 }
 
 function formatMessageHeader(
-  input: Extract<Input, { readonly type: "yesimbot.message" }>,
+  input: Extract<Message, { readonly type: "yesimbot.message" }>,
   includeMessageId: boolean,
 ): string {
   const time = new Intl.DateTimeFormat("zh-CN", {
@@ -181,7 +181,7 @@ function formatMessageHeader(
 }
 
 function formatEventNotification(
-  input: Exclude<Input, { readonly type: "yesimbot.message" }>,
+  input: Exclude<Event, { readonly type: "yesimbot.message" }>,
 ): string {
   return [
     "[SYSTEM_NOTIFICATION]",

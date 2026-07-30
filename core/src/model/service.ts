@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { EmbeddingModel, LanguageModel } from "ai";
@@ -10,8 +9,8 @@ import {
   type ChatModelRef,
   type EmbeddingModelConfig,
   formatModelId,
-  type ModelId,
   isChatModelModality,
+  type ModelId,
   parseModelId,
 } from "./provider.js";
 
@@ -173,19 +172,6 @@ function readEmbeddingOverrides(
   return result;
 }
 
-async function writeModelsConfig(filePath: string, config: ModelsConfigData): Promise<void> {
-  const temporary = `${filePath}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, {
-      encoding: "utf8",
-      flag: "wx",
-    });
-    await rename(temporary, filePath);
-  } finally {
-    await rm(temporary, { force: true });
-  }
-}
-
 async function loadModelsConfig(filePath?: string): Promise<ModelsConfigLoadResult> {
   const empty = createEmptyModelsConfig();
   if (!filePath) return { config: empty, warnings: [] };
@@ -276,30 +262,6 @@ function createEmptyModelsConfig(): ModelsConfigData {
     aliases: {},
     chat: {},
     embedding: {},
-  };
-}
-
-function cloneModelsConfig(config: ModelsConfigData): ModelsConfigData {
-  return {
-    defaults: { ...config.defaults },
-    aliases: { ...config.aliases },
-    chat: Object.fromEntries(
-      Object.entries(config.chat).map(([fullId, override]) => [
-        fullId,
-        {
-          ...override,
-          modalities: override.modalities
-            ? {
-                ...(override.modalities.input ? { input: [...override.modalities.input] } : {}),
-                ...(override.modalities.output ? { output: [...override.modalities.output] } : {}),
-              }
-            : undefined,
-        },
-      ]),
-    ),
-    embedding: Object.fromEntries(
-      Object.entries(config.embedding).map(([fullId, override]) => [fullId, { ...override }]),
-    ),
   };
 }
 
@@ -552,47 +514,6 @@ export class ModelService extends Service<ModelServiceConfig> {
       this.refreshModels();
       this.logger.info(`Provider unregistered: ${provider.id}`);
     };
-  }
-
-  addChatModelInputModality(model: string, modality: string): Promise<"added" | "unchanged"> {
-    const task = this.modalityMutation.then(() =>
-      this.addChatModelInputModalityInternal(model, modality),
-    );
-    this.modalityMutation = task.then(
-      () => undefined,
-      () => undefined,
-    );
-    return task;
-  }
-
-  private async addChatModelInputModalityInternal(
-    model: string,
-    modality: string,
-  ): Promise<"added" | "unchanged"> {
-    if (!isChatModelModality(modality)) {
-      throw new Error(`Unsupported chat model input modality: ${modality}`);
-    }
-
-    const record = this.getChatRecord(model);
-    const override = this.modelsConfig.chat[record.fullId];
-    const input = override?.modalities?.input ?? [];
-    if (input.includes(modality)) return "unchanged";
-
-    const next = cloneModelsConfig(this.modelsConfig);
-    const nextOverride = next.chat[record.fullId] ?? {};
-    next.chat[record.fullId] = {
-      ...nextOverride,
-      modalities: {
-        ...(nextOverride.modalities?.input ? { input: [...nextOverride.modalities.input] } : {}),
-        ...(nextOverride.modalities?.output ? { output: [...nextOverride.modalities.output] } : {}),
-        input: [...(nextOverride.modalities?.input ?? []), modality],
-      },
-    };
-
-    await writeModelsConfig(this.getModelsConfigPath(), next);
-    this.modelsConfig = next;
-    this.refreshModels();
-    return "added";
   }
 
   resolveChatModel(fullId: string): ChatModelRef {

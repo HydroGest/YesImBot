@@ -1,7 +1,6 @@
-import type { Awaitable, Element, Universal } from "koishi";
+import type { Awaitable, Context, Element, Logger, Universal } from "koishi";
 
-import type { Config } from "../config.js";
-import { isMessage, type Input, type Message } from "../input.js";
+import { isMessage, type Message, type Event } from "../messages.js";
 
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 const TEXT_GAIN = 12;
@@ -16,8 +15,18 @@ interface RoutingConfig {
   readonly group: WillEngine.Decision;
 }
 
+export interface WillingnessConfig {
+  readonly probabilityThreshold: number;
+  readonly decayHalfLifeSeconds: number;
+  readonly replyCost: number;
+}
+
+export type WillConfig =
+  | (RoutingConfig & { engine: "routing" })
+  | (WillingnessConfig & { engine: "willingness" });
+
 export interface WillEngine {
-  decide(input: Input, state: WillEngine.State): Awaitable<WillEngine.Decision>;
+  decide(input: Message | Event, state: WillEngine.State): Awaitable<WillEngine.Decision>;
   onReply?(): Awaitable<void>;
   stop?(): Awaitable<void>;
 }
@@ -31,51 +40,13 @@ export namespace WillEngine {
 }
 
 export interface WillEngineObservation {
-  readonly event: Input;
+  readonly event: Message;
   readonly decision: WillEngine.Decision;
 }
 
-export interface WillEngineDiagnostics {
-  readonly now: () => number;
-  readonly random: () => number;
-  readonly warn: (event: string, fields: Record<string, unknown>) => void;
-}
-
-export interface WillingnessConfig {
-  readonly probabilityThreshold: number;
-  readonly decayHalfLifeSeconds: number;
-  readonly replyCost: number;
-}
-
-export interface WillingnessWillOptions {
-  readonly config: WillingnessConfig;
-  readonly now: () => number;
-  readonly random: () => number;
-  readonly warn: (event: string, fields: Record<string, unknown>) => void;
-}
-
-const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
-  direct: "trigger",
-  mention: "trigger",
-  group: "wait",
-};
-
-function resolveWillingnessConfig(
-  config: Extract<Config["will"], { readonly engine: "willingness" }>,
-): WillingnessConfig {
-  return {
-    probabilityThreshold: config.probabilityThreshold ?? 55,
-    decayHalfLifeSeconds: config.decayHalfLifeSeconds ?? 600,
-    replyCost: config.replyCost ?? 35,
-  };
-}
-
-export function createWillEngine(
-  config: Config["will"] | undefined,
-  diagnostics: WillEngineDiagnostics,
-): WillEngine {
+export function createWillEngine(ctx: Context, config: WillConfig): WillEngine {
   if (config?.engine === "willingness") {
-    return new WillingnessWillEngine({ config: resolveWillingnessConfig(config), ...diagnostics });
+    return new WillingnessWillEngine(ctx, config);
   }
   return new RoutingWillEngine(config);
 }
@@ -83,11 +54,11 @@ export function createWillEngine(
 export class RoutingWillEngine implements WillEngine {
   private readonly config: RoutingConfig;
 
-  constructor(config: Partial<RoutingConfig> = {}) {
-    this.config = { ...DEFAULT_ROUTING_CONFIG, ...config };
+  constructor(config: RoutingConfig) {
+    this.config = { ...config };
   }
 
-  async decide(input: Input, _state: WillEngine.State): Promise<WillEngine.Decision> {
+  async decide(input: Message, _state: WillEngine.State): Promise<WillEngine.Decision> {
     if (!isMessage(input)) return "wait";
     if (input.data.channel.type === DIRECT_CHANNEL_TYPE) return this.config.direct;
     if (isSelfMention(input.data.selfId, input.data.elements)) return this.config.mention;
@@ -96,47 +67,45 @@ export class RoutingWillEngine implements WillEngine {
 }
 
 export class WillingnessWillEngine implements WillEngine {
+  private readonly ctx: Context;
+  private readonly config: WillingnessConfig;
+  private readonly logger: Logger;
+
   private score = 0;
   private lastMessageAt: number | null = null;
   private lastDecayAt: number | null = null;
 
-  constructor(private readonly options: WillingnessWillOptions) {
-    assertValidConfig(options.config);
+  constructor(ctx: Context, config: WillingnessConfig) {
+    this.ctx = ctx;
+    this.config = config;
+    this.logger = ctx.logger("will");
   }
 
-  async decide(input: Input, _state: WillEngine.State): Promise<WillEngine.Decision> {
+  async decide(input: Message, _state: WillEngine.State): Promise<WillEngine.Decision> {
     if (!isMessage(input)) return "wait";
 
     try {
-      const now = this.options.now();
+      const now = new Date().getTime();
       const decayedScore =
         this.lastDecayAt === null || this.lastMessageAt === null
           ? this.score
-          : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.options.config);
+          : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.config);
       const nextScore = calculateScore(decayedScore, input.data);
-      const probability = calculateProbability(nextScore, this.options.config.probabilityThreshold);
-      const decision = this.options.random() < probability ? "trigger" : "wait";
+      const probability = calculateProbability(nextScore, this.config.probabilityThreshold);
+      const decision = Math.random() < probability ? "trigger" : "wait";
 
       this.score = nextScore;
       this.lastMessageAt = now;
       this.lastDecayAt = now;
       return decision;
     } catch (cause) {
-      this.warn(cause);
+      this.logger.warn("Failed to calculate willingness score: %s", cause);
       return "wait";
     }
   }
 
   async onReply(): Promise<void> {
-    this.score = Math.max(0, this.score - this.options.config.replyCost);
-  }
-
-  private warn(cause: unknown): void {
-    try {
-      this.options.warn("will.willingness.calculation_failed", {
-        cause: cause instanceof Error ? cause.message : String(cause),
-      });
-    } catch {}
+    this.score = Math.max(0, this.score - this.config.replyCost);
   }
 }
 
@@ -217,18 +186,6 @@ function isSelfMention(selfId: string, elements: readonly Element[] | undefined)
     elements?.some((element) => element.type === "at" && String(element.attrs.id) === selfId) ??
     false
   );
-}
-
-function assertValidConfig(config: WillingnessConfig): void {
-  const { probabilityThreshold, decayHalfLifeSeconds, replyCost } = config;
-  if (
-    ![probabilityThreshold, decayHalfLifeSeconds, replyCost].every(Number.isFinite) ||
-    probabilityThreshold < 0 ||
-    decayHalfLifeSeconds <= 0 ||
-    replyCost < 0
-  ) {
-    throw new TypeError("Invalid willingness configuration");
-  }
 }
 
 declare module "koishi" {

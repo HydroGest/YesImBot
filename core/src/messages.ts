@@ -53,20 +53,21 @@ export type ResolvedEventDraft<K extends keyof EventMap = keyof EventMap> = Read
   { readonly kind: "event"; readonly eventType: K; readonly text: string } & EventMap[K]
 >;
 
-export type InputRecord = MessageRecord | EventRecord;
-
 export type Message = CustomMessageBase<"yesimbot.message", Omit<MessageRecord, "timestamp">>;
 
 export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<
   "yesimbot.event",
-  // Keep this distributive conditional so declaration-merged event variants narrow by eventType.
   K extends K ? Omit<EventRecord<K>, "timestamp"> : never
 >;
 
-export type Input = Message | Event;
+export function isMessageRecord(record: MessageRecord | EventRecord): record is MessageRecord {
+  return "messageId" in record;
+}
 
-export function isMessageRecord(record: InputRecord): record is MessageRecord {
-  return !("eventType" in record);
+export function isEventRecord<K extends keyof EventMap>(
+  record: MessageRecord | EventRecord<K>,
+): record is EventRecord<K> {
+  return "eventType" in record;
 }
 
 export function createMessage(record: MessageRecord): Message {
@@ -84,10 +85,6 @@ export function createEvent(record: EventRecord): Event {
   });
 }
 
-export function createInput(record: InputRecord): Input {
-  return isMessageRecord(record) ? createMessage(record) : createEvent(record);
-}
-
 export function isMessage(message: AgentMessage): message is Message {
   return message.role === "custom" && message.type === "yesimbot.message";
 }
@@ -96,19 +93,16 @@ export function isEvent(message: AgentMessage): message is Event {
   return message.role === "custom" && message.type === "yesimbot.event";
 }
 
-export function isInput(message: AgentMessage): message is Input {
-  return isMessage(message) || isEvent(message);
-}
-
 declare module "@yesimbot/agent-runtime" {
   interface AgentCustomMessages {
-    "yesimbot.message": Message;
     "yesimbot.event": Event;
+    "yesimbot.message": Message;
   }
 }
 
 declare module "koishi" {
   interface Events {
-    "yesimbot/event": (input: Input) => void;
+    "yesimbot/event": (input: Event) => void;
+    "yesimbot/message": (input: Message) => void;
   }
 }

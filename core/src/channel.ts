@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
+import { Context, Logger } from "koishi";
+
 export interface ChannelScope {
   readonly platform: string;
   readonly selfId: string;
@@ -16,21 +18,10 @@ interface ChannelManifest {
   readonly createdAt: string;
 }
 
-type PersistentTuple = readonly [string, string] | readonly [string, string, string];
-
 const MAX_DIRECTORY_NAME_LENGTH = 200;
 
 function isMissingPath(cause: unknown): boolean {
   return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
-}
-
-function assertScope(scope: ChannelScope): void {
-  for (const field of ["platform", "selfId", "channelId"] as const) {
-    if (typeof scope[field] !== "string" || scope[field].length === 0)
-      throw new TypeError(`ChannelScope.${field} must be a non-empty string`);
-  }
-  if (typeof scope.isDirect !== "boolean")
-    throw new TypeError("ChannelScope.isDirect must be a boolean");
 }
 
 function encodeDirectoryComponent(value: string): string {
@@ -38,27 +29,30 @@ function encodeDirectoryComponent(value: string): string {
   for (const codePoint of value) {
     encoded += /[A-Za-z0-9]/.test(codePoint)
       ? codePoint
-      : `~${codePoint.codePointAt(0)?.toString(16)}~`;
+      : `%${codePoint.codePointAt(0)?.toString(16)}%`;
   }
   return encoded;
 }
 
-function persistentTuple(scope: ChannelScope): PersistentTuple {
-  assertScope(scope);
-  return scope.isDirect
-    ? [scope.platform, scope.selfId, scope.channelId]
-    : [scope.platform, scope.channelId];
-}
-
 export function scopeMapKey(scope: ChannelScope): string {
-  return JSON.stringify(persistentTuple(scope));
+  return JSON.stringify([scope.platform, scope.selfId, scope.channelId, scope.isDirect]);
 }
 
 export function channelDirectoryName(scope: ChannelScope): string {
-  const tuple = persistentTuple(scope);
-  const directoryName = scope.isDirect
-    ? `direct-${encodeDirectoryComponent(scope.platform)}-${encodeDirectoryComponent(scope.channelId)}-${encodeDirectoryComponent(scope.selfId)}`
-    : `shared-${encodeDirectoryComponent(tuple[0])}-${encodeDirectoryComponent(tuple[1])}`;
+  const directoryName = (
+    scope.isDirect
+      ? [
+          "direct",
+          encodeDirectoryComponent(scope.platform),
+          encodeDirectoryComponent(scope.channelId),
+          encodeDirectoryComponent(scope.selfId),
+        ]
+      : [
+          "shared",
+          encodeDirectoryComponent(scope.platform),
+          encodeDirectoryComponent(scope.channelId),
+        ]
+  ).join("-");
   if (directoryName.length > MAX_DIRECTORY_NAME_LENGTH)
     throw new RangeError(`Channel directory name exceeds ${MAX_DIRECTORY_NAME_LENGTH} characters`);
   return directoryName;
@@ -130,10 +124,12 @@ export class ChannelStorage {
   private tail: Promise<void> = Promise.resolve();
   private startTask: Promise<void> | undefined;
 
-  constructor(
-    basePath: string,
-    private readonly warn: (code: string, fields: Record<string, unknown>) => void = () => {},
-  ) {
+  private readonly ctx: Context;
+  private readonly logger: Logger;
+
+  constructor(ctx: Context, basePath: string) {
+    this.ctx = ctx;
+    this.logger = ctx.logger("channel-storage");
     this.channelsPath = resolve(basePath, "channels");
   }
 
@@ -159,7 +155,7 @@ export class ChannelStorage {
         !entry.isDirectory() ||
         (!entry.name.startsWith("shared-") && !entry.name.startsWith("direct-"))
       ) {
-        this.warn("storage.directory_invalid", { entry: entry.name });
+        this.logger.error("storage.directory_invalid", { entry: entry.name });
         continue;
       }
       try {
@@ -173,7 +169,7 @@ export class ChannelStorage {
           throw new Error("Manifest directory name does not match directory");
         this.manifests.set(scopeMapKey(scope), manifest);
       } catch (cause) {
-        this.warn("storage.manifest_invalid", { directoryName: entry.name, cause });
+        this.logger.error("storage.manifest_invalid", { directoryName: entry.name, cause });
       }
     }
   }

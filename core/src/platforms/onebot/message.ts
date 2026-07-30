@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { h, type Context, type Element, type Session } from "koishi";
 
 import type { AssetStore } from "../../asset.js";
-import type { ResolvedMessageDraft } from "../../input.js";
+import type { ResolvedMessageDraft } from "../../messages.js";
 
 const DATA_URL = /^data:([^;,]+)(;base64)?,([\s\S]*)$/;
 const MAX_IMAGES = 4;

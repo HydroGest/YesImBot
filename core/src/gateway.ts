@@ -2,13 +2,13 @@ import { type Awaitable, type Context, type Logger, type Session, Universal } fr
 
 import type { AssetService, AssetStore } from "./asset.js";
 import type { ChannelScope } from "./channel.js";
-import { resolveReplyPacingConfig, type PacingConfig } from "./config.js";
+import { type PacingConfig } from "./config.js";
 import type {
   EventRecord,
-  InputRecord,
+  MessageRecord,
   ResolvedEventDraft,
   ResolvedMessageDraft,
-} from "./input.js";
+} from "./messages.js";
 import type { RuntimeManager } from "./runtime/index.js";
 
 export interface ChannelAllowRule {
@@ -47,26 +47,39 @@ async function assertAssignee(ctx: Context, scope: ChannelScope): Promise<void> 
 }
 
 export interface GatewayOptions {
-  readonly ctx: Context;
   readonly runtime: RuntimeManager;
   readonly assets: AssetService;
   readonly ready: () => Promise<void>;
-  readonly allowedChannels: readonly ChannelAllowRule[];
-  readonly logger: Logger;
-  readonly pacing?: PacingConfig;
+}
+
+export interface GatewayConfig {
+  allowedChannels: readonly ChannelAllowRule[];
+  pacing: PacingConfig;
+  logLevel: number;
 }
 
 export class Gateway {
-  private readonly pacing: PacingConfig;
+  private readonly ctx: Context;
+  private readonly config: GatewayConfig;
+  private readonly logger: Logger;
+
+  private readonly opts: GatewayOptions;
+
   private resolvers = new Map<string, SessionResolver>();
   private sessions = new WeakSet<object>();
   private tasks = new Set<Promise<void>>();
   private disposers: Array<() => unknown> = [];
   private closed = false;
 
-  constructor(private readonly opts: GatewayOptions) {
-    this.pacing = resolveReplyPacingConfig(opts.pacing);
-    const middleware = opts.ctx.middleware(async (session, next) => {
+  constructor(ctx: Context, config: GatewayConfig, opts: GatewayOptions) {
+    this.ctx = ctx;
+    this.config = config;
+    this.logger = ctx.logger("yesimbot.gateway");
+    this.logger.level = config.logLevel ?? 2;
+
+    this.opts = opts;
+
+    const middleware = this.ctx.middleware(async (session, next) => {
       try {
         await this.handle(session);
       } finally {
@@ -74,7 +87,7 @@ export class Gateway {
       }
     });
     if (typeof middleware === "function") this.disposers.push(middleware as () => unknown);
-    const internal = opts.ctx.on("internal/session", (session) => {
+    const internal = this.ctx.on("internal/session", (session) => {
       if (!isMessageSession(session)) void this.handle(session);
     });
     if (typeof internal === "function") this.disposers.push(internal as () => unknown);
@@ -119,10 +132,10 @@ export class Gateway {
 
   private async route(session: Session): Promise<void> {
     const scope = scopeFromSession(session);
-    if (!scope || !matchesAllowedChannel(scope, this.opts.allowedChannels)) return;
+    if (!scope || !matchesAllowedChannel(scope, this.config.allowedChannels)) return;
     try {
       await this.opts.ready();
-      await assertAssignee(this.opts.ctx, scope);
+      await assertAssignee(this.ctx, scope);
       const resolver = this.resolvers.get(session.platform);
       if (!resolver) return;
       const draft = await resolver.resolve(session, this.opts.assets.createStore(scope));
@@ -137,7 +150,7 @@ export class Gateway {
 
   private async deliver(
     session: Session,
-    record: InputRecord,
+    record: MessageRecord | EventRecord,
     result: Extract<Awaited<ReturnType<RuntimeManager["route"]>>, { kind: "run" }>,
   ): Promise<void> {
     let acknowledged = false;
@@ -148,7 +161,7 @@ export class Gateway {
         const delayMs = nextSegmentDelayMs({
           text: segment.join(""),
           consumedDeliveryMs,
-          config: this.pacing,
+          config: this.config.pacing,
         });
         const startedAt = Date.now();
         await waitForDelay(delayMs, result.delivery.signal);
@@ -169,7 +182,7 @@ export class Gateway {
   }
 
   private async failDelivery(
-    record: InputRecord,
+    record: MessageRecord | EventRecord,
     output: {
       readonly turnId: string;
       readonly messageId: string;
@@ -203,7 +216,7 @@ export class Gateway {
 
   private warn(code: string, cause: unknown, platform: string): void {
     try {
-      this.opts.logger.warn({
+      this.logger.warn({
         code,
         platform,
         cause: cause instanceof Error ? cause.message : String(cause),
@@ -230,7 +243,7 @@ function createRecord(
   session: Session,
   scope: ChannelScope,
   draft: ResolvedMessageDraft | ResolvedEventDraft,
-): InputRecord {
+): MessageRecord | EventRecord {
   const timestamp =
     numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
   const channel = {

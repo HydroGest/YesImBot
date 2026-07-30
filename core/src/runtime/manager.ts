@@ -6,8 +6,8 @@ import { Universal } from "koishi";
 
 import type { AssetService } from "../asset.js";
 import { scopeMapKey, type ChannelScope, type ChannelStorage } from "../channel.js";
-import { resolveImageBudget, type Config } from "../config.js";
-import type { InputRecord } from "../input.js";
+import type { ImageBudget, Config } from "../config.js";
+import type { EventRecord, MessageRecord } from "../messages.js";
 import {
   ChannelRuntime,
   type ChannelRuntimeOptions,
@@ -38,7 +38,7 @@ export class RuntimeManager {
 
   constructor(private readonly opts: RuntimeManagerOptions) {}
 
-  async route(record: InputRecord): Promise<ChannelRuntimeResult> {
+  async route(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
     this.assertOpen();
     const scope = record.channel?.id
       ? {
@@ -147,7 +147,6 @@ export class RuntimeManager {
       (plugin): plugin is AgentPlugin => plugin !== null,
     );
     const options: ChannelRuntimeOptions = {
-      ctx: this.opts.ctx,
       config: {
         ...this.opts.config,
         basePath: resolve(
@@ -155,20 +154,14 @@ export class RuntimeManager {
           this.opts.config.basePath || this.opts.ctx.baseDir,
         ),
       },
-      logger: this.opts.logger,
       scope,
       bot,
-      will: createWillEngine(this.opts.config.will, {
-        now: Date.now,
-        random: Math.random,
-        warn: (event, fields) => this.opts.logger.warn({ event, ...fields }),
-      }),
+      will: createWillEngine(this.opts.ctx, this.opts.config.will),
       assets: this.opts.assets.createStore(scope),
       model: resolved.model,
-      imageBudget: resolveImageBudget(
-        this.opts.config.imageInput,
-        resolved.entry.modalities?.input?.includes("image") === true,
-      ),
+      imageBudget: this.opts.config.imageInput
+        ? ({ ...this.opts.config.imageInput } as ImageBudget)
+        : null,
       agentPlugins: plugins,
       includeMessageId: factories.some((factory) => factory.requiresMessageId === true),
       storage: createJsonlStorage(
@@ -176,7 +169,7 @@ export class RuntimeManager {
         (cause) => this.warn("storage.line_invalid", { scope, cause }),
       ),
     };
-    const runtime = new ChannelRuntime(options);
+    const runtime = new ChannelRuntime(this.opts.ctx, options);
     try {
       await runtime.init();
     } catch (cause) {

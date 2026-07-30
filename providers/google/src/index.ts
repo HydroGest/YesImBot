@@ -5,7 +5,7 @@ import {
   createChatModelsSchema,
   createEmbeddingModelsSchema,
   createProviderPlugin,
-} from "koishi-plugin-yesimbot/model";
+} from "koishi-plugin-yesimbot";
 
 interface Config extends BaseProviderConfig {}
 
