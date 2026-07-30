@@ -129,7 +129,7 @@ describe("onebot-utils plugin", () => {
     ).resolves.toBeNull();
   });
 
-  it("exposes the migrated tools without a message-ID capability property", async () => {
+  it("exposes the migrated OneBot tools", async () => {
     const { ctx, factories } = createContext();
     const plugin = new OnebotUtilsPlugin(ctx as never, {});
     await plugin.start();
@@ -142,7 +142,6 @@ describe("onebot-utils plugin", () => {
       "onebot_create_reaction",
       "onebot_set_essence",
     ]);
-    expect(factories[0]).not.toHaveProperty("requiresMessageId");
   });
 
   it("fails forward requests when OneBot internals are unavailable", async () => {

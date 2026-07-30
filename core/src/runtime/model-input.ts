@@ -14,7 +14,6 @@ type SelectedFiles = ReadonlyMap<string, readonly FilePart[]>;
 export interface ModelInputPluginOptions {
   readonly assets: AssetStore;
   readonly imageBudget: ImageBudget | null;
-  readonly includeMessageId: boolean;
   readonly warn: (event: string, fields: Record<string, unknown>) => void;
 }
 
@@ -32,7 +31,7 @@ export function createModelInputPlugin(options: ModelInputPluginOptions): AgentP
         selectedFilesByContext.set(context, selectedFiles);
       }
       return [
-        formatInput(message, options.includeMessageId, (await selectedFiles).get(message.id) ?? []),
+        formatInput(message, (await selectedFiles).get(message.id) ?? []),
       ];
     },
   };
@@ -137,13 +136,9 @@ function detectImageMime(data: Uint8Array): ImageMime | undefined {
   return undefined;
 }
 
-function formatInput(
-  input: Message | Event,
-  includeMessageId: boolean,
-  files: readonly FilePart[],
-): UserModelMessage {
+function formatInput(input: Message | Event, files: readonly FilePart[]): UserModelMessage {
   const content = isMessage(input)
-    ? `${formatMessageHeader(input, includeMessageId)}\n${renderElements(input.data.elements)}`
+    ? `${formatMessageHeader(input)}\n${renderElements(input.data.elements)}`
     : formatEventNotification(input);
   return { role: "user", content: appendFiles(content, files) };
 }
@@ -157,10 +152,7 @@ function appendFiles(
   return [...content, ...files];
 }
 
-function formatMessageHeader(
-  input: Extract<Message, { readonly type: "yesimbot.message" }>,
-  includeMessageId: boolean,
-): string {
+function formatMessageHeader(input: Extract<Message, { readonly type: "yesimbot.message" }>): string {
   const time = new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
     year: "numeric",
@@ -175,7 +167,7 @@ function formatMessageHeader(
   const fields = [
     `time=${JSON.stringify(time)}`,
     `sender=${JSON.stringify(sender)}`,
-    ...(includeMessageId ? [`id=${JSON.stringify(input.data.messageId)}`] : []),
+    `id=${JSON.stringify(input.data.messageId)}`,
   ];
   return `[${fields.join(" ")}]`;
 }

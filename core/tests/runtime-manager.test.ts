@@ -302,19 +302,12 @@ describe("RuntimeManager", () => {
     });
   });
 
-  it("uses factory message-id capability from each creation snapshot", async () => {
-    const { manager, getAgentPluginFactories } = createManager();
-    const factory = Object.assign(
-      vi.fn(async () => ({ name: "tool" })),
-      { requiresMessageId: true },
-    );
-    getAgentPluginFactories.mockReturnValueOnce([factory]).mockReturnValueOnce([]);
+  it("passes no formatter capability option to new runtimes", async () => {
+    const { manager } = createManager();
 
-    await manager.route(record("room-a"));
-    await manager.route(record("room-b"));
+    await manager.route(record("room"));
 
-    expect(runtimeOptions(state.runtimes[0]!).includeMessageId).toBe(true);
-    expect(runtimeOptions(state.runtimes[1]!).includeMessageId).toBe(false);
+    expect(runtimeOptions(state.runtimes[0]!)).not.toHaveProperty("includeMessageId");
   });
 
   it("injects channel-first JSONL storage", async () => {

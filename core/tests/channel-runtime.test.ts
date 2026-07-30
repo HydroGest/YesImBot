@@ -93,7 +93,6 @@ function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
 function createRuntime(
   will: WillEngine,
   sendMessage = vi.fn(async () => ["sent-1"]),
-  includeMessageId = false,
   basePath = "/tmp/yesimbot-channel-runtime",
 ) {
   const ctx = new Context();
@@ -107,7 +106,6 @@ function createRuntime(
     model: {} as never,
     imageBudget: null,
     agentPlugins: [],
-    includeMessageId,
     storage: createJsonlStorage("/tmp/yesimbot-channel-runtime/messages.jsonl"),
   });
   return { ctx, runtime, sendMessage, assets };
@@ -169,12 +167,7 @@ describe("ChannelRuntime", () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-channel-prompt-"));
     await writeFile(join(basePath, "AGENTS.md"), "first policy");
     const sendMessage = vi.fn(async () => ["sent-1"]);
-    const { runtime } = createRuntime(
-      { decide: async () => "wait" as const },
-      sendMessage,
-      false,
-      basePath,
-    );
+    const { runtime } = createRuntime({ decide: async () => "wait" as const }, sendMessage, basePath);
 
     await runtime.init();
     await writeFile(join(basePath, "AGENTS.md"), "second policy");
@@ -198,7 +191,6 @@ describe("ChannelRuntime", () => {
       model: {} as never,
       imageBudget: null,
       agentPlugins: [],
-      includeMessageId: false,
       storage: storage as never,
     });
 
@@ -398,8 +390,8 @@ describe("ChannelRuntime", () => {
     expect(sendMessage).toHaveBeenCalledWith("room-2", "hello");
   });
 
-  it("uses the explicit factory capability when formatting a message event", async () => {
-    const { runtime } = createRuntime({ decide: async () => "wait" }, undefined, true);
+  it("always formats message events with their ID", async () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" });
     const formatter = (
       state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
     ).find((plugin) => plugin.name === "core.model-input");
@@ -530,7 +522,6 @@ describe("ChannelRuntime", () => {
       model: {} as never,
       imageBudget: null,
       agentPlugins: [externalPlugin],
-      includeMessageId: false,
       storage: { append: vi.fn(), read: vi.fn(), clear: vi.fn() } as never,
     });
 

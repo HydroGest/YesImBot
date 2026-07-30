@@ -27,7 +27,6 @@ export interface RuntimeManagerOptions {
 
 export interface AgentPluginFactory {
   (scope: ChannelScope, bot: Bot): Awaitable<AgentPlugin | null>;
-  readonly requiresMessageId?: boolean;
 }
 
 export class RuntimeManager {
@@ -163,7 +162,6 @@ export class RuntimeManager {
         ? ({ ...this.opts.config.imageInput } as ImageBudget)
         : null,
       agentPlugins: plugins,
-      includeMessageId: factories.some((factory) => factory.requiresMessageId === true),
       storage: createJsonlStorage(
         join(await this.opts.storage.getStoragePath(scope), "sessions", "messages.jsonl"),
         (cause) => this.warn("storage.line_invalid", { scope, cause }),

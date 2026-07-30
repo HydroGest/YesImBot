@@ -66,7 +66,7 @@ const SET_ESSENCE_SCHEMA = jsonSchema({
 }) as AgentTool<{ messageId: string }>["inputSchema"];
 
 function getOneBotInternal(bot: Bot): OneBot.Internal {
-  const internal = (bot as OneBotBot).internal;
+  const internal = (bot as unknown as OneBotBot<Context>).internal;
   if (!internal) throw new Error(ONEBOT_INTERNAL_UNAVAILABLE_ERROR);
   return internal;
 }

@@ -42,7 +42,6 @@ export interface ChannelRuntimeOptions {
   readonly model: LanguageModel;
   readonly imageBudget: ImageBudget | null;
   readonly agentPlugins: readonly AgentPlugin[];
-  readonly includeMessageId: boolean;
   readonly storage: AgentStorage;
 }
 
@@ -146,7 +145,6 @@ export class ChannelRuntime {
         createModelInputPlugin({
           assets: opts.assets,
           imageBudget: opts.imageBudget,
-          includeMessageId: opts.includeMessageId,
           warn: (event, fields) => this.logger.warn({ event, ...fields }),
         }),
         ...opts.agentPlugins,

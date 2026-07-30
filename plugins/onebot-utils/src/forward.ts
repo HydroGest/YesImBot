@@ -35,7 +35,7 @@ export function createForwardReader(
   };
 
   async function loadAndNormalize(messageId: string): Promise<readonly ForwardMessage[]> {
-    const nodes = (await internal.getForwardMsg(messageId)) as readonly OneBotForwardNode[];
+    const nodes = (await internal.getForwardMsg(messageId)) as unknown as readonly OneBotForwardNode[];
     const records = nodes.map((node) => normalizeNode(node, config));
 
     cache.set(messageId, records);
@@ -130,7 +130,12 @@ function formatFileSize(value: unknown): string | null {
   if (!Number.isSafeInteger(bytes)) return null;
   if (bytes < 1000) return `${bytes} B`;
 
-  const unit = bytes < 1_000_000 ? [1000, "KB"] : bytes < 1_000_000_000 ? [1_000_000, "MB"] : [1_000_000_000, "GB"];
+  const unit: readonly [number, string] =
+    bytes < 1_000_000
+      ? [1000, "KB"]
+      : bytes < 1_000_000_000
+        ? [1_000_000, "MB"]
+        : [1_000_000_000, "GB"];
   return `${(bytes / unit[0]).toFixed(1)} ${unit[1]}`;
 }
 

@@ -123,10 +123,9 @@ function plugin(
     maxBytesPerImage: FIVE_MIB,
     maxTotalBytes: 10 * 1024 * 1024,
   },
-  includeMessageId = false,
   warn = vi.fn(),
 ): AgentPlugin {
-  return createModelInputPlugin({ assets, imageBudget, includeMessageId, warn });
+  return createModelInputPlugin({ assets, imageBudget, warn });
 }
 
 async function project(input: Input, modelContext: ModelMessageContext, inputPlugin: AgentPlugin) {
@@ -137,11 +136,11 @@ async function project(input: Input, modelContext: ModelMessageContext, inputPlu
 }
 
 describe("createModelInputPlugin", () => {
-  it("is a pre plugin that formats a message with the fixed header", async () => {
+  it("always formats a message with the fixed header including its ID", async () => {
     const input = createMessage(
       messageRecord({ timestamp: new Date("2026-07-25T12:34:00.000Z").valueOf() }),
     );
-    const inputPlugin = plugin(assetStore(), null, true);
+    const inputPlugin = plugin(assetStore(), null);
 
     expect(inputPlugin.enforce).toBe("pre");
     await expect(project(input, context([input]), inputPlugin)).resolves.toEqual({
@@ -152,7 +151,7 @@ describe("createModelInputPlugin", () => {
 
   it("hydrates JSONL-replayed Elements before rendering", async () => {
     const replayed = JSON.parse(JSON.stringify(createMessage(messageRecord()))) as Input;
-    const inputPlugin = plugin(assetStore(), null, true);
+    const inputPlugin = plugin(assetStore(), null);
 
     const first = await project(replayed, context([replayed]), inputPlugin);
     const second = await project(replayed, context([replayed]), inputPlugin);
@@ -232,7 +231,7 @@ describe("createModelInputPlugin", () => {
     expect(result.content).toEqual([
       {
         type: "text",
-        text: '[time="2026/7/18 20:34" sender="Alice (10001)"]\n<img id="44444444444444444444444444444444"/>',
+        text: '[time="2026/7/18 20:34" sender="Alice (10001)" id="m-1"]\n<img id="44444444444444444444444444444444"/>',
       },
       { type: "file", data: bytes, mediaType },
     ]);
@@ -253,7 +252,7 @@ describe("createModelInputPlugin", () => {
         '<img id="55555555555555555555555555555555"/><img id="66666666666666666666666666666666"/><img id="77777777777777777777777777777777"/>',
       ),
     );
-    const result = await project(input, context([input]), plugin(assets, undefined, false, warn));
+    const result = await project(input, context([input]), plugin(assets, undefined, warn));
 
     expect(Array.isArray(result.content) && result.content).toHaveLength(2);
     expect(warn.mock.calls.map(([event]) => event)).toEqual([
