@@ -144,7 +144,7 @@ export default class WorkspacePlugin {
 
   private async getOrCreateWorkspace(channel: ChannelScope): Promise<Workspace> {
     const key = JSON.stringify(
-      channel.isDirect
+      channel.type === "direct"
         ? [channel.platform, channel.selfId, channel.channelId]
         : [channel.platform, channel.channelId],
     );

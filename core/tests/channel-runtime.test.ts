@@ -52,16 +52,30 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
 
 import { h } from "koishi";
 
+import type { Config } from "../src/config.js";
 import {
-  createInput,
-  isInput,
+  createEvent,
+  createMessage,
+  isEvent,
+  isMessage,
   type EventRecord,
-  type Input,
   type MessageRecord,
-} from "../src/input.js";
+} from "../src/messages.js";
 import { ChannelRuntime } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 import type { WillEngine } from "../src/runtime/will.js";
+
+function runtimeConfig(basePath: string): Config {
+  return {
+    basePath,
+    chatModel: "test:model",
+    logLevel: 2,
+    allowedChannels: [],
+    imageInput: false,
+    will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
+    reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+  };
+}
 
 function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
@@ -83,13 +97,10 @@ function createRuntime(
   basePath = "/tmp/yesimbot-channel-runtime",
 ) {
   const ctx = new Context();
-  const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
   const assets = { clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() };
-  const runtime = new ChannelRuntime({
-    ctx,
-    config: { basePath, chatModel: "test:model" },
-    logger: logger as never,
-    scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
+  const runtime = new ChannelRuntime(ctx, {
+    config: runtimeConfig(basePath),
+    scope: { platform: "test", selfId: "bot-1", channelId: "room-1", type: "shared" },
     bot: { sendMessage } as never,
     will,
     assets: assets as never,
@@ -99,7 +110,7 @@ function createRuntime(
     includeMessageId,
     storage: createJsonlStorage("/tmp/yesimbot-channel-runtime/messages.jsonl"),
   });
-  return { ctx, logger, runtime, sendMessage, assets };
+  return { ctx, runtime, sendMessage, assets };
 }
 
 function streamFrom(events: readonly unknown[]): AsyncIterable<unknown> {
@@ -177,11 +188,10 @@ describe("ChannelRuntime", () => {
 
   it("uses the prepared Agent storage", () => {
     const storage = { append: vi.fn(), read: vi.fn(), clear: vi.fn() };
-    new ChannelRuntime({
-      ctx: new Context(),
-      config: { basePath: "/tmp/unused", chatModel: "test:model" },
-      logger: { warn: vi.fn() } as never,
-      scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
+    const ctx = new Context();
+    new ChannelRuntime(ctx, {
+      config: runtimeConfig("/tmp/unused"),
+      scope: { platform: "test", selfId: "bot-1", channelId: "room-1", type: "shared" },
       bot: { sendMessage: vi.fn() } as never,
       will: { decide: async () => "wait" },
       assets: { clear: vi.fn(), get: vi.fn(), put: vi.fn() } as never,
@@ -205,7 +215,7 @@ describe("ChannelRuntime", () => {
     };
     const { ctx, runtime } = createRuntime(will);
     state.agent?.append.mockImplementation(async () => order.push("persist"));
-    ctx.on("yesimbot/event", () => order.push("event"));
+    ctx.on("yesimbot/message", () => order.push("event"));
     ctx.on("yesimbot/will", () => order.push("will-observation"));
 
     const result = await runtime.handle(record());
@@ -258,7 +268,7 @@ describe("ChannelRuntime", () => {
 
   it("joins a committed trigger to the active turn without creating output", async () => {
     state.activeTurnId = "turn-active";
-    const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
+    const { runtime } = createRuntime({ decide: async () => "trigger" });
 
     const result = await runtime.handle(record());
 
@@ -272,7 +282,7 @@ describe("ChannelRuntime", () => {
     state.stream = (async function* () {
       await release.promise;
     })();
-    const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
+    const { runtime } = createRuntime({ decide: async () => "trigger" });
 
     const first = await runtime.handle(record());
     const second = await runtime.handle(record({ messageId: "message-2" }));
@@ -395,7 +405,7 @@ describe("ChannelRuntime", () => {
     ).find((plugin) => plugin.name === "core.model-input");
 
     await runtime.handle(record());
-    const event = createInput(record());
+    const event = createMessage(record());
     const messages = await formatter?.toModelMessages(event, {
       history: [event],
       current: [],
@@ -407,8 +417,8 @@ describe("ChannelRuntime", () => {
   it("replays current split inputs without projecting unsupported JSONL payloads", async () => {
     const directory = await mkdtemp(join(tmpdir(), "yesimbot-channel-replay-"));
     const path = join(directory, "messages.jsonl");
-    const message = createInput(record());
-    const event = createInput({
+    const message = createMessage(record());
+    const event = createEvent({
       eventType: "delivery.failed",
       platform: "test",
       selfId: "bot-1",
@@ -458,13 +468,13 @@ describe("ChannelRuntime", () => {
         (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
       )
       .map((entry) => entry.data)
-      .filter(isInput);
+      .filter((entry) => isMessage(entry) || isEvent(entry));
     const unsupported = replay
       .filter(
         (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
       )
       .map((entry) => entry.data)
-      .filter((entry) => !isInput(entry));
+      .filter((entry) => !isMessage(entry) && !isEvent(entry));
     const { runtime } = createRuntime({ decide: async () => "wait" });
     const formatter = (
       state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
@@ -511,11 +521,9 @@ describe("ChannelRuntime", () => {
     };
     const ctx = new Context();
 
-    new ChannelRuntime({
-      ctx,
-      config: { basePath: "/tmp/unused", chatModel: "test:model" },
-      logger: { warn: vi.fn() } as never,
-      scope: { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false },
+    new ChannelRuntime(ctx, {
+      config: runtimeConfig("/tmp/unused"),
+      scope: { platform: "test", selfId: "bot-1", channelId: "room-1", type: "shared" },
       bot: { sendMessage: vi.fn() } as never,
       will: { decide: async () => "wait" },
       assets: { clear: vi.fn(), get: vi.fn(), put: vi.fn() } as never,
@@ -605,28 +613,22 @@ describe("ChannelRuntime", () => {
   });
 
   it("accepts acknowledgement when Will has no reply callback", async () => {
-    const { logger, runtime } = createRuntime({ decide: async () => "trigger" });
+    const { runtime } = createRuntime({ decide: async () => "trigger" });
     const result = await beginReply(runtime);
-    await expect(result.delivery.onDelivered()).resolves.toBeUndefined();
 
-    expect(logger.warn).not.toHaveBeenCalledWith(
-      expect.objectContaining({ event: "will_reply_failed" }),
-    );
+    await expect(result.delivery.onDelivered()).resolves.toBeUndefined();
   });
 
-  it("reports reply callback rejection without changing a completed turn", async () => {
+  it("keeps a completed turn after a reply callback rejection", async () => {
     const onReply = vi.fn(async () => {
       throw new Error("reply charge failed");
     });
-    const { logger, runtime } = createRuntime({ decide: async () => "trigger", onReply });
+    const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
 
     const result = await beginReply(runtime);
     await expect(result.delivery.onDelivered()).resolves.toBeUndefined();
 
     expect(onReply).toHaveBeenCalledOnce();
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ event: "will_reply_failed", cause: expect.any(Error) }),
-    );
   });
 
   it("returns active-send errors without creating delivery events", async () => {
@@ -636,7 +638,7 @@ describe("ChannelRuntime", () => {
         throw new Error("offline");
       }),
     );
-    const observed: Input[] = [];
+    const observed: unknown[] = [];
     ctx.on("yesimbot/event", (input) => observed.push(input));
     const tool = (state.options?.tools as Array<{ name: string; execute: Function }>).find(
       (candidate) => candidate.name === "sendMessage",
@@ -647,8 +649,7 @@ describe("ChannelRuntime", () => {
       ok: false,
       error: { name: "Error", message: "offline" },
     });
-    expect(observed).toHaveLength(1);
-    expect(observed[0]?.type).toBe("yesimbot.message");
+    expect(observed).toEqual([]);
   });
 
   it("queues one shared stop task after committed channel work", async () => {
@@ -694,7 +695,7 @@ describe("ChannelRuntime", () => {
         throw new Error("will stop failed");
       }),
     };
-    const { logger, runtime } = createRuntime(will);
+    const { runtime } = createRuntime(will);
     state.agent?.stop.mockRejectedValueOnce(new Error("agent stop failed"));
 
     await runtime.handle(record());
@@ -704,7 +705,6 @@ describe("ChannelRuntime", () => {
     await expect(stopping).resolves.toBeUndefined();
     expect(state.agent?.stop).toHaveBeenCalledOnce();
     expect(will.stop).toHaveBeenCalledOnce();
-    expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 
   it("passes the current active turn id as the complete WillEngine state", async () => {

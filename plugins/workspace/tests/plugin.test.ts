@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
+import type { ChannelScope } from "koishi-plugin-yesimbot";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", () => ({
@@ -52,6 +53,21 @@ vi.mock("koishi", () => ({
 }));
 
 import WorkspacePlugin from "../src";
+import { Workspace } from "../src/workspace";
+
+type WorkspaceFactory = (scope: ChannelScope, bot: unknown) => AgentPlugin;
+
+function workspaceCache(plugin: WorkspacePlugin): ReadonlyMap<string, Workspace> {
+  const value: unknown = Reflect.get(plugin, "workspaces");
+  if (!(value instanceof Map)) throw new Error("Workspace cache is unavailable");
+  return value as ReadonlyMap<string, Workspace>;
+}
+
+function workspaceRoot(plugin: WorkspacePlugin, key: string): string {
+  const workspace = workspaceCache(plugin).get(key);
+  if (!workspace) throw new Error(`Workspace ${key} is unavailable`);
+  return workspace.config.root;
+}
 
 async function tools(plugin: AgentPlugin): Promise<readonly AgentTool[]> {
   return typeof plugin.tools === "function"
@@ -62,17 +78,16 @@ async function tools(plugin: AgentPlugin): Promise<readonly AgentTool[]> {
 function createContext(baseDir: string) {
   const ready: Array<() => Promise<void> | void> = [];
   const dispose: Array<() => Promise<void> | void> = [];
-  const factories: Array<(scope: any, bot: any) => AgentPlugin> = [];
-  const getStoragePath = vi.fn(
-    async (scope: { platform: string; selfId: string; channelId: string; isDirect: boolean }) => {
-      const directory = scope.isDirect
+  const factories: WorkspaceFactory[] = [];
+  const getStoragePath = vi.fn(async (scope: ChannelScope) => {
+    const directory =
+      scope.type === "direct"
         ? `direct-${scope.platform}-${scope.channelId}-${scope.selfId}`
         : `shared-${scope.platform}-${scope.channelId}`;
-      const root = join(baseDir, "channels", directory);
-      await mkdir(root, { recursive: true });
-      return root;
-    },
-  );
+    const root = join(baseDir, "channels", directory);
+    await mkdir(root, { recursive: true });
+    return root;
+  });
   return {
     ready,
     dispose,
@@ -93,7 +108,7 @@ function createContext(baseDir: string) {
       }),
       yesimbot: {
         getStoragePath,
-        registerAgentPlugin: vi.fn((factory) => {
+        registerAgentPlugin: vi.fn((factory: WorkspaceFactory) => {
           factories.push(factory);
           return vi.fn();
         }),
@@ -112,7 +127,7 @@ describe("WorkspacePlugin", () => {
   it("places its workspace below the Core channel root", async () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
     const ready: Array<() => Promise<void> | void> = [];
-    const factories: Array<(scope: any, bot: any) => AgentPlugin> = [];
+    const factories: WorkspaceFactory[] = [];
     const getStoragePath = vi.fn(async () => {
       const root = join(baseDir, "channels", "shared-onebot-room");
       await mkdir(root, { recursive: true });
@@ -132,7 +147,7 @@ describe("WorkspacePlugin", () => {
       }),
       yesimbot: {
         getStoragePath,
-        registerAgentPlugin: vi.fn((factory) => {
+        registerAgentPlugin: vi.fn((factory: WorkspaceFactory) => {
           factories.push(factory);
           return vi.fn();
         }),
@@ -145,7 +160,12 @@ describe("WorkspacePlugin", () => {
     });
 
     await ready[0]?.();
-    const scope = { platform: "onebot", selfId: "bot", channelId: "room", isDirect: false };
+    const scope = {
+      platform: "onebot",
+      selfId: "bot",
+      channelId: "room",
+      type: "shared",
+    } satisfies ChannelScope;
     const agentPlugin = factories[0]?.(scope, {});
     expect(agentPlugin).toBeDefined();
     expect((await tools(agentPlugin!)).map((tool) => tool.name).sort()).toEqual([
@@ -154,7 +174,7 @@ describe("WorkspacePlugin", () => {
       "writeFile",
     ]);
     expect(getStoragePath).toHaveBeenCalledWith(scope);
-    expect((plugin as any).workspaces.get(JSON.stringify(["onebot", "room"])).config.root).toBe(
+    expect(workspaceRoot(plugin, JSON.stringify(["onebot", "room"]))).toBe(
       join(baseDir, "channels", "shared-onebot-room", "workspace"),
     );
   });
@@ -168,19 +188,29 @@ describe("WorkspacePlugin", () => {
       enableNetwork: false,
     });
     await mocks.ready[0]?.();
-    const scope = { platform: "onebot", selfId: "bot", channelId: "room", isDirect: false };
+    const scope = {
+      platform: "onebot",
+      selfId: "bot",
+      channelId: "room",
+      type: "shared",
+    } satisfies ChannelScope;
     await tools(mocks.factories[0]!(scope, {}));
     const root = join(baseDir, "channels", "shared-onebot-room", "workspace");
 
     await mocks.dispose[0]?.();
 
-    expect((plugin as any).workspaces.size).toBe(0);
+    expect(workspaceCache(plugin).size).toBe(0);
     await expect(access(root, constants.F_OK)).resolves.toBeUndefined();
   });
 
   it("reopens the same root after a plugin restart", async () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
-    const scope = { platform: "onebot", selfId: "bot", channelId: "room", isDirect: false };
+    const scope = {
+      platform: "onebot",
+      selfId: "bot",
+      channelId: "room",
+      type: "shared",
+    } satisfies ChannelScope;
     const first = createContext(baseDir);
     const firstPlugin = new WorkspacePlugin(first.ctx as never, {
       cwd: "/home/workspace",
@@ -189,8 +219,7 @@ describe("WorkspacePlugin", () => {
     });
     await first.ready[0]?.();
     await tools(first.factories[0]!(scope, {}));
-    const firstRoot = (firstPlugin as any).workspaces.get(JSON.stringify(["onebot", "room"])).config
-      .root;
+    const firstRoot = workspaceRoot(firstPlugin, JSON.stringify(["onebot", "room"]));
     await first.dispose[0]?.();
 
     const second = createContext(baseDir);
@@ -201,9 +230,7 @@ describe("WorkspacePlugin", () => {
     });
     await second.ready[0]?.();
     await tools(second.factories[0]!(scope, {}));
-    expect(
-      (secondPlugin as any).workspaces.get(JSON.stringify(["onebot", "room"])).config.root,
-    ).toBe(firstRoot);
+    expect(workspaceRoot(secondPlugin, JSON.stringify(["onebot", "room"]))).toBe(firstRoot);
   });
 
   it("reuses shared scopes and isolates direct scopes", async () => {
@@ -217,19 +244,19 @@ describe("WorkspacePlugin", () => {
     await mocks.ready[0]?.();
     const factory = mocks.factories[0]!;
     await tools(
-      factory({ platform: "onebot", selfId: "old", channelId: "room", isDirect: false }, {}),
+      factory({ platform: "onebot", selfId: "old", channelId: "room", type: "shared" }, {}),
     );
     await tools(
-      factory({ platform: "onebot", selfId: "new", channelId: "room", isDirect: false }, {}),
+      factory({ platform: "onebot", selfId: "new", channelId: "room", type: "shared" }, {}),
     );
     await tools(
-      factory({ platform: "onebot", selfId: "old", channelId: "room", isDirect: true }, {}),
+      factory({ platform: "onebot", selfId: "old", channelId: "room", type: "direct" }, {}),
     );
     await tools(
-      factory({ platform: "onebot", selfId: "new", channelId: "room", isDirect: true }, {}),
+      factory({ platform: "onebot", selfId: "new", channelId: "room", type: "direct" }, {}),
     );
 
-    expect((plugin as any).workspaces.size).toBe(3);
+    expect(workspaceCache(plugin).size).toBe(3);
     expect(mocks.getStoragePath).toHaveBeenCalledTimes(3);
   });
 
@@ -247,7 +274,7 @@ describe("WorkspacePlugin", () => {
     });
     await mocks.ready[0]?.();
     const prompt = await mocks.factories[0]!(
-      { platform: "onebot", selfId: "bot", channelId: "room", isDirect: false },
+      { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" },
       {},
     ).appendSystemPrompt?.({} as never);
     expect(String(prompt)).toContain("Network access: disabled");

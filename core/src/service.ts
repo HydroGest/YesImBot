@@ -63,7 +63,7 @@ export class YesImBotService extends Service<Config> {
         platform: session.platform,
         selfId: session.selfId,
         channelId: session.channelId,
-        isDirect: session.isDirect,
+        type: session.isDirect ? "direct" : "shared",
       });
     });
     this.registerCommand(resetCommand);

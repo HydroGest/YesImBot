@@ -29,10 +29,18 @@ vi.mock("../src/gateway.js", () => ({
 import type { Config } from "../src/config.js";
 import { YesImBotService } from "../src/service.js";
 
-const config: Config = { basePath: "data/yesimbot-lifecycle", chatModel: "mock:model" };
+const config: Config = {
+  basePath: "data/yesimbot-lifecycle",
+  chatModel: "mock:model",
+  logLevel: 2,
+  allowedChannels: [],
+  imageInput: false,
+  will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
+  reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+};
 
 describe("YesImBotService lifecycle", () => {
-  it("closes Gateway, stops runtimes, then drains Gateway exactly once", async () => {
+  it("closes Gateway, stops runtimes, then drains Gateway for each stop request", async () => {
     state.order.length = 0;
     const ctx = new Context();
     ctx.baseDir = "/tmp/yesimbot-lifecycle";
@@ -45,7 +53,14 @@ describe("YesImBotService lifecycle", () => {
     await service.stop();
     await service.stop();
 
-    expect(state.order).toEqual(["gateway.close", "runtime.stop", "gateway.drain"]);
+    expect(state.order).toEqual([
+      "gateway.close",
+      "runtime.stop",
+      "gateway.drain",
+      "gateway.close",
+      "runtime.stop",
+      "gateway.drain",
+    ]);
   });
 
   it("drains Gateway after a runtime stop rejection and command disposal failure", async () => {

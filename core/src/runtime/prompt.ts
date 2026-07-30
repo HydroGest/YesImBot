@@ -79,7 +79,7 @@ function formatRuntimeContext(channel: ChannelScope): SystemModelMessage {
       `  <platform>${escapeXml(channel.platform)}</platform>`,
       `  <selfId>${escapeXml(channel.selfId)}</selfId>`,
       `  <channelId>${escapeXml(channel.channelId)}</channelId>`,
-      `  <isDirect>${channel.isDirect}</isDirect>`,
+      `  <isDirect>${channel.type === "direct"}</isDirect>`,
       "</runtime_context>",
     ].join("\n"),
   };

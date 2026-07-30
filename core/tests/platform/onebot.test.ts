@@ -37,57 +37,12 @@ function store(put: AssetStore["put"] = vi.fn(async () => h("img", { id: ID })))
 }
 
 describe("resolveOneBotEvent", () => {
-  it("produces a typed reaction event from a valid reactions-updated notice", () => {
-    const result = resolveOneBotEvent(
-      makeSession({
-        onebot: {
-          post_type: "notice",
-          notice_type: "message_reactions_updated",
-          group_id: "20000",
-          message_id: "40000",
-          user_id: "30000",
-          reactions: [{ emoji_id: "100", emoji_type: "1", count: 5 }],
-        },
-      }),
-    );
-
-    expect(result).toMatchObject({
-      kind: "event",
-      eventType: "onebot.message-reactions-updated",
-      reaction: {
-        messageId: "40000",
-        userId: "30000",
-        reactions: [{ id: "100", type: "1", count: 5 }],
-      },
-    });
-  });
-
   it.each([
     {},
     { post_type: "notice", notice_type: "group_increase" },
     { post_type: "notice", notice_type: "message_reactions_updated", group_id: "20000" },
   ])("returns null for unsupported or incomplete notices", (onebot) => {
     expect(resolveOneBotEvent(makeSession({ onebot }))).toBeNull();
-  });
-
-  it("preserves numeric identifiers and zero reaction counts", () => {
-    const result = resolveOneBotEvent(
-      makeSession({
-        onebot: {
-          post_type: "notice",
-          notice_type: "message_reactions_updated",
-          group_id: 20000,
-          message_id: 40000,
-          user_id: 30000,
-          reactions: [{ emoji_id: 100, emoji_type: 1, count: 0 }],
-        },
-      }),
-    );
-
-    expect(result?.reaction).toMatchObject({
-      messageId: "40000",
-      reactions: [{ id: "100", count: 0 }],
-    });
   });
 
   it("produces the typed poke event without raw platform residue", () => {
@@ -319,24 +274,21 @@ describe("OneBot resolver", () => {
     expect(assets.put).toHaveBeenCalledOnce();
   });
 
-  it("returns supported notice Drafts and skips unsupported Sessions", async () => {
+  it("returns a poke Draft and skips unsupported notices", async () => {
     const resolver = createResolver({ http: vi.fn() } as never);
     const notice = await resolver.resolve(
       makeSession({
         type: "notice",
         elements: undefined,
-        onebot: {
-          post_type: "notice",
-          notice_type: "message_reactions_updated",
-          group_id: "20000",
-          message_id: "40000",
-          user_id: "30000",
-          reactions: [],
+        event: {
+          type: "notice",
+          subtype: "poke",
+          _data: { user_id: "30000", target_id: "10000" },
         },
       }),
       store(),
     );
-    expect(notice).toMatchObject({ kind: "event", eventType: "onebot.message-reactions-updated" });
+    expect(notice).toMatchObject({ kind: "event", eventType: "notice.poke" });
     await expect(
       resolver.resolve(makeSession({ type: "notice", elements: undefined }), store()),
     ).resolves.toBeNull();

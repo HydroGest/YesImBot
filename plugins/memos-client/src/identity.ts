@@ -15,7 +15,7 @@ function legacyChannelHash(input: {
   readonly channelScope: MemosIdentityInput["channelScope"];
 }): string {
   const scope = input.channelScope;
-  const canonical = scope.isDirect
+  const canonical = scope.type === "direct"
     ? ["yesimbot.channel", 1, "direct", scope.platform, scope.selfId, scope.channelId]
     : ["yesimbot.channel", 1, "shared", scope.platform, null, scope.channelId];
   const bytes = createHash("sha256")

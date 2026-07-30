@@ -4,24 +4,141 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { Context, Logger } from "koishi";
 
-export interface ChannelScope {
-  readonly platform: string;
-  readonly selfId: string;
-  readonly channelId: string;
-  readonly isDirect: boolean;
+export type ChannelScope = SharedChannelScope | DirectChannelScope;
+
+interface SharedChannelScope {
+  type: "shared";
+  platform: string;
+  channelId: string;
+  selfId: string;
 }
 
-interface ChannelManifest {
-  readonly platform: string;
-  readonly channelId: string;
-  readonly selfId?: string;
-  readonly createdAt: string;
+interface DirectChannelScope {
+  type: "direct";
+  platform: string;
+  selfId: string;
+  channelId: string;
 }
+
+type ChannelManifest = ChannelScope & { createdAt: string };
 
 const MAX_DIRECTORY_NAME_LENGTH = 200;
 
-function isMissingPath(cause: unknown): boolean {
-  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
+export class ChannelStorage {
+  private readonly channelsPath: string;
+  private readonly manifests = new Map<string, ChannelManifest>();
+
+  private readonly ctx: Context;
+  private readonly logger: Logger;
+
+  constructor(ctx: Context, basePath: string) {
+    this.ctx = ctx;
+    this.logger = ctx.logger("channel-storage");
+    this.channelsPath = resolve(basePath, "channels");
+  }
+
+  async start(): Promise<void> {
+    await fs.mkdir(this.channelsPath, { recursive: true });
+    for (const entry of await fs.readdir(this.channelsPath, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        this.logger.error("storage.directory.invalid", { entry: entry.name });
+        continue;
+      }
+      try {
+        const manifest = parseManifest(
+          JSON.parse(
+            await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8"),
+          ),
+        );
+        const scope = scopeFromManifest(manifest);
+        if (channelDirectoryName(scope) !== entry.name)
+          throw new Error("Manifest directory name does not match directory");
+        this.manifests.set(channelStorageKey(scope), manifest);
+      } catch (cause) {
+        this.logger.error("storage.manifest_invalid", { directoryName: entry.name, cause });
+      }
+    }
+  }
+
+  async getStoragePath(scope: ChannelScope): Promise<string> {
+    await this.start();
+    await this.ensureChannel(scope);
+    const root = join(this.channelsPath, channelDirectoryName(scope));
+    await this.assertChannelRoot(root);
+    return root;
+  }
+
+  private async assertChannelRoot(channelRoot: string): Promise<void> {
+    if ((await fs.lstat(channelRoot)).isSymbolicLink())
+      throw new Error("Channel directory is a symbolic link");
+    const realRoot = await fs.realpath(channelRoot);
+    this.assertContained(this.channelsPath, realRoot);
+  }
+
+  private assertContained(root: string, path: string): void {
+    const rel = relative(root, path);
+    if (rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel))) return;
+    throw new Error("Resolved storage path escapes its channel root");
+  }
+
+  private async ensureChannel(scope: ChannelScope): Promise<ChannelManifest> {
+    assertScope(scope);
+    const key = channelStorageKey(scope);
+    const known = this.manifests.get(key);
+    if (known) return known;
+
+    const directoryName = channelDirectoryName(scope);
+    const destination = join(this.channelsPath, directoryName);
+    try {
+      const stat = await fs.lstat(destination);
+      if (!stat.isDirectory() || stat.isSymbolicLink())
+        throw new Error("Channel storage destination is not a directory");
+      const manifest = parseManifest(
+        JSON.parse(await fs.readFile(join(destination, "channel.json"), "utf8")),
+      );
+      if (channelStorageKey(scopeFromManifest(manifest)) !== key)
+        throw new Error("Channel storage integrity mismatch");
+      this.manifests.set(key, manifest);
+      return manifest;
+    } catch (cause) {
+      if (!(typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")) throw cause;
+    }
+
+    const manifest = manifestFor(scope);
+    const temporary = join(this.channelsPath, `.${directoryName}.${randomUUID()}.tmp`);
+    try {
+      await fs.mkdir(temporary);
+      await writeJsonAtomic(join(temporary, "channel.json"), manifest);
+      await fs.rename(temporary, destination);
+    } finally {
+      await fs.rm(temporary, { recursive: true, force: true });
+    }
+    this.manifests.set(key, manifest);
+    return manifest;
+  }
+}
+
+export function scopeMapKey(scope: ChannelScope): string {
+  return scope.type === "direct"
+    ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`
+    : `shared:${scope.platform}:${scope.selfId}:${scope.channelId}`;
+}
+
+function channelStorageKey(scope: ChannelScope): string {
+  return scope.type === "direct"
+    ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`
+    : `shared:${scope.platform}:${scope.channelId}`;
+}
+
+function assertScope(scope: ChannelScope): void {
+  if (typeof scope.platform !== "string" || scope.platform.length === 0)
+    throw new TypeError("ChannelScope.platform must be a non-empty string");
+  if (typeof scope.channelId !== "string" || scope.channelId.length === 0)
+    throw new TypeError("ChannelScope.channelId must be a non-empty string");
+  if (typeof scope.selfId !== "string" || scope.selfId.length === 0)
+    throw new TypeError("ChannelScope.selfId must be a non-empty string");
+  if (scope.type !== "shared" && scope.type !== "direct")
+    throw new TypeError("ChannelScope.type must be 'shared' or 'direct'");
 }
 
 function encodeDirectoryComponent(value: string): string {
@@ -34,13 +151,10 @@ function encodeDirectoryComponent(value: string): string {
   return encoded;
 }
 
-export function scopeMapKey(scope: ChannelScope): string {
-  return JSON.stringify([scope.platform, scope.selfId, scope.channelId, scope.isDirect]);
-}
-
 export function channelDirectoryName(scope: ChannelScope): string {
+  assertScope(scope);
   const directoryName = (
-    scope.isDirect
+    scope.type === "direct"
       ? [
           "direct",
           encodeDirectoryComponent(scope.platform),
@@ -59,50 +173,54 @@ export function channelDirectoryName(scope: ChannelScope): string {
 }
 
 function manifestFor(scope: ChannelScope): ChannelManifest {
-  return scope.isDirect
+  return scope.type === "direct"
     ? {
+        type: "direct",
         platform: scope.platform,
-        channelId: scope.channelId,
         selfId: scope.selfId,
+        channelId: scope.channelId,
         createdAt: new Date().toISOString(),
       }
-    : { platform: scope.platform, channelId: scope.channelId, createdAt: new Date().toISOString() };
+    : {
+        type: "shared",
+        platform: scope.platform,
+        selfId: scope.selfId,
+        channelId: scope.channelId,
+        createdAt: new Date().toISOString(),
+      };
 }
 
 function scopeFromManifest(manifest: ChannelManifest): ChannelScope {
-  return {
-    platform: manifest.platform,
-    selfId: manifest.selfId ?? "shared",
-    channelId: manifest.channelId,
-    isDirect: manifest.selfId !== undefined,
-  };
+  return manifest.type === "direct"
+    ? {
+        type: "direct",
+        platform: manifest.platform,
+        selfId: manifest.selfId,
+        channelId: manifest.channelId,
+      }
+    : {
+        type: "shared",
+        platform: manifest.platform,
+        selfId: manifest.selfId,
+        channelId: manifest.channelId,
+      };
 }
 
 function parseManifest(value: unknown): ChannelManifest {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    throw new TypeError("Channel manifest must be an object");
-  const fields = value as Record<string, unknown>;
-  const allowed =
-    fields.selfId === undefined
-      ? ["platform", "channelId", "createdAt"]
-      : ["platform", "channelId", "selfId", "createdAt"];
-  if (Object.keys(fields).length !== allowed.length || !allowed.every((field) => field in fields))
-    throw new TypeError("Channel manifest fields are invalid");
-  for (const field of ["platform", "channelId", "createdAt"] as const) {
-    if (typeof fields[field] !== "string" || fields[field].length === 0)
-      throw new TypeError(`Channel manifest ${field} is invalid`);
-  }
-  if (
-    fields.selfId !== undefined &&
-    (typeof fields.selfId !== "string" || fields.selfId.length === 0)
-  )
-    throw new TypeError("Channel manifest selfId is invalid");
-  return {
-    platform: fields.platform as string,
-    channelId: fields.channelId as string,
-    ...(fields.selfId === undefined ? {} : { selfId: fields.selfId as string }),
-    createdAt: fields.createdAt as string,
-  };
+  if (typeof value !== "object" || value === null)
+    throw new Error("Channel manifest is not an object");
+  const manifest = value as Partial<ChannelManifest>;
+  if (manifest.type !== "shared" && manifest.type !== "direct")
+    throw new Error("Channel manifest type is invalid");
+  if (typeof manifest.platform !== "string")
+    throw new Error("Channel manifest platform is invalid");
+  if (typeof manifest.channelId !== "string")
+    throw new Error("Channel manifest channelId is invalid");
+  if (typeof manifest.selfId !== "string")
+    throw new Error("Channel manifest selfId is invalid");
+  if (typeof manifest.createdAt !== "string")
+    throw new Error("Channel manifest createdAt is invalid");
+  return manifest as ChannelManifest;
 }
 
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
@@ -115,118 +233,5 @@ async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
     await fs.rename(temporary, path);
   } finally {
     await fs.rm(temporary, { force: true });
-  }
-}
-
-export class ChannelStorage {
-  private readonly channelsPath: string;
-  private readonly manifests = new Map<string, ChannelManifest>();
-  private tail: Promise<void> = Promise.resolve();
-  private startTask: Promise<void> | undefined;
-
-  private readonly ctx: Context;
-  private readonly logger: Logger;
-
-  constructor(ctx: Context, basePath: string) {
-    this.ctx = ctx;
-    this.logger = ctx.logger("channel-storage");
-    this.channelsPath = resolve(basePath, "channels");
-  }
-
-  start(): Promise<void> {
-    if (!this.startTask) this.startTask = this.startInternal();
-    return this.startTask;
-  }
-
-  async getStoragePath(scope: ChannelScope): Promise<string> {
-    await this.start();
-    const manifest = await this.enqueue(() => this.ensureChannel(scope));
-    const root = join(this.channelsPath, channelDirectoryName(scope));
-    await this.assertChannelRoot(root);
-    if (scopeMapKey(scope) !== scopeMapKey(scopeFromManifest(manifest)))
-      throw new Error("Channel storage integrity mismatch");
-    return root;
-  }
-
-  private async startInternal(): Promise<void> {
-    await fs.mkdir(this.channelsPath, { recursive: true });
-    for (const entry of await fs.readdir(this.channelsPath, { withFileTypes: true })) {
-      if (
-        !entry.isDirectory() ||
-        (!entry.name.startsWith("shared-") && !entry.name.startsWith("direct-"))
-      ) {
-        this.logger.error("storage.directory_invalid", { entry: entry.name });
-        continue;
-      }
-      try {
-        const manifest = parseManifest(
-          JSON.parse(
-            await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8"),
-          ),
-        );
-        const scope = scopeFromManifest(manifest);
-        if (channelDirectoryName(scope) !== entry.name)
-          throw new Error("Manifest directory name does not match directory");
-        this.manifests.set(scopeMapKey(scope), manifest);
-      } catch (cause) {
-        this.logger.error("storage.manifest_invalid", { directoryName: entry.name, cause });
-      }
-    }
-  }
-
-  private async ensureChannel(scope: ChannelScope): Promise<ChannelManifest> {
-    const key = scopeMapKey(scope);
-    const known = this.manifests.get(key);
-    if (known) return known;
-    const directoryName = channelDirectoryName(scope);
-    const destination = join(this.channelsPath, directoryName);
-    try {
-      const stat = await fs.lstat(destination);
-      if (!stat.isDirectory() || stat.isSymbolicLink())
-        throw new Error("Channel storage destination is not a directory");
-      const manifest = parseManifest(
-        JSON.parse(await fs.readFile(join(destination, "channel.json"), "utf8")),
-      );
-      if (scopeMapKey(scopeFromManifest(manifest)) !== key)
-        throw new Error("Channel storage integrity mismatch");
-      this.manifests.set(key, manifest);
-      return manifest;
-    } catch (cause) {
-      if (!isMissingPath(cause)) throw cause;
-    }
-
-    const manifest = manifestFor(scope);
-    const temporary = join(this.channelsPath, `.${directoryName}.${randomUUID()}.tmp`);
-    try {
-      await fs.mkdir(temporary);
-      await writeJsonAtomic(join(temporary, "channel.json"), manifest);
-      await fs.rename(temporary, destination);
-    } finally {
-      await fs.rm(temporary, { recursive: true, force: true });
-    }
-    this.manifests.set(key, manifest);
-    return manifest;
-  }
-
-  private async assertChannelRoot(channelRoot: string): Promise<void> {
-    if ((await fs.lstat(channelRoot)).isSymbolicLink())
-      throw new Error("Channel directory is a symbolic link");
-    const realRoot = await fs.realpath(channelRoot);
-    this.assertContained(this.channelsPath, realRoot);
-  }
-
-  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.tail.then(operation);
-    this.tail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
-  }
-
-  private assertContained(root: string, path: string): void {
-    const rel = relative(root, path);
-    if (rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel))) return;
-    throw new Error("Resolved storage path escapes its channel root");
   }
 }

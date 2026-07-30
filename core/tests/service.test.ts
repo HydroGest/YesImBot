@@ -36,15 +36,20 @@ import { Gateway } from "../src/gateway.js";
 import type { AgentPluginFactory } from "../src/index.js";
 import { YesImBotService } from "../src/service.js";
 
-const config: Config = { basePath: "data/yesimbot-service", chatModel: "mock:model" };
+const config: Config = {
+  basePath: "data/yesimbot-service",
+  chatModel: "mock:model",
+  logLevel: 2,
+  allowedChannels: [],
+  imageInput: false,
+  will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
+  reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+};
 
-function createService(
-  serviceConfig: Config = config,
-  model: { addChatModelInputModality?: ReturnType<typeof vi.fn> } = {},
-) {
+function createService(serviceConfig: Config = config) {
   const ctx = new Context();
   ctx.baseDir = "/tmp/yesimbot-service";
-  Object.assign(ctx, { "yesimbot.model": model });
+  Object.assign(ctx, { "yesimbot.model": {} });
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
   Object.assign(ctx, { database });
   vi.spyOn(ctx, "middleware").mockReturnValue(vi.fn() as never);
@@ -90,7 +95,7 @@ describe("YesImBotService facade", () => {
     const allowedChannels = [{ platform: "test", channelId: "room-1", isDirect: false }];
     const { service } = createService({ ...config, allowedChannels });
 
-    expect(service["gate"]["opts"].allowedChannels).toEqual(allowedChannels);
+    expect(service["gate"]["config"].allowedChannels).toEqual(allowedChannels);
   });
 
   it("accepts the public AgentPluginFactory parameters", () => {
@@ -104,46 +109,16 @@ describe("YesImBotService facade", () => {
 
   it("delegates reset registration to the composed boundary", async () => {
     const { service } = createService();
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", type: "shared" };
 
     await service.reset(scope);
 
     expect(state.runtime?.reset).toHaveBeenCalledWith(scope);
   });
 
-  it("registers the authority-4 modality command without replacing active runtimes", async () => {
-    const addChatModelInputModality = vi.fn(async () => "added" as const);
-    const { commands } = createService(config, { addChatModelInputModality });
-    const command = commands.find(({ name }) =>
-      name.startsWith("yesimbot.model.add-input-modality"),
-    );
-
-    expect(command?.options).toEqual({ authority: 4 });
-    const action = command?.action.mock.calls[0]?.[0];
-    await expect(action({}, "vision", "image")).resolves.toContain(
-      "Active runtimes keep their snapshot until replacement.",
-    );
-    expect(addChatModelInputModality).toHaveBeenCalledWith("vision", "image");
-  });
-
-  it("reports an idempotent modality command no-op and invalid command error", async () => {
-    const addChatModelInputModality = vi
-      .fn()
-      .mockResolvedValueOnce("unchanged")
-      .mockRejectedValueOnce(new Error("invalid modality"));
-    const { commands } = createService(config, { addChatModelInputModality });
-    const command = commands.find(({ name }) =>
-      name.startsWith("yesimbot.model.add-input-modality"),
-    );
-    const action = command?.action.mock.calls[0]?.[0];
-
-    await expect(action({}, "vision", "image")).resolves.toContain("unchanged");
-    await expect(action({}, "vision", "unknown")).resolves.toContain("invalid modality");
-  });
-
   it("delegates shared reset assignee validation to RuntimeManager", async () => {
     const { service, database } = createService();
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", isDirect: false };
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room-1", type: "shared" };
     await service.reset(scope);
 
     expect(database.get).not.toHaveBeenCalled();
@@ -152,7 +127,7 @@ describe("YesImBotService facade", () => {
 
   it("exposes Core channel storage methods", async () => {
     const { service } = createService();
-    const scope = { platform: "onebot", selfId: "10000", channelId: "123456", isDirect: false };
+    const scope = { platform: "onebot", selfId: "10000", channelId: "123456", type: "shared" };
 
     await service.start();
     await expect(service.getStoragePath(scope)).resolves.toBe(
@@ -177,14 +152,15 @@ describe("YesImBotService facade", () => {
     };
     const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
     const assets = { createStore: vi.fn(() => ({ get: vi.fn(), put: vi.fn(), clear: vi.fn() })) };
-    const gateway = new Gateway({
-      ctx: ctx as never,
-      runtime: runtime as never,
-      assets: assets as never,
-      ready: () => ready,
-      allowedChannels: [{ platform: "test", channelId: "room-1" }],
-      logger: { warn: vi.fn() } as never,
-    });
+    const gateway = new Gateway(
+      ctx as never,
+      {
+        allowedChannels: [{ platform: "test", channelId: "room-1" }],
+        pacing: config.reply.pacing,
+        logLevel: config.logLevel,
+      },
+      { runtime: runtime as never, assets: assets as never, ready: () => ready },
+    );
     gateway.register(resolver);
     const handling = gateway.handle({
       type: "message-created",

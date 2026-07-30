@@ -35,7 +35,7 @@ class AssigneeAdmissionError extends Error {
 }
 
 async function assertAssignee(ctx: Context, scope: ChannelScope): Promise<void> {
-  if (scope.isDirect) return;
+  if (scope.type === "direct") return;
   const [channel] = await ctx.database.get(
     "channel",
     { platform: scope.platform, id: scope.channelId },
@@ -234,7 +234,7 @@ export function matchesAllowedChannel(
       (rule) =>
         (rule.platform === "*" || rule.platform === scope.platform) &&
         (rule.channelId === "*" || rule.channelId === scope.channelId) &&
-        (rule.isDirect === undefined || rule.isDirect === scope.isDirect),
+        (rule.isDirect === undefined || rule.isDirect === (scope.type === "direct")),
     ) ?? false
   );
 }
@@ -250,7 +250,7 @@ function createRecord(
     id: scope.channelId,
     type:
       session.event.channel?.type ??
-      (scope.isDirect ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
+      (scope.type === "direct" ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
     ...(draft.kind === "message" && draft.channel?.name !== undefined
       ? { name: draft.channel.name }
       : session.event.channel?.name === undefined
@@ -288,10 +288,10 @@ function createRecord(
 function scopeFromSession(session: Session): ChannelScope | null {
   if (!session.platform || !session.selfId || !session.channelId) return null;
   return {
+    type: session.isDirect ? "direct" : "shared",
     platform: session.platform,
     selfId: session.selfId,
     channelId: session.channelId,
-    isDirect: session.isDirect,
   };
 }
 

@@ -7,21 +7,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { h, Universal } from "koishi";
+import { h, Universal, type Context } from "koishi";
 
 import { ChannelStorage, type ChannelScope } from "../src/channel.js";
-import { createEvent, createMessage } from "../src/input.js";
+import { createEvent, createMessage } from "../src/messages.js";
 import { parseReply } from "../src/runtime/reply.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 
 const shared = {
+  type: "shared",
   platform: "onebot",
   selfId: "10000",
   channelId: "123456",
-  isDirect: false,
 } satisfies ChannelScope;
 
-const direct = { ...shared, isDirect: true } satisfies ChannelScope;
+const direct = { ...shared, type: "direct" } satisfies ChannelScope;
 
 describe("ChannelStorage", () => {
   let basePath: string;
@@ -29,7 +29,10 @@ describe("ChannelStorage", () => {
 
   beforeEach(async () => {
     basePath = await mkdtemp(join(tmpdir(), "yesimbot-storage-"));
-    storage = new ChannelStorage(basePath);
+    const ctx = {
+      logger: vi.fn().mockReturnValue({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+    } as unknown as Context;
+    storage = new ChannelStorage(ctx, basePath);
     await storage.start();
   });
 
@@ -42,8 +45,10 @@ describe("ChannelStorage", () => {
 
     expect(root).toBe(join(basePath, "channels", "shared-onebot-123456"));
     expect(JSON.parse(await readFile(join(root, "channel.json"), "utf8"))).toEqual({
+      type: "shared",
       platform: "onebot",
       channelId: "123456",
+      selfId: shared.selfId,
       createdAt: expect.any(String),
     });
     await expect(access(join(basePath, "channels.json"))).rejects.toMatchObject({ code: "ENOENT" });
@@ -53,12 +58,11 @@ describe("ChannelStorage", () => {
     const otherShared = { ...shared, selfId: "20000" };
     const otherDirect = { ...direct, selfId: "20000" };
 
-    await expect(storage.getStoragePath(otherShared)).resolves.toBe(
-      await storage.getStoragePath(shared),
-    );
-    expect(await storage.getStoragePath(otherDirect)).not.toBe(
-      await storage.getStoragePath(direct),
-    );
+    const sharedRoot = await storage.getStoragePath(shared);
+    await expect(storage.getStoragePath(otherShared)).resolves.toBe(sharedRoot);
+
+    const directRoot = await storage.getStoragePath(direct);
+    expect(await storage.getStoragePath(otherDirect)).not.toBe(directRoot);
   });
 
   it("writes selfId only in a direct Manifest", async () => {
@@ -66,11 +70,14 @@ describe("ChannelStorage", () => {
     const directRoot = await storage.getStoragePath(direct);
 
     expect(JSON.parse(await readFile(join(sharedRoot, "channel.json"), "utf8"))).toEqual({
+      type: "shared",
       platform: shared.platform,
       channelId: shared.channelId,
+      selfId: shared.selfId,
       createdAt: expect.any(String),
     });
     expect(JSON.parse(await readFile(join(directRoot, "channel.json"), "utf8"))).toEqual({
+      type: "direct",
       platform: direct.platform,
       channelId: direct.channelId,
       selfId: direct.selfId,
@@ -81,10 +88,10 @@ describe("ChannelStorage", () => {
   it("accepts a 200-character basename and rejects 201 characters", async () => {
     const prefix = "shared-p-";
     const maximum = {
+      type: "shared",
       platform: "p",
       selfId: "bot",
       channelId: "x".repeat(200 - prefix.length),
-      isDirect: false,
     } satisfies ChannelScope;
 
     await expect(storage.getStoragePath(maximum)).resolves.toBeDefined();
@@ -112,8 +119,10 @@ describe("ChannelStorage", () => {
     await writeFile(
       join(root, "channel.json"),
       JSON.stringify({
+        type: "shared",
         platform: "onebot",
         channelId: "123456",
+        selfId: "10000",
         createdAt: "2026-07-29T00:00:00.000Z",
       }),
     );
@@ -121,19 +130,27 @@ describe("ChannelStorage", () => {
     await writeFile(join(legacy, "channel.json"), "{old", "utf8");
 
     const warn = vi.fn();
-    const restarted = new ChannelStorage(basePath, warn);
+    const ctx = {
+      logger: vi.fn().mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+    } as unknown as Context;
+    const restarted = new ChannelStorage(ctx, basePath);
     await restarted.start();
 
     await expect(restarted.getStoragePath(shared)).resolves.toBe(root);
-    expect(warn).toHaveBeenCalledWith("storage.directory_invalid", { entry: legacyName });
+    expect(warn).toHaveBeenCalledWith("storage.manifest_invalid", {
+      directoryName: legacyName,
+      cause: expect.any(Error),
+    });
   });
 
   it("rejects a mismatched Manifest without overwriting existing data", async () => {
     const root = join(basePath, "channels", "shared-onebot-123456");
     const manifestPath = join(root, "channel.json");
     const manifest = {
+      type: "shared",
       platform: "onebot",
       channelId: "other",
+      selfId: shared.selfId,
       createdAt: "2026-07-29T00:00:00.000Z",
     };
     await mkdir(root, { recursive: true });
@@ -149,7 +166,10 @@ describe("ChannelStorage", () => {
     await writeFile(join(root, "channel.json"), "{broken", "utf8");
 
     const warn = vi.fn();
-    const restarted = new ChannelStorage(basePath, warn);
+    const ctx = {
+      logger: vi.fn().mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+    } as unknown as Context;
+    const restarted = new ChannelStorage(ctx, basePath);
     await restarted.start();
 
     expect(warn).toHaveBeenCalledWith("storage.manifest_invalid", {
@@ -165,11 +185,15 @@ describe("ChannelStorage", () => {
     await writeFile(join(directory, "channel.json"), "{old", "utf8");
 
     const warn = vi.fn();
-    await new ChannelStorage(basePath, warn).start();
+    const ctx = {
+      logger: vi.fn().mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+    } as unknown as Context;
+    await new ChannelStorage(ctx, basePath).start();
 
     await expect(readFile(join(directory, "channel.json"), "utf8")).resolves.toBe("{old");
-    expect(warn).toHaveBeenCalledWith("storage.directory_invalid", {
-      entry: "a5vnf2ijd75c2ibyo2s5czdir4",
+    expect(warn).toHaveBeenCalledWith("storage.manifest_invalid", {
+      directoryName: "a5vnf2ijd75c2ibyo2s5czdir4",
+      cause: expect.any(Error),
     });
   });
 

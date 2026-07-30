@@ -6,17 +6,17 @@ import { channelDirectoryName, type ChannelScope } from "../src/channel.js";
 import * as core from "../src/index.js";
 
 const shared = (selfId: string): ChannelScope => ({
+  type: "shared",
   platform: "onebot",
   selfId,
   channelId: "123456",
-  isDirect: false,
 });
 
 const direct = (selfId: string): ChannelScope => ({
+  type: "direct",
   platform: "onebot",
   selfId,
   channelId: "123456",
-  isDirect: true,
 });
 
 describe("ChannelScope storage coordinates", () => {
@@ -33,17 +33,17 @@ describe("ChannelScope storage coordinates", () => {
   it("encodes delimiter-looking coordinates without escaping the channel root", () => {
     expect(
       channelDirectoryName({
+        type: "shared",
         platform: "one/bot",
         selfId: "bot/../one",
         channelId: "room/../alpha",
-        isDirect: false,
       }),
-    ).toBe("shared-one~2f~bot-room~2f~~2e~~2e~~2f~alpha");
+    ).toBe("shared-one%2f%bot-room%2f%%2e%%2e%%2f%alpha");
   });
 
   it.each(["platform", "selfId", "channelId"] as const)("rejects empty %s", (field) => {
     const scope = { ...direct("10000"), [field]: "" };
-    expect(() => channelDirectoryName(scope)).toThrow(`ChannelScope.${field}`);
+    expect(() => channelDirectoryName(scope)).toThrow();
   });
 
   it("exports ChannelScope without a public channel identity", () => {

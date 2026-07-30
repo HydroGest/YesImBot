@@ -40,7 +40,7 @@ export namespace WillEngine {
 }
 
 export interface WillEngineObservation {
-  readonly event: Message;
+  readonly event: Message | Event;
   readonly decision: WillEngine.Decision;
 }
 

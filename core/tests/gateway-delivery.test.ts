@@ -12,7 +12,7 @@ import { h } from "koishi";
 import { ChannelStorage } from "../src/channel.js";
 import type { PacingConfig } from "../src/config.js";
 import { Gateway } from "../src/gateway.js";
-import type { InputRecord, MessageRecord } from "../src/input.js";
+import type { MessageRecord } from "../src/messages.js";
 import { RuntimeManager } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 
@@ -70,28 +70,33 @@ function delivery(signal?: AbortSignal) {
   };
 }
 
+type Route = (record: MessageRecord) => Promise<unknown>;
+
 function createGateway(
-  route: ReturnType<typeof vi.fn>,
+  route: Route,
   logger = { warn: vi.fn() },
   deliveryOptions: {
     readonly pacing?: PacingConfig;
   } = {},
 ) {
-  const ctx = {
-    middleware: vi.fn(() => vi.fn()),
-    on: vi.fn(() => vi.fn()),
-    database: { get: vi.fn(async () => [{ assignee: "bot-1" }]) },
-  };
-  const storage = new ChannelStorage("/tmp/yesimbot-gateway-delivery-test");
-  const gateway = new Gateway({
-    ctx: ctx as never,
-    runtime: { route } as never,
-    assets: { createStore: vi.fn(() => ({ get: vi.fn(), put: vi.fn(), clear: vi.fn() })) },
-    allowedChannels: [{ platform: "*", channelId: "*" }],
-    ready: () => storage.start(),
-    logger,
-    ...deliveryOptions,
-  } as never);
+  const ctx = new Context();
+  Object.assign(ctx, { database: { get: vi.fn(async () => [{ assignee: "bot-1" }]) } });
+  vi.spyOn(ctx, "middleware").mockReturnValue(vi.fn() as never);
+  vi.spyOn(ctx, "on").mockReturnValue(vi.fn() as never);
+  vi.spyOn(ctx, "logger").mockReturnValue(logger as never);
+  const gateway = new Gateway(
+    ctx,
+    {
+      allowedChannels: [{ platform: "*", channelId: "*" }],
+      pacing: deliveryOptions.pacing ?? { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+      logLevel: 2,
+    },
+    {
+      runtime: { route } as never,
+      assets: { createStore: vi.fn(() => ({ get: vi.fn(), put: vi.fn(), clear: vi.fn() })) },
+      ready: async () => undefined,
+    },
+  );
   gateway.register({
     platform: "test",
     resolve: async (input) => ({
@@ -100,15 +105,12 @@ function createGateway(
       elements: input.elements ?? [],
     }),
   });
-  return {
-    gateway,
-    logger,
-  };
+  return { gateway, logger };
 }
 
 function createIntegratedGateway(basePath: string) {
   const ctx = new Context();
-  const storage = new ChannelStorage(basePath);
+  const storage = new ChannelStorage(ctx, basePath);
   const assets = {
     createStore: vi.fn(() => ({ clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() })),
   };
@@ -121,21 +123,29 @@ function createIntegratedGateway(basePath: string) {
   ctx.bots.push({ platform: "test", selfId: "bot-1", sendMessage: vi.fn() } as never);
   const manager = new RuntimeManager({
     ctx,
-    config: { basePath, chatModel: "test:model" },
+    config: {
+      basePath,
+      chatModel: "test:model",
+      logLevel: 2,
+      allowedChannels: [],
+      imageInput: false,
+      will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
+      reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+    },
     logger: { debug: vi.fn(), warn: vi.fn() } as never,
     assets: assets as never,
     storage,
     getAgentPluginFactories: () => [],
   });
-  const gateway = new Gateway({
+  const gateway = new Gateway(
     ctx,
-    runtime: manager,
-    assets: assets as never,
-    storage,
-    allowedChannels: [{ platform: "test", channelId: "room-1" }],
-    ready: () => storage.start(),
-    logger: { warn: vi.fn() } as never,
-  });
+    {
+      allowedChannels: [{ platform: "test", channelId: "room-1" }],
+      pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+      logLevel: 2,
+    },
+    { runtime: manager, assets: assets as never, ready: () => storage.start() },
+  );
   gateway.register({
     platform: "test",
     resolve: async (input) => ({
@@ -175,7 +185,7 @@ describe("Gateway passive delivery", () => {
     });
     await first.manager.stop();
 
-    const readableDirectory = join(basePath, "channels", "shared-test-room~2d~1");
+    const readableDirectory = join(basePath, "channels", "shared-test-room%2d%1");
     const currentJsonl = join(readableDirectory, "sessions", "messages.jsonl");
     const firstEntries = await createJsonlStorage(currentJsonl).read();
     const firstInput = firstEntries[0]?.type === "message" ? firstEntries[0].data : undefined;

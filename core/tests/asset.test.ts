@@ -11,12 +11,13 @@ import { h } from "koishi";
 
 import { createAssetService } from "../src/asset.js";
 import { ChannelStorage, type ChannelScope } from "../src/channel.js";
+import type { Context } from "koishi";
 
 const scope: ChannelScope = {
+  type: "shared",
   platform: "onebot",
   selfId: "bot-1",
   channelId: "room-42",
-  isDirect: false,
 };
 const otherScope: ChannelScope = { ...scope, channelId: "room-43" };
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -28,7 +29,10 @@ describe("AssetService", () => {
 
   beforeEach(async () => {
     basePath = await mkdtemp(join(tmpdir(), "yesimbot-assets-"));
-    storage = new ChannelStorage(basePath);
+    const ctx = {
+      logger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+    } as unknown as Context;
+    storage = new ChannelStorage(ctx, basePath);
   });
 
   afterEach(async () => {

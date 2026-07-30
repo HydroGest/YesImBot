@@ -7,21 +7,17 @@ import { h, Universal } from "koishi";
 
 import {
   createEvent,
-  createInput,
   createMessage,
   isEvent,
-  isInput,
   isMessage,
   isMessageRecord,
   type Event,
   type EventBase,
   type EventMap,
   type EventRecord,
-  type Input,
-  type InputRecord,
   type Message,
   type MessageRecord,
-} from "../src/input.js";
+} from "../src/messages.js";
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
@@ -88,13 +84,6 @@ describe("Event", () => {
     expect(event.data).not.toHaveProperty("schemaVersion");
   });
 
-  it("createInput dispatches to createMessage or createEvent", () => {
-    const messageInput = createInput(messageRecord());
-    const eventInput = createInput(deliveryFailureRecord());
-    expect(messageInput.type).toBe("yesimbot.message");
-    expect(eventInput.type).toBe("yesimbot.event");
-  });
-
   it("isMessageRecord distinguishes message from event records", () => {
     expect(isMessageRecord(messageRecord())).toBe(true);
     expect(isMessageRecord(deliveryFailureRecord())).toBe(false);
@@ -130,22 +119,6 @@ describe("Event", () => {
     expectTypeOf<Event>().toMatchTypeOf<{ role: "custom"; type: "yesimbot.event" }>();
   });
 
-  it("isInput matches both Message and Event", () => {
-    const message = createMessage(messageRecord());
-    const event = createEvent(deliveryFailureRecord());
-    const nonInput: AgentMessage = {
-      id: "x",
-      timestamp: 0,
-      role: "custom",
-      type: "other",
-      data: {},
-    } as AgentMessage;
-
-    expect(isInput(message)).toBe(true);
-    expect(isInput(event)).toBe(true);
-    expect(isInput(nonInput)).toBe(false);
-  });
-
   it("recognizes custom discriminators without re-validating their payloads", () => {
     const badMessage = {
       id: "x",
@@ -164,8 +137,6 @@ describe("Event", () => {
 
     expect(isMessage(badMessage)).toBe(true);
     expect(isEvent(badEvent)).toBe(true);
-    expect(isInput(badMessage)).toBe(true);
-    expect(isInput(badEvent)).toBe(true);
   });
 
   it("Message type exposes elements and messageId", () => {

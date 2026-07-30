@@ -15,7 +15,7 @@ import {
   type EventRecord,
   type Input,
   type MessageRecord,
-} from "../src/input.js";
+} from "../src/messages.js";
 import { createModelInputPlugin } from "../src/runtime/model-input.js";
 
 declare module "koishi-plugin-yesimbot" {

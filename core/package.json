@@ -28,11 +28,6 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./model": {
-      "types": "./dist/model/index.d.ts",
-      "import": "./dist/model/index.js",
-      "require": "./dist/model/index.cjs"
-    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -40,7 +35,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "yarn clean && npx pkgroll --sourcemap",
+    "build": "npx pkgroll --sourcemap",
     "check-types": "tsc --noEmit",
     "clean": "rimraf .turbo && rimraf dist && rimraf tsconfig.tsbuildinfo",
     "pub": "yarn npm publish --access public",

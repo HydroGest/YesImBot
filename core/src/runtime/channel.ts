@@ -24,6 +24,8 @@ import {
   type EventRecord,
   type Event,
   type MessageRecord,
+  isMessage,
+  isEvent,
 } from "../messages.js";
 import { createModelInputPlugin } from "./model-input.js";
 import { OutputQueue } from "./output-queue.js";
@@ -176,9 +178,13 @@ export class ChannelRuntime {
       this.assertOpen();
       const input = isMessageRecord(record) ? createMessage(record) : createEvent(record);
       await this.agent.append(input);
-      this.logger.info({ event: "append_input", input });
+      if (isMessage(input)) {
+        this.ctx.emit("yesimbot/message", input);
+      } else if (isEvent(input)) {
+        this.ctx.emit("yesimbot/event", input);
+      }
       const decision = await this.opts.will.decide(input, this.readState());
-      this.logger.info({ event: "decide", input, decision });
+      this.ctx.emit("yesimbot/will", { event: input, decision });
       if (decision === "wait") return { kind: "wait", eventId: input.id };
       const activeTurnId = this.agent.getActiveTurnId();
       if (activeTurnId !== null) {

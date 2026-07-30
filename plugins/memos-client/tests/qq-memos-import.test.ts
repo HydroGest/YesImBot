@@ -246,7 +246,7 @@ describe("qq-memos-import script", () => {
         platform: "onebot",
         selfId: "another-synthetic-bot",
         channelId: GROUP_ID,
-        isDirect: false,
+        type: "shared",
       },
       channelHash: "y4hqcmhpojcbee72vfgt22mflq",
       channelType: "group",

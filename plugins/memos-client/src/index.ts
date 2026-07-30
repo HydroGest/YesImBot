@@ -71,7 +71,7 @@ export default class MemosClientPlugin {
       const resolveIdentity = (turnId: string) => {
         return deriveMemosIdentity({
           channelScope,
-          channelType: channelScope.isDirect ? "private" : "group",
+          channelType: channelScope.type === "direct" ? "private" : "group",
           authorId: latestAuthorId,
           messageId: latestMessageId,
           turnId,

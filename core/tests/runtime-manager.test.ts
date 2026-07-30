@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,14 +9,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/channel.js";
-import {
-  Config,
-  DEFAULT_IMAGE_BUDGET,
-  resolveImageBudget,
-  resolveReplyPacingConfig,
-  type Config as CoreConfig,
-} from "../src/config.js";
-import type { MessageRecord } from "../src/input.js";
+import type { Config as CoreConfig } from "../src/config.js";
+import type { MessageRecord } from "../src/messages.js";
 import {
   ChannelRuntime,
   type ChannelRuntimeOptions,
@@ -57,26 +52,41 @@ const state = vi.hoisted(() => ({
   stop: vi.fn(async () => undefined),
 }));
 
-function createManager(basePath = "/tmp/yesimbot-runtime-manager", will?: CoreConfig["will"]) {
+function createManager(
+  basePath = join(tmpdir(), `yesimbot-runtime-manager-${randomUUID()}`),
+  will: CoreConfig["will"] = {
+    engine: "routing",
+    direct: "trigger",
+    mention: "trigger",
+    group: "wait",
+  },
+) {
   const ctx = new Context();
   const matchingBot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn() };
   const otherBot = { platform: "test", selfId: "other", sendMessage: vi.fn() };
   ctx.bots.push(matchingBot as never, otherBot as never);
-  const model = { modelId: "test-model", modalities: { input: ["image"] } };
-  let entry: { readonly modalities?: { readonly input?: readonly string[] } } = {};
-  const resolveChatModel = vi.fn(() => ({ model, providerId: "test", entry }));
+  const model = { modelId: "test-model" };
+  const resolveChatModel = vi.fn(() => ({ model, providerId: "test", entry: {} }));
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
   Object.assign(ctx, {
     database,
     "yesimbot.model": { resolveChatModel },
   });
-  const storage = new ChannelStorage(basePath);
+  const storage = new ChannelStorage(ctx, basePath);
   const assets = {
     clear: vi.fn(async () => undefined),
     createStore: vi.fn(() => ({ clear: assets.clear, get: vi.fn(), put: vi.fn() })),
   };
   const getAgentPluginFactories = vi.fn(() => []);
-  const config: CoreConfig = { basePath, chatModel: "test:model", will };
+  const config: CoreConfig = {
+    basePath,
+    chatModel: "test:model",
+    logLevel: 2,
+    allowedChannels: [],
+    imageInput: false,
+    will,
+    reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+  };
   return {
     manager: new RuntimeManager({
       ctx,
@@ -87,6 +97,7 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager", will?: CoreCo
       getAgentPluginFactories,
     }),
     assets,
+    ctx,
     resolveChatModel,
     matchingBot,
     otherBot,
@@ -95,9 +106,6 @@ function createManager(basePath = "/tmp/yesimbot-runtime-manager", will?: CoreCo
     config,
     storage,
     getAgentPluginFactories,
-    setEntry: (next: typeof entry) => {
-      entry = next;
-    },
   };
 }
 
@@ -176,21 +184,21 @@ describe("RuntimeManager", () => {
     expect(resolveChatModel).toHaveBeenCalledWith("test:model");
   });
 
-  it("uses one identity for shared scopes and distinct identities for direct scopes", () => {
+  it("uses distinct runtime identities for distinct scope self IDs", () => {
     const shared = (selfId: string): ChannelScope => ({
       platform: "test",
       selfId,
       channelId: "room",
-      isDirect: false,
+      type: "shared",
     });
     const direct = (selfId: string): ChannelScope => ({
       platform: "test",
       selfId,
       channelId: "room",
-      isDirect: true,
+      type: "direct",
     });
 
-    expect(scopeMapKey(shared("bot-a"))).toBe(scopeMapKey(shared("bot-b")));
+    expect(scopeMapKey(shared("bot-a"))).not.toBe(scopeMapKey(shared("bot-b")));
     expect(scopeMapKey(direct("bot-a"))).not.toBe(scopeMapKey(direct("bot-b")));
   });
 
@@ -211,9 +219,14 @@ describe("RuntimeManager", () => {
     expect(state.handle).toHaveBeenCalledOnce();
   });
 
-  it("uses routing by default and willingness only when selected", async () => {
+  it("uses routing or willingness from the supplied configuration", async () => {
     const routing = createManager();
-    const willingness = createManager("/tmp/yesimbot-willingness", { engine: "willingness" });
+    const willingness = createManager(undefined, {
+      engine: "willingness",
+      probabilityThreshold: 55,
+      decayHalfLifeSeconds: 600,
+      replyCost: 35,
+    });
 
     await routing.manager.route(record("routing"));
     await willingness.manager.route(record("willingness"));
@@ -238,14 +251,14 @@ describe("RuntimeManager", () => {
     expect(database.get).not.toHaveBeenCalled();
   });
 
-  it("stops and replaces a shared runtime when selfId changes", async () => {
+  it("keeps shared runtimes distinct when selfId changes", async () => {
     const { manager } = createManager();
     await manager.route(record("room"));
     const first = state.runtimes[0];
 
     await manager.route(record("room", { selfId: "other" }));
 
-    expect(first?.stop).toHaveBeenCalledOnce();
+    expect(first?.stop).not.toHaveBeenCalled();
     expect(state.runtimes).toHaveLength(2);
     expect(state.runtimes[1]?.selfId).toBe("other");
   });
@@ -273,31 +286,20 @@ describe("RuntimeManager", () => {
     expect(runtimeOptions(state.runtimes[1]!)).toMatchObject({ model, agentPlugins: [second] });
   });
 
-  it("resolves imageInput disablement and defaults before snapshotting each runtime", async () => {
-    const { manager, config, setEntry } = createManager();
+  it("snapshots configured image budgets for each new runtime", async () => {
+    const { manager, config } = createManager();
 
-    expect(resolveImageBudget(false, true)).toBeNull();
-    expect(resolveImageBudget(undefined, true)).toEqual(DEFAULT_IMAGE_BUDGET);
-    expect(resolveImageBudget({}, false)).toBeNull();
     await manager.route(record("room"));
-    const first = runtimeOptions(state.runtimes[0]!);
+    expect(runtimeOptions(state.runtimes[0]!).imageBudget).toBeNull();
 
-    expect(first.imageBudget).toBeNull();
-    setEntry({ modalities: { input: ["image"] } });
     config.imageInput = { maxCount: 2, maxBytesPerImage: 1024, maxTotalBytes: 2048 };
-    await manager.route(record("room"));
-    expect(state.runtimes).toHaveLength(1);
-
     await manager.route(record("room", { selfId: "other" }));
+
     expect(runtimeOptions(state.runtimes[1]!).imageBudget).toEqual({
       maxCount: 2,
       maxBytesPerImage: 1024,
       maxTotalBytes: 2048,
     });
-  });
-
-  it("returns a mutable resolved pacing configuration", () => {
-    expect(Object.isFrozen(resolveReplyPacingConfig())).toBe(false);
   });
 
   it("uses factory message-id capability from each creation snapshot", async () => {
@@ -330,7 +332,7 @@ describe("RuntimeManager", () => {
       platform: "test",
       selfId: "bot-1",
       channelId: "room",
-      isDirect: false,
+      type: "shared",
     } satisfies ChannelScope;
     await manager.route(record("room"));
     await manager.reset(scope);
@@ -348,7 +350,7 @@ describe("RuntimeManager", () => {
     vi.spyOn(storage, "getStoragePath").mockRejectedValueOnce(new Error("storage clear failed"));
 
     await expect(
-      manager.reset({ platform: "test", selfId: "bot-1", channelId: "room", isDirect: false }),
+      manager.reset({ platform: "test", selfId: "bot-1", channelId: "room", type: "shared" }),
     ).rejects.toThrow("storage clear failed");
     await manager.route(record("room"));
     expect(assets.clear).toHaveBeenCalledOnce();
@@ -357,15 +359,15 @@ describe("RuntimeManager", () => {
 
   it("clears uncached sessions and assets without creating a runtime", async () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
-    const { manager, assets } = createManager(basePath);
+    const { ctx, manager, assets } = createManager(basePath);
     const scope = {
       platform: "test",
       selfId: "bot-1",
       channelId: "uncached",
-      isDirect: false,
+      type: "shared",
     } satisfies ChannelScope;
     const path = join(
-      await new ChannelStorage(basePath).getStoragePath(scope),
+      await new ChannelStorage(ctx, basePath).getStoragePath(scope),
       "sessions",
       "messages.jsonl",
     );
@@ -386,7 +388,7 @@ describe("RuntimeManager", () => {
       platform: "test",
       selfId: "bot-1",
       channelId: "room",
-      isDirect: false,
+      type: "shared",
     } satisfies ChannelScope;
     const root = await storage.getStoragePath(scope);
     const messages = join(root, "sessions", "messages.jsonl");
@@ -420,15 +422,15 @@ describe("RuntimeManager", () => {
 
   it("rejects reset after stop without clearing persisted data", async () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
-    const { manager, assets } = createManager(basePath);
+    const { ctx, manager, assets } = createManager(basePath);
     const scope = {
       platform: "test",
       selfId: "bot-1",
       channelId: "room",
-      isDirect: false,
+      type: "shared",
     } satisfies ChannelScope;
     const path = join(
-      await new ChannelStorage(basePath).getStoragePath(scope),
+      await new ChannelStorage(ctx, basePath).getStoragePath(scope),
       "sessions",
       "messages.jsonl",
     );

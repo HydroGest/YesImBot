@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { h, type Session, Universal } from "koishi";
+import { h, type Session, Universal, Context } from "koishi";
 
 import type { AssetStore } from "../src/asset.js";
 import type { ChannelScope } from "../src/channel.js";
@@ -13,7 +13,7 @@ import {
   type ChannelAllowRule,
   type SessionResolver,
 } from "../src/gateway.js";
-import type { ResolvedEventDraft, ResolvedMessageDraft } from "../src/input.js";
+import type { ResolvedEventDraft, ResolvedMessageDraft } from "../src/messages.js";
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
@@ -62,7 +62,7 @@ function createGateway(
   };
   const assets = { createStore: vi.fn(() => store) };
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
-  const logger = { warn: vi.fn() };
+  const gatewayLogger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
   let middleware: ((input: Session, next: () => Promise<unknown>) => Promise<void>) | undefined;
   let internal: ((input: Session) => void) | undefined;
   const ctx = {
@@ -75,21 +75,27 @@ function createGateway(
       return vi.fn();
     }),
     database,
+    logger: vi.fn().mockReturnValue(gatewayLogger),
   };
   return {
-    gateway: new Gateway({
-      ctx: ctx as never,
-      runtime: runtime as never,
-      assets,
-      ready: options.ready ?? (async () => undefined),
-      allowedChannels: options.allowedChannels ?? [{ platform: "*", channelId: "*" }],
-      logger,
-    }),
+    gateway: new Gateway(
+      ctx as never,
+      {
+        allowedChannels: options.allowedChannels ?? [{ platform: "*", channelId: "*" }],
+        pacing: { charactersPerSecond: 10, maxTotalDelayMs: 1000 },
+        logLevel: 2,
+      },
+      {
+        runtime: runtime as never,
+        assets,
+        ready: options.ready ?? (async () => undefined),
+      },
+    ),
     runtime,
     store,
     assets,
     database,
-    logger,
+    logger: gatewayLogger,
     middleware: () => middleware!,
     internal: () => internal!,
   };
@@ -97,12 +103,12 @@ function createGateway(
 
 describe("Channel allowlist", () => {
   const shared: ChannelScope = {
+    type: "shared",
     platform: "test",
     selfId: "bot-1",
     channelId: "room-1",
-    isDirect: false,
   };
-  const direct: ChannelScope = { ...shared, isDirect: true };
+  const direct: ChannelScope = { ...shared, type: "direct" };
 
   it("denies missing and empty rules", () => {
     expect(matchesAllowedChannel(shared, undefined)).toBe(false);
@@ -257,7 +263,7 @@ describe("Gateway", () => {
     await gateway.handle(session({ isDirect: true }));
 
     expect(database.get).not.toHaveBeenCalled();
-    expect(assets.createStore).toHaveBeenCalledWith(expect.objectContaining({ isDirect: true }));
+    expect(assets.createStore).toHaveBeenCalledWith(expect.objectContaining({ type: "direct" }));
     expect(runtime.route).toHaveBeenCalledWith(
       expect.objectContaining({
         channel: { id: "room-1", type: Universal.Channel.Type.DIRECT, name: "Direct room" },
@@ -281,7 +287,7 @@ describe("Gateway", () => {
       platform: "test",
       selfId: "bot-1",
       channelId: "room-1",
-      isDirect: false,
+      type: "shared",
     });
     expect(resolve).toHaveBeenCalledOnce();
     expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ elements: [image] }));

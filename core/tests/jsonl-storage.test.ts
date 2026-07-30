@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { Context } from "@koishijs/core";
 import { createEntry, createUserMessage } from "@yesimbot/agent-runtime";
 import { Universal } from "koishi";
 import { describe, expect, it, vi } from "vitest";
@@ -10,7 +11,12 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { ChannelScope } from "../src/channel.js";
 import { ChannelStorage } from "../src/channel.js";
-import { createEvent, createMessage, type EventRecord, type MessageRecord } from "../src/input.js";
+import {
+  createEvent,
+  createMessage,
+  type EventRecord,
+  type MessageRecord,
+} from "../src/messages.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 
 describe("jsonl storage", () => {
@@ -116,7 +122,7 @@ describe("jsonl storage", () => {
       platform: "onebot",
       selfId: "10000",
       channelId: "123456",
-      isDirect: false,
+      type: "shared",
     };
     const legacyPath = join(
       dir,
@@ -126,7 +132,7 @@ describe("jsonl storage", () => {
       "messages.jsonl",
     );
     const eventPath = join(
-      await new ChannelStorage(dir).getStoragePath(scope),
+      await new ChannelStorage(new Context(), dir).getStoragePath(scope),
       "sessions",
       "messages.jsonl",
     );
