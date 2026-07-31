@@ -170,16 +170,18 @@ export class ChannelRuntime {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
     return this.schedule(async () => {
       this.assertOpen();
-      const input = isMessageRecord(record) ? createMessage(record) : createEvent(record);
-      await this.agent.append(input);
-      if (isMessage(input)) {
-        this.ctx.emit("yesimbot/message", input);
-      } else if (isEvent(input)) {
-        this.ctx.emit("yesimbot/event", input);
-      }
+      const input = await this.commit(record);
       const decision = await this.opts.will.decide(input, this.readState());
       this.ctx.emit("yesimbot/will", { event: input, decision });
-      if (decision === "wait") return { kind: "wait", eventId: input.id };
+      return this.applyDecision(input, decision);
+    });
+  }
+
+  trigger(record: EventRecord): Promise<ChannelRuntimeResult> {
+    if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
+    return this.schedule(async () => {
+      this.assertOpen();
+      const input = await this.commit(record);
       const activeTurnId = this.agent.getActiveTurnId();
       if (activeTurnId !== null) {
         this.agent.send(input, { ifBusy: "join" });
@@ -187,6 +189,30 @@ export class ChannelRuntime {
       }
       return this.startRun(input);
     });
+  }
+
+  private async commit(record: MessageRecord | EventRecord): Promise<Message | Event> {
+    const input = isMessageRecord(record) ? createMessage(record) : createEvent(record);
+    await this.agent.append(input);
+    if (isMessage(input)) {
+      this.ctx.emit("yesimbot/message", input);
+    } else if (isEvent(input)) {
+      this.ctx.emit("yesimbot/event", input);
+    }
+    return input;
+  }
+
+  private async applyDecision(
+    input: Message | Event,
+    decision: "wait" | "trigger",
+  ): Promise<ChannelRuntimeResult> {
+    if (decision === "wait") return { kind: "wait", eventId: input.id };
+    const activeTurnId = this.agent.getActiveTurnId();
+    if (activeTurnId !== null) {
+      this.agent.send(input, { ifBusy: "join" });
+      return { kind: "join", eventId: input.id, turnId: activeTurnId };
+    }
+    return this.startRun(input);
   }
 
   private async teardown(reason: "stop"): Promise<void> {

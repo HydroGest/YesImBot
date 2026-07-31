@@ -90,6 +90,24 @@ function record(overrides: Partial<MessageRecord> = {}): MessageRecord {
   };
 }
 
+function forcedEvent(): EventRecord<"delivery.failed"> {
+  return {
+    eventType: "delivery.failed",
+    platform: "test",
+    selfId: "bot-1",
+    timestamp: 2,
+    channel: { id: "room-1", type: 0 },
+    text: "Delivery failed",
+    delivery: {
+      turnId: "turn-1",
+      messageId: "assistant-1",
+      segmentIndex: 1,
+      segmentTotal: 1,
+      error: { name: "Error", message: "offline" },
+    },
+  };
+}
+
 function createRuntime(
   will: WillEngine,
   sendMessage = vi.fn(async () => ["sent-1"]),
@@ -269,6 +287,35 @@ describe("ChannelRuntime", () => {
     const result = await runtime.handle(record());
 
     expect(result).toMatchObject({ kind: "join", turnId: "turn-active" });
+    expect(state.agent?.send).toHaveBeenCalledWith(expect.any(Object), { ifBusy: "join" });
+    expect(state.agent?.run).not.toHaveBeenCalled();
+  });
+
+  it("forces a committed event without Will", async () => {
+    const decide = vi.fn(async () => "wait" as const);
+    const { ctx, runtime } = createRuntime({ decide });
+    const observed: string[] = [];
+    ctx.on("yesimbot/event", () => observed.push("event"));
+    ctx.on("yesimbot/will", () => observed.push("will"));
+
+    await expect(runtime.trigger(forcedEvent())).resolves.toMatchObject({
+      kind: "run",
+      turnId: "turn-1",
+    });
+    expect(decide).not.toHaveBeenCalled();
+    expect(observed).toEqual(["event"]);
+    expect(state.agent?.append).toHaveBeenCalledOnce();
+    expect(state.agent?.run).toHaveBeenCalledOnce();
+  });
+
+  it("joins a forced event to the active turn", async () => {
+    state.activeTurnId = "turn-active";
+    const { runtime } = createRuntime({ decide: vi.fn(async () => "wait" as const) });
+
+    await expect(runtime.trigger(forcedEvent())).resolves.toMatchObject({
+      kind: "join",
+      turnId: "turn-active",
+    });
     expect(state.agent?.send).toHaveBeenCalledWith(expect.any(Object), { ifBusy: "join" });
     expect(state.agent?.run).not.toHaveBeenCalled();
   });
