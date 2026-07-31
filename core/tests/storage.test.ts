@@ -30,7 +30,9 @@ describe("ChannelStorage", () => {
   beforeEach(async () => {
     basePath = await mkdtemp(join(tmpdir(), "yesimbot-storage-"));
     const ctx = {
-      logger: vi.fn().mockReturnValue({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+      logger: vi
+        .fn()
+        .mockReturnValue({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
     } as unknown as Context;
     storage = new ChannelStorage(ctx, basePath);
     await storage.start();
@@ -131,7 +133,9 @@ describe("ChannelStorage", () => {
 
     const warn = vi.fn();
     const ctx = {
-      logger: vi.fn().mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+      logger: vi
+        .fn()
+        .mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
     } as unknown as Context;
     const restarted = new ChannelStorage(ctx, basePath);
     await restarted.start();
@@ -167,7 +171,9 @@ describe("ChannelStorage", () => {
 
     const warn = vi.fn();
     const ctx = {
-      logger: vi.fn().mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+      logger: vi
+        .fn()
+        .mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
     } as unknown as Context;
     const restarted = new ChannelStorage(ctx, basePath);
     await restarted.start();
@@ -186,7 +192,9 @@ describe("ChannelStorage", () => {
 
     const warn = vi.fn();
     const ctx = {
-      logger: vi.fn().mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+      logger: vi
+        .fn()
+        .mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
     } as unknown as Context;
     await new ChannelStorage(ctx, basePath).start();
 

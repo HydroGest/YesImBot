@@ -54,7 +54,6 @@ export function createForwardReader(
   }
 }
 
-
 function normalizeNode(
   node: OneBotForwardNode,
   config: Readonly<ForwardReaderConfig>,

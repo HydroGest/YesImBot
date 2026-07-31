@@ -72,7 +72,9 @@ function createChannelScope(overrides: Record<string, unknown> = {}) {
 
 async function getTools(plugin: AgentPlugin): Promise<AgentTool[]> {
   if (!plugin.tools) return [];
-  return typeof plugin.tools === "function" ? ((await plugin.tools({} as never)) ?? []) : plugin.tools;
+  return typeof plugin.tools === "function"
+    ? ((await plugin.tools({} as never)) ?? [])
+    : plugin.tools;
 }
 
 async function createRuntime(
@@ -125,7 +127,10 @@ describe("onebot-utils plugin", () => {
     await plugin.start();
 
     await expect(
-      factories[0]!({ platform: "discord", selfId: "bot", channelId: "channel" } as never, {} as never),
+      factories[0]!(
+        { platform: "discord", selfId: "bot", channelId: "channel" } as never,
+        {} as never,
+      ),
     ).resolves.toBeNull();
   });
 

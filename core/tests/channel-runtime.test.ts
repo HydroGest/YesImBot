@@ -167,7 +167,11 @@ describe("ChannelRuntime", () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-channel-prompt-"));
     await writeFile(join(basePath, "AGENTS.md"), "first policy");
     const sendMessage = vi.fn(async () => ["sent-1"]);
-    const { runtime } = createRuntime({ decide: async () => "wait" as const }, sendMessage, basePath);
+    const { runtime } = createRuntime(
+      { decide: async () => "wait" as const },
+      sendMessage,
+      basePath,
+    );
 
     await runtime.init();
     await writeFile(join(basePath, "AGENTS.md"), "second policy");

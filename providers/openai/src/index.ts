@@ -1,11 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { Schema } from "koishi";
-import {
-  BaseProviderConfig,
-  createChatModelsSchema,
-  createEmbeddingModelsSchema,
-  createProviderPlugin,
-} from "koishi-plugin-yesimbot";
+import { type BaseProviderConfig, createProviderPlugin } from "koishi-plugin-yesimbot";
 
 interface Config extends BaseProviderConfig {
   format: "chat" | "responses";
@@ -18,11 +13,29 @@ export const Config: Schema<Config> = Schema.object({
   format: Schema.union([Schema.const("chat"), Schema.const("responses")])
     .default("chat")
     .description("API 格式"),
-  chatModels: createChatModelsSchema([
-    { id: "gpt-4o", toolCall: true, reasoning: false },
-    { id: "o3-mini", toolCall: true, reasoning: true },
-  ]),
-  embeddingModels: createEmbeddingModelsSchema([{ id: "text-embedding-3-large" }]),
+  chatModels: Schema.array(
+    Schema.object({
+      id: Schema.string().required().description("模型 ID"),
+      toolCall: Schema.boolean().default(true).description("工具调用"),
+      reasoning: Schema.boolean().default(false).description("推理"),
+    }),
+  )
+    .role("table")
+    .default([
+      { id: "gpt-4o", toolCall: true, reasoning: true },
+      { id: "gpt-5.4", toolCall: true, reasoning: true },
+      { id: "gpt-5.5", toolCall: true, reasoning: true },
+      { id: "gpt-5.6-luna", toolCall: true, reasoning: true },
+    ])
+    .description("可用聊天模型列表"),
+  embeddingModels: Schema.array(
+    Schema.object({
+      id: Schema.string().required().description("模型 ID"),
+    }),
+  )
+    .role("table")
+    .default([{ id: "text-embedding-3-small" }, { id: "text-embedding-3-large" }])
+    .description("可用嵌入模型列表"),
 });
 
 export default createProviderPlugin<Config, ReturnType<typeof createOpenAI>>({

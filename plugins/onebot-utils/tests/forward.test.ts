@@ -2,10 +2,7 @@ import type { OneBot } from "koishi-plugin-adapter-onebot";
 import { describe, expect, it, vi } from "vitest";
 
 import { createForwardReader } from "../src/forward.js";
-import type {
-  OneBotForwardNode,
-  OneBotForwardSegment,
-} from "../src/types.js";
+import type { OneBotForwardNode, OneBotForwardSegment } from "../src/types.js";
 
 function node(
   message: OneBotForwardSegment[],
@@ -196,10 +193,10 @@ describe("createForwardReader", () => {
       .mockRejectedValueOnce(new Error("temporary"))
       .mockResolvedValueOnce([node([{ type: "text", data: { text: "first" } }])])
       .mockResolvedValueOnce([node([{ type: "text", data: { text: "second" } }])]);
-    const reader = createForwardReader(
-      { getForwardMsg } as OneBot.Internal,
-      { parseImages: false, maxForwardPageChars: 6000 },
-    );
+    const reader = createForwardReader({ getForwardMsg } as OneBot.Internal, {
+      parseImages: false,
+      maxForwardPageChars: 6000,
+    });
 
     await expect(reader({ forwardId: "first" })).rejects.toThrow("temporary");
     await expect(reader({ forwardId: "first" })).resolves.toEqual({

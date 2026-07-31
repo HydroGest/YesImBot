@@ -41,11 +41,11 @@ export class RuntimeManager {
     this.assertOpen();
     const scope: ChannelScope | null = record.channel?.id
       ? {
-        type: record.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared",
-        platform: record.platform,
-        selfId: record.selfId,
-        channelId: record.channel.id,
-      }
+          type: record.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared",
+          platform: record.platform,
+          selfId: record.selfId,
+          channelId: record.channel.id,
+        }
       : null;
     if (!scope) throw new Error("Accepted event requires a channel");
     const runtime = await this.getOrCreate(scope);

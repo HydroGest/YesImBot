@@ -8,10 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h } from "koishi";
-
-import { createAssetService } from "../src/asset.js";
-import { ChannelStorage, type ChannelScope } from "../src/channel.js";
 import type { Context } from "koishi";
+
+import { AssetService } from "../src/asset.js";
+import { ChannelStorage, type ChannelScope } from "../src/channel.js";
 
 const scope: ChannelScope = {
   type: "shared",
@@ -40,7 +40,7 @@ describe("AssetService", () => {
   });
 
   it("stores copied bytes as a full content-id image element", async () => {
-    const store = createAssetService(storage).createStore(scope);
+    const store = new AssetService(storage).createStore(scope);
     const source = PNG_BYTES.slice();
     const element = await store.put(source);
     source[0] = 0;
@@ -51,7 +51,7 @@ describe("AssetService", () => {
   });
 
   it("deduplicates bytes and shares a shared-channel store across Bots", async () => {
-    const assets = createAssetService(storage);
+    const assets = new AssetService(storage);
     const first = assets.createStore(scope);
     const second = assets.createStore({ ...scope, selfId: "bot-2" });
 
@@ -61,7 +61,7 @@ describe("AssetService", () => {
   });
 
   it("rejects invalid, absent, and ambiguous asset references", async () => {
-    const store = createAssetService(storage).createStore(scope);
+    const store = new AssetService(storage).createStore(scope);
     const root = await storage.getStoragePath(scope);
     const assets = join(root, "assets");
     await mkdir(assets, { recursive: true });
@@ -76,7 +76,7 @@ describe("AssetService", () => {
   });
 
   it("clears only the current channel assets", async () => {
-    const assets = createAssetService(storage);
+    const assets = new AssetService(storage);
     const first = assets.createStore(scope);
     const second = assets.createStore(otherScope);
     await first.put(PNG_BYTES);

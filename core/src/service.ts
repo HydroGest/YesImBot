@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import { Command, Service, type Context } from "koishi";
 
-import { createAssetService, type AssetService } from "./asset.js";
+import { AssetService } from "./asset.js";
 import { ChannelStorage, type ChannelScope } from "./channel.js";
 import { type Config } from "./config.js";
 import { Gateway, type SessionResolver } from "./gateway.js";
@@ -33,7 +33,7 @@ export class YesImBotService extends Service<Config> {
     this.logger.level = config.logLevel ?? 2;
     this.model = ctx["yesimbot.model"];
     this.storage = new ChannelStorage(ctx, resolve(ctx.baseDir, config.basePath || ctx.baseDir));
-    this.assets = createAssetService(this.storage);
+    this.assets = new AssetService(this.storage);
     this.rt = new RuntimeManager({
       ctx,
       config,

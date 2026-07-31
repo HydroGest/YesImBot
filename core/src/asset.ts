@@ -9,22 +9,18 @@ import type { ChannelScope, ChannelStorage } from "./channel.js";
 const COMPLETE_ID = /^[a-f0-9]{32}$/;
 const PREFIX_ID = /^[a-f0-9]{7,31}$/;
 
-export interface AssetService {
-  createStore(scope: ChannelScope): AssetStore;
-}
-
 export interface AssetStore {
   put(data: Uint8Array): Promise<Element>;
   get(idOrPrefix: string): Promise<Uint8Array>;
   clear(): Promise<void>;
 }
 
-export function createAssetService(storage: ChannelStorage): AssetService {
-  return {
-    createStore(scope) {
-      return new ScopedAssetStore(storage, scope);
-    },
-  };
+export class AssetService {
+  constructor(private readonly storage: ChannelStorage) {}
+
+  createStore(scope: ChannelScope): AssetStore {
+    return new ScopedAssetStore(this.storage, scope);
+  }
 }
 
 class ScopedAssetStore implements AssetStore {
