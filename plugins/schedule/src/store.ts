@@ -16,7 +16,9 @@ import {
 import type {
   Schedule,
   ScheduleCreateInput,
+  ScheduleLastResult,
   ScheduleRow,
+  ScheduleState,
   ScheduleUpdateInput,
 } from "./types";
 
@@ -225,6 +227,100 @@ export class ScheduleStore {
       const updatedAt = new Date(Date.now()).toISOString();
       await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { state: "cancelled", nextRunAt: null, updatedAt });
       return toSchedule({ ...row, state: "cancelled", nextRunAt: null, updatedAt });
+    });
+  }
+
+  /** Enabled rows across every channel, earliest next run first. */
+  listEnabled(): Promise<Schedule[]> {
+    return this.mutate(async () => {
+      const rows = await this.model.get(SCHEDULE_TABLE, { state: "enabled" });
+      return rows.map(toSchedule).sort(compareByNextRun);
+    });
+  }
+
+  /**
+   * Durably claims the due occurrence `occurrenceAt` of `id`: the row must
+   * still be enabled with a matching `nextRunAt`. The claim writes the
+   * `submitting` latest result and advances the rule before returning the
+   * claimed row — a once schedule is completed, a cron schedule moves to its
+   * next occurrence. Returns null when the occurrence is not claimable, so
+   * duplicate wakes can never claim the same occurrence twice.
+   */
+  claim(id: string, occurrenceAt: string): Promise<Schedule | null> {
+    return this.mutate(async () => {
+      const rows = await this.model.get(SCHEDULE_TABLE, { id });
+      const row = rows[0];
+      if (!row || row.state !== "enabled" || row.nextRunAt !== occurrenceAt) return null;
+      const now = new Date(Date.now());
+      const rule = ruleOfRow(row);
+      const state: ScheduleState = rule.kind === "once" ? "completed" : "enabled";
+      const next = rule.kind === "once" ? null : nextRunAt(rule, now);
+      const lastResult: ScheduleLastResult = { occurrenceAt, status: "submitting" };
+      const updatedAt = now.toISOString();
+      await this.model.set(SCHEDULE_TABLE, { id }, { state, nextRunAt: next, lastResult, updatedAt });
+      return toSchedule({ ...row, state, nextRunAt: next, lastResult, updatedAt });
+    });
+  }
+
+  /**
+   * Finalizes the claimed occurrence `occurrenceAt` of `id`. Only a latest
+   * result still in `submitting` for that exact occurrence can be finalized;
+   * any other state is left untouched so a stale finish can never overwrite a
+   * newer claim. `status` is the durable outcome: `accepted` after a trigger
+   * resolution, `failed` after a trigger rejection, or `missed` when no
+   * concurrent trigger slot was available.
+   */
+  finish(
+    id: string,
+    occurrenceAt: string,
+    status: "accepted" | "failed" | "missed",
+    error?: { name: string; message: string },
+  ): Promise<Schedule | null> {
+    return this.mutate(async () => {
+      const rows = await this.model.get(SCHEDULE_TABLE, { id });
+      const row = rows[0];
+      const result = row?.lastResult;
+      if (!row || result?.status !== "submitting" || result.occurrenceAt !== occurrenceAt) return null;
+      const now = new Date(Date.now());
+      const lastResult: ScheduleLastResult = { ...result, status, finishedAt: now.toISOString() };
+      if (error !== undefined) lastResult.error = error;
+      const updatedAt = now.toISOString();
+      await this.model.set(SCHEDULE_TABLE, { id }, { lastResult, updatedAt });
+      return toSchedule({ ...row, lastResult, updatedAt });
+    });
+  }
+
+  /**
+   * Startup repair for every persisted row. A latest result left in
+   * `submitting` for a past occurrence becomes `interrupted` and is never
+   * resubmitted. An enabled row whose next run lies in the past becomes one
+   * `missed` result: a once schedule is completed, a cron schedule advances
+   * directly to its first future occurrence. No occurrence is replayed.
+   */
+  recover(now: Date): Promise<void> {
+    return this.mutate(async () => {
+      const rows = await this.model.get(SCHEDULE_TABLE, {});
+      const nowMs = now.getTime();
+      const updatedAt = now.toISOString();
+      for (const row of rows) {
+        const result = row.lastResult;
+        if (result?.status === "submitting" && Date.parse(result.occurrenceAt) < nowMs) {
+          const lastResult: ScheduleLastResult = { ...result, status: "interrupted", finishedAt: updatedAt };
+          await this.model.set(SCHEDULE_TABLE, { id: row.id }, { lastResult, updatedAt });
+          continue;
+        }
+        if (row.state !== "enabled" || row.nextRunAt === null || Date.parse(row.nextRunAt) >= nowMs) continue;
+        const lastResult: ScheduleLastResult = { occurrenceAt: row.nextRunAt, status: "missed", finishedAt: updatedAt };
+        if (row.kind === "once") {
+          await this.model.set(
+            SCHEDULE_TABLE,
+            { id: row.id },
+            { state: "completed", nextRunAt: null, lastResult, updatedAt },
+          );
+        } else {
+          await this.model.set(SCHEDULE_TABLE, { id: row.id }, { nextRunAt: nextRunAt(ruleOfRow(row), now), lastResult, updatedAt });
+        }
+      }
     });
   }
 
