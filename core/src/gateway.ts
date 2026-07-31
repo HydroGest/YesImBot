@@ -3,13 +3,14 @@ import { type Awaitable, type Context, type Logger, type Session, Universal } fr
 import type { AssetService, AssetStore } from "./asset.js";
 import type { ChannelScope } from "./channel.js";
 import { type PacingConfig } from "./config.js";
+import { deliverOutput } from "./delivery.js";
 import type {
   EventRecord,
   MessageRecord,
   ResolvedEventDraft,
   ResolvedMessageDraft,
 } from "./messages.js";
-import type { RuntimeManager } from "./runtime/index.js";
+import type { ChannelRuntimeResult, RuntimeManager } from "./runtime/index.js";
 
 export interface ChannelAllowRule {
   readonly platform: string;
@@ -139,67 +140,15 @@ export class Gateway {
   private async deliver(
     session: Session,
     record: MessageRecord | EventRecord,
-    result: Extract<Awaited<ReturnType<RuntimeManager["route"]>>, { kind: "run" }>,
+    result: Extract<ChannelRuntimeResult, { readonly kind: "run" }>,
   ): Promise<void> {
-    let acknowledged = false;
-    let consumedDeliveryMs = 0;
-    for await (const output of result.output) {
-      for (const [index, segment] of output.segments.entries()) {
-        if (result.delivery.signal.aborted) return;
-        const delayMs = nextSegmentDelayMs({
-          text: segment.join(""),
-          consumedDeliveryMs,
-          config: this.config.pacing,
-        });
-        const startedAt = Date.now();
-        await waitForDelay(delayMs, result.delivery.signal);
-        consumedDeliveryMs += Math.max(delayMs, Date.now() - startedAt);
-        if (result.delivery.signal.aborted) return;
-        try {
-          await session.send(segment);
-          if (!acknowledged) {
-            acknowledged = true;
-            await result.delivery.onDelivered();
-          }
-        } catch (cause) {
-          await this.failDelivery(record, output, index, cause, result.delivery);
-          return;
-        }
-      }
-    }
-  }
-
-  private async failDelivery(
-    record: MessageRecord | EventRecord,
-    output: {
-      readonly turnId: string;
-      readonly messageId: string;
-      readonly segments: readonly unknown[];
-    },
-    index: number,
-    cause: unknown,
-    delivery: { fail(record: EventRecord<"delivery.failed">): Promise<void> },
-  ): Promise<void> {
-    const error = normalizeDeliveryError(cause);
-    try {
-      await delivery.fail({
-        eventType: "delivery.failed",
-        platform: record.platform,
-        selfId: record.selfId,
-        timestamp: Date.now(),
-        channel: record.channel,
-        delivery: {
-          turnId: output.turnId,
-          messageId: output.messageId,
-          segmentIndex: index + 1,
-          segmentTotal: output.segments.length,
-          error,
-        },
-        text: `Delivery of assistant message ${output.messageId} failed: ${error.message}`,
-      });
-    } catch (feedbackCause) {
-      this.warn("delivery.failed", feedbackCause, record.platform);
-    }
+    await deliverOutput({
+      record,
+      result,
+      pacing: this.config.pacing,
+      send: (segment) => session.send(segment),
+      warn: (cause) => this.warn("delivery.failed", cause, record.platform),
+    });
   }
 
   private warn(code: string, cause: unknown, platform: string): void {
@@ -296,40 +245,4 @@ function scopeFromSession(session: Session): ChannelScope | null {
 
 function isMessageSession(session: Session): boolean {
   return session.type === "message-created";
-}
-
-function nextSegmentDelayMs(input: {
-  readonly text: string;
-  readonly consumedDeliveryMs: number;
-  readonly config: PacingConfig;
-}): number {
-  const jitter = 0.85 + (1.15 - 0.85) * Math.random();
-  const typingMs = ([...input.text].length / input.config.charactersPerSecond) * 1_000 * jitter;
-  const delayMs = Math.min(Math.max(typingMs, 250), 10_000);
-  return input.consumedDeliveryMs + delayMs >= input.config.maxTotalDelayMs
-    ? 250
-    : Math.round(delayMs);
-}
-
-function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return Promise.resolve();
-  return new Promise((resolve) => {
-    const timer = setTimeout(finish, delayMs);
-    const onAbort = () => finish();
-    function finish(): void {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-function normalizeDeliveryError(cause: unknown): { name: string; message: string; code?: string } {
-  const error = cause instanceof Error ? cause : new Error(String(cause));
-  const code =
-    typeof (cause as { code?: unknown } | null)?.code === "string"
-      ? (cause as { code: string }).code
-      : undefined;
-  return { name: error.name, message: error.message, ...(code === undefined ? {} : { code }) };
 }
