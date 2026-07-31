@@ -43,6 +43,20 @@ export type ScheduleUpdateInput = {
 );
 
 /**
+ * The compact, tool-facing view of a Schedule: identity, lifecycle, and next
+ * execution only. Raw scope coordinates, rule, prompt, and audit fields are
+ * intentionally absent so Agent tool output stays small and channel-bound.
+ */
+export type ScheduleProjection = {
+  id: string;
+  title: string;
+  kind: "once" | "cron";
+  state: ScheduleState;
+  nextRunAt: string | null;
+  lastResult?: ScheduleLastResult;
+};
+
+/**
  * The physical row of the plugin-owned `yesimbot_schedule` table. It keeps the
  * raw scope coordinates and both rule columns; exactly one of `at`/`cron` is
  * non-null for a given `kind`.
