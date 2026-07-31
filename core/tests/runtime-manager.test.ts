@@ -10,7 +10,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/channel.js";
 import type { Config as CoreConfig } from "../src/config.js";
-import type { MessageRecord } from "../src/messages.js";
+import type { EventRecord, MessageRecord } from "../src/messages.js";
 import {
   ChannelRuntime,
   type ChannelRuntimeOptions,
@@ -49,6 +49,7 @@ const state = vi.hoisted(() => ({
   runtimes: [] as ChannelRuntime[],
   init: vi.fn(async () => undefined),
   handle: vi.fn(async () => ({ kind: "wait" as const, eventId: "event-1" })),
+  trigger: vi.fn(async () => ({ kind: "join" as const, eventId: "event-1", turnId: "turn-1" })),
   stop: vi.fn(async () => undefined),
 }));
 
@@ -115,12 +116,18 @@ describe("RuntimeManager", () => {
     state.runtimes = [];
     state.init.mockReset().mockResolvedValue(undefined);
     state.handle.mockReset().mockResolvedValue({ kind: "wait", eventId: "event-1" });
+    state.trigger
+      .mockReset()
+      .mockResolvedValue({ kind: "join", eventId: "event-1", turnId: "turn-1" });
     state.stop.mockReset().mockResolvedValue(undefined);
     vi.spyOn(ChannelRuntime.prototype, "init").mockImplementation(function () {
       state.runtimes.push(this);
       return state.init();
     });
     vi.spyOn(ChannelRuntime.prototype, "handle").mockImplementation(async () => state.handle());
+    vi.spyOn(ChannelRuntime.prototype, "trigger").mockImplementation(async (record) =>
+      state.trigger(record),
+    );
     vi.spyOn(ChannelRuntime.prototype, "stop").mockImplementation(() => state.stop());
   });
 
@@ -131,6 +138,32 @@ describe("RuntimeManager", () => {
 
     expect(state.runtimes).toHaveLength(1);
     expect(state.handle).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes a forced event to the shared channel runtime without handling", async () => {
+    const { manager } = createManager();
+    const event = {
+      eventType: "delivery.failed",
+      platform: "test",
+      selfId: "bot-1",
+      timestamp: 2,
+      channel: { id: "room", type: 0 },
+      text: "Delivery failed",
+      delivery: {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        segmentIndex: 1,
+        segmentTotal: 1,
+        error: { name: "Error", message: "offline" },
+      },
+    } satisfies EventRecord<"delivery.failed">;
+    state.trigger.mockResolvedValue({ kind: "join", eventId: "event-1", turnId: "turn-1" });
+
+    await expect(manager.trigger(event)).resolves.toMatchObject({ kind: "join", turnId: "turn-1" });
+
+    expect(state.runtimes).toHaveLength(1);
+    expect(state.trigger).toHaveBeenCalledWith(event);
+    expect(state.handle).not.toHaveBeenCalled();
   });
 
   it("continues same-identity lifecycle work after a rejected creation", async () => {

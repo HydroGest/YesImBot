@@ -39,6 +39,19 @@ export class RuntimeManager {
 
   async route(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
     this.assertOpen();
+    const runtime = await this.runtimeFor(record);
+    this.assertOpen();
+    return runtime.handle(record);
+  }
+
+  async trigger(record: EventRecord): Promise<ChannelRuntimeResult> {
+    this.assertOpen();
+    const runtime = await this.runtimeFor(record);
+    this.assertOpen();
+    return runtime.trigger(record);
+  }
+
+  private async runtimeFor(record: MessageRecord | EventRecord): Promise<ChannelRuntime> {
     const scope: ChannelScope | null = record.channel?.id
       ? {
           type: record.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared",
@@ -48,9 +61,7 @@ export class RuntimeManager {
         }
       : null;
     if (!scope) throw new Error("Accepted event requires a channel");
-    const runtime = await this.getOrCreate(scope);
-    this.assertOpen();
-    return runtime.handle(record);
+    return this.getOrCreate(scope);
   }
 
   async reset(scope: ChannelScope): Promise<void> {
