@@ -294,17 +294,50 @@ describe("ChannelRuntime", () => {
   it("forces a committed event without Will", async () => {
     const decide = vi.fn(async () => "wait" as const);
     const { ctx, runtime } = createRuntime({ decide });
-    const observed: string[] = [];
-    ctx.on("yesimbot/event", () => observed.push("event"));
-    ctx.on("yesimbot/will", () => observed.push("will"));
+    const order: string[] = [];
+    const observed: unknown[] = [];
+    state.agent?.append.mockImplementation(async () => {
+      order.push("append");
+    });
+    state.agent?.run.mockImplementation(() => {
+      order.push("run");
+      state.activeTurnId ??= "turn-1";
+      return (async function* () {})();
+    });
+    ctx.on("yesimbot/event", (input) => {
+      order.push("observe");
+      observed.push(input);
+    });
+    ctx.on("yesimbot/will", () => order.push("will"));
 
     await expect(runtime.trigger(forcedEvent())).resolves.toMatchObject({
       kind: "run",
       turnId: "turn-1",
     });
     expect(decide).not.toHaveBeenCalled();
-    expect(observed).toEqual(["event"]);
-    expect(state.agent?.append).toHaveBeenCalledOnce();
+    expect(order).toEqual(["append", "observe", "run"]);
+    const appended = state.agent?.append.mock.calls[0]?.[0] as
+      | { readonly type: string; readonly data: unknown }
+      | undefined;
+    expect(appended).toMatchObject({
+      type: "yesimbot.event",
+      data: {
+        eventType: "delivery.failed",
+        platform: "test",
+        selfId: "bot-1",
+        channel: { id: "room-1", type: 0 },
+        text: "Delivery failed",
+        delivery: {
+          turnId: "turn-1",
+          messageId: "assistant-1",
+          segmentIndex: 1,
+          segmentTotal: 1,
+          error: { name: "Error", message: "offline" },
+        },
+      },
+    });
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toBe(appended);
     expect(state.agent?.run).toHaveBeenCalledOnce();
   });
 
@@ -611,6 +644,70 @@ describe("ChannelRuntime", () => {
     expect(result).not.toHaveProperty("delivery.release");
     await result.delivery.onDelivered();
     expect(onReply).toHaveBeenCalledOnce();
+  });
+
+  it("settles delivery.fail only after queued feedback is appended and observed, even across stop", async () => {
+    const entered = deferred();
+    const release = deferred();
+    let calls = 0;
+    const will: WillEngine = {
+      decide: vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) return "trigger" as const;
+        if (calls === 2) {
+          entered.resolve();
+          await release.promise;
+        }
+        return "wait" as const;
+      }),
+    };
+    const { ctx, runtime } = createRuntime(will);
+    const observed: unknown[] = [];
+    ctx.on("yesimbot/event", (input) => observed.push(input));
+
+    const run = await beginReply(runtime);
+    const blocking = runtime.handle(record({ messageId: "message-2" }));
+    await entered.promise;
+
+    let failed = false;
+    const failing = run.delivery.fail(forcedEvent()).then(() => {
+      failed = true;
+    });
+    await Promise.resolve();
+    expect(failed).toBe(false);
+
+    const stopping = runtime.stop();
+    await Promise.resolve();
+    expect(failed).toBe(false);
+
+    release.resolve();
+    await expect(failing).resolves.toBeUndefined();
+    await Promise.all([blocking, stopping]);
+
+    expect(failed).toBe(true);
+    expect(state.agent?.append).toHaveBeenCalledTimes(3);
+    const appended = state.agent?.append.mock.calls[2]?.[0] as
+      | { readonly type: string; readonly data: unknown }
+      | undefined;
+    expect(appended).toMatchObject({
+      type: "yesimbot.event",
+      data: {
+        eventType: "delivery.failed",
+        platform: "test",
+        selfId: "bot-1",
+        channel: { id: "room-1", type: 0 },
+        text: "Delivery failed",
+        delivery: {
+          turnId: "turn-1",
+          messageId: "assistant-1",
+          segmentIndex: 1,
+          segmentTotal: 1,
+          error: { name: "Error", message: "offline" },
+        },
+      },
+    });
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toBe(appended);
   });
 
   it("does not notify Will for an aborted turn without acknowledgement", async () => {

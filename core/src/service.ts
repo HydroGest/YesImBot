@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import { Command, Service, type Context } from "koishi";
+import { Command, Service, type Bot, type Context } from "koishi";
 
 import { AssetService } from "./asset.js";
 import { ChannelStorage, type ChannelScope } from "./channel.js";
@@ -28,6 +28,8 @@ export class YesImBotService extends Service<Config> {
   private readonly gate: Gateway;
   private readonly plugins = new Set<{ readonly factory: AgentPluginFactory }>();
   private readonly commandDisposers = new Set<() => unknown>();
+  private triggerClosed = false;
+  private readonly triggerTasks = new Set<Promise<void>>();
 
   constructor(ctx: Context, config: Config) {
     super(ctx, "yesimbot", true);
@@ -99,11 +101,25 @@ export class YesImBotService extends Service<Config> {
   }
 
   async trigger<K extends keyof EventMap>(event: EventRecord<K>): Promise<void> {
+    if (this.triggerClosed) return;
     const bot = this.ctx.bots.find(
       (candidate) => candidate.platform === event.platform && candidate.selfId === event.selfId,
     );
     if (!bot) throw new Error(`No Bot is available for ${event.platform}:${event.selfId}`);
 
+    const task = this.runTrigger(event, bot);
+    this.triggerTasks.add(task);
+    try {
+      await task;
+    } finally {
+      this.triggerTasks.delete(task);
+    }
+  }
+
+  private async runTrigger<K extends keyof EventMap>(
+    event: EventRecord<K>,
+    bot: Bot,
+  ): Promise<void> {
     const result = await this.rt.trigger(event);
     if (result.kind !== "run") return;
     await deliverOutput({
@@ -117,6 +133,7 @@ export class YesImBotService extends Service<Config> {
 
   override async stop() {
     this.disposeCommand();
+    this.triggerClosed = true;
     try {
       this.gate.close();
     } catch (cause) {
@@ -128,10 +145,19 @@ export class YesImBotService extends Service<Config> {
       this.logError("warn", "runtime.failed.stop", cause);
     }
     try {
+      await this.drainTriggers();
+    } catch (cause) {
+      this.logError("warn", "trigger.failed.drain", cause);
+    }
+    try {
       await this.gate.drain();
     } catch (cause) {
       this.logError("warn", "gateway.failed.drain", cause);
     }
+  }
+
+  private async drainTriggers(): Promise<void> {
+    await Promise.allSettled([...this.triggerTasks]);
   }
 
   private disposeCommand(): void {

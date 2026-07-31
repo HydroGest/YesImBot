@@ -132,8 +132,10 @@ describe("YesImBotService facade", () => {
 
   it("triggers a forced event through the runtime and sends via the matching Bot", async () => {
     const { ctx, service } = createService();
-    const sendMessage = vi.fn(async () => []);
-    ctx.bots.push({ platform: "test", selfId: "bot-1", sendMessage } as never);
+    const wrongPlatform = { platform: "onebot", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
+    const wrongSelfId = { platform: "test", selfId: "bot-9", sendMessage: vi.fn(async () => []) };
+    const exact = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
+    ctx.bots.push(wrongPlatform as never, wrongSelfId as never, exact as never);
     state.runtime?.trigger.mockResolvedValue({
       kind: "run",
       eventId: "event-1",
@@ -151,7 +153,79 @@ describe("YesImBotService facade", () => {
     await service.trigger(event);
 
     expect(state.runtime?.trigger).toHaveBeenCalledWith(event);
-    expect(sendMessage).toHaveBeenCalledWith("room-1", [h.text("reply")]);
+    expect(exact.sendMessage).toHaveBeenCalledWith("room-1", [h.text("reply")]);
+    expect(wrongPlatform.sendMessage).not.toHaveBeenCalled();
+    expect(wrongSelfId.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects a trigger with only decoy Bots before runtime admission", async () => {
+    const { ctx, service } = createService();
+    const wrongPlatform = { platform: "onebot", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
+    const wrongSelfId = { platform: "test", selfId: "bot-9", sendMessage: vi.fn(async () => []) };
+    ctx.bots.push(wrongPlatform as never, wrongSelfId as never);
+
+    await expect(service.trigger(event)).rejects.toThrow("No Bot is available for test:bot-1");
+    expect(state.runtime?.trigger).not.toHaveBeenCalled();
+    expect(wrongPlatform.sendMessage).not.toHaveBeenCalled();
+    expect(wrongSelfId.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("drains an admitted proactive trigger before global stop resolves", async () => {
+    const { ctx, service } = createService();
+    let sendStarted!: () => void;
+    let sendRelease!: () => void;
+    const sendBlocked = new Promise<void>((resolve) => {
+      sendStarted = resolve;
+    });
+    const sendReleasePromise = new Promise<void>((resolve) => {
+      sendRelease = resolve;
+    });
+    const sendMessage = vi.fn(async () => {
+      sendStarted();
+      await sendReleasePromise;
+      return [];
+    });
+    ctx.bots.push({ platform: "test", selfId: "bot-1", sendMessage } as never);
+    const onDelivered = vi.fn(async () => {
+      expect(stopSettled).toBe(false);
+    });
+    state.runtime?.trigger.mockResolvedValue({
+      kind: "run",
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: (async function* () {
+        yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("reply")]] };
+      })(),
+      delivery: {
+        signal: new AbortController().signal,
+        onDelivered,
+        fail: vi.fn(async () => undefined),
+      },
+    });
+
+    let triggerSettled = false;
+    const triggering = service.trigger(event).then(() => {
+      triggerSettled = true;
+    });
+    await sendBlocked;
+    let stopSettled = false;
+    const stopping = service.stop().then(() => {
+      stopSettled = true;
+    });
+    for (let i = 0; i < 4; i += 1) await Promise.resolve();
+    expect(triggerSettled).toBe(false);
+    expect(stopSettled).toBe(false);
+
+    sendRelease();
+    await stopping;
+    await triggering;
+    expect(triggerSettled).toBe(true);
+    expect(stopSettled).toBe(true);
+    expect(onDelivered).toHaveBeenCalledOnce();
+
+    await expect(service.trigger(event)).resolves.toBeUndefined();
+    expect(state.runtime?.trigger).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a trigger with no matching Bot without runtime admission", async () => {

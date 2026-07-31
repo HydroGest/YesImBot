@@ -259,7 +259,10 @@ export class ChannelRuntime {
           }
         },
         fail: async (record) => {
-          void this.handle(record).catch((cause) => this.logger.warn("delivery.failed", { cause }));
+          if (this.stopped) throw new Error("Channel runtime is stopped");
+          await this.schedule(async () => {
+            await this.commit(record);
+          });
         },
       },
     };
