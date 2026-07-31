@@ -16,8 +16,11 @@ export type Schedule = {
   title: string;
   prompt: string;
   state: ScheduleState;
-  nextRunAt: string;
+  /** Null while the schedule is paused, cancelled, or completed. */
+  nextRunAt: string | null;
   lastResult?: ScheduleLastResult;
+  createdAt: string;
+  updatedAt: string;
 } & (
   | { kind: "once"; at: string; cron?: never }
   | { kind: "cron"; cron: string; at?: never }
@@ -31,7 +34,36 @@ export type ScheduleCreateInput = {
   | { kind: "cron"; cron: string; at?: never }
 );
 
-export type ScheduleUpdateInput = Partial<ScheduleCreateInput>;
+export type ScheduleUpdateInput = {
+  title?: string;
+  prompt?: string;
+} & (
+  | { kind?: "once"; at?: string; cron?: never }
+  | { kind?: "cron"; cron?: string; at?: never }
+);
+
+/**
+ * The physical row of the plugin-owned `yesimbot_schedule` table. It keeps the
+ * raw scope coordinates and both rule columns; exactly one of `at`/`cron` is
+ * non-null for a given `kind`.
+ */
+export type ScheduleRow = {
+  id: string;
+  type: "shared" | "direct";
+  platform: string;
+  selfId: string;
+  channelId: string;
+  title: string;
+  prompt: string;
+  kind: "once" | "cron";
+  at: string | null;
+  cron: string | null;
+  state: ScheduleState;
+  nextRunAt: string | null;
+  lastResult: ScheduleLastResult | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 // Compile-time witness that the merged due extension carries only schedule metadata.
 type _dueKind = EventMap["schedule.due"]["schedule"]["kind"];
@@ -49,5 +81,11 @@ declare module "koishi-plugin-yesimbot" {
         scheduledFor: string;
       };
     };
+  }
+}
+
+declare module "koishi" {
+  interface Tables {
+    yesimbot_schedule: ScheduleRow;
   }
 }

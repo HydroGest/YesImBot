@@ -35,6 +35,8 @@ describe("Schedule domain types", () => {
       at: "2026-08-01T01:00:00.000Z",
       state: "enabled",
       nextRunAt: "2026-08-01T01:00:00.000Z",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
     } satisfies Schedule;
 
     expect(schedule.type).toBe("direct");
@@ -55,6 +57,8 @@ describe("Schedule domain types", () => {
       at: "2026-08-01T01:00:00.000Z",
       state: "enabled",
       nextRunAt: "2026-08-01T01:00:00.000Z",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
     } satisfies Schedule;
 
     expect(schedule.platform).toBe("test");
@@ -115,6 +119,8 @@ describe("Schedule domain types", () => {
       at: "2026-08-01T01:00:00.000Z",
       state: "enabled",
       nextRunAt: "2026-08-01T01:00:00.000Z",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
       // @ts-expect-error Schedule must not admit a timeZone field
       timeZone: "Asia/Shanghai",
     };
@@ -131,6 +137,8 @@ describe("Schedule domain types", () => {
       at: "2026-08-01T01:00:00.000Z",
       state: "enabled",
       nextRunAt: "2026-08-01T01:00:00.000Z",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
       // @ts-expect-error Schedule must not admit a claimedFor field
       claimedFor: "2026-08-01T01:00:00.000Z",
     };
