@@ -3,11 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
+import { h } from "koishi";
+
+import type { EventRecord } from "../src/messages.js";
+
 const state = vi.hoisted(() => ({
   runtime: undefined as
     | {
         reset: ReturnType<typeof vi.fn>;
         stop: ReturnType<typeof vi.fn>;
+        trigger: ReturnType<typeof vi.fn>;
         options: { getAgentPluginFactories(): readonly AgentPluginFactory[] };
       }
     | undefined,
@@ -24,6 +29,7 @@ vi.mock("../src/runtime/index.js", () => ({
   RuntimeManager: class {
     reset = vi.fn(async () => undefined);
     stop = vi.fn(async () => undefined);
+    trigger = vi.fn(async () => undefined);
 
     constructor(readonly options: { getAgentPluginFactories(): readonly AgentPluginFactory[] }) {
       state.runtime = this;
@@ -44,6 +50,22 @@ const config: Config = {
   imageInput: false,
   will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
   reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+};
+
+const event: EventRecord<"delivery.failed"> = {
+  eventType: "delivery.failed",
+  platform: "test",
+  selfId: "bot-1",
+  timestamp: 2,
+  channel: { id: "room-1", type: 0 },
+  text: "Delivery failed",
+  delivery: {
+    turnId: "turn-1",
+    messageId: "assistant-1",
+    segmentIndex: 1,
+    segmentTotal: 1,
+    error: { name: "Error", message: "offline" },
+  },
 };
 
 function createService(serviceConfig: Config = config) {
@@ -77,6 +99,7 @@ describe("YesImBotService facade", () => {
     expect(ctx.yesimbot.registerResolver).toEqual(expect.any(Function));
     expect(ctx.yesimbot.registerAgentPlugin).toEqual(expect.any(Function));
     expect(ctx.yesimbot.getStoragePath).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.trigger).toEqual(expect.any(Function));
     expect("channelKey" in ctx.yesimbot).toBe(false);
     expect(["channel", "Identity"].join("") in ctx.yesimbot).toBe(false);
     expect(["register", "Storage"].join("") in ctx.yesimbot).toBe(false);
@@ -105,6 +128,39 @@ describe("YesImBotService facade", () => {
     });
 
     expect(factory).toBeTypeOf("function");
+  });
+
+  it("triggers a forced event through the runtime and sends via the matching Bot", async () => {
+    const { ctx, service } = createService();
+    const sendMessage = vi.fn(async () => []);
+    ctx.bots.push({ platform: "test", selfId: "bot-1", sendMessage } as never);
+    state.runtime?.trigger.mockResolvedValue({
+      kind: "run",
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: (async function* () {
+        yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("reply")]] };
+      })(),
+      delivery: {
+        signal: new AbortController().signal,
+        onDelivered: vi.fn(),
+        fail: vi.fn(),
+      },
+    });
+
+    await service.trigger(event);
+
+    expect(state.runtime?.trigger).toHaveBeenCalledWith(event);
+    expect(sendMessage).toHaveBeenCalledWith("room-1", [h.text("reply")]);
+  });
+
+  it("rejects a trigger with no matching Bot without runtime admission", async () => {
+    const { service } = createService();
+
+    await expect(service.trigger(event)).rejects.toThrow(
+      "No Bot is available for test:bot-1",
+    );
+    expect(state.runtime?.trigger).not.toHaveBeenCalled();
   });
 
   it("delegates reset registration to the composed boundary", async () => {

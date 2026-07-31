@@ -5,7 +5,9 @@ import { Command, Service, type Context } from "koishi";
 import { AssetService } from "./asset.js";
 import { ChannelStorage, type ChannelScope } from "./channel.js";
 import { type Config } from "./config.js";
+import { deliverOutput } from "./delivery.js";
 import { Gateway, type SessionResolver } from "./gateway.js";
+import type { EventMap, EventRecord } from "./messages.js";
 import type { ModelService } from "./model/index.js";
 import { createOnebotResolver } from "./platforms/index.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
@@ -94,6 +96,23 @@ export class YesImBotService extends Service<Config> {
 
   async reset(scope: ChannelScope): Promise<void> {
     return this.rt.reset(scope);
+  }
+
+  async trigger<K extends keyof EventMap>(event: EventRecord<K>): Promise<void> {
+    const bot = this.ctx.bots.find(
+      (candidate) => candidate.platform === event.platform && candidate.selfId === event.selfId,
+    );
+    if (!bot) throw new Error(`No Bot is available for ${event.platform}:${event.selfId}`);
+
+    const result = await this.rt.trigger(event);
+    if (result.kind !== "run") return;
+    await deliverOutput({
+      record: event,
+      result,
+      pacing: this.config.reply.pacing,
+      send: (segment) => bot.sendMessage(event.channel.id, segment),
+      warn: (cause) => this.logError("warn", "delivery.failed", cause),
+    });
   }
 
   override async stop() {
