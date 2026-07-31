@@ -140,7 +140,6 @@ describe("models.json modalities", () => {
     expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toEqual(["image"]);
   });
 
-
   it("does not expose provider-declared image modalities without a models.json override", async () => {
     const path = await createModelsPath({});
     const service = await createModelService(

@@ -10,7 +10,7 @@ import {
   type AgentTool,
   type AgentToolSet,
 } from "@yesimbot/agent-runtime";
-import type { LanguageModel } from "ai";
+import type { AssistantContent, LanguageModel } from "ai";
 import type { Bot, Context, Element, Logger } from "koishi";
 
 import type { AssetStore } from "../asset.js";
@@ -19,13 +19,13 @@ import type { Config, ImageBudget } from "../config.js";
 import {
   createEvent,
   createMessage,
-  isMessageRecord,
-  type Message,
-  type EventRecord,
-  type Event,
-  type MessageRecord,
-  isMessage,
   isEvent,
+  isMessage,
+  isMessageRecord,
+  type Event,
+  type EventRecord,
+  type Message,
+  type MessageRecord,
 } from "../messages.js";
 import { createModelInputPlugin } from "./model-input.js";
 import { OutputQueue } from "./output-queue.js";
@@ -158,10 +158,6 @@ export class ChannelRuntime {
     return this.initTask;
   }
 
-  handle(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
-    return this.handleRecord(record);
-  }
-
   stop(): Promise<void> {
     if (this.stopTask) return this.stopTask;
     this.stopped = true;
@@ -170,7 +166,7 @@ export class ChannelRuntime {
     return this.stopTask;
   }
 
-  private handleRecord(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
+  handle(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
     return this.schedule(async () => {
       this.assertOpen();
@@ -313,25 +309,19 @@ export function isAssistantMessage(event: AgentInternalEvent): event is AgentInt
   );
 }
 
-export function renderAssistantText(content: unknown): string | undefined {
+export function renderAssistantText(content: AssistantContent): string | undefined {
   if (typeof content === "string") return content.trim().length > 0 ? content : undefined;
   if (!Array.isArray(content)) return undefined;
   const text = content
-    .filter(
-      (part): part is { readonly type: "text"; readonly text: string } =>
-        typeof part === "object" &&
-        part !== null &&
-        "type" in part &&
-        part.type === "text" &&
-        "text" in part &&
-        typeof part.text === "string",
-    )
-    .map((part) => part.text)
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item.type === "text") return item.text;
+    })
     .join("");
   return text.trim().length > 0 ? text : undefined;
 }
 
-export function parseAssistantContent(content: unknown): Element[][] | undefined {
+export function parseAssistantContent(content: AssistantContent): Element[][] | undefined {
   const text = renderAssistantText(content);
   return text === undefined ? undefined : parseReply(text);
 }

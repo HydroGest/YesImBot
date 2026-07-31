@@ -1,17 +1,12 @@
 import { jsonSchema, type Tool, type ToolExecutionOptions, type ToolSet } from "ai";
 
+import type { Awaitable } from "./base.js";
 import type { AgentChannel } from "./channel.js";
+import type { AgentEntry } from "./entry.js";
 import { ToolConflictError } from "./errors.js";
+import type { AgentPlugin, ToolCallContext, ToolHookContext, ToolResultContext } from "./plugin.js";
 import type { AgentStateManager } from "./state.js";
-import type { Awaitable } from "./types/base.js";
-import type { AgentEntry } from "./types/entry.js";
-import type {
-  AgentPlugin,
-  ToolCallContext,
-  ToolHookContext,
-  ToolResultContext,
-} from "./types/plugin.js";
-import type { AgentStorage } from "./types/storage.js";
+import type { AgentStorage } from "./storage.js";
 
 export interface AgentToolExecuteContext extends ToolExecutionOptions {
   readonly runtime: { id: string };

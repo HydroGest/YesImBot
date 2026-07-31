@@ -1,19 +1,70 @@
-import type { AssistantContent, ModelMessage, ToolContent, UserContent } from "ai";
+import type {
+  AssistantModelMessage,
+  SystemModelMessage,
+  ToolModelMessage,
+  UserModelMessage,
+} from "@ai-sdk/provider-utils";
+import type {
+  AssistantContent,
+  LanguageModelUsage,
+  ModelMessage,
+  ToolContent,
+  UserContent,
+} from "ai";
 
 import { createRandomId } from "./id.js";
 import { PluginHost } from "./plugin.js";
-import type {
-  AgentAssistantMessage,
-  AgentCustomMessageData,
-  AgentCustomMessageType,
-  AgentMessage,
-  AgentMessageBase,
-  AgentSystemMessage,
-  AgentToolMessage,
-  AgentUserMessage,
-  AgentCustomMessages,
-} from "./types/message.js";
-import { ModelMessageContext } from "./types/plugin.js";
+import { ModelMessageContext } from "./plugin.js";
+
+export interface AgentMessageBase {
+  id: string;
+  timestamp: number;
+}
+
+export interface CustomMessageBase<
+  T extends string = string,
+  D = unknown,
+> extends AgentMessageBase {
+  role: "custom";
+  type: T;
+  data: D;
+}
+
+export interface AgentCustomMessages {
+  custom: CustomMessageBase<"custom", unknown>;
+}
+
+export type AgentCustomMessage<T extends keyof AgentCustomMessages = keyof AgentCustomMessages> =
+  AgentCustomMessages[T];
+
+type AgentCustomMessageKey = Extract<keyof AgentCustomMessages, string>;
+
+export type AgentCustomMessageType = {
+  [K in AgentCustomMessageKey]: AgentCustomMessages[K] extends CustomMessageBase<K, unknown>
+    ? K
+    : never;
+}[AgentCustomMessageKey];
+
+export type AgentCustomMessageData<T extends AgentCustomMessageType> =
+  AgentCustomMessages[T] extends CustomMessageBase<T, infer D> ? D : never;
+
+export type AgentMessage =
+  | AgentUserMessage
+  | AgentSystemMessage
+  | AgentAssistantMessage
+  | AgentToolMessage
+  | AgentCustomMessage;
+
+export interface AgentUserMessage extends AgentMessageBase, UserModelMessage {}
+
+export interface AgentSystemMessage extends AgentMessageBase, SystemModelMessage {}
+
+export interface AgentAssistantMessage extends AgentMessageBase, AssistantModelMessage {
+  usage?: Partial<LanguageModelUsage>;
+  finishReason?: string;
+}
+
+export interface AgentToolMessage extends AgentMessageBase, ToolModelMessage {}
 
 export type CreateMessageOptions = Partial<Pick<AgentMessageBase, "id" | "timestamp">>;
 

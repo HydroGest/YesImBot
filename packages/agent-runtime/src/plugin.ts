@@ -1,27 +1,104 @@
 import type { ModelMessage, SystemModelMessage } from "ai";
 
+import { Awaitable } from "./base.js";
+import type { AgentChannel } from "./channel.js";
+import type { AgentEntry } from "./entry.js";
 import { createDiagnostic, createInternalEvent } from "./event.js";
+import type { AgentInternalEventInit } from "./event.js";
+import type { AgentMessage } from "./message.js";
+import type { AgentStateManager } from "./state.js";
+import type { AgentStorage } from "./storage.js";
 import { mergeTools, type AgentToolSet, type ToolDecision } from "./tools.js";
 import { TurnResult } from "./turn.js";
-import { Awaitable } from "./types/base.js";
-import type { AgentEntry } from "./types/entry.js";
-import type { AgentInternalEventInit } from "./types/event.js";
-import type { AgentMessage } from "./types/message.js";
-import type {
-  AgentPlugin,
-  AgentPluginRuntime,
-  AppendHookContext,
-  MessageTransformContext,
-  ModelMessageContext,
-  PromptContext,
-  SystemPromptAppend,
-  ToolCallContext,
-  ToolExtensionContext,
-  ToolHookContext,
-  ToolResultContext,
-  TurnFinishContext,
-} from "./types/plugin.js";
-import type { AgentStorage } from "./types/storage.js";
+
+export interface AgentPluginRuntime {
+  readonly id: string;
+  readonly channel: AgentChannel;
+  readonly state: AgentStateManager;
+}
+
+export type SystemPromptBlock = string | SystemModelMessage;
+export type SystemPromptAppend = SystemPromptBlock | readonly SystemPromptBlock[];
+
+export interface AgentPlugin {
+  name: string;
+  version?: string;
+  enforce?: "pre" | "post";
+  optional?: boolean;
+  tools?: AgentToolSet | ((runtime: AgentPluginRuntime) => Awaitable<AgentToolSet | void>);
+  init?(runtime: AgentPluginRuntime): Awaitable<void>;
+  stop?(): Awaitable<void>;
+  onAppend?(entries: AgentEntry[], context: AppendHookContext): Awaitable<AgentEntry[] | void>;
+  /** @deprecated Define an explicit cache lifecycle before adding historical projection behavior. */
+  transformMessages?(
+    messages: AgentMessage[],
+    context: MessageTransformContext,
+  ): Awaitable<AgentMessage[]>;
+  toModelMessages?(
+    message: AgentMessage,
+    context: ModelMessageContext,
+  ): Awaitable<ModelMessage[] | ModelMessage | void>;
+  /** @deprecated Use structured `systemPrompt` input and `appendSystemPrompt`. */
+  extendSystemPrompt?(prompt: string, context: PromptContext): Awaitable<string | void>;
+  appendSystemPrompt?(context: PromptContext): Awaitable<SystemPromptAppend | void>;
+  /** @deprecated Declare stable tools through `AgentPlugin.tools`. */
+  extendTools?(tools: AgentToolSet, context: ToolExtensionContext): Awaitable<AgentToolSet | void>;
+  beforeToolCall?(call: ToolCallContext, context: ToolHookContext): Awaitable<ToolDecision | void>;
+  afterToolCall?(
+    result: ToolResultContext,
+    context: ToolHookContext,
+  ): Awaitable<Partial<ToolResultContext> | void>;
+  onTurnFinish?(result: TurnResult, context: TurnFinishContext): Awaitable<void>;
+}
+
+export interface HookContextBase {
+  readonly runtime: { id: string };
+  readonly channel: AgentChannel;
+  readonly state: AgentStateManager;
+  readonly signal?: AbortSignal;
+  readonly pluginName?: string;
+}
+
+export interface AppendHookContext extends HookContextBase {
+  readonly storage: AgentStorage;
+}
+
+export interface MessageTransformContext extends HookContextBase {
+  readonly turnId?: string;
+}
+
+export interface ModelMessageContext extends HookContextBase {
+  readonly turnId?: string;
+  readonly history: readonly AgentMessage[];
+  readonly current: readonly AgentMessage[];
+}
+
+export interface PromptContext extends HookContextBase {
+  readonly turnId?: string;
+}
+
+export interface ToolExtensionContext extends HookContextBase {
+  readonly turnId?: string;
+}
+
+export interface ToolHookContext extends HookContextBase {
+  readonly turnId: string;
+}
+
+export interface TurnFinishContext extends HookContextBase {
+  readonly turnId: string;
+}
+
+export interface ToolCallContext {
+  toolCallId: string;
+  toolName: string;
+  args: unknown;
+}
+
+export interface ToolResultContext extends ToolCallContext {
+  result: unknown;
+  isError: boolean;
+}
 
 export function orderPlugins(plugins: readonly AgentPlugin[]): AgentPlugin[] {
   const pre = plugins.filter((plugin) => plugin.enforce === "pre");

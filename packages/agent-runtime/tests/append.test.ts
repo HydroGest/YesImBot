@@ -9,10 +9,10 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { createAgent } from "../src/agent.js";
+import { AgentEntry } from "../src/entry.js";
 import { createCustomMessage, createUserMessage } from "../src/message.js";
+import { AgentPlugin } from "../src/plugin.js";
 import { createMemoryStorage } from "../src/storage.js";
-import { AgentEntry } from "../src/types/entry.js";
-import { AgentPlugin } from "../src/types/plugin.js";
 
 function flattenPromptContent(message: LanguageModelV3Message) {
   if (typeof message.content === "string") {

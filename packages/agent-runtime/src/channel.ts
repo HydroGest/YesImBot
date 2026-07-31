@@ -1,5 +1,5 @@
-import { Awaitable } from "./types/base.js";
-import type { AgentCustomChannelEvent, AgentCustomChannelEvents } from "./types/event.js";
+import { Awaitable } from "./base.js";
+import type { AgentCustomChannelEvent, AgentCustomChannelEvents } from "./event.js";
 
 type AgentChannelEvent<K extends keyof AgentCustomChannelEvents> = AgentCustomChannelEvent<K>;
 

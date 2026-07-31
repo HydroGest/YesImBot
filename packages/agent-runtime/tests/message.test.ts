@@ -13,11 +13,11 @@ import {
   createUserMessage,
 } from "../src/message.js";
 import { createPluginHost } from "../src/plugin.js";
+import type { AgentPlugin } from "../src/plugin.js";
 import { createStateManager } from "../src/state.js";
 import { createMemoryStorage } from "../src/storage.js";
-import type { AgentPlugin } from "../src/types/plugin.js";
 
-declare module "../src/types/message.js" {
+declare module "../src/message.js" {
   interface AgentCustomMessages {
     "compact.summary": CustomMessageBase<
       "compact.summary",

@@ -30,9 +30,7 @@ export function createModelInputPlugin(options: ModelInputPluginOptions): AgentP
         selectedFiles = selectInputFiles(context, options);
         selectedFilesByContext.set(context, selectedFiles);
       }
-      return [
-        formatInput(message, (await selectedFiles).get(message.id) ?? []),
-      ];
+      return [formatInput(message, (await selectedFiles).get(message.id) ?? [])];
     },
   };
 }
@@ -152,7 +150,9 @@ function appendFiles(
   return [...content, ...files];
 }
 
-function formatMessageHeader(input: Extract<Message, { readonly type: "yesimbot.message" }>): string {
+function formatMessageHeader(
+  input: Extract<Message, { readonly type: "yesimbot.message" }>,
+): string {
   const time = new Intl.DateTimeFormat("zh-CN", {
     timeZone: "Asia/Shanghai",
     year: "numeric",

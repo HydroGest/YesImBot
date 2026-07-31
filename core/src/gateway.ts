@@ -34,18 +34,6 @@ class AssigneeAdmissionError extends Error {
   }
 }
 
-async function assertAssignee(ctx: Context, scope: ChannelScope): Promise<void> {
-  if (scope.type === "direct") return;
-  const [channel] = await ctx.database.get(
-    "channel",
-    { platform: scope.platform, id: scope.channelId },
-    ["assignee"],
-  );
-  if (!channel) throw new AssigneeAdmissionError("missing", scope);
-  if (!channel.assignee) throw new AssigneeAdmissionError("empty", scope);
-  if (channel.assignee !== scope.selfId) throw new AssigneeAdmissionError("mismatch", scope);
-}
-
 export interface GatewayOptions {
   readonly runtime: RuntimeManager;
   readonly assets: AssetService;
@@ -225,6 +213,18 @@ export class Gateway {
   }
 }
 
+async function assertAssignee(ctx: Context, scope: ChannelScope): Promise<void> {
+  if (scope.type === "direct") return;
+  const [channel] = await ctx.database.get(
+    "channel",
+    { platform: scope.platform, id: scope.channelId },
+    ["assignee"],
+  );
+  if (!channel) throw new AssigneeAdmissionError("missing", scope);
+  if (!channel.assignee) throw new AssigneeAdmissionError("empty", scope);
+  if (channel.assignee !== scope.selfId) throw new AssigneeAdmissionError("mismatch", scope);
+}
+
 export function matchesAllowedChannel(
   scope: ChannelScope,
   rules: readonly ChannelAllowRule[] | undefined,
@@ -244,8 +244,7 @@ function createRecord(
   scope: ChannelScope,
   draft: ResolvedMessageDraft | ResolvedEventDraft,
 ): MessageRecord | EventRecord {
-  const timestamp =
-    numberValue(session.timestamp) ?? numberValue(session.event.timestamp) ?? Date.now();
+  const timestamp = session.timestamp;
   const channel = {
     id: scope.channelId,
     type:
@@ -324,10 +323,6 @@ function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {
     }
     signal.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function normalizeDeliveryError(cause: unknown): { name: string; message: string; code?: string } {

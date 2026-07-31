@@ -1,8 +1,13 @@
+import { Awaitable } from "./base.js";
 import { createEntry } from "./entry.js";
-import { Awaitable } from "./types/base.js";
-import type { AgentEntry } from "./types/entry.js";
-import type { AgentState } from "./types/state.js";
-import type { AgentStorage } from "./types/storage.js";
+import type { AgentEntry } from "./entry.js";
+import type { AgentStorage } from "./storage.js";
+
+export interface AgentCustomState {}
+
+export interface AgentState extends AgentCustomState {
+  version: number;
+}
 
 export interface AgentStateManager {
   get(): AgentState;

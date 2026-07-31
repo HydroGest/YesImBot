@@ -6,10 +6,10 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import { createAgent } from "../src/agent.js";
+import { AgentEntry } from "../src/entry.js";
 import { AgentBusyError } from "../src/errors.js";
 import { createUserMessage } from "../src/message.js";
-import { AgentEntry } from "../src/types/entry.js";
-import { AgentStorage } from "../src/types/storage.js";
+import { AgentStorage } from "../src/storage.js";
 
 function createBlockingModel() {
   const finishReason = "stop" as unknown as LanguageModelV3FinishReason;

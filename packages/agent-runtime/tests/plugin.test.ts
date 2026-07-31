@@ -3,9 +3,9 @@ import { z } from "zod";
 
 import { createAgentChannel } from "../src/channel.js";
 import { createPluginHost } from "../src/plugin.js";
+import { AgentPlugin } from "../src/plugin.js";
 import { createStateManager } from "../src/state.js";
 import { createMemoryStorage } from "../src/storage.js";
-import { AgentPlugin } from "../src/types/plugin.js";
 
 function createRuntime() {
   const storage = createMemoryStorage();

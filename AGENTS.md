@@ -43,17 +43,22 @@ yarn test
 yarn turbo run check-types --filter=<package>
 yarn turbo run test --filter=<package>
 
+# direct package checks (run from repo root; prefer `npx` over `yarn workspace ... exec`)
+npx tsc --noEmit -p packages/agent-runtime/tsconfig.json
+npx vitest run packages/agent-runtime
+
 # single test files
-yarn workspace @yesimbot/agent-runtime exec vitest run tests/turn.test.ts
-yarn workspace koishi-plugin-yesimbot exec vitest run tests/gateway.test.ts
-yarn workspace koishi-plugin-yesimbot exec vitest run tests/channel-runtime.test.ts
-yarn workspace koishi-plugin-yesimbot exec vitest run tests/runtime-manager.test.ts
-yarn workspace koishi-plugin-yesimbot exec vitest run tests/storage.test.ts
-yarn workspace koishi-plugin-yesimbot exec vitest run tests/gateway-delivery.test.ts
-yarn workspace koishi-plugin-yesimbot-memos-client exec vitest run tests/tools.test.ts
+npx vitest run packages/agent-runtime/tests/turn.test.ts
+npx vitest run core/tests/gateway.test.ts
+npx vitest run core/tests/channel-runtime.test.ts
+npx vitest run core/tests/runtime-manager.test.ts
+npx vitest run core/tests/storage.test.ts
+npx vitest run core/tests/gateway-delivery.test.ts
+npx vitest run plugins/memos-client/tests/tools.test.ts
 ```
 
 - Root `yarn test` runs workspaces with a `test` script; Turbo task `test` depends on `build`.
+- Prefer `npx tsc` / `npx vitest` from the repo root with explicit paths; do not call `node_modules/.bin` directly and do not use `yarn workspace <pkg> exec` for tsc/vitest.
 - Run package-scoped `build` first if test resolution fails on workspace references.
 - For docs-only changes, a readback or targeted markdown inspection is usually sufficient.
 

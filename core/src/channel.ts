@@ -101,7 +101,10 @@ export class ChannelStorage {
       this.manifests.set(key, manifest);
       return manifest;
     } catch (cause) {
-      if (!(typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")) throw cause;
+      if (
+        !(typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
+      )
+        throw cause;
     }
 
     const manifest = manifestFor(scope);
@@ -216,8 +219,7 @@ function parseManifest(value: unknown): ChannelManifest {
     throw new Error("Channel manifest platform is invalid");
   if (typeof manifest.channelId !== "string")
     throw new Error("Channel manifest channelId is invalid");
-  if (typeof manifest.selfId !== "string")
-    throw new Error("Channel manifest selfId is invalid");
+  if (typeof manifest.selfId !== "string") throw new Error("Channel manifest selfId is invalid");
   if (typeof manifest.createdAt !== "string")
     throw new Error("Channel manifest createdAt is invalid");
   return manifest as ChannelManifest;
