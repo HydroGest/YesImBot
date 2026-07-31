@@ -435,6 +435,49 @@ describe("ScheduleStore", () => {
     await expect(store.resume(sharedScope, created.id)).rejects.toThrow(/no future occurrence/);
   });
 
+  it("rejects resume when twenty enabled schedules already occupy its exact scope", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
+    const paused = await store.create(sharedScope, {
+      title: "paused",
+      prompt: "Wait.",
+      kind: "cron",
+      cron: "0 9 * * 1-5",
+    });
+    await store.pause(sharedScope, paused.id);
+    for (let i = 0; i < 20; i++) {
+      await store.create(sharedScope, {
+        title: `replacement-${i}`,
+        prompt: "Run.",
+        kind: "cron",
+        cron: "0 9 * * 1-5",
+      });
+    }
+
+    await expect(store.resume(sharedScope, paused.id)).rejects.toThrow(/20 enabled schedules/);
+    const row = (await store.list(sharedScope)).find((schedule) => schedule.id === paused.id)!;
+    expect(row).toMatchObject({ id: paused.id, state: "paused", nextRunAt: null });
+  });
+
+  it("recovers an interrupted cron claim by advancing beyond elapsed next work", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
+    const created = await store.create(sharedScope, {
+      title: "quarterly",
+      prompt: "Ping.",
+      kind: "cron",
+      cron: "*/15 * * * *",
+    });
+    vi.setSystemTime(new Date("2026-08-01T00:15:00.000Z"));
+    await store.claim(created.id, created.nextRunAt!);
+
+    await store.recover(new Date("2026-08-01T00:40:00.000Z"));
+
+    const [row] = await store.list(sharedScope);
+    expect(row.lastResult).toMatchObject({ occurrenceAt: "2026-08-01T00:15:00.000Z", status: "interrupted" });
+    expect(row.nextRunAt).toBe("2026-08-01T00:45:00.000Z");
+  });
+
   it("cancels a schedule and prevents later lifecycle operations", async () => {
     const created = await store.create(sharedScope, {
       title: "standup",

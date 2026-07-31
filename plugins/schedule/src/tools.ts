@@ -107,6 +107,7 @@ function toProjection(schedule: Schedule): ScheduleProjection {
 function createTool(
   scope: ChannelScope,
   store: ScheduleStore,
+  rearm: (() => Promise<void>) | undefined,
 ): AgentTool<CreateToolInput, ScheduleProjection> {
   return {
     name: "schedule_create",
@@ -118,7 +119,9 @@ function createTool(
         input.at !== undefined
           ? { title: input.title, prompt: input.prompt, kind: "once", at: input.at }
           : { title: input.title, prompt: input.prompt, kind: "cron", cron: input.cron };
-      return toProjection(await store.create(scope, createInput));
+      const schedule = await store.create(scope, createInput);
+      await rearm?.();
+      return toProjection(schedule);
     },
   };
 }
@@ -139,6 +142,7 @@ function listTool(
 function updateTool(
   scope: ChannelScope,
   store: ScheduleStore,
+  rearm: (() => Promise<void>) | undefined,
 ): AgentTool<UpdateToolInput, ScheduleProjection> {
   return {
     name: "schedule_update",
@@ -151,7 +155,9 @@ function updateTool(
       else if (cron !== undefined) patch = { kind: "cron", cron };
       if (title !== undefined) patch = { ...patch, title };
       if (prompt !== undefined) patch = { ...patch, prompt };
-      return toProjection(await store.update(scope, id, patch));
+      const schedule = await store.update(scope, id, patch);
+      await rearm?.();
+      return toProjection(schedule);
     },
   };
 }
@@ -159,36 +165,51 @@ function updateTool(
 function pauseTool(
   scope: ChannelScope,
   store: ScheduleStore,
+  rearm: (() => Promise<void>) | undefined,
 ): AgentTool<IdToolInput, ScheduleProjection> {
   return {
     name: "schedule_pause",
     description: "暂停当前频道一个启用的定时任务：保留规则与最近结果，不再触发。",
     inputSchema: ID_SCHEMA,
-    execute: async ({ id }) => toProjection(await store.pause(scope, id)),
+    execute: async ({ id }) => {
+      const schedule = await store.pause(scope, id);
+      await rearm?.();
+      return toProjection(schedule);
+    },
   };
 }
 
 function resumeTool(
   scope: ChannelScope,
   store: ScheduleStore,
+  rearm: (() => Promise<void>) | undefined,
 ): AgentTool<IdToolInput, ScheduleProjection> {
   return {
     name: "schedule_resume",
     description: "恢复当前频道一个已暂停的定时任务，并计算其下一个未来执行时刻。",
     inputSchema: ID_SCHEMA,
-    execute: async ({ id }) => toProjection(await store.resume(scope, id)),
+    execute: async ({ id }) => {
+      const schedule = await store.resume(scope, id);
+      await rearm?.();
+      return toProjection(schedule);
+    },
   };
 }
 
 function cancelTool(
   scope: ChannelScope,
   store: ScheduleStore,
+  rearm: (() => Promise<void>) | undefined,
 ): AgentTool<IdToolInput, ScheduleProjection> {
   return {
     name: "schedule_cancel",
     description: "取消当前频道一个启用或暂停的定时任务：本次及以后都不会再触发，记录保留为已取消。",
     inputSchema: ID_SCHEMA,
-    execute: async ({ id }) => toProjection(await store.cancel(scope, id)),
+    execute: async ({ id }) => {
+      const schedule = await store.cancel(scope, id);
+      await rearm?.();
+      return toProjection(schedule);
+    },
   };
 }
 
@@ -198,13 +219,17 @@ function cancelTool(
  * no schema accepts a scope, channel, or Session parameter, and every Store
  * call passes the captured scope.
  */
-export function createScheduleTools(scope: ChannelScope, store: ScheduleStore): AgentTool[] {
+export function createScheduleTools(
+  scope: ChannelScope,
+  store: ScheduleStore,
+  rearm?: () => Promise<void>,
+): AgentTool[] {
   return [
-    createTool(scope, store),
+    createTool(scope, store, rearm),
     listTool(scope, store),
-    updateTool(scope, store),
-    pauseTool(scope, store),
-    resumeTool(scope, store),
-    cancelTool(scope, store),
+    updateTool(scope, store, rearm),
+    pauseTool(scope, store, rearm),
+    resumeTool(scope, store, rearm),
+    cancelTool(scope, store, rearm),
   ];
 }

@@ -206,6 +206,10 @@ export class ScheduleStore {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       if (row.state !== "paused") throw new Error(`schedule ${id} is not paused`);
+      const enabled = await this.model.get(SCHEDULE_TABLE, { ...scopeQuery(scope), state: "enabled" });
+      if (enabled.length >= MAX_ENABLED_SCHEDULES) {
+        throw new Error(`channel already has ${MAX_ENABLED_SCHEDULES} enabled schedules`);
+      }
       const now = new Date(Date.now());
       const rule = ruleOfRow(row);
       if (rule.kind === "once" && Date.parse(rule.at) <= now.getTime()) {
@@ -273,7 +277,7 @@ export class ScheduleStore {
   finish(
     id: string,
     occurrenceAt: string,
-    status: "accepted" | "failed" | "missed",
+    status: "accepted" | "failed" | "missed" | "interrupted",
     error?: { name: string; message: string },
   ): Promise<Schedule | null> {
     return this.mutate(async () => {
@@ -306,7 +310,15 @@ export class ScheduleStore {
         const result = row.lastResult;
         if (result?.status === "submitting" && Date.parse(result.occurrenceAt) < nowMs) {
           const lastResult: ScheduleLastResult = { ...result, status: "interrupted", finishedAt: updatedAt };
-          await this.model.set(SCHEDULE_TABLE, { id: row.id }, { lastResult, updatedAt });
+          if (row.state === "enabled" && row.nextRunAt !== null && Date.parse(row.nextRunAt) < nowMs) {
+            await this.model.set(SCHEDULE_TABLE, { id: row.id }, {
+              nextRunAt: nextRunAt(ruleOfRow(row), now),
+              lastResult,
+              updatedAt,
+            });
+          } else {
+            await this.model.set(SCHEDULE_TABLE, { id: row.id }, { lastResult, updatedAt });
+          }
           continue;
         }
         if (row.state !== "enabled" || row.nextRunAt === null || Date.parse(row.nextRunAt) >= nowMs) continue;

@@ -16,7 +16,7 @@ import {
 } from "minato";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { ScheduleScheduler, MAX_CONCURRENT_TRIGGERS } from "../src/scheduler";
+import { MAX_CONCURRENT_TRIGGERS, ScheduleScheduler } from "../src/scheduler";
 import { ScheduleStore, registerScheduleModel } from "../src/store";
 import type { Schedule } from "../src/types";
 
@@ -402,5 +402,62 @@ describe("ScheduleScheduler", () => {
     expect(row.state).toBe("enabled");
     expect(row.nextRunAt).toBe("2026-08-01T00:15:00.000Z");
     expect(row.lastResult).toBeUndefined();
+  });
+
+  it("rearms a long delay in bounded chunks without submitting early", async () => {
+    const dueAt = new Date(Date.parse(T0) + 0x7fffffff + 60_000).toISOString();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    vi.setSystemTime(new Date(Date.parse(T0) - 1));
+    await store.create(sharedScope, {
+      title: "far future",
+      prompt: "Wait.",
+      kind: "once",
+      at: dueAt,
+    });
+
+    vi.setSystemTime(new Date(T0));
+    await scheduler.start();
+    expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 0x7fffffff);
+    await vi.advanceTimersByTimeAsync(0x7fffffff);
+
+    expect(trigger).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(trigger).toHaveBeenCalledOnce();
+  });
+
+  it("does not submit an occurrence claimed before stop and records it as interrupted", async () => {
+    vi.setSystemTime(new Date(Date.parse(T0) - 60_000));
+    const created = await store.create(sharedScope, {
+      title: "shutdown",
+      prompt: "Do not send.",
+      kind: "once",
+      at: T0,
+    });
+    const originalClaim = store.claim.bind(store);
+    const claimed = new Promise<void>((resolve) => {
+      vi.spyOn(store, "claim").mockImplementation(async (id, occurrenceAt) => {
+        const row = await originalClaim(id, occurrenceAt);
+        resolve();
+        await new Promise<void>((release) => (releaseClaim = release));
+        return row;
+      });
+    });
+    let releaseClaim!: () => void;
+
+    vi.setSystemTime(new Date(T0));
+    await scheduler.start();
+    const withWake = scheduler as unknown as { wake(): Promise<void> };
+    const wake = withWake.wake();
+    await claimed;
+    scheduler.stop();
+    releaseClaim();
+    await wake;
+
+    expect(trigger).not.toHaveBeenCalled();
+    const [row] = await store.list(sharedScope);
+    expect(row.lastResult).toMatchObject({ occurrenceAt: created.at, status: "interrupted" });
+    expect(row.state).toBe("completed");
   });
 });

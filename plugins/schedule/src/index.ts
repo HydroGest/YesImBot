@@ -55,7 +55,7 @@ export default class SchedulePlugin {
       this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((scope) => {
         return {
           name: "schedule",
-          tools: () => createScheduleTools(scope, this.store),
+          tools: () => createScheduleTools(scope, this.store, () => this.scheduler?.rearm() ?? Promise.resolve()),
         } satisfies AgentPlugin;
       });
       this.registerCommands();
@@ -124,6 +124,7 @@ export default class SchedulePlugin {
               : { title, prompt, kind: "cron", cron };
           try {
             const schedule = await this.store.create(scope, input);
+            await this.scheduler?.rearm();
             return `已创建定时任务 ${schedule.id}（${schedule.kind}，下次执行 ${schedule.nextRunAt}）`;
           } catch (cause) {
             return `创建失败：${messageOf(cause)}`;
@@ -166,6 +167,7 @@ export default class SchedulePlugin {
           }
           try {
             const schedule = await this.store.update(scope, id, patch);
+            await this.scheduler?.rearm();
             return `已更新定时任务 ${schedule.id}（${schedule.kind}，下次执行 ${schedule.nextRunAt}）`;
           } catch (cause) {
             return `更新失败：${messageOf(cause)}`;
@@ -203,6 +205,7 @@ export default class SchedulePlugin {
     if (typeof id !== "string" || !id) return `用法：yesimbot.schedule.${operation} <id>`;
     try {
       const schedule = await this.store[operation](scope, id);
+      await this.scheduler?.rearm();
       return `${okPrefix}定时任务 ${schedule.id}`;
     } catch (cause) {
       return `${errorPrefix}：${messageOf(cause)}`;

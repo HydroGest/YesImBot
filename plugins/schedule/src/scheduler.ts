@@ -7,6 +7,9 @@ import type { Schedule } from "./types";
 /** Upper bound on concurrent Core trigger calls the scheduler admits. */
 export const MAX_CONCURRENT_TRIGGERS = 5;
 
+/** Node's largest reliable timeout delay; longer waits are re-evaluated in chunks. */
+const MAX_TIMER_DELAY = 0x7fffffff;
+
 /** The single Core surface the scheduler consumes: the real `yesimbot.trigger` facade. */
 export interface SchedulerFacade {
   trigger(event: EventRecord): Promise<void>;
@@ -68,6 +71,11 @@ export class ScheduleScheduler {
     }
   }
 
+  /** Re-evaluates persisted earliest work after a successful management mutation. */
+  async rearm(): Promise<void> {
+    await this.arm();
+  }
+
   private async arm(): Promise<void> {
     if (!this.running) return;
     const rows = await this.store.listEnabled();
@@ -81,7 +89,7 @@ export class ScheduleScheduler {
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.wake();
-    }, delay);
+    }, Math.min(delay, MAX_TIMER_DELAY));
   }
 
   private async wake(): Promise<void> {
@@ -94,6 +102,10 @@ export class ScheduleScheduler {
       if (occurrenceAt === null || Date.parse(occurrenceAt) > now) break;
       const claimed = await this.store.claim(row.id, occurrenceAt);
       if (!claimed) continue;
+      if (!this.running) {
+        await this.store.finish(claimed.id, occurrenceAt, "interrupted");
+        continue;
+      }
       if (this.activeTriggers >= MAX_CONCURRENT_TRIGGERS) {
         await this.store.finish(claimed.id, occurrenceAt, "missed");
         continue;

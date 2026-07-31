@@ -13,6 +13,7 @@ vi.mock("koishi", () => ({
 }));
 
 import SchedulePlugin from "../src";
+import { ScheduleScheduler } from "../src/scheduler";
 import type { ScheduleRow } from "../src/types";
 
 type Factory = (scope: ChannelScope, bot: unknown) => AgentPlugin;
@@ -360,5 +361,90 @@ describe("SchedulePlugin", () => {
       lastResult: null,
     });
     expect(model.tables.get("yesimbot_schedule")).toHaveLength(1);
+  });
+  it("rearms the running scheduler for Agent creation of earlier work", async () => {
+    vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
+    const model = createModel();
+    model.tables.set("yesimbot_schedule", [futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" })]);
+    const { ctx, ready, factories, trigger } = createContext(model);
+    new SchedulePlugin(ctx as never);
+    await ready[0]?.();
+    const agent = factories[0]!({ type: "shared", platform: "onebot", selfId: "bot", channelId: "room" }, {});
+    const create = (await agent.tools!({} as never))!.find((tool) => tool.name === "schedule_create")!;
+
+    await create.execute!({ title: "agent", prompt: "Run.", at: "2026-08-01T00:01:00.000Z" }, {} as never);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(trigger).toHaveBeenCalledOnce();
+    expect(trigger.mock.calls[0]?.[0]).toMatchObject({ schedule: { title: "agent" } });
+  });
+
+  it("rearms the running scheduler for authority-4 command creation of earlier work", async () => {
+    vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
+    const model = createModel();
+    model.tables.set("yesimbot_schedule", [futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" })]);
+    const { ctx, ready, commands, trigger } = createContext(model);
+    new SchedulePlugin(ctx as never);
+    await ready[0]?.();
+    const create = commands.find(({ name }) => name === "yesimbot.schedule.create")!;
+    const session = { platform: "onebot", selfId: "bot", channelId: "room", isDirect: false };
+
+    await create.action!(
+      { session, options: { at: "2026-08-01T00:01:00.000Z" } },
+      "command",
+      "Run.",
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(trigger).toHaveBeenCalledOnce();
+    expect(trigger.mock.calls[0]?.[0]).toMatchObject({ schedule: { title: "command" } });
+  });
+  it("rearms after every Agent management mutation", async () => {
+    const model = createModel();
+    const { ctx, ready, factories } = createContext(model);
+    const rearm = vi.spyOn(ScheduleScheduler.prototype, "rearm");
+    new SchedulePlugin(ctx as never);
+    await ready[0]?.();
+    const agent = factories[0]!({ type: "shared", platform: "onebot", selfId: "bot", channelId: "room" }, {});
+    const tools = (await agent.tools!({} as never))!;
+    const create = tools.find((tool) => tool.name === "schedule_create")!;
+    const update = tools.find((tool) => tool.name === "schedule_update")!;
+    const pause = tools.find((tool) => tool.name === "schedule_pause")!;
+    const resume = tools.find((tool) => tool.name === "schedule_resume")!;
+    const cancel = tools.find((tool) => tool.name === "schedule_cancel")!;
+    const created = (await create.execute!(
+      { title: "agent", prompt: "Run.", at: "2099-01-01T00:00:00Z" },
+      {} as never,
+    )) as { id: string };
+
+    await update.execute!({ id: created.id, title: "agent v2" }, {} as never);
+    await pause.execute!({ id: created.id }, {} as never);
+    await resume.execute!({ id: created.id }, {} as never);
+    await cancel.execute!({ id: created.id }, {} as never);
+
+    expect(rearm).toHaveBeenCalledTimes(5);
+  });
+
+  it("rearms after every authority-4 command mutation", async () => {
+    const model = createModel();
+    const { ctx, ready, commands } = createContext(model);
+    const rearm = vi.spyOn(ScheduleScheduler.prototype, "rearm");
+    new SchedulePlugin(ctx as never);
+    await ready[0]?.();
+    const session = { platform: "onebot", selfId: "bot", channelId: "room", isDirect: false };
+    const create = commands.find(({ name }) => name === "yesimbot.schedule.create")!;
+    const update = commands.find(({ name }) => name === "yesimbot.schedule.update")!;
+    const pause = commands.find(({ name }) => name === "yesimbot.schedule.pause")!;
+    const resume = commands.find(({ name }) => name === "yesimbot.schedule.resume")!;
+    const cancel = commands.find(({ name }) => name === "yesimbot.schedule.cancel")!;
+    await create.action!({ session, options: { at: "2099-01-01T00:00:00Z" } }, "command", "Run.");
+    const id = model.tables.get("yesimbot_schedule")![0]!.id;
+
+    await update.action!({ session, options: { title: "command v2" } }, id);
+    await pause.action!({ session, options: {} }, id);
+    await resume.action!({ session, options: {} }, id);
+    await cancel.action!({ session, options: {} }, id);
+
+    expect(rearm).toHaveBeenCalledTimes(5);
   });
 });
