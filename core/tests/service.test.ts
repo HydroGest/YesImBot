@@ -38,7 +38,7 @@ vi.mock("../src/runtime/index.js", () => ({
 }));
 
 import type { Config } from "../src/config.js";
-import { Gateway } from "../src/gateway.js";
+import { Gateway } from "../src/gateway/index.js";
 import type { AgentPluginFactory } from "../src/index.js";
 import { YesImBotService } from "../src/service.js";
 

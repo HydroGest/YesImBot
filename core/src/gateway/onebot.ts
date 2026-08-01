@@ -3,15 +3,77 @@ import type { ReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
 import { h, type Context, type Element, type Session } from "koishi";
+import type {} from "koishi-plugin-adapter-onebot";
 
-import type { AssetStore } from "../../asset.js";
-import type { RecordBase, MessageRecord } from "../../messages.js";
+import type { AssetStore } from "../asset.js";
+import {
+  assembleEvent,
+  type EventRecord,
+  type MessageRecord,
+  type RecordBase,
+} from "../messages.js";
+import type { PlatformTranslator } from "./types.js";
 
 const DATA_URL = /^data:([^;,]+)(;base64)?,([\s\S]*)$/;
 const MAX_IMAGES = 4;
 const MAX_BYTES_PER_IMAGE = 5 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const IMAGE_TIMEOUT_MS = 10_000;
+
+export interface MessageReaction {
+  id: string;
+  type: string;
+  count: number;
+}
+
+export interface MessageReactionsUpdated {
+  messageId: string;
+  userId: string;
+  reactions: MessageReaction[];
+}
+
+type OneBotEventType = "notice.poke";
+
+declare module "../messages.js" {
+  interface EventMap {
+    "notice.poke": {
+      targetId: string;
+      action: string;
+    };
+  }
+}
+
+export function createOneBotTranslator(ctx: Context): PlatformTranslator {
+  return {
+    platform: "onebot",
+    async translate(base, session, store) {
+      const event = translateOneBotEvent(base, session);
+      if (event) return event;
+      return translateOneBotMessage(ctx, base, session, store);
+    },
+  };
+}
+
+export function translateOneBotEvent(
+  base: RecordBase,
+  session: Session,
+): EventRecord<OneBotEventType> | null {
+  const { event } = session;
+  if (event.type === "notice") {
+    switch (event.subtype) {
+      case "poke":
+        return assembleEvent(base, {
+          eventType: "notice.poke",
+          targetId: String(event._data.target_id),
+          action: "拍了拍",
+          text: `${event._data.user_id} 拍了拍 ${event._data.target_id}`,
+        });
+      default:
+        return null;
+    }
+  }
+  return null;
+}
 
 export async function translateOneBotMessage(
   ctx: Context,

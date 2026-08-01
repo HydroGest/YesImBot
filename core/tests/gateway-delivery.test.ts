@@ -11,7 +11,7 @@ import { h } from "koishi";
 
 import { ChannelStorage } from "../src/channel.js";
 import type { PacingConfig } from "../src/config.js";
-import { Gateway } from "../src/gateway.js";
+import { Gateway } from "../src/gateway/index.js";
 import type { MessageRecord } from "../src/messages.js";
 import { RuntimeManager } from "../src/runtime/index.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";

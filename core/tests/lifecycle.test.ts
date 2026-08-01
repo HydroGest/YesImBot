@@ -18,7 +18,7 @@ vi.mock("../src/runtime/index.js", () => ({
   },
 }));
 
-vi.mock("../src/gateway.js", () => ({
+vi.mock("../src/gateway/index.js", () => ({
   Gateway: class {
     public register = vi.fn(() => vi.fn());
     public close = vi.fn(() => state.order.push("gateway.close"));

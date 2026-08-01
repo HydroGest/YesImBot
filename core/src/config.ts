@@ -1,6 +1,6 @@
 import { Schema } from "koishi";
 
-import type { ChannelAllowRule } from "./gateway.js";
+import type { ChannelAllowRule } from "./gateway/types.js";
 import { WillConfig } from "./runtime/will.js";
 
 export interface ImageBudget {

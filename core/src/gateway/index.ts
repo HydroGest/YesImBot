@@ -1,52 +1,11 @@
-import { type Awaitable, type Context, type Logger, type Session, Universal } from "koishi";
+import { type Context, type Logger, type Session, Universal } from "koishi";
 
-import type { AssetService, AssetStore } from "./asset.js";
-import type { ChannelScope } from "./channel.js";
-import { type PacingConfig } from "./config.js";
-import { deliverOutput } from "./delivery.js";
-import type { EventRecord, MessageRecord, RecordBase } from "./messages.js";
-import type { ChannelRuntimeResult, RuntimeManager } from "./runtime/index.js";
-
-const defaultTranslator: PlatformTranslator = {
-  platform: "*",
-  async translate(base, session) {
-    if (
-      session.type !== "message-created" ||
-      typeof session.messageId !== "string" ||
-      session.messageId.length === 0 ||
-      !Array.isArray(session.elements)
-    )
-      return null;
-    return { ...base, messageId: session.messageId, elements: session.elements };
-  },
-};
-
-export interface ChannelAllowRule {
-  readonly platform: string;
-  readonly channelId: string;
-  readonly isDirect?: boolean;
-}
-
-export interface PlatformTranslator {
-  readonly platform: string;
-  translate(
-    base: RecordBase,
-    session: Session,
-    store: AssetStore,
-  ): Awaitable<MessageRecord | EventRecord | null>;
-}
-
-export interface GatewayOptions {
-  readonly runtime: RuntimeManager;
-  readonly assets: AssetService;
-  readonly ready: () => Promise<void>;
-}
-
-export interface GatewayConfig {
-  allowedChannels: readonly ChannelAllowRule[];
-  pacing: PacingConfig;
-  logLevel: number;
-}
+import type { ChannelScope } from "../channel.js";
+import { deliverOutput } from "../delivery.js";
+import type { EventRecord, MessageRecord, RecordBase } from "../messages.js";
+import type { ChannelRuntimeResult } from "../runtime/index.js";
+import { defaultTranslator } from "./default.js";
+import type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
 
 export class Gateway {
   private readonly ctx: Context;
@@ -232,3 +191,11 @@ function scopeFromSession(session: Session): ChannelScope | null {
 function isMessageSession(session: Session): boolean {
   return session.type === "message-created";
 }
+
+export type {
+  ChannelAllowRule,
+  GatewayConfig,
+  GatewayOptions,
+  PlatformTranslator,
+} from "./types.js";
+export { defaultTranslator } from "./default.js";

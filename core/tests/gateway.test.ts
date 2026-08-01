@@ -12,7 +12,7 @@ import {
   matchesAllowedChannel,
   type ChannelAllowRule,
   type PlatformTranslator,
-} from "../src/gateway.js";
+} from "../src/gateway/index.js";
 import {
   assembleEvent,
   type RecordBase,

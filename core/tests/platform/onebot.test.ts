@@ -10,8 +10,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { h, Universal, type Session } from "koishi";
 
 import type { AssetStore } from "../../src/asset.js";
-import { translateOneBotEvent } from "../../src/platforms/onebot/events.js";
-import { createTranslator } from "../../src/platforms/onebot/index.js";
+import { translateOneBotEvent, createOneBotTranslator } from "../../src/gateway/onebot.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 const ID = "0123456789abcdef0123456789abcdef";
@@ -99,7 +98,7 @@ describe("OneBot translator", () => {
       }),
     }));
     const assets = store();
-    const resolver = createTranslator({ http } as never);
+    const resolver = createOneBotTranslator({ http } as never);
 
     const result = await resolver.translate(
       base(),
@@ -125,7 +124,7 @@ describe("OneBot translator", () => {
     const http = vi.fn();
     const assets = store();
     try {
-      const resolver = createTranslator({ http } as never);
+      const resolver = createOneBotTranslator({ http } as never);
       await resolver.translate(
         base(),
         makeSession({ elements: [h("img", { src: pathToFileURL(path).href })] }),
@@ -142,7 +141,7 @@ describe("OneBot translator", () => {
   it("decodes a data URL without network access", async () => {
     const http = vi.fn();
     const assets = store();
-    const resolver = createTranslator({ http } as never);
+    const resolver = createOneBotTranslator({ http } as never);
     const source = `data:image/png;base64,${Buffer.from(PNG).toString("base64")}`;
 
     await resolver.translate(
@@ -166,7 +165,7 @@ describe("OneBot translator", () => {
     }));
     const assets = store();
 
-    const result = await createTranslator({ http } as never).translate(
+    const result = await createOneBotTranslator({ http } as never).translate(
       base(),
       makeSession({ elements: [original] }),
       assets,
@@ -180,7 +179,7 @@ describe("OneBot translator", () => {
     const largeData = `data:image/png;base64,${"a".repeat(7 * 1024 * 1024)}`;
     const dataOriginal = h("img", { src: largeData });
     const assets = store();
-    const resolver = createTranslator({ http } as never);
+    const resolver = createOneBotTranslator({ http } as never);
 
     const dataResult = await resolver.translate(
       base(),
@@ -211,7 +210,7 @@ describe("OneBot translator", () => {
     const sourceLess = h("img");
     const local = h("img", { id: ID });
     const assets = store();
-    const result = await createTranslator({ http: vi.fn() } as never).translate(
+    const result = await createOneBotTranslator({ http: vi.fn() } as never).translate(
       base(),
       makeSession({ elements: [sourceLess, local] }),
       assets,
@@ -226,7 +225,7 @@ describe("OneBot translator", () => {
       h("at", { id: "42" }),
       h.text("after"),
     ]);
-    const result = await createTranslator({ http: vi.fn() } as never).translate(
+    const result = await createOneBotTranslator({ http: vi.fn() } as never).translate(
       base(),
       makeSession({ elements: [text] }),
       store(),
@@ -241,7 +240,7 @@ describe("OneBot translator", () => {
       h.text("preserve"),
     ]);
     const legacyForward = h("message", { forward: true, id: 7 }, [h.text("preserve")]);
-    const result = await createTranslator({ http: vi.fn() } as never).translate(
+    const result = await createOneBotTranslator({ http: vi.fn() } as never).translate(
       base(),
       makeSession({ elements: [quote, forward, legacyForward] }),
       store(),
@@ -257,7 +256,7 @@ describe("OneBot translator", () => {
     const second = h("img", { id: "22222222222222222222222222222222" });
     const put = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
     const assets = store(put);
-    const resolver = createTranslator({ http: vi.fn() } as never);
+    const resolver = createOneBotTranslator({ http: vi.fn() } as never);
 
     const result = await resolver.translate(
       base(),
@@ -296,7 +295,7 @@ describe("OneBot translator", () => {
     });
     const assets = store(vi.fn(async () => saved));
 
-    const result = await createTranslator({ http } as never).translate(
+    const result = await createOneBotTranslator({ http } as never).translate(
       base(),
       makeSession({ elements: [failed, h("img", { src: "https://onebot.example/saved" })] }),
       assets,
@@ -307,7 +306,7 @@ describe("OneBot translator", () => {
   });
 
   it("returns a poke event and skips unsupported notices", async () => {
-    const resolver = createTranslator({ http: vi.fn() } as never);
+    const resolver = createOneBotTranslator({ http: vi.fn() } as never);
     const notice = await resolver.translate(
       base(),
       makeSession({

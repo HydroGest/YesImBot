@@ -6,8 +6,6 @@ import { Context, Logger } from "koishi";
 
 const MAX_DIRECTORY_NAME_LENGTH = 200;
 
-export type ChannelScope = SharedChannelScope | DirectChannelScope;
-
 interface SharedChannelScope {
   type: "shared";
   platform: string;
@@ -21,6 +19,8 @@ interface DirectChannelScope {
   selfId: string;
   channelId: string;
 }
+
+export type ChannelScope = SharedChannelScope | DirectChannelScope;
 
 type ChannelManifest = ChannelScope & { createdAt: string };
 

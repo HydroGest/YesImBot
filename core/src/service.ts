@@ -6,10 +6,10 @@ import { AssetService } from "./asset.js";
 import { ChannelStorage, type ChannelScope } from "./channel.js";
 import { type Config } from "./config.js";
 import { deliverOutput } from "./delivery.js";
-import { Gateway, type PlatformTranslator } from "./gateway.js";
+import { Gateway, type PlatformTranslator } from "./gateway/index.js";
 import type { EventMap, EventRecord } from "./messages.js";
 import type { ModelService } from "./model/index.js";
-import { createOnebotTranslator } from "./platforms/index.js";
+import { createOneBotTranslator } from "./gateway/onebot.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
 
 declare module "koishi" {
@@ -89,7 +89,7 @@ export class YesImBotService extends Service<Config> {
 
   public override async start(): Promise<void> {
     await this.storage.start();
-    const translators = [createOnebotTranslator];
+    const translators = [createOneBotTranslator];
     for (const createTranslator of translators) {
       const dispose = this.registerTranslator(createTranslator(this.ctx));
       this.ctx.on("dispose", dispose);
