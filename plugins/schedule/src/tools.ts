@@ -69,7 +69,12 @@ const UPDATE_SCHEMA = jsonSchema<UpdateToolInput>({
   properties: {
     id: { type: "string", description: "要更新的定时任务 ID" },
     title: { type: "string", minLength: 1, maxLength: 120, description: "新标题，最长 120 字符" },
-    prompt: { type: "string", minLength: 1, maxLength: 2000, description: "新提示词，最长 2000 字符" },
+    prompt: {
+      type: "string",
+      minLength: 1,
+      maxLength: 2000,
+      description: "新提示词，最长 2000 字符",
+    },
     at: {
       type: "string",
       format: "date-time",

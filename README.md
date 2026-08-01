@@ -25,7 +25,7 @@ _让 AI 更像人类，让聊天更有温度_
 - **多模型即插即用** — 通过 provider 插件接入 OpenAI、Anthropic、DeepSeek、Google 等模型，并通过 `models.json` 管理模型注册与默认值。
 - **强大的插件体系** — 工具、提示词、消息转换、生命周期钩子，每个维度都可扩展。插件按 `pre` / normal / `post` 顺序编排。
 - **频道存储与资源** — 公开的 `ChannelScope` 只携带当前 `platform`、`selfId`、`channelId` 与 `isDirect`。Core 在内部由 shared/direct tuple 推导存储目录；不会公开频道 identity。每个频道目录保存 `channel.json`、JSONL、assets、workspace 与插件数据。
-- **平台输入边界** — 平台注册 `SessionResolver`；未注册 Resolver 的平台不会进入 Core。Gateway 在 Session 生命周期内创建频道 `AssetStore`，Resolver 自行持久化需要保留的图片，并返回 message 或 event Draft。Gateway 再组装 host-owned record 并负责被动回复。
+- **平台输入边界** — 平台注册 `PlatformTranslator`；无精确或显式 `"*"` Translator 时，`message-created` 的非空 message ID 默认透传元素，媒体持久化与自定义事件仍需平台 Translator。Translator 在 Session 生命周期内接收频道 `AssetStore`，直接返回最终 Message/Event record，Gateway 负责被动回复。
 - **丰富的能力插件** — 虚拟文件系统与 Bash 沙箱、MCP 客户端、Skill 加载、Web 搜索、MemOS Cloud 记忆、OneBot 工具、贴纸处理等。
 - **Koishi 原生集成** — 作为 `koishi-plugin-yesimbot` 运行，复用 Koishi 生态的适配器、中间件和插件体系。
 
@@ -94,7 +94,7 @@ allowedChannels:
 yesimbot.model.add-input-modality provider:model image
 ```
 
-模型调用按 FIFO 投影历史与当前输入。模型声明图片输入能力且 `imageInput` 未关闭时，每次调用最多读取 4 张图片、单张 5 MiB、总计 10 MiB；图片选择不会改写 JSONL 历史。Resolver 自己决定入站图片下载与持久化。
+模型调用按 FIFO 投影历史与当前输入。模型声明图片输入能力且 `imageInput` 未关闭时，每次调用最多读取 4 张图片、单张 5 MiB、总计 10 MiB；图片选择不会改写 JSONL 历史。PlatformTranslator 自己决定入站图片下载与持久化。
 
 活动 Runtime 会在创建时快照模型能力、`imageInput`、Will、提示词与插件。Core 不提供 `reload()`：配置、模型或插件变化会在 Runtime 因停止或 shared Bot 变更而替换后生效。
 
@@ -112,7 +112,7 @@ YesImBot 的能力通过插件系统按需加载。
 | OneBot 工具 | `koishi-plugin-yesimbot-onebot-utils`   | OneBot 平台工具集成            |
 | 贴纸        | `koishi-plugin-yesimbot-sticker`        | 表情与贴纸处理                 |
 
-OneBot Resolver 内置于 `koishi-plugin-yesimbot`，通过同一 Resolver 边界注册，不是可选的平台包。
+OneBot Translator 内置于 `koishi-plugin-yesimbot`，通过同一 PlatformTranslator 边界注册，不是可选的平台包。
 
 ### LLM Provider
 
@@ -128,12 +128,12 @@ OneBot Resolver 内置于 `koishi-plugin-yesimbot`，通过同一 Resolver 边�
 Athena 是一个 message-first Koishi agent runtime。入站路径如下：
 
 ```text
-Session -> allowlist -> shared assignee admission -> AssetStore -> SessionResolver
-        -> host-owned InputRecord -> RuntimeManager -> ChannelRuntime FIFO
+Session -> allowlist -> shared assignee admission -> AssetStore -> PlatformTranslator
+        -> final Message/Event Record -> RuntimeManager -> ChannelRuntime FIFO
         -> wait | join | one output consumer -> passive Gateway delivery
 ```
 
-Gateway 持有 live Session、Resolver 调用、canonical record 与被动回复。ChannelRuntime 持有 FIFO、Agent 状态、JSONL、Will、模型输入投影与 delivery feedback，不保留 Session。参见 [Core API](./core/README.md)、[维护者指南](./AGENTS.md#current-architecture) 和 [架构愿景与演进说明](./docs/athena-v4-vision-and-evolution-notes.md)。
+Gateway 持有 live Session、Translator 调用、canonical record 与被动回复。未注册平台仍可使用默认 message-created 元素透传，但媒体持久化与自定义事件需显式 Translator。ChannelRuntime 持有 FIFO、Agent 状态、JSONL、Will、模型输入投影与 delivery feedback，不保留 Session。参见 [Core API](./core/README.md)、[维护者指南](./AGENTS.md#current-architecture) 和 [架构愿景与演进说明](./docs/athena-v4-vision-and-evolution-notes.md)。
 
 ## Development
 

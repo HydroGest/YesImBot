@@ -1,6 +1,6 @@
 import type { Session } from "koishi";
 
-import type { ResolvedEventDraft } from "../../messages.js";
+import { assembleEvent, type EventRecord, type RecordBase } from "../../messages.js";
 
 export interface MessageReaction {
   id: string;
@@ -25,19 +25,20 @@ declare module "../../messages.js" {
   }
 }
 
-export function resolveOneBotEvent(session: Session): ResolvedEventDraft<OneBotEventType> | null {
+export function translateOneBotEvent(
+  base: RecordBase,
+  session: Session,
+): EventRecord<OneBotEventType> | null {
   const { event } = session;
   if (event.type === "notice") {
     switch (event.subtype) {
-      case "poke": {
-        return {
-          kind: "event",
+      case "poke":
+        return assembleEvent(base, {
           eventType: "notice.poke",
           targetId: String(event._data.target_id),
           action: "拍了拍",
           text: `${event._data.user_id} 拍了拍 ${event._data.target_id}`,
-        } satisfies ResolvedEventDraft<"notice.poke">;
-      }
+        });
       default:
         return null;
     }

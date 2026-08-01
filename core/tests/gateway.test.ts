@@ -11,9 +11,14 @@ import {
   Gateway,
   matchesAllowedChannel,
   type ChannelAllowRule,
-  type SessionResolver,
+  type PlatformTranslator,
 } from "../src/gateway.js";
-import type { ResolvedEventDraft, ResolvedMessageDraft } from "../src/messages.js";
+import {
+  assembleEvent,
+  type RecordBase,
+  type EventRecord,
+  type MessageRecord,
+} from "../src/messages.js";
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
@@ -44,8 +49,8 @@ function containsReference(value: unknown, target: object, seen = new WeakSet<ob
   return Object.values(value).some((child) => containsReference(child, target, seen));
 }
 
-function messageDraft(overrides: Partial<ResolvedMessageDraft> = {}): ResolvedMessageDraft {
-  return { kind: "message", messageId: "message-1", elements: [h.text("hello")], ...overrides };
+function messageRecord(base: RecordBase, overrides: Partial<MessageRecord> = {}): MessageRecord {
+  return { ...base, messageId: "message-1", elements: [h.text("hello")], ...overrides };
 }
 
 function createGateway(
@@ -161,21 +166,24 @@ describe("Gateway", () => {
   it("rejects an unmatched scope before readiness or downstream work", async () => {
     const ready = vi.fn(async () => undefined);
     const { gateway, assets, runtime, database } = createGateway({ allowedChannels: [], ready });
-    const resolve = vi.fn(async () => messageDraft());
-    gateway.register({ platform: "test", resolve });
+    const translate = vi.fn(async (base: RecordBase) => messageRecord(base));
+    gateway.registerTranslator({ platform: "test", translate });
 
     await gateway.handle(session());
 
     expect(ready).not.toHaveBeenCalled();
     expect(database.get).not.toHaveBeenCalled();
     expect(assets.createStore).not.toHaveBeenCalled();
-    expect(resolve).not.toHaveBeenCalled();
+    expect(translate).not.toHaveBeenCalled();
     expect(runtime.route).not.toHaveBeenCalled();
   });
 
   it("routes an admitted empty-element message as a complete host record", async () => {
     const { gateway, runtime } = createGateway();
-    gateway.register({ platform: "test", resolve: async () => messageDraft({ elements: [] }) });
+    gateway.registerTranslator({
+      platform: "test",
+      translate: async (base) => messageRecord(base, { elements: [] }),
+    });
 
     await gateway.handle(session());
 
@@ -197,14 +205,14 @@ describe("Gateway", () => {
       release = resolve;
     });
     const { gateway, database, assets, runtime } = createGateway({ ready: () => ready });
-    const resolve = vi.fn(async () => messageDraft());
-    gateway.register({ platform: "test", resolve });
+    const translate = vi.fn(async (base: RecordBase) => messageRecord(base));
+    gateway.registerTranslator({ platform: "test", translate });
 
     const handling = gateway.handle(session());
     await Promise.resolve();
     expect(database.get).not.toHaveBeenCalled();
     expect(assets.createStore).not.toHaveBeenCalled();
-    expect(resolve).not.toHaveBeenCalled();
+    expect(translate).not.toHaveBeenCalled();
     expect(runtime.route).not.toHaveBeenCalled();
 
     release();
@@ -213,14 +221,14 @@ describe("Gateway", () => {
 
   it("queries the shared assignee once before resolving", async () => {
     const { gateway, database } = createGateway();
-    const resolve = vi.fn(async () => messageDraft());
-    gateway.register({ platform: "test", resolve });
+    const translate = vi.fn(async (base: RecordBase) => messageRecord(base));
+    gateway.registerTranslator({ platform: "test", translate });
 
     await gateway.handle(session());
 
     expect(database.get).toHaveBeenCalledOnce();
     expect(database.get.mock.invocationCallOrder[0]).toBeLessThan(
-      resolve.mock.invocationCallOrder[0] ?? Infinity,
+      translate.mock.invocationCallOrder[0] ?? Infinity,
     );
   });
 
@@ -228,36 +236,37 @@ describe("Gateway", () => {
     "rejects an unavailable shared assignee before resolver work",
     async (rows) => {
       const { gateway, assets, runtime, database } = createGateway();
-      const resolve = vi.fn(async () => messageDraft());
-      gateway.register({ platform: "test", resolve });
+      const translate = vi.fn(async (base: RecordBase) => messageRecord(base));
+      gateway.registerTranslator({ platform: "test", translate });
       database.get.mockResolvedValue(rows);
 
       await gateway.handle(session());
 
       expect(assets.createStore).not.toHaveBeenCalled();
-      expect(resolve).not.toHaveBeenCalled();
+      expect(translate).not.toHaveBeenCalled();
       expect(runtime.route).not.toHaveBeenCalled();
     },
   );
 
   it("rejects shared database failures before resolver work", async () => {
     const { gateway, assets, runtime, database } = createGateway();
-    const resolve = vi.fn(async () => messageDraft());
-    gateway.register({ platform: "test", resolve });
+    const translate = vi.fn(async (base: RecordBase) => messageRecord(base));
+    gateway.registerTranslator({ platform: "test", translate });
     database.get.mockRejectedValue(new Error("database unavailable"));
 
     await gateway.handle(session());
 
     expect(assets.createStore).not.toHaveBeenCalled();
-    expect(resolve).not.toHaveBeenCalled();
+    expect(translate).not.toHaveBeenCalled();
     expect(runtime.route).not.toHaveBeenCalled();
   });
 
   it("skips assignee lookup for direct Sessions and preserves direct classification", async () => {
     const { gateway, database, assets, runtime } = createGateway();
-    gateway.register({
+    gateway.registerTranslator({
       platform: "test",
-      resolve: async () => messageDraft({ channel: { name: "Direct room" } }),
+      translate: async (base) =>
+        messageRecord({ ...base, channel: { ...base.channel, name: "Direct room" } }),
     });
 
     await gateway.handle(session({ isDirect: true }));
@@ -271,15 +280,15 @@ describe("Gateway", () => {
     );
   });
 
-  it("passes the admitted Scope Store to exactly one resolver call without rewriting Draft elements", async () => {
+  it("passes the admitted Scope Store to exactly one translator call without rewriting elements", async () => {
     const { gateway, assets, store, runtime } = createGateway();
     const image = h("img", { src: "https://resolver.example/original.png" });
-    const resolve = vi.fn(async (input: Session, received: AssetStore) => {
+    const translate = vi.fn(async (base: RecordBase, input: Session, received: AssetStore) => {
       expect(input.messageId).toBe("message-1");
       expect(received).toBe(store);
-      return messageDraft({ elements: [image] });
+      return messageRecord(base, { elements: [image] });
     });
-    gateway.register({ platform: "test", resolve });
+    gateway.registerTranslator({ platform: "test", translate });
 
     await gateway.handle(session());
 
@@ -289,20 +298,16 @@ describe("Gateway", () => {
       channelId: "room-1",
       type: "shared",
     });
-    expect(resolve).toHaveBeenCalledOnce();
+    expect(translate).toHaveBeenCalledOnce();
     expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ elements: [image] }));
   });
 
-  it("preserves a resolver-provided channel name while keeping envelope fields host-owned", async () => {
+  it("preserves a translator-provided channel name while keeping envelope fields host-owned", async () => {
     const { gateway, runtime } = createGateway();
-    gateway.register({
+    gateway.registerTranslator({
       platform: "test",
-      resolve: async () =>
-        ({
-          ...messageDraft({ channel: { name: "Room" } }),
-          platform: "other",
-          selfId: "other",
-        }) as never,
+      translate: async (base) =>
+        messageRecord(base, { channel: { ...base.channel, name: "Room" } }),
     });
 
     await gateway.handle(session());
@@ -316,29 +321,29 @@ describe("Gateway", () => {
     );
   });
 
-  it("disposes only the resolver instance it registered and closes admission", async () => {
+  it("disposes only the translator instance it registered and closes admission", async () => {
     const { gateway, runtime } = createGateway();
     const first = {
       platform: "test",
-      resolve: vi.fn(async () => messageDraft()),
-    } satisfies SessionResolver;
+      translate: vi.fn(async (base: RecordBase) => messageRecord(base)),
+    } satisfies PlatformTranslator;
     const second = {
       platform: "test",
-      resolve: vi.fn(async () => messageDraft()),
-    } satisfies SessionResolver;
-    const disposeFirst = gateway.register(first);
+      translate: vi.fn(async (base: RecordBase) => messageRecord(base)),
+    } satisfies PlatformTranslator;
+    const disposeFirst = gateway.registerTranslator(first);
 
-    expect(() => gateway.register(second)).toThrow(
-      'Resolver for platform "test" is already registered',
+    expect(() => gateway.registerTranslator(second)).toThrow(
+      'Translator for platform "test" is already registered',
     );
     disposeFirst();
-    const disposeSecond = gateway.register(second);
+    const disposeSecond = gateway.registerTranslator(second);
     disposeFirst();
-    expect(() => gateway.register(first)).toThrow(
-      'Resolver for platform "test" is already registered',
+    expect(() => gateway.registerTranslator(first)).toThrow(
+      'Translator for platform "test" is already registered',
     );
     disposeSecond();
-    expect(() => gateway.register(first)).not.toThrow();
+    expect(() => gateway.registerTranslator(first)).not.toThrow();
 
     gateway.close();
     await gateway.handle(session());
@@ -347,13 +352,15 @@ describe("Gateway", () => {
 
   it("constructs declaration-merged event records without Session residue", async () => {
     const { gateway, runtime } = createGateway();
-    const draft: ResolvedEventDraft<"test.notice"> = {
-      kind: "event",
-      eventType: "test.notice",
-      text: "Notice",
-      targetId: "target",
-    };
-    gateway.register({ platform: "test", resolve: async () => draft });
+    gateway.registerTranslator({
+      platform: "test",
+      translate: async (base) =>
+        assembleEvent(base, {
+          eventType: "test.notice",
+          text: "Notice",
+          targetId: "target",
+        }),
+    });
 
     await gateway.handle(
       session({
@@ -365,13 +372,16 @@ describe("Gateway", () => {
 
     const routed = runtime.route.mock.calls[0]?.[0];
     expect(routed).toMatchObject({ eventType: "test.notice", text: "Notice", targetId: "target" });
-    expect(routed).not.toHaveProperty("_data");
+    expect(routed).not.toHaveProperty("user");
     expect(routed).not.toHaveProperty("guild");
   });
 
   it("uses Session resources while Scope owns envelope fields", async () => {
     const { gateway, runtime } = createGateway();
-    gateway.register({ platform: "test", resolve: async () => messageDraft() });
+    gateway.registerTranslator({
+      platform: "test",
+      translate: async (base) => messageRecord(base),
+    });
     await gateway.handle(
       session({
         isDirect: true,
@@ -393,39 +403,102 @@ describe("Gateway", () => {
     );
   });
 
-  it("skips an unregistered platform and authoritative null or thrown resolver results", async () => {
+  it("uses default pass-through for unregistered message platforms and skips unsupported sessions", async () => {
     const missing = createGateway();
-    await missing.gateway.handle(session());
-    expect(missing.assets.createStore).not.toHaveBeenCalled();
-    expect(missing.runtime.route).not.toHaveBeenCalled();
+    const image = h("img", { src: "https://default.example/image" });
+    await missing.gateway.handle(session({ platform: "missing", elements: [image] }));
+    expect(missing.runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({ platform: "missing", messageId: "message-1", elements: [image] }),
+    );
+    expect(missing.store.put).not.toHaveBeenCalled();
 
+    const nonMessage = createGateway();
+    await nonMessage.gateway.handle(
+      session({ platform: "missing", type: "notice", messageId: undefined }),
+    );
+    expect(nonMessage.runtime.route).not.toHaveBeenCalled();
+
+    const missingId = createGateway();
+    await missingId.gateway.handle(session({ platform: "missing", messageId: "" }));
+    expect(missingId.runtime.route).not.toHaveBeenCalled();
+  });
+
+  it("selects exact platform before explicit wildcard and built-in default", async () => {
+    const exact = createGateway();
+    exact.gateway.registerTranslator({
+      platform: "*",
+      translate: async (base) => messageRecord(base, { elements: [h.text("wildcard")] }),
+    });
+    const exactTranslate = vi.fn(async (base: RecordBase) =>
+      messageRecord(base, { elements: [h.text("exact")] }),
+    );
+    exact.gateway.registerTranslator({
+      platform: "test",
+      translate: exactTranslate,
+    });
+    await exact.gateway.handle(session());
+    expect(exactTranslate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "test",
+        selfId: "bot-1",
+        channel: { id: "room-1", type: Universal.Channel.Type.TEXT },
+        user: { id: "user-1", name: "User" },
+        timestamp: 1,
+      }),
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(exact.runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({ elements: [h.text("exact")] }),
+    );
+
+    const wildcard = createGateway();
+    wildcard.gateway.registerTranslator({
+      platform: "*",
+      translate: async (base) => messageRecord(base, { elements: [h.text("wildcard")] }),
+    });
+    await wildcard.gateway.handle(session({ platform: "other" }));
+    expect(wildcard.runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({ elements: [h.text("wildcard")] }),
+    );
+  });
+
+  it("does not fall back after selected translator null or throw", async () => {
     const skipped = createGateway();
-    skipped.gateway.register({ platform: "test", resolve: async () => null });
+    skipped.gateway.registerTranslator({
+      platform: "*",
+      translate: async (base) => messageRecord(base),
+    });
+    skipped.gateway.registerTranslator({ platform: "test", translate: async () => null });
     await skipped.gateway.handle(session());
     expect(skipped.runtime.route).not.toHaveBeenCalled();
 
     const failed = createGateway();
-    failed.gateway.register({
+    failed.gateway.registerTranslator({
+      platform: "*",
+      translate: async (base) => messageRecord(base),
+    });
+    failed.gateway.registerTranslator({
       platform: "test",
-      resolve: async () => {
+      translate: async () => {
         throw new Error("broken");
       },
     });
     await failed.gateway.handle(session());
     expect(failed.runtime.route).not.toHaveBeenCalled();
     expect(failed.logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "gateway.resolver_failed" }),
+      expect.objectContaining({ code: "gateway.route_failed" }),
     );
   });
 
   it("deduplicates middleware and internal message admission while routing non-message internally", async () => {
     const { gateway, middleware, internal, runtime } = createGateway();
-    gateway.register({
+    gateway.registerTranslator({
       platform: "test",
-      resolve: async (input) =>
+      translate: async (base, input) =>
         input.type === "notice"
-          ? { kind: "event", eventType: "test.notice", text: "Notice", targetId: "target" }
-          : messageDraft(),
+          ? assembleEvent(base, { eventType: "test.notice", text: "Notice", targetId: "target" })
+          : messageRecord(base),
     });
     const input = session();
 
@@ -440,7 +513,10 @@ describe("Gateway", () => {
   it("routes records without retaining the active Session", async () => {
     const { gateway, runtime } = createGateway();
     const input = session();
-    gateway.register({ platform: "test", resolve: async () => messageDraft() });
+    gateway.registerTranslator({
+      platform: "test",
+      translate: async (base) => messageRecord(base),
+    });
 
     await gateway.handle(input);
 

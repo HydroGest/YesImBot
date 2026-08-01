@@ -4,12 +4,7 @@ import type { AssetService, AssetStore } from "./asset.js";
 import type { ChannelScope } from "./channel.js";
 import { type PacingConfig } from "./config.js";
 import { deliverOutput } from "./delivery.js";
-import type {
-  EventRecord,
-  MessageRecord,
-  ResolvedEventDraft,
-  ResolvedMessageDraft,
-} from "./messages.js";
+import type { EventRecord, MessageRecord, RecordBase } from "./messages.js";
 import type { ChannelRuntimeResult, RuntimeManager } from "./runtime/index.js";
 
 export interface ChannelAllowRule {
@@ -18,12 +13,13 @@ export interface ChannelAllowRule {
   readonly isDirect?: boolean;
 }
 
-export interface SessionResolver {
+export interface PlatformTranslator {
   readonly platform: string;
-  resolve(
+  translate(
+    base: RecordBase,
     session: Session,
     store: AssetStore,
-  ): Awaitable<ResolvedMessageDraft | ResolvedEventDraft | null>;
+  ): Awaitable<MessageRecord | EventRecord | null>;
 }
 
 class AssigneeAdmissionError extends Error {
@@ -54,7 +50,7 @@ export class Gateway {
 
   private readonly opts: GatewayOptions;
 
-  private resolvers = new Map<string, SessionResolver>();
+  private translators = new Map<string, PlatformTranslator>();
   private sessions = new WeakSet<object>();
   private tasks = new Set<Promise<void>>();
   private disposers: Array<() => unknown> = [];
@@ -82,14 +78,14 @@ export class Gateway {
     if (typeof internal === "function") this.disposers.push(internal as () => unknown);
   }
 
-  register(resolver: SessionResolver): () => void {
-    if (this.resolvers.has(resolver.platform)) {
-      throw new Error(`Resolver for platform "${resolver.platform}" is already registered`);
+  registerTranslator(translator: PlatformTranslator): () => void {
+    if (this.translators.has(translator.platform)) {
+      throw new Error(`Translator for platform "${translator.platform}" is already registered`);
     }
-    this.resolvers.set(resolver.platform, resolver);
+    this.translators.set(translator.platform, translator);
     return () => {
-      if (this.resolvers.get(resolver.platform) === resolver)
-        this.resolvers.delete(resolver.platform);
+      if (this.translators.get(translator.platform) === translator)
+        this.translators.delete(translator.platform);
     };
   }
 
@@ -125,15 +121,15 @@ export class Gateway {
     try {
       await this.opts.ready();
       await assertAssignee(this.ctx, scope);
-      const resolver = this.resolvers.get(session.platform);
-      if (!resolver) return;
-      const draft = await resolver.resolve(session, this.opts.assets.createStore(scope));
-      if (!draft) return;
-      const record = createRecord(session, scope, draft);
+      const translator =
+        this.translators.get(session.platform) ?? this.translators.get("*") ?? defaultTranslator;
+      const base = sessionBase(session, scope);
+      const record = await translator.translate(base, session, this.opts.assets.createStore(scope));
+      if (!record) return;
       const result = await this.opts.runtime.route(record);
       if (result.kind === "run") await this.deliver(session, record, result);
     } catch (cause) {
-      this.warn("gateway.resolver_failed", cause, session.platform);
+      this.warn("gateway.route_failed", cause, session.platform);
     }
   }
 
@@ -188,50 +184,40 @@ export function matchesAllowedChannel(
   );
 }
 
-function createRecord(
-  session: Session,
-  scope: ChannelScope,
-  draft: ResolvedMessageDraft | ResolvedEventDraft,
-): MessageRecord | EventRecord {
-  const timestamp = session.timestamp;
-  const channel = {
-    id: scope.channelId,
-    type:
-      session.event.channel?.type ??
-      (scope.type === "direct" ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
-    ...(draft.kind === "message" && draft.channel?.name !== undefined
-      ? { name: draft.channel.name }
-      : session.event.channel?.name === undefined
-        ? {}
-        : { name: session.event.channel.name }),
-  };
-  if (draft.kind === "message") {
-    return {
-      platform: scope.platform,
-      selfId: scope.selfId,
-      timestamp,
-      channel,
-      user: {
-        id: draft.user?.id ?? session.userId ?? session.event.user?.id ?? session.author?.id ?? "",
-        ...((draft.user?.name ?? session.event.user?.name ?? session.author?.name) === undefined
-          ? {}
-          : { name: draft.user?.name ?? session.event.user?.name ?? session.author?.name }),
-      },
-      messageId: draft.messageId,
-      elements: draft.elements,
-    };
-  }
-  const { kind: _kind, eventType, text, ...variant } = draft;
+function sessionBase(session: Session, scope: ChannelScope): RecordBase {
   return {
     platform: scope.platform,
     selfId: scope.selfId,
-    timestamp,
-    channel,
-    eventType,
-    text,
-    ...variant,
-  } as EventRecord;
+    timestamp: session.timestamp,
+    channel: {
+      id: scope.channelId,
+      type:
+        session.event.channel?.type ??
+        (scope.type === "direct" ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
+      ...(session.event.channel?.name === undefined ? {} : { name: session.event.channel.name }),
+    },
+    user: {
+      id: session.userId || session.event.user?.id || session.author?.id || "",
+      ...((session.event.user?.name ?? session.author?.name) === undefined
+        ? {}
+        : { name: session.event.user?.name ?? session.author?.name }),
+    },
+  };
 }
+
+const defaultTranslator: PlatformTranslator = {
+  platform: "*",
+  async translate(base, session) {
+    if (
+      session.type !== "message-created" ||
+      typeof session.messageId !== "string" ||
+      session.messageId.length === 0 ||
+      !Array.isArray(session.elements)
+    )
+      return null;
+    return { ...base, messageId: session.messageId, elements: session.elements };
+  },
+};
 
 function scopeFromSession(session: Session): ChannelScope | null {
   if (!session.platform || !session.selfId || !session.channelId) return null;

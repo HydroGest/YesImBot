@@ -86,10 +86,13 @@ export class ScheduleScheduler {
     }
     if (!earliest?.nextRunAt) return;
     const delay = Math.max(0, Date.parse(earliest.nextRunAt) - Date.now());
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      void this.wake();
-    }, Math.min(delay, MAX_TIMER_DELAY));
+    this.timer = setTimeout(
+      () => {
+        this.timer = null;
+        void this.wake();
+      },
+      Math.min(delay, MAX_TIMER_DELAY),
+    );
   }
 
   private async wake(): Promise<void> {
@@ -127,7 +130,9 @@ export class ScheduleScheduler {
       await this.store.finish(row.id, occurrenceAt, "accepted");
     } catch (cause) {
       const error =
-        cause instanceof Error ? { name: cause.name, message: cause.message } : { name: "Error", message: String(cause) };
+        cause instanceof Error
+          ? { name: cause.name, message: cause.message }
+          : { name: "Error", message: String(cause) };
       await this.store.finish(row.id, occurrenceAt, "failed", error);
     }
   }

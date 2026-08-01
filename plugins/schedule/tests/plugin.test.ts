@@ -85,11 +85,13 @@ function createModel(): TestModel {
       tables.set(table, rows);
       return row;
     }),
-    set: vi.fn(async (table: string, query: Record<string, unknown>, patch: Partial<ScheduleRow>) => {
-      for (const row of tables.get(table) ?? []) {
-        if (matches(row, query)) Object.assign(row, patch);
-      }
-    }),
+    set: vi.fn(
+      async (table: string, query: Record<string, unknown>, patch: Partial<ScheduleRow>) => {
+        for (const row of tables.get(table) ?? []) {
+          if (matches(row, query)) Object.assign(row, patch);
+        }
+      },
+    ),
     remove: vi.fn(async () => undefined),
   };
 }
@@ -125,7 +127,9 @@ function createContext(model: TestModel) {
 
 async function toolNames(plugin: AgentPlugin): Promise<string[]> {
   const set =
-    typeof plugin.tools === "function" ? ((await plugin.tools({} as never)) ?? []) : (plugin.tools ?? []);
+    typeof plugin.tools === "function"
+      ? ((await plugin.tools({} as never)) ?? [])
+      : (plugin.tools ?? []);
   return set.map((tool) => tool.name);
 }
 
@@ -235,7 +239,10 @@ describe("SchedulePlugin", () => {
     await ready[0]?.();
 
     expect(missed).toMatchObject({ state: "completed", nextRunAt: null });
-    expect(missed.lastResult).toMatchObject({ occurrenceAt: "2020-01-01T00:00:00Z", status: "missed" });
+    expect(missed.lastResult).toMatchObject({
+      occurrenceAt: "2020-01-01T00:00:00Z",
+      status: "missed",
+    });
     expect(upcoming).toMatchObject({ state: "enabled", nextRunAt: "2099-01-01T00:00:00Z" });
     expect(vi.getTimerCount()).toBe(1);
     expect(trigger).not.toHaveBeenCalled();
@@ -262,7 +269,11 @@ describe("SchedulePlugin", () => {
       isDirect: false,
     };
     expect(
-      await create.action!({ session: sharedSession, options: { at: "2099-01-01T00:00:00Z" } }, "日报", "每天早上写一份日报"),
+      await create.action!(
+        { session: sharedSession, options: { at: "2099-01-01T00:00:00Z" } },
+        "日报",
+        "每天早上写一份日报",
+      ),
     ).toContain("已创建定时任务");
 
     const rows = model.tables.get("yesimbot_schedule")!;
@@ -286,7 +297,11 @@ describe("SchedulePlugin", () => {
       isDirect: true,
     };
     expect(
-      await create.action!({ session: directSession, options: { cron: "0 9 * * 1" } }, "周报", "每周一写周报"),
+      await create.action!(
+        { session: directSession, options: { cron: "0 9 * * 1" } },
+        "周报",
+        "每周一写周报",
+      ),
     ).toContain("已创建定时任务");
     const weekly = rows.find((row) => row.title === "周报")!;
     expect(weekly).toMatchObject({
@@ -312,7 +327,10 @@ describe("SchedulePlugin", () => {
     expect(rows.find((row) => row.id === id)).toMatchObject({ state: "enabled" });
 
     expect(await cancel.action!({ session: sharedSession, options: {} }, id)).toContain("已取消");
-    expect(rows.find((row) => row.id === id)).toMatchObject({ state: "cancelled", nextRunAt: null });
+    expect(rows.find((row) => row.id === id)).toMatchObject({
+      state: "cancelled",
+      nextRunAt: null,
+    });
 
     expect(await list.action!({ session: sharedSession, options: {} })).toContain(id);
     expect(await parent.action!({ session: sharedSession, options: {} })).toContain(id);
@@ -327,7 +345,11 @@ describe("SchedulePlugin", () => {
     expect(await cancel.action!({ session: otherSession, options: {} }, id)).toContain("取消失败");
     // A Session-less invocation is rejected before any Store operation.
     expect(
-      await create.action!({ session: undefined, options: { at: "2099-01-01T00:00:00Z" } }, "无会话", "p"),
+      await create.action!(
+        { session: undefined, options: { at: "2099-01-01T00:00:00Z" } },
+        "无会话",
+        "p",
+      ),
     ).toBe("无法获取当前频道信息");
 
     expect(references(plugin, sharedSession)).toBe(false);
@@ -365,14 +387,24 @@ describe("SchedulePlugin", () => {
   it("rearms the running scheduler for Agent creation of earlier work", async () => {
     vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
     const model = createModel();
-    model.tables.set("yesimbot_schedule", [futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" })]);
+    model.tables.set("yesimbot_schedule", [
+      futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" }),
+    ]);
     const { ctx, ready, factories, trigger } = createContext(model);
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
-    const agent = factories[0]!({ type: "shared", platform: "onebot", selfId: "bot", channelId: "room" }, {});
-    const create = (await agent.tools!({} as never))!.find((tool) => tool.name === "schedule_create")!;
+    const agent = factories[0]!(
+      { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" },
+      {},
+    );
+    const create = (await agent.tools!({} as never))!.find(
+      (tool) => tool.name === "schedule_create",
+    )!;
 
-    await create.execute!({ title: "agent", prompt: "Run.", at: "2026-08-01T00:01:00.000Z" }, {} as never);
+    await create.execute!(
+      { title: "agent", prompt: "Run.", at: "2026-08-01T00:01:00.000Z" },
+      {} as never,
+    );
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(trigger).toHaveBeenCalledOnce();
@@ -382,7 +414,9 @@ describe("SchedulePlugin", () => {
   it("rearms the running scheduler for authority-4 command creation of earlier work", async () => {
     vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
     const model = createModel();
-    model.tables.set("yesimbot_schedule", [futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" })]);
+    model.tables.set("yesimbot_schedule", [
+      futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" }),
+    ]);
     const { ctx, ready, commands, trigger } = createContext(model);
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
@@ -405,7 +439,10 @@ describe("SchedulePlugin", () => {
     const rearm = vi.spyOn(ScheduleScheduler.prototype, "rearm");
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
-    const agent = factories[0]!({ type: "shared", platform: "onebot", selfId: "bot", channelId: "room" }, {});
+    const agent = factories[0]!(
+      { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" },
+      {},
+    );
     const tools = (await agent.tools!({} as never))!;
     const create = tools.find((tool) => tool.name === "schedule_create")!;
     const update = tools.find((tool) => tool.name === "schedule_update")!;

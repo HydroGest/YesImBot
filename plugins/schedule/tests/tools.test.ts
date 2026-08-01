@@ -1,6 +1,6 @@
 import type { AgentTool } from "@yesimbot/agent-runtime";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
 import Ajv from "ajv";
+import type { ChannelScope } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
 import type { ScheduleStore } from "../src/store";
@@ -18,7 +18,12 @@ const TOOL_NAMES = [
   "schedule_cancel",
 ] as const;
 
-const scope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
+const scope: ChannelScope = {
+  type: "shared",
+  platform: "test",
+  selfId: "bot-1",
+  channelId: "room-1",
+};
 
 function createStoreDouble() {
   return {
@@ -85,13 +90,43 @@ describe("schedule agent tools", () => {
   it("create schema accepts exactly one canonical rule and rejects channel targets", () => {
     const [createTool] = createTools(createStoreDouble());
     const validate = ajv.compile(schemaOf(createTool));
-    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z" })).toBe(true);
+    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z" })).toBe(
+      true,
+    );
     expect(validate({ title: "Standup", prompt: "Run it.", cron: "0 9 * * 1" })).toBe(true);
     expect(validate({ title: "Standup", prompt: "Run it." })).toBe(false);
-    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z", cron: "0 9 * * 1" })).toBe(false);
-    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z", channelId: "room-1" })).toBe(false);
-    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z", platform: "onebot" })).toBe(false);
-    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z", selfId: "bot-1" })).toBe(false);
+    expect(
+      validate({
+        title: "Standup",
+        prompt: "Run it.",
+        at: "2030-01-01T00:00:00Z",
+        cron: "0 9 * * 1",
+      }),
+    ).toBe(false);
+    expect(
+      validate({
+        title: "Standup",
+        prompt: "Run it.",
+        at: "2030-01-01T00:00:00Z",
+        channelId: "room-1",
+      }),
+    ).toBe(false);
+    expect(
+      validate({
+        title: "Standup",
+        prompt: "Run it.",
+        at: "2030-01-01T00:00:00Z",
+        platform: "onebot",
+      }),
+    ).toBe(false);
+    expect(
+      validate({
+        title: "Standup",
+        prompt: "Run it.",
+        at: "2030-01-01T00:00:00Z",
+        selfId: "bot-1",
+      }),
+    ).toBe(false);
   });
 
   it("update schema permits a rule replacement or none and rejects channel targets", () => {

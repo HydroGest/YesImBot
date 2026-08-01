@@ -2,8 +2,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { clone, makeArray, pick } from "cosmokit";
 import { Context } from "@koishijs/core";
+import { clone, makeArray, pick } from "cosmokit";
 import { h, Universal } from "koishi";
 import {
   Database,
@@ -83,7 +83,10 @@ class MemoryDriver extends Driver<Record<string, never>> {
   }
   async stats(): Promise<Driver.Stats> {
     const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]),
+      Object.entries(this.store).map(([name, rows]) => [
+        name,
+        { name, count: rows.length, size: 0 },
+      ]),
     );
     return { tables, size: 0 };
   }
@@ -181,7 +184,11 @@ class MemoryDriver extends Driver<Record<string, never>> {
   }
 
   async createIndex(table: string, index: Driver.Index): Promise<void> {
-    const name = index.name ?? `index:${Object.entries(index.keys).map(([key, dir]) => `${key}_${dir}`).join("+")}`;
+    const name =
+      index.name ??
+      `index:${Object.entries(index.keys)
+        .map(([key, dir]) => `${key}_${dir}`)
+        .join("+")}`;
     this.indexes[table] ??= {};
     this.indexes[table][name] = { name, unique: false, ...index };
   }
@@ -236,7 +243,9 @@ type Fixture = {
  * runtime paths; real fs inside a fake-timer callback chain is not reliably
  * serviced by the event loop.
  */
-async function createFixture(options: { withBot?: boolean; warmUp?: boolean } = {}): Promise<Fixture> {
+async function createFixture(
+  options: { withBot?: boolean; warmUp?: boolean } = {},
+): Promise<Fixture> {
   const basePath = await mkdtemp(join(tmpdir(), "yesimbot-schedule-int-"));
   const ctx = new Context();
   ctx.baseDir = basePath;
@@ -320,7 +329,9 @@ function deferred<T = void>() {
  * earliest-due timer run entirely under the fake clock.
  */
 async function startPluginAt(fixture: Fixture, instant: string): Promise<void> {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+  });
   vi.setSystemTime(new Date(Date.parse(instant)));
   await fixture.plugin.stop();
   await fixture.plugin.start();
@@ -395,7 +406,10 @@ describe("Schedule proactive trigger integration", () => {
       kind: "once",
       at: dueIso,
     });
-    state.stream = streamFrom([replyEvent("assistant-1", "reply"), { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" }]);
+    state.stream = streamFrom([
+      replyEvent("assistant-1", "reply"),
+      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
+    ]);
 
     await startPluginAt(fixture, dueIso);
     await settleUntil("initial due-event delivery", async () => {
@@ -471,7 +485,10 @@ describe("Schedule proactive trigger integration", () => {
     })();
 
     await startPluginAt(fixture, dueIso);
-    await settleUntil("both due events to enter the runtime", () => fixture.trigger.mock.calls.length === 2);
+    await settleUntil(
+      "both due events to enter the runtime",
+      () => fixture.trigger.mock.calls.length === 2,
+    );
 
     expect(fixture.trigger).toHaveBeenCalledTimes(2);
     const submitted = fixture.trigger.mock.calls.map(([event]) => event.schedule?.id);
@@ -485,7 +502,10 @@ describe("Schedule proactive trigger integration", () => {
     release.resolve();
     await settleUntil("joined turn delivery", async () => {
       const rows = await fixture.plugin.store.list(SCOPE);
-      return fixture.sendMessage.mock.calls.length === 1 && rows.every((row) => row.lastResult?.status === "accepted");
+      return (
+        fixture.sendMessage.mock.calls.length === 1 &&
+        rows.every((row) => row.lastResult?.status === "accepted")
+      );
     });
 
     expect(fixture.sendMessage).toHaveBeenCalledOnce();
@@ -571,7 +591,10 @@ describe("Schedule proactive trigger integration", () => {
       cron: "*/15 * * * *",
     });
     const firstDue = created.nextRunAt!;
-    state.stream = streamFrom([replyEvent("assistant-1", "first"), { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" }]);
+    state.stream = streamFrom([
+      replyEvent("assistant-1", "first"),
+      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
+    ]);
 
     await startPluginAt(fixture, firstDue);
     await settleUntil("first scheduled delivery", async () => {
@@ -593,11 +616,16 @@ describe("Schedule proactive trigger integration", () => {
     // died with useRealTimers).
     vi.useRealTimers();
     await warmUpRuntime(fixture.service);
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
     vi.setSystemTime(new Date(Date.parse(secondDue)));
     await fixture.plugin.stop();
     await fixture.plugin.start();
-    state.stream = streamFrom([replyEvent("assistant-2", "second"), { type: "turn.done", id: "event-4", timestamp: 4, turnId: "turn-1" }]);
+    state.stream = streamFrom([
+      replyEvent("assistant-2", "second"),
+      { type: "turn.done", id: "event-4", timestamp: 4, turnId: "turn-1" },
+    ]);
     await settleUntil("post-reset scheduled delivery", async () => {
       const [row] = await fixture.plugin.store.list(SCOPE);
       return fixture.sendMessage.mock.calls.length === 2 && row?.lastResult?.status === "accepted";
@@ -670,7 +698,10 @@ describe("Schedule proactive trigger integration", () => {
       kind: "once",
       at: dueIso,
     });
-    state.stream = streamFrom([replyEvent("assistant-1", "reply"), { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" }]);
+    state.stream = streamFrom([
+      replyEvent("assistant-1", "reply"),
+      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
+    ]);
 
     await startPluginAt(fixture, dueIso);
     await settleUntil("Core delivery failure feedback", async () => {
@@ -687,15 +718,21 @@ describe("Schedule proactive trigger integration", () => {
     const feedback = appended?.find((input) => isEventAppend(input, "delivery.failed"));
     expect(feedback).toBeDefined();
     const dueAppendIndex = appended?.findIndex((input) => isEventAppend(input, "schedule.due"));
-    const feedbackAppendIndex = appended?.findIndex((input) => isEventAppend(input, "delivery.failed"));
+    const feedbackAppendIndex = appended?.findIndex((input) =>
+      isEventAppend(input, "delivery.failed"),
+    );
     const appendOrder = state.agent?.append.mock.invocationCallOrder;
     const runOrder = state.agent?.run.mock.invocationCallOrder;
     expect(dueAppendIndex).toBeGreaterThanOrEqual(0);
     expect(feedbackAppendIndex).toBeGreaterThanOrEqual(0);
     expect(appendOrder?.[dueAppendIndex!]).toBeLessThan(runOrder?.[0]);
-    expect(fixture.trigger.mock.invocationCallOrder[0]).toBeLessThan(appendOrder?.[dueAppendIndex!]);
+    expect(fixture.trigger.mock.invocationCallOrder[0]).toBeLessThan(
+      appendOrder?.[dueAppendIndex!],
+    );
     expect(runOrder?.[0]).toBeLessThan(fixture.sendMessage.mock.invocationCallOrder[0]);
-    expect(fixture.sendMessage.mock.invocationCallOrder[0]).toBeLessThan(appendOrder?.[feedbackAppendIndex!]);
+    expect(fixture.sendMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      appendOrder?.[feedbackAppendIndex!],
+    );
     expect(feedback && "data" in feedback ? feedback.data : undefined).toMatchObject({
       eventType: "delivery.failed",
       channel: { id: "room-1", type: 0 },
@@ -733,7 +770,12 @@ async function warmUpRuntime(service: YesImBotService): Promise<void> {
     timestamp: Date.now(),
     channel: { id: "room-1", type: Universal.Channel.Type.TEXT },
     text: "warmup",
-    schedule: { id: "warmup", title: "warmup", kind: "once", scheduledFor: new Date().toISOString() },
+    schedule: {
+      id: "warmup",
+      title: "warmup",
+      kind: "once",
+      scheduledFor: new Date().toISOString(),
+    },
   });
   state.activeTurnId = null;
   state.stream = undefined;

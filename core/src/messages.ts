@@ -18,15 +18,20 @@ export interface EventMap {
   };
 }
 
-export type MessageRecord = Readonly<{
+export interface RecordBase {
   readonly platform: string;
   readonly selfId: string;
   readonly channel: Universal.Channel;
   readonly user: Universal.User;
-  readonly messageId: string;
-  readonly elements: readonly Element[];
   readonly timestamp: number;
-}>;
+}
+
+export type MessageRecord = Readonly<
+  RecordBase & {
+    readonly messageId: string;
+    readonly elements: readonly Element[];
+  }
+>;
 
 export type EventBase = Readonly<{
   readonly platform: string;
@@ -41,17 +46,18 @@ export type EventRecord<K extends keyof EventMap = keyof EventMap> = K extends K
   ? Readonly<EventBase & { readonly eventType: K } & EventMap[K]>
   : never;
 
-export type ResolvedMessageDraft = Readonly<{
-  readonly kind: "message";
-  readonly messageId: string;
-  readonly elements: readonly Element[];
-  readonly user?: { readonly id?: string; readonly name?: string };
-  readonly channel?: { readonly name?: string };
-}>;
-
-export type ResolvedEventDraft<K extends keyof EventMap = keyof EventMap> = Readonly<
-  { readonly kind: "event"; readonly eventType: K; readonly text: string } & EventMap[K]
->;
+export function assembleEvent<K extends keyof EventMap>(
+  base: RecordBase,
+  payload: { readonly eventType: K; readonly text: string } & Omit<EventMap[K], keyof EventBase>,
+): EventRecord<K> {
+  return {
+    platform: base.platform,
+    selfId: base.selfId,
+    channel: base.channel,
+    timestamp: base.timestamp,
+    ...payload,
+  } as EventRecord<K>;
+}
 
 export type Message = CustomMessageBase<"yesimbot.message", Omit<MessageRecord, "timestamp">>;
 

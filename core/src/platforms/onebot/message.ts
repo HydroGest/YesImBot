@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { h, type Context, type Element, type Session } from "koishi";
 
 import type { AssetStore } from "../../asset.js";
-import type { ResolvedMessageDraft } from "../../messages.js";
+import type { RecordBase, MessageRecord } from "../../messages.js";
 
 const DATA_URL = /^data:([^;,]+)(;base64)?,([\s\S]*)$/;
 const MAX_IMAGES = 4;
@@ -13,25 +13,21 @@ const MAX_BYTES_PER_IMAGE = 5 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const IMAGE_TIMEOUT_MS = 10_000;
 
-export async function resolveOneBotMessage(
+export async function translateOneBotMessage(
   ctx: Context,
+  base: RecordBase,
   session: Session,
   store: AssetStore,
-): Promise<ResolvedMessageDraft | null> {
+): Promise<MessageRecord | null> {
   if (session.type !== "message-created" || !Array.isArray(session.elements)) return null;
   if (typeof session.messageId !== "string" || session.messageId.length === 0) return null;
   const budget = { count: 0, bytes: 0 };
   return {
-    kind: "message",
+    ...base,
     messageId: session.messageId,
     elements: await Promise.all(
       session.elements.map((element) => storeImages(ctx, element, store, budget)),
     ),
-    user: {
-      id: session.userId || undefined,
-      name: session.event.user?.name ?? session.author?.name,
-    },
-    channel: { name: session.event.channel?.name },
   };
 }
 

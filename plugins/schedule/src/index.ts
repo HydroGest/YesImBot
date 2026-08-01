@@ -8,9 +8,6 @@ import { registerScheduleModel, ScheduleStore } from "./store";
 import { createScheduleTools } from "./tools";
 import type { Schedule, ScheduleCreateInput, ScheduleUpdateInput } from "./types";
 
-/** The live Session fields a command needs to build the current ChannelScope. */
-type CommandScopeSource = Pick<Session, "platform" | "selfId" | "channelId" | "isDirect">;
-
 /**
  * The optional Koishi plugin that wires the Schedule capability into Core
  * lifecycle. It registers the single plugin-owned table and Store once,
@@ -55,7 +52,12 @@ export default class SchedulePlugin {
       this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((scope) => {
         return {
           name: "schedule",
-          tools: () => createScheduleTools(scope, this.store, () => this.scheduler?.rearm() ?? Promise.resolve()),
+          tools: () =>
+            createScheduleTools(
+              scope,
+              this.store,
+              () => this.scheduler?.rearm() ?? Promise.resolve(),
+            ),
         } satisfies AgentPlugin;
       });
       this.registerCommands();
@@ -91,9 +93,9 @@ export default class SchedulePlugin {
     };
 
     track(
-      this.ctx.command("yesimbot.schedule", "查看当前频道的定时任务", { authority: 4 }).action(
-        async ({ session }) => this.listText(scopeOf(session)),
-      ),
+      this.ctx
+        .command("yesimbot.schedule", "查看当前频道的定时任务", { authority: 4 })
+        .action(async ({ session }) => this.listText(scopeOf(session))),
     );
 
     track(
@@ -178,19 +180,25 @@ export default class SchedulePlugin {
     track(
       this.ctx
         .command("yesimbot.schedule.pause <id>", "暂停定时任务", { authority: 4 })
-        .action(async ({ session }, id) => this.stateAction("已暂停", "暂停失败", scopeOf(session), id, "pause")),
+        .action(async ({ session }, id) =>
+          this.stateAction("已暂停", "暂停失败", scopeOf(session), id, "pause"),
+        ),
     );
 
     track(
       this.ctx
         .command("yesimbot.schedule.resume <id>", "恢复定时任务", { authority: 4 })
-        .action(async ({ session }, id) => this.stateAction("已恢复", "恢复失败", scopeOf(session), id, "resume")),
+        .action(async ({ session }, id) =>
+          this.stateAction("已恢复", "恢复失败", scopeOf(session), id, "resume"),
+        ),
     );
 
     track(
       this.ctx
         .command("yesimbot.schedule.cancel <id>", "取消定时任务", { authority: 4 })
-        .action(async ({ session }, id) => this.stateAction("已取消", "取消失败", scopeOf(session), id, "cancel")),
+        .action(async ({ session }, id) =>
+          this.stateAction("已取消", "取消失败", scopeOf(session), id, "cancel"),
+        ),
     );
   }
 
@@ -221,7 +229,7 @@ export default class SchedulePlugin {
 }
 
 /** Builds the current ChannelScope from the live Session fields only. */
-function scopeOf(session: CommandScopeSource | undefined): ChannelScope | null {
+function scopeOf(session: Session | undefined): ChannelScope | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
   return {
     type: session.isDirect ? "direct" : "shared",

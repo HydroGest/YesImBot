@@ -1,5 +1,5 @@
-import { clone, makeArray, pick } from "cosmokit";
 import { Context } from "cordis";
+import { clone, makeArray, pick } from "cosmokit";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 import {
   Database,
@@ -40,7 +40,10 @@ class MemoryDriver extends Driver<Record<string, never>> {
   }
   async stats(): Promise<Driver.Stats> {
     const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]),
+      Object.entries(this.store).map(([name, rows]) => [
+        name,
+        { name, count: rows.length, size: 0 },
+      ]),
     );
     return { tables, size: 0 };
   }
@@ -138,7 +141,11 @@ class MemoryDriver extends Driver<Record<string, never>> {
   }
 
   async createIndex(table: string, index: Driver.Index): Promise<void> {
-    const name = index.name ?? `index:${Object.entries(index.keys).map(([key, dir]) => `${key}_${dir}`).join("+")}`;
+    const name =
+      index.name ??
+      `index:${Object.entries(index.keys)
+        .map(([key, dir]) => `${key}_${dir}`)
+        .join("+")}`;
     this.indexes[table] ??= {};
     this.indexes[table][name] = { name, unique: false, ...index };
   }
@@ -474,7 +481,10 @@ describe("ScheduleStore", () => {
     await store.recover(new Date("2026-08-01T00:40:00.000Z"));
 
     const [row] = await store.list(sharedScope);
-    expect(row.lastResult).toMatchObject({ occurrenceAt: "2026-08-01T00:15:00.000Z", status: "interrupted" });
+    expect(row.lastResult).toMatchObject({
+      occurrenceAt: "2026-08-01T00:15:00.000Z",
+      status: "interrupted",
+    });
     expect(row.nextRunAt).toBe("2026-08-01T00:45:00.000Z");
   });
 
@@ -515,9 +525,9 @@ describe("ScheduleStore", () => {
     // 10:00 Asia/Shanghai on Friday 2026-07-31 is 02:00 UTC.
     expect(updated.nextRunAt).toBe("2026-07-31T02:00:00.000Z");
 
-    await expect(
-      store.update(sharedScope, created.id, { kind: "once", at: PAST }),
-    ).rejects.toThrow(/in the future/);
+    await expect(store.update(sharedScope, created.id, { kind: "once", at: PAST })).rejects.toThrow(
+      /in the future/,
+    );
   });
 
   it("allows a title update on a due once schedule without re-validating its rule", async () => {

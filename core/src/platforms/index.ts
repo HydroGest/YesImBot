@@ -1,1 +1,1 @@
-export { createResolver as createOnebotResolver } from "./onebot/index.js";
+export { createTranslator as createOnebotTranslator } from "./onebot/index.js";

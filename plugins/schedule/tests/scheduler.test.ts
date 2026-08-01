@@ -1,5 +1,5 @@
-import { clone, makeArray, pick } from "cosmokit";
 import { Context } from "cordis";
+import { clone, makeArray, pick } from "cosmokit";
 import { Universal } from "koishi";
 import type { ChannelScope, EventRecord } from "koishi-plugin-yesimbot";
 import {
@@ -44,7 +44,10 @@ class MemoryDriver extends Driver<Record<string, never>> {
   }
   async stats(): Promise<Driver.Stats> {
     const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]),
+      Object.entries(this.store).map(([name, rows]) => [
+        name,
+        { name, count: rows.length, size: 0 },
+      ]),
     );
     return { tables, size: 0 };
   }
@@ -142,7 +145,11 @@ class MemoryDriver extends Driver<Record<string, never>> {
   }
 
   async createIndex(table: string, index: Driver.Index): Promise<void> {
-    const name = index.name ?? `index:${Object.entries(index.keys).map(([key, dir]) => `${key}_${dir}`).join("+")}`;
+    const name =
+      index.name ??
+      `index:${Object.entries(index.keys)
+        .map(([key, dir]) => `${key}_${dir}`)
+        .join("+")}`;
     this.indexes[table] ??= {};
     this.indexes[table][name] = { name, unique: false, ...index };
   }
@@ -240,7 +247,10 @@ describe("ScheduleScheduler", () => {
     expect(trigger.mock.calls[1][0].schedule.scheduledFor).toBe("2026-08-01T00:30:00.000Z");
 
     const [row] = await store.list(sharedScope);
-    expect(row.lastResult).toMatchObject({ occurrenceAt: "2026-08-01T00:30:00.000Z", status: "accepted" });
+    expect(row.lastResult).toMatchObject({
+      occurrenceAt: "2026-08-01T00:30:00.000Z",
+      status: "accepted",
+    });
     expect(row.nextRunAt).toBe("2026-08-01T00:45:00.000Z");
   });
 
@@ -259,7 +269,10 @@ describe("ScheduleScheduler", () => {
 
     expect(trigger).not.toHaveBeenCalled();
     const [row] = await store.list(sharedScope);
-    expect(row.lastResult).toMatchObject({ occurrenceAt: "2026-08-01T00:15:00.000Z", status: "missed" });
+    expect(row.lastResult).toMatchObject({
+      occurrenceAt: "2026-08-01T00:15:00.000Z",
+      status: "missed",
+    });
     expect(row.state).toBe("enabled");
     expect(row.nextRunAt).toBe("2026-08-01T00:30:00.000Z");
 
@@ -347,7 +360,9 @@ describe("ScheduleScheduler", () => {
 
     expect(trigger).toHaveBeenCalledTimes(MAX_CONCURRENT_TRIGGERS);
     let rows = await store.list(sharedScope);
-    expect(rows.filter((row) => row.lastResult?.status === "submitting")).toHaveLength(MAX_CONCURRENT_TRIGGERS);
+    expect(rows.filter((row) => row.lastResult?.status === "submitting")).toHaveLength(
+      MAX_CONCURRENT_TRIGGERS,
+    );
     const missed = rows.find((row) => row.lastResult?.status === "missed");
     expect(missed).toBeDefined();
     expect(missed!.lastResult).toMatchObject({ occurrenceAt: T0, status: "missed" });
@@ -357,7 +372,9 @@ describe("ScheduleScheduler", () => {
     releases.forEach((release) => release());
     await vi.advanceTimersByTimeAsync(0);
     rows = await store.list(sharedScope);
-    expect(rows.filter((row) => row.lastResult?.status === "accepted")).toHaveLength(MAX_CONCURRENT_TRIGGERS);
+    expect(rows.filter((row) => row.lastResult?.status === "accepted")).toHaveLength(
+      MAX_CONCURRENT_TRIGGERS,
+    );
     expect(rows.filter((row) => row.lastResult?.status === "missed")).toHaveLength(1);
   });
 

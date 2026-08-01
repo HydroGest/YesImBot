@@ -6,10 +6,10 @@ import { AssetService } from "./asset.js";
 import { ChannelStorage, type ChannelScope } from "./channel.js";
 import { type Config } from "./config.js";
 import { deliverOutput } from "./delivery.js";
-import { Gateway, type SessionResolver } from "./gateway.js";
+import { Gateway, type PlatformTranslator } from "./gateway.js";
 import type { EventMap, EventRecord } from "./messages.js";
 import type { ModelService } from "./model/index.js";
-import { createOnebotResolver } from "./platforms/index.js";
+import { createOnebotTranslator } from "./platforms/index.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
 
 declare module "koishi" {
@@ -73,8 +73,8 @@ export class YesImBotService extends Service<Config> {
     this.registerCommand(resetCommand);
   }
 
-  registerResolver(resolver: SessionResolver): () => void {
-    return this.gate.register(resolver);
+  registerTranslator(translator: PlatformTranslator): () => void {
+    return this.gate.registerTranslator(translator);
   }
 
   registerAgentPlugin(factory: AgentPluginFactory): () => void {
@@ -89,9 +89,9 @@ export class YesImBotService extends Service<Config> {
 
   override async start(): Promise<void> {
     await this.storage.start();
-    const resolvers = [createOnebotResolver];
-    for (const createResolver of resolvers) {
-      const dispose = this.registerResolver(createResolver(this.ctx));
+    const translators = [createOnebotTranslator];
+    for (const createTranslator of translators) {
+      const dispose = this.registerTranslator(createTranslator(this.ctx));
       this.ctx.on("dispose", dispose);
     }
   }

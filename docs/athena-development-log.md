@@ -228,11 +228,11 @@ PlatformService
 
 前一轮拆出四个 owner 后，`Platform.Message` 仍是一套位于 Satori 与 Agent 之间的平行消息模型。Event 只能进程内发布，无法参与历史和 Will 判断；`DeliveryService` 又把被动回复、主动发送和观察状态合并成公共服务。插件因此需要 `platform.scope`、`unsafeBot` 和多个 core subpath 才能工作。
 
-新管线以 Satori `Universal.Event` 为结构基础。平台插件为每个平台注册一个 `SessionResolver`，返回可声明合并的 `EventRecord`；core 把它包装成唯一的 `yesimbot.event` custom message并写入 JSONL。消息、reaction 和 `delivery.failed` 从此使用同一持久事件代数。冻结后的 `content` 负责模型投影，结构化 Satori resources 负责路由和插件判断。
+新管线以 Satori `Universal.Event` 为结构基础。平台插件为每个平台注册一个 `PlatformTranslator`，通过 `assembleEvent` 返回最终 `EventRecord`；core 把它写入唯一的 `yesimbot.event` custom message 与 JSONL。消息、reaction 和 `delivery.failed` 从此使用同一持久事件代数。冻结后的 `content` 负责模型投影，结构化 Satori resources 负责路由和插件判断。
 
-Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 resolver 调用、图片冻结和被动 `Session.send()`，然后把无 Session 引用的 EventRecord 交给 RuntimeManager。每频道 ChannelRuntime 按 FIFO 执行 persist、event observation、Will decision 和 wait/join/run；RuntimeManager 只管理频道实例与生命周期。Will 的首版契约只有 `wait | trigger`，默认策略处理 direct、mention 和普通群消息。
+Session 只存在于 Gateway 的活动 handle 中。Gateway 完成 translator 调用、图片冻结和被动 `Session.send()`，然后把无 Session 引用的 EventRecord 交给 RuntimeManager。每频道 ChannelRuntime 按 FIFO 执行 persist、event observation、Will decision 和 wait/join/run；RuntimeManager 只管理频道实例与生命周期。Will 的首版契约只有 `wait | trigger`，默认策略处理 direct、mention 和普通群消息。
 
-出站能力不再有公共 DeliveryService。被动回复失败会写入一个 `delivery.failed` Event，后续输出继续发送；主动发送是 Agent 内部的 current-bot tool，只接受显式 channelId。公开 facade 收敛到 model、resolver/Will/Agent plugin 注册、reset 和 stop。
+出站能力不再有公共 DeliveryService。被动回复失败会写入一个 `delivery.failed` Event，后续输出继续发送；主动发送是 Agent 内部的 current-bot tool，只接受显式 channelId。公开 facade 收敛到 model、assets、translator/Agent plugin 注册、reset 和 stop。
 
 这次重构删除了 PlatformService、DeliveryService、旧跨频道 runtime 和相关 subpath。旧 JSONL 不读取。实现期间也明确接受 MemOS `channel_hash`、频道 JSONL/assets 路径与 workspace 目录进入 v2 clean break，不保留 `ch_v1_*` helper 或兼容 alias。新路径以无歧义 tuple 的 SHA-256 摘要隔离频道，不暴露平台原始 ID。图片 loader 同时接收 AbortSignal 和 core 剩余字节预算；OneBot 在 HTTP stream、本地文件读取和 data URL 解码阶段执行硬限制。
 
@@ -283,7 +283,7 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 
 这次收敛放弃了最后一批会让 Core 重新变厚的中间协议：公开频道 identity、storage namespace registry、PlatformService、DeliveryService、reload/drain、通用 media policy 和跨模块 formatter。它们都曾试图为未来平台、资源或生命周期预留空间，但当前没有足够消费者，也让 Session、目录和模型输入的 owner 变得模糊。
 
-新的基线把事实收回到更小的边界：Gateway 在 live Session 内完成准入、shared assignee 检查、绑定 AssetStore、Resolver 调用、canonical record 组装和被动回复；RuntimeManager 只管理频道 Runtime 的创建、替换、reset 与 stop；ChannelRuntime 独占 FIFO、Agent、Will、JSONL、模型输入和 output ownership。Resolver 决定入站图片如何下载并持久化，模型调用只读取频道本地资产。
+新的基线把事实收回到更小的边界：Gateway 在 live Session 内完成准入、shared assignee 检查、绑定 AssetStore、PlatformTranslator 调用、canonical record 组装和被动回复；RuntimeManager 只管理频道 Runtime 的创建、替换、reset 与 stop；ChannelRuntime 独占 FIFO、Agent、Will、JSONL、模型输入和 output ownership。PlatformTranslator 决定入站图片如何下载并持久化，模型调用只读取频道本地资产。
 
 频道不再有公开或持久化的 opaque identity。`ChannelScope` 保持原始字段，shared/direct tuple 和可读 versionless channel root 留在 Core 内部。稳定模型、图片预算、prompt、tools 和插件在 Runtime 创建时快照，shared Bot 变化时停止旧 Runtime 并创建新 Runtime，而不是让 reload 协调一组可变资源。
 
@@ -302,7 +302,7 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 | P-05 | 可选能力进入 `plugins/*`，模型进入 `providers/*` | 已实施 |
 | P-06 | 平台输入进入 `platforms/*` | 已实施 |
 | P-07 | 频道 Event 使用 JSONL，长期记忆由插件负责 | 已实施 |
-| P-11 | Resolver 持久化图片，Runtime 投影本地资产 | 入站下载属于平台；历史和模型调用不请求平台 |
+| P-11 | PlatformTranslator 持久化图片，Runtime 投影本地资产 | 入站下载属于平台；历史和模型调用不请求平台 |
 | P-12 | Forward 和 quote 不自动展开 | 已实施 |
 | P-13 | 每频道 FIFO 管理持久化、观察、Will 判断和首次提交 | 已实施 |
 | P-14 | 模型流消费在 FIFO 外 | 已实施 |
@@ -312,16 +312,16 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 | P-19 | 公共 API 只为现有用例服务 | KISS / YAGNI 原则 |
 | P-22 | `ChannelRuntime` 独占频道 Agent 生命周期 | `YesImBotService` 只做 Koishi composition 与 delegation |
 | P-24 | `EventRecord` 是路由、持久化和 Will 判断的唯一事实 | 结构复用 Satori `Universal.Event`，不再维护 Platform 消息代数 |
-| P-25 | 每个平台最多注册一个 `SessionResolver` | 无 resolver 不接入；resolver 返回 null 或抛错都不 fallback |
-| P-26 | Gateway 是 Session 和被动回复的唯一 owner | Resolver、AssetStore 和 `Session.send()` 都在活动 handler 内完成 |
+| P-25 | 每个平台最多注册一个 PlatformTranslator | 精确平台 > 显式通配 > 内置默认；选定 Translator 的 null 或抛错都不 fallback |
+| P-26 | Gateway 是 Session 和被动回复的唯一 owner | PlatformTranslator、AssetStore 和 `Session.send()` 都在活动 handler 内完成 |
 | P-27 | Will 是每频道的最小参与判断 seam | routing 为默认；willingness 仅公开阈值、半衰期和回复成本 |
 | P-28 | 出站能力保持内部拆分 | Gateway 处理被动回复与失败 Event；Agent tool 使用 current Bot 主动发送 |
-| P-29 | `ctx.yesimbot` 只公开已确认 facade | model、assets、Resolver/Agent plugin 注册、channel root、reset 和 stop |
+| P-29 | `ctx.yesimbot` 只公开已确认 facade | model、assets、PlatformTranslator/Agent plugin 注册、channel root、reset 和 stop |
 | P-30 | `ChannelScope` 保持原始字段 | 不公开或持久化 Channel Key、identity、tuple key 或 directory helper |
 | P-31 | Core 使用可读 versionless channel root | `channel.json`、sessions、assets 和插件子目录共存；tuple 仅属实现 |
 | P-32 | Database 是必需依赖，shared 频道 assignee admission fail closed | Koishi 拥有分配权；Core 不重复存储 assignee |
 | P-33 | shared Bot 变化时停旧建新 | 当前 record 进入新 Runtime；不提供 reload 或 drain 协调 |
-| P-34 | AssetStore 是公开的 scoped byte store | Resolver 写入、Runtime 读取；具体存储与路径 helper 保持私有 |
+| P-34 | AssetStore 是公开的 scoped byte store | PlatformTranslator 写入、Runtime 读取；具体存储与路径 helper 保持私有 |
 
 ### 明确延后
 
@@ -349,13 +349,16 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 | R-08 | 平台 Fact / View / Reader / Snapshot / template 系统 | 没有足够消费者，职责侵入 core |
 | R-09 | 自动递归展开 forward/quote | 不稳定、昂贵且污染历史 |
 | R-10 | 旧 JSONL 与旧平台消息兼容 | 当前是全新实现，没有现实消费者 |
-| R-11 | Adapter 选择与 refine 作为平台入口 | 单一 SessionResolver 直接产生 EventRecord，减少中间协议 |
+| R-11 | Translator 选择与 refine 作为平台入口 | 单一 PlatformTranslator 直接产生最终 Message/EventRecord，删除 Draft 中间层 |
 | R-12 | `Platform.Message` 与 `MessageRecord` 平行模型 | Satori Event resources 与 `yesimbot.event` 已覆盖结构和持久化 |
 | R-13 | Event publish-only | Event 需要进入 JSONL、Will 和模型历史 |
-| R-14 | `ctx.yesimbot.platform` 公共服务 | 插件改用 `registerResolver()` 与 Agent plugin factory context |
+| R-14 | `ctx.yesimbot.platform` 公共服务 | 插件改用 `registerTranslator()` 与 Agent plugin factory context |
 | R-15 | `Platform.Message` 作为路由真相 | EventRecord 成为唯一 canonical input |
 | R-16 | 公共 `DeliveryService` | Gateway 被动回复和 current-bot Agent tool 已覆盖当前用例 |
 | R-17 | 公共或持久化 Channel Key、`ChannelScopeId` 与 versioned directory 格式 | 被 raw ChannelScope、私有 canonical tuple 和 versionless readable root 取代 |
+### PlatformTranslator 架构决策（2026-08）
+
+Core 入站边界统一命名为 `PlatformTranslator`。Gateway 推导 `RecordBase`，按精确平台、显式 `"*"`、内置默认的顺序只选择一次 Translator；消息 Translator 直接返回最终 `MessageRecord`，事件通过 `assembleEvent` 返回最终 `EventRecord`。内置默认仅透传带非空 message ID 的 `message-created` 元素，不持久化媒体；未选 Translator 的 null 或异常不触发回退，统一记录 `gateway.route_failed`。
 
 ## 5. 明确表达过的偏好
 

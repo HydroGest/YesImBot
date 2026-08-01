@@ -11,7 +11,7 @@ export { Config } from "./config.js";
 
 export type { AssetService, AssetStore } from "./asset.js";
 export type { ChannelScope } from "./channel.js";
-export type { SessionResolver } from "./gateway.js";
+export type { PlatformTranslator } from "./gateway.js";
 export * from "./messages.js";
 export * from "./model/index.js";
 export type { AgentPluginFactory } from "./runtime/index.js";

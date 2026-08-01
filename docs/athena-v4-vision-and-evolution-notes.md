@@ -63,7 +63,7 @@ Athena 需要可持续的人格，但人格不应依赖难以追踪的模板变�
 
 图片、音频、视频、文件、引用和合并转发不是普通字符串。
 
-当前链路把入站图片的下载与持久化交给平台 Resolver。Resolver 将成功字节写入频道 Scoped AssetStore；模型调用只从本地 assets 读取受支持图片，并按当次调用预算投影。历史重放不重新请求平台 API。Core 不为 Resolver 规定统一入站下载策略，也不自动展开 forward 或 quote。
+当前链路把入站图片的下载与持久化交给平台 PlatformTranslator。Translator 将成功字节写入频道 Scoped AssetStore；模型调用只从本地 assets 读取受支持图片，并按当次调用预算投影。历史重放不重新请求平台 API。Core 不为 PlatformTranslator 规定统一入站下载策略，也不自动展开 forward 或 quote。
 
 ### 3.7 主动性是长期方向，不是当前承诺
 
@@ -77,14 +77,13 @@ Athena 需要可持续的人格，但人格不应依赖难以追踪的模板变�
 
 ```text
 Session
-  -> Gateway（allowlist、assignee、AssetStore、Resolver、canonical record、被动回复）
+  -> Gateway（allowlist、assignee、AssetStore、PlatformTranslator、canonical record、被动回复）
   -> RuntimeManager（频道 Runtime 创建、替换、reset、stop）
   -> ChannelRuntime（FIFO、Agent、Will、JSONL、模型输入、输出）
       -> @yesimbot/agent-runtime + AgentPlugin / tools / providers
-  -> Koishi Session / Bot
 ```
 
-Gateway 是 live Session 的唯一 owner。它在同一 handler 内完成准入、Resolver 调用和被动 `Session.send()`，随后将不含 Session 的 InputRecord 交给 RuntimeManager。ChannelRuntime 对一个频道按 FIFO 处理记录，并在 Runtime 外由唯一 output consumer 消费流输出。
+Gateway 是 live Session 的唯一 owner。它在同一 handler 内完成准入、PlatformTranslator 调用、图片冻结和被动 `Session.send()`，随后将不含 Session 的 InputRecord 交给 RuntimeManager。ChannelRuntime 对一个频道按 FIFO 处理记录，并在 Runtime 外由唯一 output consumer 消费流输出。
 
 ### 4.1 `@yesimbot/agent-runtime`
 
@@ -100,13 +99,13 @@ Gateway 是 live Session 的唯一 owner。它在同一 handler 内完成准入�
 
 ### 4.2 `core/`
 
-Koishi core 负责模型注册、Gateway admission、ChannelScope/Manifest/AssetStore、RuntimeManager、ChannelRuntime、Core prompt 和回复投递。公开 `ctx.yesimbot` 只提供 model、assets、Resolver/Agent plugin 注册、`getStoragePath(scope)`、reset 和 stop。
+Koishi core 负责模型注册、Gateway admission、ChannelScope/Manifest/AssetStore、RuntimeManager、ChannelRuntime、Core prompt 和回复投递。公开 `ctx.yesimbot` 只提供 model、assets、PlatformTranslator/Agent plugin 注册、`getStoragePath(scope)`、reset 和 stop。
 
 Core 不提供 public channel identity、storage namespace registration、reload、DeliveryService 或 PlatformService。稳定模型、图片预算、prompt、tools 和插件在 Runtime 创建时形成快照。
 
 ### 4.3 `core/src/platforms/`
 
-内置平台通过每平台一个 `SessionResolver` 处理输入侧差异。Resolver 接收 live Session 和频道 AssetStore，返回 message/event Draft 或 `null`。未注册 Resolver 的平台不进入 Core；Resolver 失败没有 Satori fallback。OneBot 只持久化 `img`，保留其他 Element 的结构。
+内置平台通过每平台一个 `PlatformTranslator` 处理输入侧差异。Translator 接收 live Session 和频道 AssetStore，直接返回最终 message/event record 或 `null`。无精确或显式通配 Translator 时，message-created 元素使用内置默认透传；媒体持久化与自定义事件仍需平台 Translator。Translator 失败没有 Satori fallback。OneBot 只持久化 `img`，保留其他 Element 的结构。
 
 ### 4.4 `plugins/*` 与 `providers/*`
 
@@ -116,7 +115,7 @@ Core 不提供 public channel identity、storage namespace registration、reload
 
 ### 5.1 Gateway 组装唯一 ingress 事实
 
-Resolver 返回 elements 或事件 Draft；Gateway 从 live Session 和 ChannelScope 补齐 host-owned envelope，持久化 versionless Message/Event record。Session 在 Gateway handler 外不再存在，JSONL 读回只逐行 `JSON.parse`，跳过 JSON 语法损坏行而不做语义验证。
+Translator 返回最终 Message/Event record；Gateway 从 live Session 和 ChannelScope 推导 RecordBase，并把事件通过 `assembleEvent` 构造。Session 在 Gateway handler 外不再存在，JSONL 读回只逐行 `JSON.parse`，跳过 JSON 语法损坏行而不做语义验证。
 
 ### 5.2 频道上下文保持原始且可读
 
@@ -128,7 +127,7 @@ RuntimeManager 为每个持久化频道维护一个 Runtime。shared 频道的�
 
 ### 5.4 资产持久化与模型投影分离
 
-`AssetStore` 只存取频道范围内的字节，以前 32 位小写 SHA-256 hex 标识内容。Resolver 决定入站下载和持久化；`runtime/model-input.ts` 在模型调用时按 history 后 current 的顺序读取本地图片、检测 MIME、应用 `imageInput` 预算。模型 capability 只由 `models.json` 声明。
+`AssetStore` 只存取频道范围内的字节，以前 32 位小写 SHA-256 hex 标识内容。PlatformTranslator 决定入站下载和持久化；`runtime/model-input.ts` 在模型调用时按 history 后 current 的顺序读取本地图片、检测 MIME、应用 `imageInput` 预算。模型 capability 只由 `models.json` 声明。
 
 ### 5.5 交付仍属于产生输出的频道
 
@@ -171,8 +170,8 @@ v3、v4 beta 和后来的 Session Runtime 都被重写过。保留下来的主�
 
 ## 8. 未来的工作顺序
 
-1. 先维护 runtime、Gateway、Resolver、plugin 和 provider 边界的稳定性。
-2. 新平台通过一个 SessionResolver 落地，在 Core 内置或可选包之间按当前真实集成需求选择，不先扩张公共协议。
+1. 先维护 runtime、Gateway、PlatformTranslator、plugin 和 provider 边界的稳定性。
+2. 新平台通过一个 PlatformTranslator 落地，在 Core 内置或可选包之间按当前真实集成需求选择，不先扩张公共协议。
 3. 标准事件消费者使用独立 OpenSpec change，禁止顺手恢复旧 world-state 系统。
 4. 只有出现具体模型需求时，才设计音频、视频或更多媒体能力。
 5. 主动性、计划和长期自治放在可审计的更高层，不侵入基本消息真相。

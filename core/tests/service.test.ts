@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { h } from "koishi";
+import { h, type Session } from "koishi";
 
-import type { EventRecord } from "../src/messages.js";
+import { type RecordBase, type EventRecord } from "../src/messages.js";
 
 const state = vi.hoisted(() => ({
   runtime: undefined as
@@ -96,7 +96,7 @@ describe("YesImBotService facade", () => {
     const { ctx } = createService();
 
     expect(ctx.yesimbot.model).toBeDefined();
-    expect(ctx.yesimbot.registerResolver).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.registerTranslator).toEqual(expect.any(Function));
     expect(ctx.yesimbot.registerAgentPlugin).toEqual(expect.any(Function));
     expect(ctx.yesimbot.getStoragePath).toEqual(expect.any(Function));
     expect(ctx.yesimbot.trigger).toEqual(expect.any(Function));
@@ -132,7 +132,11 @@ describe("YesImBotService facade", () => {
 
   it("triggers a forced event through the runtime and sends via the matching Bot", async () => {
     const { ctx, service } = createService();
-    const wrongPlatform = { platform: "onebot", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
+    const wrongPlatform = {
+      platform: "onebot",
+      selfId: "bot-1",
+      sendMessage: vi.fn(async () => []),
+    };
     const wrongSelfId = { platform: "test", selfId: "bot-9", sendMessage: vi.fn(async () => []) };
     const exact = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
     ctx.bots.push(wrongPlatform as never, wrongSelfId as never, exact as never);
@@ -160,7 +164,11 @@ describe("YesImBotService facade", () => {
 
   it("rejects a trigger with only decoy Bots before runtime admission", async () => {
     const { ctx, service } = createService();
-    const wrongPlatform = { platform: "onebot", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
+    const wrongPlatform = {
+      platform: "onebot",
+      selfId: "bot-1",
+      sendMessage: vi.fn(async () => []),
+    };
     const wrongSelfId = { platform: "test", selfId: "bot-9", sendMessage: vi.fn(async () => []) };
     ctx.bots.push(wrongPlatform as never, wrongSelfId as never);
 
@@ -231,9 +239,7 @@ describe("YesImBotService facade", () => {
   it("rejects a trigger with no matching Bot without runtime admission", async () => {
     const { service } = createService();
 
-    await expect(service.trigger(event)).rejects.toThrow(
-      "No Bot is available for test:bot-1",
-    );
+    await expect(service.trigger(event)).rejects.toThrow("No Bot is available for test:bot-1");
     expect(state.runtime?.trigger).not.toHaveBeenCalled();
   });
 
@@ -271,13 +277,12 @@ describe("YesImBotService facade", () => {
     const ready = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const resolver = {
+    const translator = {
       platform: "test",
-      resolve: vi.fn(async () => ({
-        kind: "message" as const,
-        messageId: "message-1",
-        elements: [],
-        text: "hello",
+      translate: vi.fn(async (base: RecordBase, input: Session) => ({
+        ...base,
+        messageId: input.messageId,
+        elements: input.elements ?? [],
       })),
     };
     const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
@@ -291,7 +296,7 @@ describe("YesImBotService facade", () => {
       },
       { runtime: runtime as never, assets: assets as never, ready: () => ready },
     );
-    gateway.register(resolver);
+    gateway.registerTranslator(translator);
     const handling = gateway.handle({
       type: "message-created",
       platform: "test",
@@ -306,12 +311,12 @@ describe("YesImBotService facade", () => {
     } as never);
 
     await Promise.resolve();
-    expect(resolver.resolve).not.toHaveBeenCalled();
+    expect(translator.translate).not.toHaveBeenCalled();
     expect(runtime.route).not.toHaveBeenCalled();
     expect(assets.createStore).not.toHaveBeenCalled();
     release();
     await handling;
-    expect(resolver.resolve).toHaveBeenCalledOnce();
+    expect(translator.translate).toHaveBeenCalledOnce();
     expect(runtime.route).toHaveBeenCalledOnce();
   });
 

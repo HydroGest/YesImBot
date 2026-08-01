@@ -1,20 +1,20 @@
 import type { Context } from "koishi";
 import type {} from "koishi-plugin-adapter-onebot";
 
-import type { SessionResolver } from "../../gateway.js";
-import { resolveOneBotEvent } from "./events.js";
-import { resolveOneBotMessage } from "./message.js";
+import type { PlatformTranslator } from "../../gateway.js";
+import { translateOneBotEvent } from "./events.js";
+import { translateOneBotMessage } from "./message.js";
 
-export function createResolver(ctx: Context): SessionResolver {
+export function createTranslator(ctx: Context): PlatformTranslator {
   return {
     platform: "onebot",
-    async resolve(session, store) {
-      const event = resolveOneBotEvent(session);
+    async translate(base, session, store) {
+      const event = translateOneBotEvent(base, session);
       if (event) return event;
-      return resolveOneBotMessage(ctx, session, store);
+      return translateOneBotMessage(ctx, base, session, store);
     },
   };
 }
 
-export { resolveOneBotEvent } from "./events.js";
-export { resolveOneBotMessage } from "./message.js";
+export { translateOneBotEvent } from "./events.js";
+export { translateOneBotMessage } from "./message.js";

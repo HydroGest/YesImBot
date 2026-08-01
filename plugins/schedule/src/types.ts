@@ -21,26 +21,17 @@ export type Schedule = {
   lastResult?: ScheduleLastResult;
   createdAt: string;
   updatedAt: string;
-} & (
-  | { kind: "once"; at: string; cron?: never }
-  | { kind: "cron"; cron: string; at?: never }
-);
+} & ({ kind: "once"; at: string; cron?: never } | { kind: "cron"; cron: string; at?: never });
 
 export type ScheduleCreateInput = {
   title: string;
   prompt: string;
-} & (
-  | { kind: "once"; at: string; cron?: never }
-  | { kind: "cron"; cron: string; at?: never }
-);
+} & ({ kind: "once"; at: string; cron?: never } | { kind: "cron"; cron: string; at?: never });
 
 export type ScheduleUpdateInput = {
   title?: string;
   prompt?: string;
-} & (
-  | { kind?: "once"; at?: string; cron?: never }
-  | { kind?: "cron"; cron?: string; at?: never }
-);
+} & ({ kind?: "once"; at?: string; cron?: never } | { kind?: "cron"; cron?: string; at?: never });
 
 /**
  * The compact, tool-facing view of a Schedule: identity, lifecycle, and next

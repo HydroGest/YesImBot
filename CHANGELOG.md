@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **core**: **Breaking**: Replaced public channel identity and storage-namespace APIs with raw `ChannelScope` and `getStoragePath(scope)`. Shared storage uses `platform + channelId`; direct storage also includes `selfId`.
-- **core**: **Breaking**: Replaced PlatformService and DeliveryService with one Session Gateway, per-platform `SessionResolver`, host-owned Message/Event records, and passive `Session.send()` delivery.
+- **core**: **Breaking**: Replaced `SessionResolver`/`registerResolver()` with `PlatformTranslator`/`registerTranslator()`. Translators return final records; exact platform, explicit wildcard, and built-in message pass-through selection is single-shot, and route failures use `gateway.route_failed`.
 - **core**: Resolver-owned image persistence now writes scoped assets during live Session resolution. Model input later reads local image assets in history-then-current order under `imageInput` call budgets.
 - **core**: RuntimeManager replaces a shared channel Runtime when its current Bot changes. Core has no `reload()`; stable model, prompt, tool, and plugin resources apply on Runtime replacement.
 - **core**: Channel roots are readable versionless `shared-*` / `direct-*` directories with authoritative `channel.json`, `sessions/`, `assets/`, and plugin-selected children. Prior layouts and JSONL are not read or migrated.

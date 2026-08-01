@@ -6,6 +6,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { h, Universal } from "koishi";
 
 import {
+  assembleEvent,
   createEvent,
   createMessage,
   isEvent,
@@ -17,6 +18,7 @@ import {
   type EventRecord,
   type Message,
   type MessageRecord,
+  type RecordBase,
 } from "../src/messages.js";
 
 declare module "koishi-plugin-yesimbot" {
@@ -37,6 +39,16 @@ function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
     messageId: "m1",
     elements: [h.text("hello")],
     timestamp: overrides.timestamp ?? 1234,
+  };
+}
+
+function recordBase(): RecordBase {
+  return {
+    platform: "test",
+    selfId: "bot-1",
+    channel: { id: "channel-1", type: Universal.Channel.Type.TEXT, name: "Room" },
+    user: { id: "user-1", name: "Alice" },
+    timestamp: 1234,
   };
 }
 
@@ -169,6 +181,45 @@ describe("Event", () => {
     expectTypeOf<T["test"]["value"]>().toBeNumber();
     expectTypeOf<T["channel"]["id"]>().toBeString();
     expectTypeOf<T["eventType"]>().toEqualTypeOf<"test.variant">();
+  });
+
+  it("assembles events from RecordBase without copying user", () => {
+    const event = assembleEvent(recordBase(), {
+      eventType: "test.variant",
+      text: "variant",
+      test: { value: 42 },
+    });
+
+    expect(event).toMatchObject({
+      platform: "test",
+      selfId: "bot-1",
+      channel: { id: "channel-1", name: "Room" },
+      eventType: "test.variant",
+      text: "variant",
+      test: { value: 42 },
+    });
+    expect(event).not.toHaveProperty("user");
+  });
+  it("assembles delivery.failed without payload channel or user residue", () => {
+    const event = assembleEvent(recordBase(), {
+      eventType: "delivery.failed",
+      text: "Delivery failed",
+      delivery: {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        segmentIndex: 1,
+        segmentTotal: 1,
+        error: { name: "Error", message: "offline" },
+      },
+    });
+
+    expect(event).toMatchObject({
+      eventType: "delivery.failed",
+      text: "Delivery failed",
+      channel: { id: "channel-1", name: "Room" },
+      delivery: { turnId: "turn-1", messageId: "assistant-1" },
+    });
+    expect(event).not.toHaveProperty("user");
   });
 
   it("constructs a declaration-merged event from the closed host base", () => {

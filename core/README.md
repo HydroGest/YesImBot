@@ -10,7 +10,7 @@ Gateway, channel storage, assets, and the per-channel runtime.
 - `model`
 - `assets`, an `AssetService`; call `assets.createStore(scope)` to obtain an
   `AssetStore` with `put()`, `get()`, and `clear()` for that channel
-- `registerResolver()` and `registerAgentPlugin()`
+- `registerTranslator()` and `registerAgentPlugin()`
 - `getStoragePath(scope)`
 - `reset(scope)` and `stop()`
 
@@ -31,22 +31,24 @@ implementations. It does not expose a channel identity, tuple key, directory
 helper, storage implementation, Gateway, RuntimeManager, or ChannelRuntime.
 
 The package root exports `Config`, `ChannelScope`, input contracts and input
-helpers, `SessionResolver`, `AssetService`, `AssetStore`, `AgentPluginFactory`,
-and `YesImBotService`. The only supported code subpath is `./model`.
+helpers, `PlatformTranslator`, `RecordBase`, `assembleEvent`, `AssetService`, `AssetStore`,
+`AgentPluginFactory`, and `YesImBotService`. The only supported code subpath is `./model`.
 
 ## Gateway and runtime
 
-A platform registers one `SessionResolver` for its platform. Gateway derives a
+A platform registers one `PlatformTranslator` for its platform. Gateway derives a
 `ChannelScope`, checks the allowlist, and for shared channels checks the Koishi
-Channel assignee before it creates an asset store, invokes the Resolver, or
-routes a record. Direct channels skip the assignee query. A platform without a
-registered Resolver is not admitted; Core has no Satori fallback.
+Channel assignee before it creates an asset store, invokes the Translator, or
+routes a record. Direct channels skip the assignee query. If no exact or explicit
+`"*"` Translator is registered, `message-created` sessions with a nonempty
+message ID use the built-in element pass-through default; custom events and media
+persistence still require a platform Translator.
 
-Gateway passes its channel-scoped `AssetStore` to the Resolver. The Resolver
-owns any platform-specific image download and persistence, then returns a
-Session-free message or event Draft. Gateway creates the canonical input record
-and owns passive `Session.send()` delivery. A failed delivery reports one
-same-channel `delivery.failed` event through the producing runtime.
+Gateway passes its channel-scoped `AssetStore` to the Translator. The Translator
+owns any platform-specific image download and persistence, then returns the final
+Session-free `MessageRecord` or `EventRecord`. Gateway owns passive `Session.send()`
+delivery. A failed delivery reports one same-channel `delivery.failed` event
+through the producing runtime.
 
 `RuntimeManager` creates one `ChannelRuntime` for a persistent channel tuple.
 When a shared channel is admitted for a different Bot, it stops the old runtime,
@@ -60,7 +62,7 @@ It holds no live Koishi Session.
 
 ## Model input
 
-`runtime/model-input.ts` formats persisted input and projects local image assets for a model call. It scans history before current input, reads only the channel-scoped `AssetStore`, recognizes JPEG, PNG, WebP, and GIF bytes, and applies a per-call `imageInput` budget. Model image capability comes only from `models.json`; `imageInput: false` disables image projection. Resolver download limits remain platform policy.
+`runtime/model-input.ts` formats persisted input and projects local image assets for a model call. It scans history before current input, reads only the channel-scoped `AssetStore`, recognizes JPEG, PNG, WebP, and GIF bytes, and applies a per-call `imageInput` budget. Model image capability comes only from `models.json`; `imageInput: false` disables image projection. PlatformTranslator download limits remain platform policy.
 
 ## Prompt resources
 
@@ -104,4 +106,4 @@ allowedChannels:
 Declare model image capability in the model override in `models.json`. The
 runtime uses `imageInput` for its model-call budget; its default is four images,
 5 MiB per image, and 10 MiB total. Set `imageInput: false` to disable model
-image input. This setting does not impose a download policy on Resolvers.
+image input. This setting does not impose a download policy on PlatformTranslators.

@@ -97,10 +97,10 @@ function createGateway(
       ready: async () => undefined,
     },
   );
-  gateway.register({
+  gateway.registerTranslator({
     platform: "test",
-    resolve: async (input) => ({
-      kind: "message",
+    translate: async (base, input) => ({
+      ...base,
       messageId: input.messageId,
       elements: input.elements ?? [],
     }),
@@ -146,10 +146,10 @@ function createIntegratedGateway(basePath: string) {
     },
     { runtime: manager, assets: assets as never, ready: () => storage.start() },
   );
-  gateway.register({
+  gateway.registerTranslator({
     platform: "test",
-    resolve: async (input) => ({
-      kind: "message",
+    translate: async (base, input) => ({
+      ...base,
       messageId: input.messageId,
       elements: input.elements ?? [],
     }),
