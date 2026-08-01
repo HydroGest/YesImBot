@@ -10,6 +10,7 @@
       "maxOutputTokens": "最大输出 token 数",
       "topP": "Top-P 采样参数"
     },
-    "advancedOverride": "JSON 格式的高级覆盖参数（解析失败时忽略）"
+    "advancedOverride": "JSON 格式的高级覆盖参数（解析失败时忽略）",
+    "thinking": "默认思考等级（模型 ID 可用 :level 覆盖，如 deepseek-v4-pro:high）"
   }
 }

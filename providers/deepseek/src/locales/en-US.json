@@ -10,6 +10,7 @@
       "maxOutputTokens": "Max output tokens",
       "topP": "Top-P sampling parameter"
     },
-    "advancedOverride": "JSON override for headers, options, per-model params (parse errors ignored)"
+    "advancedOverride": "JSON override for headers, options, per-model params (parse errors ignored)",
+    "thinking": "Default thinking level (model ID can override with :level, e.g. deepseek-v4-pro:high)"
   }
 }
