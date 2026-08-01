@@ -77,6 +77,11 @@ export interface Agent {
   isIdle(): boolean;
 }
 
+interface ResolvedSystemPrompt {
+  legacy?: string;
+  blocks: SystemModelMessage[];
+}
+
 function createAbortError(): DOMException {
   return new DOMException("Aborted", "AbortError");
 }
@@ -114,11 +119,6 @@ function isTerminalTurnEvent(event: AgentInternalEvent) {
   return (
     event.type === "turn.done" || event.type === "turn.failed" || event.type === "turn.aborted"
   );
-}
-
-interface ResolvedSystemPrompt {
-  legacy?: string;
-  blocks: SystemModelMessage[];
 }
 
 async function resolveConfiguredSystemPrompt(

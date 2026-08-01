@@ -8,6 +8,8 @@ import type { AgentPlugin, ToolCallContext, ToolHookContext, ToolResultContext }
 import type { AgentStateManager } from "./state.js";
 import type { AgentStorage } from "./storage.js";
 
+export const DEFAULT_TERMINAL_TOOL_NAME = "finalize_response";
+
 export interface AgentToolExecuteContext extends ToolExecutionOptions {
   readonly runtime: { id: string };
   readonly channel: AgentChannel;
@@ -28,6 +30,10 @@ export type ToolDecision =
   | { type: "allow" }
   | { type: "block"; reason: string }
   | { type: "replace"; args: unknown };
+
+export interface TerminalToolOutput {
+  finalized: true;
+}
 
 export function mergeTools(toolSets: readonly AgentToolSet[]): AgentToolSet {
   const merged: AgentToolSet = [];
@@ -99,12 +105,6 @@ export function toAiToolSet(tools: AgentToolSet): ToolSet {
     result[tool.name] = aiTool as Tool;
   }
   return result;
-}
-
-export const DEFAULT_TERMINAL_TOOL_NAME = "finalize_response";
-
-export interface TerminalToolOutput {
-  finalized: true;
 }
 
 export function resolveTerminalToolName(

@@ -59,152 +59,14 @@ vi.mock("@yesimbot/agent-runtime", async (importOriginal) => {
   };
 });
 
-type Row = Record<string, unknown>;
-
-/**
- * Minimal in-memory Minato driver, modeled on the semantics of
- * `@minatojs/driver-memory`. It exercises the real minato query pipeline
- * (query parsing, sorting, field defaults) without adding a package
- * dependency. Kept inline (same class as `scheduler.test.ts`) so this suite
- * adds no cross-test seam.
- */
-class MemoryDriver extends Driver<Record<string, never>> {
-  private store: Record<string, Row[]> = Object.create(null);
-  private autoInc: Record<string, number> = Object.create(null);
-  private indexes: Record<string, Record<string, Driver.Index>> = Object.create(null);
-
-  async start(): Promise<void> {}
-  async stop(): Promise<void> {}
-  async drop(table: string): Promise<void> {
-    delete this.store[table];
-  }
-  async dropAll(): Promise<void> {
-    this.store = Object.create(null);
-  }
-  async stats(): Promise<Driver.Stats> {
-    const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [
-        name,
-        { name, count: rows.length, size: 0 },
-      ]),
-    );
-    return { tables, size: 0 };
-  }
-  async prepare(): Promise<void> {}
-
-  table(sel: string | Selection.Immutable, env: Record<string, unknown> = {}): Row[] {
-    if (typeof sel === "string") return (this.store[sel] ||= []);
-    if (!Selection.is(sel)) throw new Error("unreachable selection");
-    const { ref, query, table, model } = sel;
-    const modifier = sel.args[0] ?? {};
-    let data = this.table(table, env).filter((row) => executeQuery(row, query, ref));
-    data = executeSort(data, modifier, ref);
-    return data.map((row) => {
-      row = model.format(row, false);
-      for (const key in model.fields) {
-        if (!Field.available(model.fields[key])) continue;
-        row[key] ??= null;
-      }
-      return model.parse(row, false);
-    });
-  }
-
-  async get(sel: Selection.Immutable): Promise<unknown[]> {
-    return this.table(sel);
-  }
-
-  async eval(sel: Selection.Immutable, expr: Eval.Expr): Promise<unknown> {
-    const { query, table } = sel;
-    const ref = typeof table === "string" ? sel.ref : table.ref;
-    const data = this.table(table).filter((row) => executeQuery(row, query, ref));
-    return executeEval(
-      data.map((row) => ({ [ref]: row, _: row })),
-      expr,
-    );
-  }
-
-  async set(sel: Selection.Mutable, data: Record<string, unknown>): Promise<Driver.WriteResult> {
-    const { ref, query, table } = sel;
-    const matched = this.table(table)
-      .filter((row) => executeQuery(row, query, ref))
-      .map((row) => executeUpdate(row, data, ref)).length;
-    return { matched };
-  }
-
-  async remove(sel: Selection.Mutable): Promise<Driver.WriteResult> {
-    const { ref, query, table } = sel;
-    const data = this.table(table);
-    this.store[table] = data.filter((row) => !executeQuery(row, query, ref));
-    const removed = data.length - this.store[table].length;
-    return { removed, matched: removed };
-  }
-
-  async create(sel: Selection.Mutable, data: Record<string, unknown>): Promise<unknown> {
-    const { table, model } = sel;
-    const { primary, autoInc } = model;
-    const store = this.table(table);
-    if (!Array.isArray(primary) && autoInc && !(primary in data)) {
-      this.autoInc[table] = (this.autoInc[table] ?? 0) + 1;
-      data[primary] = this.autoInc[table];
-    } else {
-      const key = makeArray(primary)[0];
-      const duplicated = await this.database.get(table, pick(model.format(data), [key]));
-      if (duplicated.length) throw new RuntimeError("duplicate-entry");
-    }
-    store.push(clone(data));
-    return clone(data);
-  }
-
-  async upsert(sel: Selection.Mutable, data: Row[], keys: string[]): Promise<Driver.WriteResult> {
-    const { table, model, ref } = sel;
-    const result: Driver.WriteResult = { inserted: 0, matched: 0 };
-    for (const update of data) {
-      const row = this.table(table).find((row) => keys.every((key) => row[key] === update[key]));
-      if (row) {
-        executeUpdate(row, update, ref);
-        result.matched = (result.matched ?? 0) + 1;
-      } else {
-        await this.create(sel, executeUpdate(model.create(), update, ref)).catch(() => {});
-        result.inserted = (result.inserted ?? 0) + 1;
-      }
-    }
-    return result;
-  }
-
-  async withTransaction(callback: () => Promise<void>): Promise<void> {
-    const data = clone(this.store);
-    await callback().catch((error: unknown) => {
-      this.store = data;
-      throw error;
-    });
-  }
-
-  async getIndexes(table: string): Promise<Driver.Index[]> {
-    return Object.values(this.indexes[table] ?? {});
-  }
-
-  async createIndex(table: string, index: Driver.Index): Promise<void> {
-    const name =
-      index.name ??
-      `index:${Object.entries(index.keys)
-        .map(([key, dir]) => `${key}_${dir}`)
-        .join("+")}`;
-    this.indexes[table] ??= {};
-    this.indexes[table][name] = { name, unique: false, ...index };
-  }
-
-  async dropIndex(table: string, name: string): Promise<void> {
-    this.indexes[table] ??= {};
-    delete this.indexes[table][name];
-  }
-}
-
 const SCOPE = {
   type: "shared",
   platform: "test",
   selfId: "bot-1",
   channelId: "room-1",
 } as const;
+
+type Row = Record<string, unknown>;
 
 type CommandStub = {
   option(): CommandStub;
@@ -221,6 +83,151 @@ type Fixture = {
   resolveChatModel: Mock;
   basePath: string;
 };
+
+/**
+ * Minimal in-memory Minato driver, modeled on the semantics of
+ * `@minatojs/driver-memory`. It exercises the real minato query pipeline
+ * (query parsing, sorting, field defaults) without adding a package
+ * dependency. Kept inline (same class as `scheduler.test.ts`) so this suite
+ * adds no cross-test seam.
+ */
+class MemoryDriver extends Driver<Record<string, never>> {
+  private store: Record<string, Row[]> = Object.create(null);
+  private autoInc: Record<string, number> = Object.create(null);
+  private indexes: Record<string, Record<string, Driver.Index>> = Object.create(null);
+
+  public async start(): Promise<void> {}
+  public async stop(): Promise<void> {}
+  public async drop(table: string): Promise<void> {
+    delete this.store[table];
+  }
+  public async dropAll(): Promise<void> {
+    this.store = Object.create(null);
+  }
+  public async stats(): Promise<Driver.Stats> {
+    const tables = Object.fromEntries(
+      Object.entries(this.store).map(([name, rows]) => [
+        name,
+        { name, count: rows.length, size: 0 },
+      ]),
+    );
+    return { tables, size: 0 };
+  }
+  public async prepare(): Promise<void> {}
+
+  public table(sel: string | Selection.Immutable, env: Record<string, unknown> = {}): Row[] {
+    if (typeof sel === "string") return (this.store[sel] ||= []);
+    if (!Selection.is(sel)) throw new Error("unreachable selection");
+    const { ref, query, table, model } = sel;
+    const modifier = sel.args[0] ?? {};
+    let data = this.table(table, env).filter((row) => executeQuery(row, query, ref));
+    data = executeSort(data, modifier, ref);
+    return data.map((row) => {
+      row = model.format(row, false);
+      for (const key in model.fields) {
+        if (!Field.available(model.fields[key])) continue;
+        row[key] ??= null;
+      }
+      return model.parse(row, false);
+    });
+  }
+
+  public async get(sel: Selection.Immutable): Promise<unknown[]> {
+    return this.table(sel);
+  }
+
+  public async eval(sel: Selection.Immutable, expr: Eval.Expr): Promise<unknown> {
+    const { query, table } = sel;
+    const ref = typeof table === "string" ? sel.ref : table.ref;
+    const data = this.table(table).filter((row) => executeQuery(row, query, ref));
+    return executeEval(
+      data.map((row) => ({ [ref]: row, _: row })),
+      expr,
+    );
+  }
+
+  public async set(
+    sel: Selection.Mutable,
+    data: Record<string, unknown>,
+  ): Promise<Driver.WriteResult> {
+    const { ref, query, table } = sel;
+    const matched = this.table(table)
+      .filter((row) => executeQuery(row, query, ref))
+      .map((row) => executeUpdate(row, data, ref)).length;
+    return { matched };
+  }
+
+  public async remove(sel: Selection.Mutable): Promise<Driver.WriteResult> {
+    const { ref, query, table } = sel;
+    const data = this.table(table);
+    this.store[table] = data.filter((row) => !executeQuery(row, query, ref));
+    const removed = data.length - this.store[table].length;
+    return { removed, matched: removed };
+  }
+
+  public async create(sel: Selection.Mutable, data: Record<string, unknown>): Promise<unknown> {
+    const { table, model } = sel;
+    const { primary, autoInc } = model;
+    const store = this.table(table);
+    if (!Array.isArray(primary) && autoInc && !(primary in data)) {
+      this.autoInc[table] = (this.autoInc[table] ?? 0) + 1;
+      data[primary] = this.autoInc[table];
+    } else {
+      const key = makeArray(primary)[0];
+      const duplicated = await this.database.get(table, pick(model.format(data), [key]));
+      if (duplicated.length) throw new RuntimeError("duplicate-entry");
+    }
+    store.push(clone(data));
+    return clone(data);
+  }
+
+  public async upsert(
+    sel: Selection.Mutable,
+    data: Row[],
+    keys: string[],
+  ): Promise<Driver.WriteResult> {
+    const { table, model, ref } = sel;
+    const result: Driver.WriteResult = { inserted: 0, matched: 0 };
+    for (const update of data) {
+      const row = this.table(table).find((row) => keys.every((key) => row[key] === update[key]));
+      if (row) {
+        executeUpdate(row, update, ref);
+        result.matched = (result.matched ?? 0) + 1;
+      } else {
+        await this.create(sel, executeUpdate(model.create(), update, ref)).catch(() => {});
+        result.inserted = (result.inserted ?? 0) + 1;
+      }
+    }
+    return result;
+  }
+
+  public async withTransaction(callback: () => Promise<void>): Promise<void> {
+    const data = clone(this.store);
+    await callback().catch((error: unknown) => {
+      this.store = data;
+      throw error;
+    });
+  }
+
+  public async getIndexes(table: string): Promise<Driver.Index[]> {
+    return Object.values(this.indexes[table] ?? {});
+  }
+
+  public async createIndex(table: string, index: Driver.Index): Promise<void> {
+    const name =
+      index.name ??
+      `index:${Object.entries(index.keys)
+        .map(([key, dir]) => `${key}_${dir}`)
+        .join("+")}`;
+    this.indexes[table] ??= {};
+    this.indexes[table][name] = { name, unique: false, ...index };
+  }
+
+  public async dropIndex(table: string, name: string): Promise<void> {
+    this.indexes[table] ??= {};
+    delete this.indexes[table][name];
+  }
+}
 
 /**
  * Builds the real proactive-trigger stack the Schedule plugin consumes:
@@ -266,7 +273,11 @@ async function createFixture(
   }) as never);
   vi.spyOn(ctx, "middleware").mockReturnValue(vi.fn() as never);
 
-  const resolveChatModel = vi.fn(() => ({ model: {}, providerId: "test", entry: {} }));
+  const resolveChatModel = vi.fn(() => ({
+    model: {},
+    providerId: "test",
+    entry: {},
+  }));
   Object.assign(ctx, { "yesimbot.model": { resolveChatModel } });
 
   const sendMessage = vi.fn(async () => []);
@@ -280,7 +291,12 @@ async function createFixture(
     logLevel: 2,
     allowedChannels: [],
     imageInput: false,
-    will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
+    will: {
+      engine: "routing",
+      direct: "trigger",
+      mention: "trigger",
+      group: "wait",
+    },
     reply: { pacing: { charactersPerSecond: 1000, maxTotalDelayMs: 10_000 } },
   };
   const service = new YesImBotService(ctx as never, config);
@@ -299,7 +315,15 @@ async function createFixture(
   >;
   const plugin = new SchedulePlugin(ctx as never);
 
-  return { ctx, service, plugin, trigger, sendMessage, resolveChatModel, basePath };
+  return {
+    ctx,
+    service,
+    plugin,
+    trigger,
+    sendMessage,
+    resolveChatModel,
+    basePath,
+  };
 }
 
 function futureInstant(offsetMs = 3_600_000): string {
@@ -379,6 +403,35 @@ function isEventAppend(
   return "eventType" in input.data && input.data.eventType === eventType;
 }
 
+/**
+ * Creates the channel runtime eagerly with real timers by triggering one
+ * output-less warm-up event through the real service facade, then resets the
+ * mocked Agent state so the test's own due event sees a fresh turn. The
+ * warm-up run produces no assistant output, so no delivery is attempted.
+ */
+async function warmUpRuntime(service: YesImBotService): Promise<void> {
+  state.stream = (async function* () {})();
+  await service.trigger({
+    eventType: "schedule.due",
+    platform: "test",
+    selfId: "bot-1",
+    timestamp: Date.now(),
+    channel: { id: "room-1", type: Universal.Channel.Type.TEXT },
+    text: "warmup",
+    schedule: {
+      id: "warmup",
+      title: "warmup",
+      kind: "once",
+      scheduledFor: new Date().toISOString(),
+    },
+  });
+  state.activeTurnId = null;
+  state.stream = undefined;
+  state.agent?.append.mockClear();
+  state.agent?.run.mockClear();
+  state.agent?.send.mockClear();
+}
+
 describe("Schedule proactive trigger integration", () => {
   let fixture: Fixture;
 
@@ -429,7 +482,12 @@ describe("Schedule proactive trigger integration", () => {
     const event = fixture.trigger.mock.calls[0][0] as EventRecord<"schedule.due">;
     expect(event).toMatchObject({
       text: 'Schedule "standup" is due.\nPrepare the daily standup.',
-      schedule: { id: created.id, title: "standup", kind: "once", scheduledFor: dueIso },
+      schedule: {
+        id: created.id,
+        title: "standup",
+        kind: "once",
+        scheduledFor: dueIso,
+      },
     });
     expect(event.timestamp).toBe(Date.parse(dueIso));
 
@@ -442,7 +500,12 @@ describe("Schedule proactive trigger integration", () => {
       type: "yesimbot.event",
       data: expect.objectContaining({
         eventType: "schedule.due",
-        schedule: { id: created.id, title: "standup", kind: "once", scheduledFor: dueIso },
+        schedule: {
+          id: created.id,
+          title: "standup",
+          kind: "once",
+          scheduledFor: dueIso,
+        },
       }),
     });
     expect(append!.mock.invocationCallOrder[0]).toBeLessThan(run!.mock.invocationCallOrder[0]);
@@ -460,7 +523,10 @@ describe("Schedule proactive trigger integration", () => {
     const [row] = await fixture.plugin.store.list(SCOPE);
     expect(row.state).toBe("completed");
     expect(row.nextRunAt).toBeNull();
-    expect(row.lastResult).toMatchObject({ occurrenceAt: dueIso, status: "accepted" });
+    expect(row.lastResult).toMatchObject({
+      occurrenceAt: dueIso,
+      status: "accepted",
+    });
   });
 
   it("joins a busy runtime with one event and no second output owner", async () => {
@@ -481,7 +547,12 @@ describe("Schedule proactive trigger integration", () => {
     state.stream = (async function* () {
       await release.promise;
       yield replyEvent("assistant-1", "joined reply");
-      yield { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" };
+      yield {
+        type: "turn.done",
+        id: "event-2",
+        timestamp: 2,
+        turnId: "turn-1",
+      };
     })();
 
     await startPluginAt(fixture, dueIso);
@@ -495,7 +566,9 @@ describe("Schedule proactive trigger integration", () => {
     expect(submitted).toEqual(expect.arrayContaining([first.id, second.id]));
     // The active turn keeps the only output consumer.
     expect(state.agent?.run).toHaveBeenCalledTimes(1);
-    expect(state.agent?.send).toHaveBeenCalledWith(expect.any(Object), { ifBusy: "join" });
+    expect(state.agent?.send).toHaveBeenCalledWith(expect.any(Object), {
+      ifBusy: "join",
+    });
     expect(state.agent?.send).toHaveBeenCalledTimes(1);
     expect(fixture.sendMessage).not.toHaveBeenCalled();
 
@@ -516,7 +589,12 @@ describe("Schedule proactive trigger integration", () => {
   it("rejects a due event with no matching Bot as failed without retry", async () => {
     const dueIso = futureInstant();
     await fixture.plugin.store.create(
-      { type: "shared", platform: "test", selfId: "ghost-bot", channelId: "room-9" },
+      {
+        type: "shared",
+        platform: "test",
+        selfId: "ghost-bot",
+        channelId: "room-9",
+      },
       { title: "ghost", prompt: "Ping.", kind: "once", at: dueIso },
     );
 
@@ -543,7 +621,10 @@ describe("Schedule proactive trigger integration", () => {
     expect(row.lastResult).toMatchObject({
       occurrenceAt: dueIso,
       status: "failed",
-      error: { name: "Error", message: "No Bot is available for test:ghost-bot" },
+      error: {
+        name: "Error",
+        message: "No Bot is available for test:ghost-bot",
+      },
     });
   });
 
@@ -651,7 +732,10 @@ describe("Schedule proactive trigger integration", () => {
     await startPluginAt(fixture, dueIso);
     // The durable claim happened, then the process stopped before the result.
     const claimed = await fixture.plugin.store.claim(created.id, dueIso);
-    expect(claimed?.lastResult).toMatchObject({ occurrenceAt: dueIso, status: "submitting" });
+    expect(claimed?.lastResult).toMatchObject({
+      occurrenceAt: dueIso,
+      status: "submitting",
+    });
     await fixture.plugin.stop();
 
     vi.setSystemTime(new Date(Date.parse(dueIso) + 1_000));
@@ -664,7 +748,10 @@ describe("Schedule proactive trigger integration", () => {
     expect(fixture.trigger).not.toHaveBeenCalled();
     const [row] = await fixture.plugin.store.list(SCOPE);
     expect(row.state).toBe("completed");
-    expect(row.lastResult).toMatchObject({ occurrenceAt: dueIso, status: "interrupted" });
+    expect(row.lastResult).toMatchObject({
+      occurrenceAt: dueIso,
+      status: "interrupted",
+    });
     expect(row.nextRunAt).toBeNull();
   });
 
@@ -748,38 +835,12 @@ describe("Schedule proactive trigger integration", () => {
     // No Schedule retry and no Schedule-owned history row appeared: the
     // plugin-owned table still holds exactly the one original schedule.
     const [row] = await fixture.plugin.store.list(SCOPE);
-    expect(row.lastResult).toMatchObject({ occurrenceAt: dueIso, status: "accepted" });
+    expect(row.lastResult).toMatchObject({
+      occurrenceAt: dueIso,
+      status: "accepted",
+    });
     expect(row.state).toBe("completed");
     const persisted = await fixture.ctx.model.get(SCHEDULE_TABLE, {});
     expect(persisted).toHaveLength(1);
   });
 });
-
-/**
- * Creates the channel runtime eagerly with real timers by triggering one
- * output-less warm-up event through the real service facade, then resets the
- * mocked Agent state so the test's own due event sees a fresh turn. The
- * warm-up run produces no assistant output, so no delivery is attempted.
- */
-async function warmUpRuntime(service: YesImBotService): Promise<void> {
-  state.stream = (async function* () {})();
-  await service.trigger({
-    eventType: "schedule.due",
-    platform: "test",
-    selfId: "bot-1",
-    timestamp: Date.now(),
-    channel: { id: "room-1", type: Universal.Channel.Type.TEXT },
-    text: "warmup",
-    schedule: {
-      id: "warmup",
-      title: "warmup",
-      kind: "once",
-      scheduledFor: new Date().toISOString(),
-    },
-  });
-  state.activeTurnId = null;
-  state.stream = undefined;
-  state.agent?.append.mockClear();
-  state.agent?.run.mockClear();
-  state.agent?.send.mockClear();
-}

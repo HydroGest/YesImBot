@@ -6,7 +6,7 @@ export class OutputQueue<T> implements AsyncIterable<T> {
   private error: unknown;
   private done = false;
 
-  push(item: T): void {
+  public push(item: T): void {
     if (this.done) return;
     const pendingNext = this.pendingNext;
     this.pendingNext = undefined;
@@ -14,7 +14,7 @@ export class OutputQueue<T> implements AsyncIterable<T> {
     else this.items.push(item);
   }
 
-  close(error?: unknown): void {
+  public close(error?: unknown): void {
     if (this.done) return;
     this.done = true;
     this.error = error;
@@ -25,7 +25,7 @@ export class OutputQueue<T> implements AsyncIterable<T> {
     else pendingNext.resolve({ done: true, value: undefined });
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<T> {
+  public [Symbol.asyncIterator](): AsyncIterator<T> {
     return {
       next: async () => {
         const item = this.items.shift();

@@ -37,14 +37,14 @@ export class RuntimeManager {
 
   constructor(private readonly opts: RuntimeManagerOptions) {}
 
-  async route(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
+  public async route(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
     this.assertOpen();
     const runtime = await this.runtimeFor(record);
     this.assertOpen();
     return runtime.handle(record);
   }
 
-  async trigger(record: EventRecord): Promise<ChannelRuntimeResult> {
+  public async trigger(record: EventRecord): Promise<ChannelRuntimeResult> {
     this.assertOpen();
     const runtime = await this.runtimeFor(record);
     this.assertOpen();
@@ -64,7 +64,7 @@ export class RuntimeManager {
     return this.getOrCreate(scope);
   }
 
-  async reset(scope: ChannelScope): Promise<void> {
+  public async reset(scope: ChannelScope): Promise<void> {
     this.assertOpen();
     const key = scopeMapKey(scope);
     let failure: unknown;
@@ -96,7 +96,7 @@ export class RuntimeManager {
     if (failure) throw failure;
   }
 
-  stop(): Promise<void> {
+  public stop(): Promise<void> {
     if (this.stopTask) return this.stopTask;
     this.stopped = true;
     this.stopTask = this.stopInternal();

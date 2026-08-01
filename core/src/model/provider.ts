@@ -1,9 +1,9 @@
 import type { EmbeddingModel, LanguageModel } from "ai";
 import { Context, Schema } from "koishi";
 
-export type ModelId = `${string}:${string}`;
-
 export const CHAT_MODEL_MODALITIES = ["text", "audio", "image", "video", "pdf"] as const;
+
+export type ModelId = `${string}:${string}`;
 export type ChatModelModality = (typeof CHAT_MODEL_MODALITIES)[number];
 
 export interface ChatModelConfig {
@@ -38,20 +38,6 @@ export interface ChatModelRef {
   model: LanguageModel;
 }
 
-export function isChatModelModality(value: string): value is ChatModelModality {
-  return CHAT_MODEL_MODALITIES.some((modality) => modality === value);
-}
-
-export function parseModelId(fullId: string): { provider: string; model: string } | null {
-  const idx = fullId.indexOf(":");
-  if (idx <= 0) return null;
-  return { provider: fullId.slice(0, idx), model: fullId.slice(idx + 1) };
-}
-
-export function formatModelId(providerId: string, modelId: string): ModelId {
-  return `${providerId}:${modelId}`;
-}
-
 export interface BaseProviderConfig {
   id: string;
   apiKey: string;
@@ -75,6 +61,20 @@ export interface ProviderPlugin<TConfig extends BaseProviderConfig> {
   inject: string[];
   Config: unknown;
   apply: (ctx: Context, config: TConfig) => void;
+}
+
+export function isChatModelModality(value: string): value is ChatModelModality {
+  return CHAT_MODEL_MODALITIES.some((modality) => modality === value);
+}
+
+export function parseModelId(fullId: string): { provider: string; model: string } | null {
+  const idx = fullId.indexOf(":");
+  if (idx <= 0) return null;
+  return { provider: fullId.slice(0, idx), model: fullId.slice(idx + 1) };
+}
+
+export function formatModelId(providerId: string, modelId: string): ModelId {
+  return `${providerId}:${modelId}`;
 }
 
 export function createProviderPlugin<TConfig extends BaseProviderConfig, TClient>(

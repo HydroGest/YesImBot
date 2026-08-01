@@ -44,11 +44,10 @@ export interface WillEngineObservation {
   readonly decision: WillEngine.Decision;
 }
 
-export function createWillEngine(ctx: Context, config: WillConfig): WillEngine {
-  if (config?.engine === "willingness") {
-    return new WillingnessWillEngine(ctx, config);
+declare module "koishi" {
+  interface Events {
+    "yesimbot/will": (observation: WillEngineObservation) => void;
   }
-  return new RoutingWillEngine(config);
 }
 
 export class RoutingWillEngine implements WillEngine {
@@ -58,7 +57,7 @@ export class RoutingWillEngine implements WillEngine {
     this.config = { ...config };
   }
 
-  async decide(input: Message, _state: WillEngine.State): Promise<WillEngine.Decision> {
+  public async decide(input: Message, _state: WillEngine.State): Promise<WillEngine.Decision> {
     if (!isMessage(input)) return "wait";
     if (input.data.channel.type === DIRECT_CHANNEL_TYPE) return this.config.direct;
     if (isSelfMention(input.data.selfId, input.data.elements)) return this.config.mention;
@@ -81,7 +80,7 @@ export class WillingnessWillEngine implements WillEngine {
     this.logger = ctx.logger("will");
   }
 
-  async decide(input: Message, _state: WillEngine.State): Promise<WillEngine.Decision> {
+  public async decide(input: Message, _state: WillEngine.State): Promise<WillEngine.Decision> {
     if (!isMessage(input)) return "wait";
 
     try {
@@ -104,9 +103,16 @@ export class WillingnessWillEngine implements WillEngine {
     }
   }
 
-  async onReply(): Promise<void> {
+  public async onReply(): Promise<void> {
     this.score = Math.max(0, this.score - this.config.replyCost);
   }
+}
+
+export function createWillEngine(ctx: Context, config: WillConfig): WillEngine {
+  if (config?.engine === "willingness") {
+    return new WillingnessWillEngine(ctx, config);
+  }
+  return new RoutingWillEngine(config);
 }
 
 function decayScore(
@@ -186,10 +192,4 @@ function isSelfMention(selfId: string, elements: readonly Element[] | undefined)
     elements?.some((element) => element.type === "at" && String(element.attrs.id) === selfId) ??
     false
   );
-}
-
-declare module "koishi" {
-  interface Events {
-    "yesimbot/will": (observation: WillEngineObservation) => void;
-  }
 }

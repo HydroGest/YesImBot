@@ -19,10 +19,10 @@ declare module "koishi" {
 }
 
 export class YesImBotService extends Service<Config> {
-  static readonly inject = ["yesimbot.model", "database"];
+  public static readonly inject = ["yesimbot.model", "database"];
 
-  readonly model: ModelService;
-  readonly assets: AssetService;
+  public readonly model: ModelService;
+  public readonly assets: AssetService;
   private readonly storage: ChannelStorage;
   private readonly rt: RuntimeManager;
   private readonly gate: Gateway;
@@ -73,21 +73,21 @@ export class YesImBotService extends Service<Config> {
     this.registerCommand(resetCommand);
   }
 
-  registerTranslator(translator: PlatformTranslator): () => void {
+  public registerTranslator(translator: PlatformTranslator): () => void {
     return this.gate.registerTranslator(translator);
   }
 
-  registerAgentPlugin(factory: AgentPluginFactory): () => void {
+  public registerAgentPlugin(factory: AgentPluginFactory): () => void {
     const registration = { factory };
     this.plugins.add(registration);
     return () => this.plugins.delete(registration);
   }
 
-  getStoragePath(scope: ChannelScope): Promise<string> {
+  public getStoragePath(scope: ChannelScope): Promise<string> {
     return this.storage.getStoragePath(scope);
   }
 
-  override async start(): Promise<void> {
+  public override async start(): Promise<void> {
     await this.storage.start();
     const translators = [createOnebotTranslator];
     for (const createTranslator of translators) {
@@ -96,11 +96,11 @@ export class YesImBotService extends Service<Config> {
     }
   }
 
-  async reset(scope: ChannelScope): Promise<void> {
+  public async reset(scope: ChannelScope): Promise<void> {
     return this.rt.reset(scope);
   }
 
-  async trigger<K extends keyof EventMap>(event: EventRecord<K>): Promise<void> {
+  public async trigger<K extends keyof EventMap>(event: EventRecord<K>): Promise<void> {
     if (this.triggerClosed) return;
     const bot = this.ctx.bots.find(
       (candidate) => candidate.platform === event.platform && candidate.selfId === event.selfId,
@@ -131,7 +131,7 @@ export class YesImBotService extends Service<Config> {
     });
   }
 
-  override async stop() {
+  public override async stop() {
     this.disposeCommand();
     this.triggerClosed = true;
     try {

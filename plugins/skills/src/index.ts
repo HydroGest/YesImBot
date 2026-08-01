@@ -13,10 +13,10 @@ export interface SkillConfig {
 }
 
 export default class SkillPlugin {
-  static name = "yesimbot-skills";
-  static usage = "技能插件，提供技能加载和管理功能";
-  static inject = ["yesimbot"];
-  static Config: Schema<SkillConfig> = Schema.object({
+  public static name = "yesimbot-skills";
+  public static usage = "技能插件，提供技能加载和管理功能";
+  public static inject = ["yesimbot"];
+  public static Config: Schema<SkillConfig> = Schema.object({
     skillPaths: Schema.array(Schema.path({ filters: ["directory", "file"], allowCreate: true }))
       .default([])
       .description("技能文件路径列表"),
@@ -40,7 +40,7 @@ export default class SkillPlugin {
     ctx.on("dispose", this.stop.bind(this));
   }
 
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     const loadResult = await loadSkills({ skillPaths: this.skillPaths, cwd: this.ctx.baseDir });
     for (const diagnostic of loadResult.diagnostics) {
       if (diagnostic.type === "error") {
@@ -102,7 +102,7 @@ export default class SkillPlugin {
       };
     });
   }
-  async stop(): Promise<void> {
+  public async stop(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
   }

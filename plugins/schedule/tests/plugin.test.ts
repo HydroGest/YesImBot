@@ -26,6 +26,17 @@ type CommandRecord = {
   disposed: boolean;
 };
 
+type TestModel = {
+  tables: Map<string, ScheduleRow[]>;
+  extend: Mock;
+  get: Mock<(table: string, query: Record<string, unknown>) => Promise<ScheduleRow[]>>;
+  create: Mock<(table: string, row: ScheduleRow) => Promise<ScheduleRow>>;
+  set: Mock<
+    (table: string, query: Record<string, unknown>, patch: Partial<ScheduleRow>) => Promise<void>
+  >;
+  remove: Mock<() => Promise<void>>;
+};
+
 function createCommandMock() {
   const commands: CommandRecord[] = [];
   const command = vi.fn((def: string, _description?: string, options?: Record<string, unknown>) => {
@@ -59,17 +70,6 @@ function matches(row: ScheduleRow, query: Record<string, unknown>): boolean {
     ([key, value]) => (row as unknown as Record<string, unknown>)[key] === value,
   );
 }
-
-type TestModel = {
-  tables: Map<string, ScheduleRow[]>;
-  extend: Mock;
-  get: Mock<(table: string, query: Record<string, unknown>) => Promise<ScheduleRow[]>>;
-  create: Mock<(table: string, row: ScheduleRow) => Promise<ScheduleRow>>;
-  set: Mock<
-    (table: string, query: Record<string, unknown>, patch: Partial<ScheduleRow>) => Promise<void>
-  >;
-  remove: Mock<() => Promise<void>>;
-};
 
 function createModel(): TestModel {
   const tables = new Map<string, ScheduleRow[]>();

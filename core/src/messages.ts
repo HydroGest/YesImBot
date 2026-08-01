@@ -46,6 +46,27 @@ export type EventRecord<K extends keyof EventMap = keyof EventMap> = K extends K
   ? Readonly<EventBase & { readonly eventType: K } & EventMap[K]>
   : never;
 
+export type Message = CustomMessageBase<"yesimbot.message", Omit<MessageRecord, "timestamp">>;
+
+export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<
+  "yesimbot.event",
+  K extends K ? Omit<EventRecord<K>, "timestamp"> : never
+>;
+
+declare module "@yesimbot/agent-runtime" {
+  interface AgentCustomMessages {
+    "yesimbot.event": Event;
+    "yesimbot.message": Message;
+  }
+}
+
+declare module "koishi" {
+  interface Events {
+    "yesimbot/event": (input: Event) => void;
+    "yesimbot/message": (input: Message) => void;
+  }
+}
+
 export function assembleEvent<K extends keyof EventMap>(
   base: RecordBase,
   payload: { readonly eventType: K; readonly text: string } & Omit<EventMap[K], keyof EventBase>,
@@ -58,13 +79,6 @@ export function assembleEvent<K extends keyof EventMap>(
     ...payload,
   } as EventRecord<K>;
 }
-
-export type Message = CustomMessageBase<"yesimbot.message", Omit<MessageRecord, "timestamp">>;
-
-export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<
-  "yesimbot.event",
-  K extends K ? Omit<EventRecord<K>, "timestamp"> : never
->;
 
 export function isMessageRecord(record: MessageRecord | EventRecord): record is MessageRecord {
   return "messageId" in record;
@@ -97,18 +111,4 @@ export function isMessage(message: AgentMessage): message is Message {
 
 export function isEvent(message: AgentMessage): message is Event {
   return message.role === "custom" && message.type === "yesimbot.event";
-}
-
-declare module "@yesimbot/agent-runtime" {
-  interface AgentCustomMessages {
-    "yesimbot.event": Event;
-    "yesimbot.message": Message;
-  }
-}
-
-declare module "koishi" {
-  interface Events {
-    "yesimbot/event": (input: Event) => void;
-    "yesimbot/message": (input: Message) => void;
-  }
 }

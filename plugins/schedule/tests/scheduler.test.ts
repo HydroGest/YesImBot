@@ -22,6 +22,15 @@ import type { Schedule } from "../src/types";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
+const sharedScope: ChannelScope = {
+  type: "shared",
+  platform: "test",
+  selfId: "bot-1",
+  channelId: "room-1",
+};
+
+const T0 = "2026-08-01T00:00:00.000Z";
+
 type Row = Record<string, unknown>;
 
 /**
@@ -34,15 +43,15 @@ class MemoryDriver extends Driver<Record<string, never>> {
   private autoInc: Record<string, number> = Object.create(null);
   private indexes: Record<string, Record<string, Driver.Index>> = Object.create(null);
 
-  async start(): Promise<void> {}
-  async stop(): Promise<void> {}
-  async drop(table: string): Promise<void> {
+  public async start(): Promise<void> {}
+  public async stop(): Promise<void> {}
+  public async drop(table: string): Promise<void> {
     delete this.store[table];
   }
-  async dropAll(): Promise<void> {
+  public async dropAll(): Promise<void> {
     this.store = Object.create(null);
   }
-  async stats(): Promise<Driver.Stats> {
+  public async stats(): Promise<Driver.Stats> {
     const tables = Object.fromEntries(
       Object.entries(this.store).map(([name, rows]) => [
         name,
@@ -51,9 +60,9 @@ class MemoryDriver extends Driver<Record<string, never>> {
     );
     return { tables, size: 0 };
   }
-  async prepare(): Promise<void> {}
+  public async prepare(): Promise<void> {}
 
-  table(sel: string | Selection.Immutable, env: Record<string, unknown> = {}): Row[] {
+  public table(sel: string | Selection.Immutable, env: Record<string, unknown> = {}): Row[] {
     if (typeof sel === "string") return (this.store[sel] ||= []);
     if (!Selection.is(sel)) throw new Error("unreachable selection");
     const { ref, query, table, model } = sel;
@@ -70,11 +79,11 @@ class MemoryDriver extends Driver<Record<string, never>> {
     });
   }
 
-  async get(sel: Selection.Immutable): Promise<unknown[]> {
+  public async get(sel: Selection.Immutable): Promise<unknown[]> {
     return this.table(sel);
   }
 
-  async eval(sel: Selection.Immutable, expr: Eval.Expr): Promise<unknown> {
+  public async eval(sel: Selection.Immutable, expr: Eval.Expr): Promise<unknown> {
     const { query, table } = sel;
     const ref = typeof table === "string" ? sel.ref : table.ref;
     const data = this.table(table).filter((row) => executeQuery(row, query, ref));
@@ -84,7 +93,10 @@ class MemoryDriver extends Driver<Record<string, never>> {
     );
   }
 
-  async set(sel: Selection.Mutable, data: Record<string, unknown>): Promise<Driver.WriteResult> {
+  public async set(
+    sel: Selection.Mutable,
+    data: Record<string, unknown>,
+  ): Promise<Driver.WriteResult> {
     const { ref, query, table } = sel;
     const matched = this.table(table)
       .filter((row) => executeQuery(row, query, ref))
@@ -92,7 +104,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     return { matched };
   }
 
-  async remove(sel: Selection.Mutable): Promise<Driver.WriteResult> {
+  public async remove(sel: Selection.Mutable): Promise<Driver.WriteResult> {
     const { ref, query, table } = sel;
     const data = this.table(table);
     this.store[table] = data.filter((row) => !executeQuery(row, query, ref));
@@ -100,7 +112,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     return { removed, matched: removed };
   }
 
-  async create(sel: Selection.Mutable, data: Record<string, unknown>): Promise<unknown> {
+  public async create(sel: Selection.Mutable, data: Record<string, unknown>): Promise<unknown> {
     const { table, model } = sel;
     const { primary, autoInc } = model;
     const store = this.table(table);
@@ -116,7 +128,11 @@ class MemoryDriver extends Driver<Record<string, never>> {
     return clone(data);
   }
 
-  async upsert(sel: Selection.Mutable, data: Row[], keys: string[]): Promise<Driver.WriteResult> {
+  public async upsert(
+    sel: Selection.Mutable,
+    data: Row[],
+    keys: string[],
+  ): Promise<Driver.WriteResult> {
     const { table, model, ref } = sel;
     const result: Driver.WriteResult = { inserted: 0, matched: 0 };
     for (const update of data) {
@@ -132,7 +148,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     return result;
   }
 
-  async withTransaction(callback: () => Promise<void>): Promise<void> {
+  public async withTransaction(callback: () => Promise<void>): Promise<void> {
     const data = clone(this.store);
     await callback().catch((error: unknown) => {
       this.store = data;
@@ -140,11 +156,11 @@ class MemoryDriver extends Driver<Record<string, never>> {
     });
   }
 
-  async getIndexes(table: string): Promise<Driver.Index[]> {
+  public async getIndexes(table: string): Promise<Driver.Index[]> {
     return Object.values(this.indexes[table] ?? {});
   }
 
-  async createIndex(table: string, index: Driver.Index): Promise<void> {
+  public async createIndex(table: string, index: Driver.Index): Promise<void> {
     const name =
       index.name ??
       `index:${Object.entries(index.keys)
@@ -154,7 +170,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     this.indexes[table][name] = { name, unique: false, ...index };
   }
 
-  async dropIndex(table: string, name: string): Promise<void> {
+  public async dropIndex(table: string, name: string): Promise<void> {
     this.indexes[table] ??= {};
     delete this.indexes[table][name];
   }
@@ -168,15 +184,6 @@ async function createScheduleDatabase(): Promise<{ ctx: Context; model: Database
   await model.connect(MemoryDriver, {});
   return { ctx, model };
 }
-
-const sharedScope: ChannelScope = {
-  type: "shared",
-  platform: "test",
-  selfId: "bot-1",
-  channelId: "room-1",
-};
-
-const T0 = "2026-08-01T00:00:00.000Z";
 
 describe("ScheduleScheduler", () => {
   let store: ScheduleStore;

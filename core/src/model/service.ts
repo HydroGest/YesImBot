@@ -57,6 +57,20 @@ interface Provider {
   embedding?(modelId: string): EmbeddingModel;
 }
 
+interface ChatModelRecord {
+  fullId: ModelId;
+  providerId: string;
+  modelId: string;
+  config: ChatModelConfig;
+}
+
+interface EmbeddingModelRecord {
+  fullId: ModelId;
+  providerId: string;
+  modelId: string;
+  config: EmbeddingModelConfig;
+}
+
 declare module "koishi" {
   interface Context {
     "yesimbot.model": ModelService;
@@ -84,7 +98,7 @@ export class ModelService extends Service<ModelServiceConfig> {
     return join(resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir), "models.json");
   }
 
-  override async start(): Promise<void> {
+  public override async start(): Promise<void> {
     const { config: modelsConfig, warnings } = await loadModelsConfig(this.getModelsConfigPath());
     this.modelsConfig = modelsConfig;
     for (const warning of warnings) {
@@ -281,7 +295,7 @@ export class ModelService extends Service<ModelServiceConfig> {
     );
   }
 
-  register(provider: Provider): () => void {
+  public register(provider: Provider): () => void {
     const existing = this.providers.get(provider.id);
     if (existing && existing !== provider) {
       throw new Error(`Provider "${provider.id}" is already registered`);
@@ -300,7 +314,7 @@ export class ModelService extends Service<ModelServiceConfig> {
     };
   }
 
-  resolveChatModel(fullId: string): ChatModelRef {
+  public resolveChatModel(fullId: string): ChatModelRef {
     const record = this.getChatRecord(fullId);
     const provider = this.providers.get(record.providerId);
     if (!provider) {
@@ -316,37 +330,37 @@ export class ModelService extends Service<ModelServiceConfig> {
     };
   }
 
-  resolveEmbedding(fullId: string) {
+  public resolveEmbedding(fullId: string) {
     const record = this.getEmbeddingRecord(fullId);
     const provider = this.providers.get(record.providerId);
     if (!provider) throw new Error(`Provider "${record.providerId}" not found`);
     return provider.embedding!(record.modelId);
   }
 
-  getProvider(id: string) {
+  public getProvider(id: string) {
     return this.providers.get(id);
   }
 
-  listProviders() {
+  public listProviders() {
     return [...this.providers.keys()];
   }
 
-  getDefaultChatModelId(): ModelId | undefined {
+  public getDefaultChatModelId(): ModelId | undefined {
     return this.defaults.chat;
   }
 
-  getDefaultEmbeddingModelId(): ModelId | undefined {
+  public getDefaultEmbeddingModelId(): ModelId | undefined {
     return this.defaults.embedding;
   }
 
-  listChatModels(): Array<{ fullId: string; config: ChatModelConfig }> {
+  public listChatModels(): Array<{ fullId: string; config: ChatModelConfig }> {
     return [...this.chatModels.values()].map((record) => ({
       fullId: record.fullId,
       config: cloneChatModelConfig(record.config),
     }));
   }
 
-  listEmbeddingModels(): Array<{ fullId: string; config: EmbeddingModelConfig }> {
+  public listEmbeddingModels(): Array<{ fullId: string; config: EmbeddingModelConfig }> {
     return [...this.embeddingModels.values()].map((record) => ({
       fullId: record.fullId,
       config: cloneEmbeddingModelConfig(record.config),
@@ -542,20 +556,6 @@ function cloneChatModelConfig(config: ChatModelConfig): ChatModelConfig {
 
 function cloneEmbeddingModelConfig(config: EmbeddingModelConfig): EmbeddingModelConfig {
   return { ...config };
-}
-
-interface ChatModelRecord {
-  fullId: ModelId;
-  providerId: string;
-  modelId: string;
-  config: ChatModelConfig;
-}
-
-interface EmbeddingModelRecord {
-  fullId: ModelId;
-  providerId: string;
-  modelId: string;
-  config: EmbeddingModelConfig;
 }
 
 function isHiddenModel(config: { hidden?: boolean } | undefined): boolean {

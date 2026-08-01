@@ -30,10 +30,10 @@ function captureMessageEvent(
 }
 
 export default class MemosClientPlugin {
-  static name = "yesimbot-memos-client";
-  static usage = "";
-  static inject = ["yesimbot"];
-  static Config: Schema<MemosClientConfig> = memosConfigSchema;
+  public static name = "yesimbot-memos-client";
+  public static usage = "";
+  public static inject = ["yesimbot"];
+  public static Config: Schema<MemosClientConfig> = memosConfigSchema;
 
   public readonly ctx: Context;
   public readonly config: MemosClientConfig;
@@ -49,7 +49,7 @@ export default class MemosClientPlugin {
     this.ctx.on("dispose", this.stop.bind(this));
   }
 
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
 
@@ -125,7 +125,7 @@ export default class MemosClientPlugin {
     });
   }
 
-  async stop(): Promise<void> {
+  public async stop(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
   }

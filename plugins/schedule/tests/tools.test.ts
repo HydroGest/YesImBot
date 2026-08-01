@@ -25,6 +25,15 @@ const scope: ChannelScope = {
   channelId: "room-1",
 };
 
+type StoreDouble = {
+  create: Mock;
+  list: Mock;
+  update: Mock;
+  pause: Mock;
+  resume: Mock;
+  cancel: Mock;
+};
+
 function createStoreDouble() {
   return {
     create: vi.fn(),
@@ -35,15 +44,6 @@ function createStoreDouble() {
     cancel: vi.fn(),
   };
 }
-
-type StoreDouble = {
-  create: Mock;
-  list: Mock;
-  update: Mock;
-  pause: Mock;
-  resume: Mock;
-  cancel: Mock;
-};
 
 function createTools(store: StoreDouble): AgentTool[] {
   return createScheduleTools(scope, store as unknown as ScheduleStore);

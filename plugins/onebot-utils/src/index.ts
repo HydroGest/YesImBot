@@ -6,11 +6,6 @@ import type { AgentPluginFactory, ChannelScope } from "koishi-plugin-yesimbot";
 import { createForwardReader } from "./forward.js";
 import type { ForwardReaderConfig, ForwardResult, ForwardToolInput } from "./types.js";
 
-export interface OnebotUtilsConfig {
-  parseImages: boolean;
-  maxForwardPageChars: number;
-}
-
 const ONEBOT_INTERNAL_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 协议内部接口";
 const ONEBOT_REQUEST_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 请求接口";
 
@@ -64,6 +59,11 @@ const SET_ESSENCE_SCHEMA = jsonSchema({
   required: ["messageId"],
   additionalProperties: false,
 }) as AgentTool<{ messageId: string }>["inputSchema"];
+
+export interface OnebotUtilsConfig {
+  parseImages: boolean;
+  maxForwardPageChars: number;
+}
 
 function getOneBotInternal(bot: Bot): OneBot.Internal {
   const internal = (bot as unknown as OneBotBot<Context>).internal;
@@ -128,10 +128,10 @@ function createOneBotPluginFactory(config: OnebotUtilsConfig): AgentPluginFactor
 }
 
 export default class OnebotUtilsPlugin {
-  static name = "yesimbot-onebot-utils";
-  static inject = ["yesimbot"];
-  static usage = "OneBot 工具插件，提供获取合并转发消息、表态和设置精华等功能";
-  static Config: Schema<OnebotUtilsConfig> = Schema.object({
+  public static name = "yesimbot-onebot-utils";
+  public static inject = ["yesimbot"];
+  public static usage = "OneBot 工具插件，提供获取合并转发消息、表态和设置精华等功能";
+  public static Config: Schema<OnebotUtilsConfig> = Schema.object({
     parseImages: Schema.boolean().default(false).description("解析转发消息中的图片元数据"),
     maxForwardPageChars: Schema.number()
       .min(1)
@@ -153,14 +153,14 @@ export default class OnebotUtilsPlugin {
     ctx.on("dispose", this.stop.bind(this));
   }
 
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin(
       createOneBotPluginFactory(this.config),
     );
   }
 
-  async stop(): Promise<void> {
+  public async stop(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
   }

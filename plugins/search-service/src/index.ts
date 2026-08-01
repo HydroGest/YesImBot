@@ -5,6 +5,8 @@ import { createSearXNGBackend, searxngConfigSchema, type SearXNGConfig } from ".
 import { createTavilyBackend, tavilyConfigSchema, type TavilyConfig } from "./backends/tavily";
 import type { SearchBackend, SearchRuntimeConfig } from "./types";
 
+const DEFAULT_PROVIDER: SearchProviderName = "tavily";
+
 type SearchProviderName = "tavily" | "searxng";
 
 interface SearchServiceConfig {
@@ -16,8 +18,6 @@ interface SearchServiceConfig {
   tavily?: TavilyConfig;
   searxng?: SearXNGConfig;
 }
-
-const DEFAULT_PROVIDER: SearchProviderName = "tavily";
 
 function formatSearchPrompt(provider: string, hasScrape: boolean): string {
   const lines = [
@@ -38,11 +38,11 @@ function formatSearchPrompt(provider: string, hasScrape: boolean): string {
 }
 
 export default class SearchService {
-  static name = "yesimbot-search-service";
-  static usage = "搜索服务插件，提供 Web 搜索和网页内容抓取功能";
-  static inject = ["yesimbot"];
+  public static name = "yesimbot-search-service";
+  public static usage = "搜索服务插件，提供 Web 搜索和网页内容抓取功能";
+  public static inject = ["yesimbot"];
 
-  static Config: Schema<SearchServiceConfig> = Schema.intersect([
+  public static Config: Schema<SearchServiceConfig> = Schema.intersect([
     Schema.object({
       provider: Schema.union([Schema.const("tavily"), Schema.const("searxng")])
         .default(DEFAULT_PROVIDER)
@@ -79,7 +79,7 @@ export default class SearchService {
     ctx.on("dispose", this.stop.bind(this));
   }
 
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     const provider = this.config.provider ?? DEFAULT_PROVIDER;
     const runtime: SearchRuntimeConfig = {
       defaultLimit: this.config.defaultLimit ?? 5,
@@ -121,7 +121,7 @@ export default class SearchService {
     this.logger.info(`Search service started with provider: ${provider}`);
   }
 
-  async stop(): Promise<void> {
+  public async stop(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
     this.backend = undefined;

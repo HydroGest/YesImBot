@@ -24,9 +24,6 @@ import type {
 
 export const SCHEDULE_TABLE = "yesimbot_schedule";
 
-/** The database surface the Store needs: the raw Minato model service. */
-export type ScheduleModel = Pick<Context["model"], "extend" | "get" | "create" | "set" | "remove">;
-
 const SCHEDULE_FIELDS = {
   id: "string",
   type: "string",
@@ -45,50 +42,8 @@ const SCHEDULE_FIELDS = {
   updatedAt: "string",
 } satisfies Field.Extension<ScheduleRow, Types>;
 
-/** Registers the plugin-owned single table; called once from the plugin initialization path. */
-export function registerScheduleModel(model: ScheduleModel): void {
-  model.extend(SCHEDULE_TABLE, SCHEDULE_FIELDS, { primary: "id", autoInc: false });
-}
-
-function scopeQuery(scope: ChannelScope) {
-  return {
-    type: scope.type,
-    platform: scope.platform,
-    selfId: scope.selfId,
-    channelId: scope.channelId,
-  };
-}
-
-function ruleOfRow(row: ScheduleRow): ScheduleRule {
-  return row.kind === "once" ? { kind: "once", at: row.at! } : { kind: "cron", cron: row.cron! };
-}
-
-function toSchedule(row: ScheduleRow): Schedule {
-  const base = {
-    id: row.id,
-    type: row.type,
-    platform: row.platform,
-    selfId: row.selfId,
-    channelId: row.channelId,
-    title: row.title,
-    prompt: row.prompt,
-    state: row.state,
-    nextRunAt: row.nextRunAt,
-    lastResult: row.lastResult ?? undefined,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-  return row.kind === "once"
-    ? { ...base, kind: "once", at: row.at! }
-    : { ...base, kind: "cron", cron: row.cron! };
-}
-
-function compareByNextRun(a: Schedule, b: Schedule): number {
-  if (a.nextRunAt === null && b.nextRunAt === null) return a.id.localeCompare(b.id);
-  if (a.nextRunAt === null) return 1;
-  if (b.nextRunAt === null) return -1;
-  return a.nextRunAt.localeCompare(b.nextRunAt) || a.id.localeCompare(b.id);
-}
+/** The database surface the Store needs: the raw Minato model service. */
+export type ScheduleModel = Pick<Context["model"], "extend" | "get" | "create" | "set" | "remove">;
 
 /**
  * Single-table, channel-scoped Schedule persistence. Every mutation is
@@ -110,12 +65,15 @@ export class ScheduleStore {
     return next;
   }
 
-  create(scope: ChannelScope, input: ScheduleCreateInput): Promise<Schedule> {
+  public create(scope: ChannelScope, input: ScheduleCreateInput): Promise<Schedule> {
     return this.mutate(async () => {
       const now = new Date(Date.now());
       validateCreate(input, now);
       const query = scopeQuery(scope);
-      const enabled = await this.model.get(SCHEDULE_TABLE, { ...query, state: "enabled" });
+      const enabled = await this.model.get(SCHEDULE_TABLE, {
+        ...query,
+        state: "enabled",
+      });
       if (enabled.length >= MAX_ENABLED_SCHEDULES) {
         throw new Error(`channel already has ${MAX_ENABLED_SCHEDULES} enabled schedules`);
       }
@@ -143,14 +101,14 @@ export class ScheduleStore {
     });
   }
 
-  list(scope: ChannelScope): Promise<Schedule[]> {
+  public list(scope: ChannelScope): Promise<Schedule[]> {
     return this.mutate(async () => {
       const rows = await this.model.get(SCHEDULE_TABLE, scopeQuery(scope));
       return rows.map(toSchedule).sort(compareByNextRun);
     });
   }
 
-  update(scope: ChannelScope, id: string, input: ScheduleUpdateInput): Promise<Schedule> {
+  public update(scope: ChannelScope, id: string, input: ScheduleUpdateInput): Promise<Schedule> {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       const ruleChanged =
@@ -194,11 +152,20 @@ export class ScheduleStore {
         { ...scopeQuery(scope), id },
         { title, prompt, kind, at, cron, nextRunAt: next, updatedAt },
       );
-      return toSchedule({ ...row, title, prompt, kind, at, cron, nextRunAt: next, updatedAt });
+      return toSchedule({
+        ...row,
+        title,
+        prompt,
+        kind,
+        at,
+        cron,
+        nextRunAt: next,
+        updatedAt,
+      });
     });
   }
 
-  pause(scope: ChannelScope, id: string): Promise<Schedule> {
+  public pause(scope: ChannelScope, id: string): Promise<Schedule> {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       if (row.state !== "enabled") throw new Error(`schedule ${id} is not enabled`);
@@ -208,11 +175,16 @@ export class ScheduleStore {
         { ...scopeQuery(scope), id },
         { state: "paused", nextRunAt: null, updatedAt },
       );
-      return toSchedule({ ...row, state: "paused", nextRunAt: null, updatedAt });
+      return toSchedule({
+        ...row,
+        state: "paused",
+        nextRunAt: null,
+        updatedAt,
+      });
     });
   }
 
-  resume(scope: ChannelScope, id: string): Promise<Schedule> {
+  public resume(scope: ChannelScope, id: string): Promise<Schedule> {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       if (row.state !== "paused") throw new Error(`schedule ${id} is not paused`);
@@ -235,11 +207,16 @@ export class ScheduleStore {
         { ...scopeQuery(scope), id },
         { state: "enabled", nextRunAt: next, updatedAt },
       );
-      return toSchedule({ ...row, state: "enabled", nextRunAt: next, updatedAt });
+      return toSchedule({
+        ...row,
+        state: "enabled",
+        nextRunAt: next,
+        updatedAt,
+      });
     });
   }
 
-  cancel(scope: ChannelScope, id: string): Promise<Schedule> {
+  public cancel(scope: ChannelScope, id: string): Promise<Schedule> {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       if (row.state !== "enabled" && row.state !== "paused") {
@@ -251,12 +228,17 @@ export class ScheduleStore {
         { ...scopeQuery(scope), id },
         { state: "cancelled", nextRunAt: null, updatedAt },
       );
-      return toSchedule({ ...row, state: "cancelled", nextRunAt: null, updatedAt });
+      return toSchedule({
+        ...row,
+        state: "cancelled",
+        nextRunAt: null,
+        updatedAt,
+      });
     });
   }
 
   /** Enabled rows across every channel, earliest next run first. */
-  listEnabled(): Promise<Schedule[]> {
+  public listEnabled(): Promise<Schedule[]> {
     return this.mutate(async () => {
       const rows = await this.model.get(SCHEDULE_TABLE, { state: "enabled" });
       return rows.map(toSchedule).sort(compareByNextRun);
@@ -271,7 +253,7 @@ export class ScheduleStore {
    * next occurrence. Returns null when the occurrence is not claimable, so
    * duplicate wakes can never claim the same occurrence twice.
    */
-  claim(id: string, occurrenceAt: string): Promise<Schedule | null> {
+  public claim(id: string, occurrenceAt: string): Promise<Schedule | null> {
     return this.mutate(async () => {
       const rows = await this.model.get(SCHEDULE_TABLE, { id });
       const row = rows[0];
@@ -280,14 +262,23 @@ export class ScheduleStore {
       const rule = ruleOfRow(row);
       const state: ScheduleState = rule.kind === "once" ? "completed" : "enabled";
       const next = rule.kind === "once" ? null : nextRunAt(rule, now);
-      const lastResult: ScheduleLastResult = { occurrenceAt, status: "submitting" };
+      const lastResult: ScheduleLastResult = {
+        occurrenceAt,
+        status: "submitting",
+      };
       const updatedAt = now.toISOString();
       await this.model.set(
         SCHEDULE_TABLE,
         { id },
         { state, nextRunAt: next, lastResult, updatedAt },
       );
-      return toSchedule({ ...row, state, nextRunAt: next, lastResult, updatedAt });
+      return toSchedule({
+        ...row,
+        state,
+        nextRunAt: next,
+        lastResult,
+        updatedAt,
+      });
     });
   }
 
@@ -299,7 +290,7 @@ export class ScheduleStore {
    * resolution, `failed` after a trigger rejection, or `missed` when no
    * concurrent trigger slot was available.
    */
-  finish(
+  public finish(
     id: string,
     occurrenceAt: string,
     status: "accepted" | "failed" | "missed" | "interrupted",
@@ -312,7 +303,11 @@ export class ScheduleStore {
       if (!row || result?.status !== "submitting" || result.occurrenceAt !== occurrenceAt)
         return null;
       const now = new Date(Date.now());
-      const lastResult: ScheduleLastResult = { ...result, status, finishedAt: now.toISOString() };
+      const lastResult: ScheduleLastResult = {
+        ...result,
+        status,
+        finishedAt: now.toISOString(),
+      };
       if (error !== undefined) lastResult.error = error;
       const updatedAt = now.toISOString();
       await this.model.set(SCHEDULE_TABLE, { id }, { lastResult, updatedAt });
@@ -327,7 +322,7 @@ export class ScheduleStore {
    * `missed` result: a once schedule is completed, a cron schedule advances
    * directly to its first future occurrence. No occurrence is replayed.
    */
-  recover(now: Date): Promise<void> {
+  public recover(now: Date): Promise<void> {
     return this.mutate(async () => {
       const rows = await this.model.get(SCHEDULE_TABLE, {});
       const nowMs = now.getTime();
@@ -376,7 +371,11 @@ export class ScheduleStore {
           await this.model.set(
             SCHEDULE_TABLE,
             { id: row.id },
-            { nextRunAt: nextRunAt(ruleOfRow(row), now), lastResult, updatedAt },
+            {
+              nextRunAt: nextRunAt(ruleOfRow(row), now),
+              lastResult,
+              updatedAt,
+            },
           );
         }
       }
@@ -384,8 +383,59 @@ export class ScheduleStore {
   }
 
   private async fetchRow(scope: ChannelScope, id: string): Promise<ScheduleRow> {
-    const rows = await this.model.get(SCHEDULE_TABLE, { ...scopeQuery(scope), id });
+    const rows = await this.model.get(SCHEDULE_TABLE, {
+      ...scopeQuery(scope),
+      id,
+    });
     if (!rows.length) throw new Error(`schedule ${id} not found`);
     return rows[0];
   }
+}
+
+/** Registers the plugin-owned single table; called once from the plugin initialization path. */
+export function registerScheduleModel(model: ScheduleModel): void {
+  model.extend(SCHEDULE_TABLE, SCHEDULE_FIELDS, {
+    primary: "id",
+    autoInc: false,
+  });
+}
+
+function scopeQuery(scope: ChannelScope) {
+  return {
+    type: scope.type,
+    platform: scope.platform,
+    selfId: scope.selfId,
+    channelId: scope.channelId,
+  };
+}
+
+function ruleOfRow(row: ScheduleRow): ScheduleRule {
+  return row.kind === "once" ? { kind: "once", at: row.at! } : { kind: "cron", cron: row.cron! };
+}
+
+function toSchedule(row: ScheduleRow): Schedule {
+  const base = {
+    id: row.id,
+    type: row.type,
+    platform: row.platform,
+    selfId: row.selfId,
+    channelId: row.channelId,
+    title: row.title,
+    prompt: row.prompt,
+    state: row.state,
+    nextRunAt: row.nextRunAt,
+    lastResult: row.lastResult ?? undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+  return row.kind === "once"
+    ? { ...base, kind: "once", at: row.at! }
+    : { ...base, kind: "cron", cron: row.cron! };
+}
+
+function compareByNextRun(a: Schedule, b: Schedule): number {
+  if (a.nextRunAt === null && b.nextRunAt === null) return a.id.localeCompare(b.id);
+  if (a.nextRunAt === null) return 1;
+  if (b.nextRunAt === null) return -1;
+  return a.nextRunAt.localeCompare(b.nextRunAt) || a.id.localeCompare(b.id);
 }

@@ -27,9 +27,9 @@ type RegisteredCommand = {
 
 vi.mock("../src/runtime/index.js", () => ({
   RuntimeManager: class {
-    reset = vi.fn(async () => undefined);
-    stop = vi.fn(async () => undefined);
-    trigger = vi.fn(async () => undefined);
+    public reset = vi.fn(async () => undefined);
+    public stop = vi.fn(async () => undefined);
+    public trigger = vi.fn(async () => undefined);
 
     constructor(readonly options: { getAgentPluginFactories(): readonly AgentPluginFactory[] }) {
       state.runtime = this;

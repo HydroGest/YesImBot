@@ -5,6 +5,52 @@ import { Schema } from "koishi";
 import type { SearchBackend, SearchRuntimeConfig, WebSearchOutput } from "../types.js";
 import { clampLimit, compileBlacklist, dedupeByUrl, filterBlockedResults } from "../utils.js";
 
+export const searxngConfigSchema: Schema<SearXNGConfig> = Schema.object({
+  endpoint: Schema.string().required().description("SearXNG 实例地址"),
+  engines: Schema.array(Schema.string()).default([]).description("搜索引擎列表"),
+  language: Schema.string().description("搜索语言"),
+  categories: Schema.array(Schema.string()).default([]).description("搜索类别"),
+  safeSearch: Schema.union([Schema.const(0), Schema.const(1), Schema.const(2)]).description(
+    "安全搜索级别",
+  ),
+  username: Schema.string().description("HTTP Basic 用户名"),
+  password: Schema.string().description("HTTP Basic 密码"),
+});
+
+const searchInputSchema = jsonSchema<SearXNGSearchInput>({
+  type: "object",
+  properties: {
+    query: { type: "string", minLength: 1, description: "Search query." },
+    limit: {
+      type: "number",
+      minimum: 1,
+      description: "Maximum number of results.",
+    },
+    engines: {
+      type: "array",
+      items: { type: "string" },
+      description: "Search engines to use.",
+    },
+    language: { type: "string", description: "Search language." },
+    categories: {
+      type: "array",
+      items: { type: "string" },
+      description: "Search categories.",
+    },
+    timeRange: {
+      type: "string",
+      enum: ["day", "month", "year"],
+      description: "Time range for search.",
+    },
+    safeSearch: {
+      type: "number",
+      enum: [0, 1, 2],
+      description: "Safe search level.",
+    },
+  },
+  required: ["query"],
+});
+
 type SearXNGSafeSearch = 0 | 1 | 2;
 type SearXNGTimeRange = "day" | "month" | "year";
 
@@ -43,57 +89,8 @@ interface SearXNGResponse {
   results?: SearXNGResult[];
 }
 
-export const searxngConfigSchema: Schema<SearXNGConfig> = Schema.object({
-  endpoint: Schema.string().required().description("SearXNG 实例地址"),
-  engines: Schema.array(Schema.string()).default([]).description("搜索引擎列表"),
-  language: Schema.string().description("搜索语言"),
-  categories: Schema.array(Schema.string()).default([]).description("搜索类别"),
-  safeSearch: Schema.union([Schema.const(0), Schema.const(1), Schema.const(2)]).description(
-    "安全搜索级别",
-  ),
-  username: Schema.string().description("HTTP Basic 用户名"),
-  password: Schema.string().description("HTTP Basic 密码"),
-});
-
-const searchInputSchema = jsonSchema<SearXNGSearchInput>({
-  type: "object",
-  properties: {
-    query: { type: "string", minLength: 1, description: "Search query." },
-    limit: { type: "number", minimum: 1, description: "Maximum number of results." },
-    engines: { type: "array", items: { type: "string" }, description: "Search engines to use." },
-    language: { type: "string", description: "Search language." },
-    categories: { type: "array", items: { type: "string" }, description: "Search categories." },
-    timeRange: {
-      type: "string",
-      enum: ["day", "month", "year"],
-      description: "Time range for search.",
-    },
-    safeSearch: { type: "number", enum: [0, 1, 2], description: "Safe search level." },
-  },
-  required: ["query"],
-});
-
-export function createSearXNGBackend(
-  ctx: Context,
-  config: SearXNGConfig | undefined,
-  runtime: SearchRuntimeConfig,
-  logger: Logger,
-): SearchBackend {
-  if (!config?.endpoint) {
-    throw new Error("SearXNG provider requires searxng.endpoint to be configured");
-  }
-
-  return new SearXNGBackend(ctx, { ...runtime, ...config }, logger);
-}
-
-function normalizeSearchUrl(endpoint: string): string {
-  const trimmed = endpoint.replace(/\/+$/, "");
-  if (trimmed.endsWith("/search")) return trimmed;
-  return `${trimmed}/search`;
-}
-
 class SearXNGBackend implements SearchBackend {
-  readonly name = "searxng";
+  public readonly name = "searxng";
 
   private readonly blacklist: RegExp[];
 
@@ -105,7 +102,7 @@ class SearXNGBackend implements SearchBackend {
     this.blacklist = compileBlacklist(config.blacklist);
   }
 
-  createSearchTool(): AgentTool<SearXNGSearchInput, WebSearchOutput> {
+  public createSearchTool(): AgentTool<SearXNGSearchInput, WebSearchOutput> {
     return {
       name: "web_search",
       description:
@@ -174,4 +171,23 @@ class SearXNGBackend implements SearchBackend {
       };
     }
   }
+}
+
+export function createSearXNGBackend(
+  ctx: Context,
+  config: SearXNGConfig | undefined,
+  runtime: SearchRuntimeConfig,
+  logger: Logger,
+): SearchBackend {
+  if (!config?.endpoint) {
+    throw new Error("SearXNG provider requires searxng.endpoint to be configured");
+  }
+
+  return new SearXNGBackend(ctx, { ...runtime, ...config }, logger);
+}
+
+function normalizeSearchUrl(endpoint: string): string {
+  const trimmed = endpoint.replace(/\/+$/, "");
+  if (trimmed.endsWith("/search")) return trimmed;
+  return `${trimmed}/search`;
 }

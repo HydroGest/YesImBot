@@ -7,6 +7,20 @@ import { deliverOutput } from "./delivery.js";
 import type { EventRecord, MessageRecord, RecordBase } from "./messages.js";
 import type { ChannelRuntimeResult, RuntimeManager } from "./runtime/index.js";
 
+const defaultTranslator: PlatformTranslator = {
+  platform: "*",
+  async translate(base, session) {
+    if (
+      session.type !== "message-created" ||
+      typeof session.messageId !== "string" ||
+      session.messageId.length === 0 ||
+      !Array.isArray(session.elements)
+    )
+      return null;
+    return { ...base, messageId: session.messageId, elements: session.elements };
+  },
+};
+
 export interface ChannelAllowRule {
   readonly platform: string;
   readonly channelId: string;
@@ -20,15 +34,6 @@ export interface PlatformTranslator {
     session: Session,
     store: AssetStore,
   ): Awaitable<MessageRecord | EventRecord | null>;
-}
-
-class AssigneeAdmissionError extends Error {
-  constructor(
-    readonly reason: "missing" | "empty" | "mismatch",
-    readonly scope: ChannelScope,
-  ) {
-    super(`Shared channel assignee admission failed: ${reason}`);
-  }
 }
 
 export interface GatewayOptions {
@@ -78,7 +83,7 @@ export class Gateway {
     if (typeof internal === "function") this.disposers.push(internal as () => unknown);
   }
 
-  registerTranslator(translator: PlatformTranslator): () => void {
+  public registerTranslator(translator: PlatformTranslator): () => void {
     if (this.translators.has(translator.platform)) {
       throw new Error(`Translator for platform "${translator.platform}" is already registered`);
     }
@@ -89,7 +94,7 @@ export class Gateway {
     };
   }
 
-  async handle(session: Session): Promise<void> {
+  public async handle(session: Session): Promise<void> {
     if (this.closed || this.sessions.has(session)) return;
     this.sessions.add(session);
     const task = this.route(session);
@@ -101,7 +106,7 @@ export class Gateway {
     }
   }
 
-  close(): void {
+  public close(): void {
     if (this.closed) return;
     this.closed = true;
     for (const dispose of this.disposers.splice(0)) {
@@ -111,7 +116,7 @@ export class Gateway {
     }
   }
 
-  async drain(): Promise<void> {
+  public async drain(): Promise<void> {
     await Promise.allSettled([...this.tasks]);
   }
 
@@ -158,16 +163,13 @@ export class Gateway {
   }
 }
 
-async function assertAssignee(ctx: Context, scope: ChannelScope): Promise<void> {
-  if (scope.type === "direct") return;
-  const [channel] = await ctx.database.get(
-    "channel",
-    { platform: scope.platform, id: scope.channelId },
-    ["assignee"],
-  );
-  if (!channel) throw new AssigneeAdmissionError("missing", scope);
-  if (!channel.assignee) throw new AssigneeAdmissionError("empty", scope);
-  if (channel.assignee !== scope.selfId) throw new AssigneeAdmissionError("mismatch", scope);
+class AssigneeAdmissionError extends Error {
+  constructor(
+    readonly reason: "missing" | "empty" | "mismatch",
+    readonly scope: ChannelScope,
+  ) {
+    super(`Shared channel assignee admission failed: ${reason}`);
+  }
 }
 
 export function matchesAllowedChannel(
@@ -182,6 +184,18 @@ export function matchesAllowedChannel(
         (rule.isDirect === undefined || rule.isDirect === (scope.type === "direct")),
     ) ?? false
   );
+}
+
+async function assertAssignee(ctx: Context, scope: ChannelScope): Promise<void> {
+  if (scope.type === "direct") return;
+  const [channel] = await ctx.database.get(
+    "channel",
+    { platform: scope.platform, id: scope.channelId },
+    ["assignee"],
+  );
+  if (!channel) throw new AssigneeAdmissionError("missing", scope);
+  if (!channel.assignee) throw new AssigneeAdmissionError("empty", scope);
+  if (channel.assignee !== scope.selfId) throw new AssigneeAdmissionError("mismatch", scope);
 }
 
 function sessionBase(session: Session, scope: ChannelScope): RecordBase {
@@ -204,20 +218,6 @@ function sessionBase(session: Session, scope: ChannelScope): RecordBase {
     },
   };
 }
-
-const defaultTranslator: PlatformTranslator = {
-  platform: "*",
-  async translate(base, session) {
-    if (
-      session.type !== "message-created" ||
-      typeof session.messageId !== "string" ||
-      session.messageId.length === 0 ||
-      !Array.isArray(session.elements)
-    )
-      return null;
-    return { ...base, messageId: session.messageId, elements: session.elements };
-  },
-};
 
 function scopeFromSession(session: Session): ChannelScope | null {
   if (!session.platform || !session.selfId || !session.channelId) return null;

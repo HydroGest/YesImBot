@@ -23,11 +23,11 @@ export interface WorkspacePluginConfig {
 }
 
 export default class WorkspacePlugin {
-  static name = "yesimbot-workspace";
-  static usage = "工作区插件，提供虚拟文件系统和 Bash 沙箱环境";
-  static inject = ["yesimbot"];
+  public static name = "yesimbot-workspace";
+  public static usage = "工作区插件，提供虚拟文件系统和 Bash 沙箱环境";
+  public static inject = ["yesimbot"];
 
-  static Config: Schema<WorkspacePluginConfig> = Schema.object({
+  public static Config: Schema<WorkspacePluginConfig> = Schema.object({
     cwd: Schema.string().default("/home/workspace").description("虚拟文件系统默认目录"),
     persistPaths: Schema.dict(
       Schema.path({ filters: ["directory"], allowCreate: true }),

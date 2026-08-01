@@ -7,6 +7,12 @@ import { YesImBotService } from "./service.js";
 export const name = "yesimbot";
 export const usage = ``;
 export const inject = ["database"];
+
+export function apply(ctx: Context, config: Config) {
+  ctx.plugin(ModelService, config);
+  ctx.plugin(YesImBotService, config);
+}
+
 export { Config } from "./config.js";
 
 export type { AssetService, AssetStore } from "./asset.js";
@@ -16,8 +22,3 @@ export * from "./messages.js";
 export * from "./model/index.js";
 export type { AgentPluginFactory } from "./runtime/index.js";
 export type { YesImBotService } from "./service.js";
-
-export function apply(ctx: Context, config: Config) {
-  ctx.plugin(ModelService, config);
-  ctx.plugin(YesImBotService, config);
-}

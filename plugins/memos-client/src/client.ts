@@ -21,9 +21,9 @@ export interface MemosCloudClientOptions {
 }
 
 export class MemosCloudClientError extends Error {
-  readonly code: "api_error" | "invalid_response" | "network_error";
-  readonly endpoint: "searchMemory" | "addMessage";
-  readonly apiCode?: number;
+  public readonly code: "api_error" | "invalid_response" | "network_error";
+  public readonly endpoint: "searchMemory" | "addMessage";
+  public readonly apiCode?: number;
 
   constructor(options: {
     code: "api_error" | "invalid_response" | "network_error";
@@ -39,22 +39,18 @@ export class MemosCloudClientError extends Error {
   }
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function sanitizeMessage(message: string, apiKey: string): string {
-  return message.replaceAll(`Token ${apiKey}`, "Token [REDACTED]").replaceAll(apiKey, "[REDACTED]");
-}
-
 export class MemosCloudClient {
   constructor(private readonly options: MemosCloudClientOptions) {}
 
-  searchMemory<TData = unknown>(body: MemosSearchMemoryRequest): Promise<MemosApiResponse<TData>> {
+  public searchMemory<TData = unknown>(
+    body: MemosSearchMemoryRequest,
+  ): Promise<MemosApiResponse<TData>> {
     return this.post<TData>("searchMemory", "/search/memory", body);
   }
 
-  addMessage<TData = unknown>(body: MemosAddMessageRequest): Promise<MemosApiResponse<TData>> {
+  public addMessage<TData = unknown>(
+    body: MemosAddMessageRequest,
+  ): Promise<MemosApiResponse<TData>> {
     return this.post<TData>("addMessage", "/add/message", body);
   }
 
@@ -114,4 +110,12 @@ export class MemosCloudClient {
       });
     }
   }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function sanitizeMessage(message: string, apiKey: string): string {
+  return message.replaceAll(`Token ${apiKey}`, "Token [REDACTED]").replaceAll(apiKey, "[REDACTED]");
 }

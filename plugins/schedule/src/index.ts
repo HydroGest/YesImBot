@@ -19,9 +19,9 @@ import type { Schedule, ScheduleCreateInput, ScheduleUpdateInput } from "./types
  * leaving persisted rows intact.
  */
 export default class SchedulePlugin {
-  static name = "yesimbot-schedule";
-  static usage = "为当前频道提供持久化的定时事件触发能力";
-  static inject = ["yesimbot", "database"];
+  public static name = "yesimbot-schedule";
+  public static usage = "为当前频道提供持久化的定时事件触发能力";
+  public static inject = ["yesimbot", "database"];
 
   public readonly ctx: Context;
   public readonly logger: Logger;

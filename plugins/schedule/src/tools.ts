@@ -9,22 +9,6 @@ import type {
   ScheduleUpdateInput,
 } from "./types";
 
-/** Flat create input: title, prompt, and exactly one canonical rule form. */
-type CreateToolInput = {
-  title: string;
-  prompt: string;
-} & ({ at: string; cron?: never } | { at?: never; cron: string });
-
-/** Flat update input: id plus optional title/prompt and at most one rule form. */
-type UpdateToolInput = {
-  id: string;
-  title?: string;
-  prompt?: string;
-} & ({ at: string; cron?: never } | { at?: never; cron: string } | { at?: never; cron?: never });
-
-/** The id-only input shared by pause, resume, and cancel. */
-type IdToolInput = { id: string };
-
 const CREATE_SCHEMA = jsonSchema<CreateToolInput>({
   type: "object",
   properties: {
@@ -97,6 +81,22 @@ const ID_SCHEMA = jsonSchema<IdToolInput>({
   required: ["id"],
   additionalProperties: false,
 });
+
+/** Flat create input: title, prompt, and exactly one canonical rule form. */
+type CreateToolInput = {
+  title: string;
+  prompt: string;
+} & ({ at: string; cron?: never } | { at?: never; cron: string });
+
+/** Flat update input: id plus optional title/prompt and at most one rule form. */
+type UpdateToolInput = {
+  id: string;
+  title?: string;
+  prompt?: string;
+} & ({ at: string; cron?: never } | { at?: never; cron: string } | { at?: never; cron?: never });
+
+/** The id-only input shared by pause, resume, and cancel. */
+type IdToolInput = { id: string };
 
 function toProjection(schedule: Schedule): ScheduleProjection {
   return {

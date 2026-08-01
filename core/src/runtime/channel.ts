@@ -76,8 +76,8 @@ type SendMessageResult =
   | { ok: false; error: { name: string; message: string } };
 
 export class ChannelRuntime {
-  readonly scope: ChannelScope;
-  readonly selfId: string;
+  public readonly scope: ChannelScope;
+  public readonly selfId: string;
 
   private readonly ctx: Context;
   private readonly logger: Logger;
@@ -153,12 +153,12 @@ export class ChannelRuntime {
     });
   }
 
-  init(): Promise<void> {
+  public init(): Promise<void> {
     if (!this.initTask) this.initTask = this.agent.init();
     return this.initTask;
   }
 
-  stop(): Promise<void> {
+  public stop(): Promise<void> {
     if (this.stopTask) return this.stopTask;
     this.stopped = true;
     for (const controller of this.controllers) controller.abort();
@@ -166,7 +166,7 @@ export class ChannelRuntime {
     return this.stopTask;
   }
 
-  handle(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
+  public handle(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
     return this.schedule(async () => {
       this.assertOpen();
@@ -177,7 +177,7 @@ export class ChannelRuntime {
     });
   }
 
-  trigger(record: EventRecord): Promise<ChannelRuntimeResult> {
+  public trigger(record: EventRecord): Promise<ChannelRuntimeResult> {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
     return this.schedule(async () => {
       this.assertOpen();

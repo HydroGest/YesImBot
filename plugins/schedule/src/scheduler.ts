@@ -15,22 +15,6 @@ export interface SchedulerFacade {
   trigger(event: EventRecord): Promise<void>;
 }
 
-function toUniversalChannelType(type: "shared" | "direct"): Universal.Channel.Type {
-  return type === "direct" ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT;
-}
-
-function buildDueEvent(row: Schedule, occurrenceAt: string): EventRecord<"schedule.due"> {
-  return {
-    eventType: "schedule.due",
-    platform: row.platform,
-    selfId: row.selfId,
-    timestamp: Date.now(),
-    channel: { id: row.channelId, type: toUniversalChannelType(row.type) },
-    text: `Schedule "${row.title}" is due.\n${row.prompt}`,
-    schedule: { id: row.id, title: row.title, kind: row.kind, scheduledFor: occurrenceAt },
-  };
-}
-
 /**
  * Earliest-due timer scheduler over the durable ScheduleStore. It arms one
  * timer for the earliest enabled `nextRunAt`, and on wake claims every
@@ -51,7 +35,7 @@ export class ScheduleScheduler {
   ) {}
 
   /** Recovers persisted schedules, then arms the earliest due timer. */
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
     await this.store.recover(new Date(Date.now()));
@@ -63,7 +47,7 @@ export class ScheduleScheduler {
    * stay intact, and already admitted trigger calls remain owned by the
    * existing Core trigger drain and runtime stop behavior.
    */
-  stop(): void {
+  public stop(): void {
     this.running = false;
     if (this.timer !== null) {
       clearTimeout(this.timer);
@@ -72,7 +56,7 @@ export class ScheduleScheduler {
   }
 
   /** Re-evaluates persisted earliest work after a successful management mutation. */
-  async rearm(): Promise<void> {
+  public async rearm(): Promise<void> {
     await this.arm();
   }
 
@@ -136,4 +120,25 @@ export class ScheduleScheduler {
       await this.store.finish(row.id, occurrenceAt, "failed", error);
     }
   }
+}
+
+function toUniversalChannelType(type: "shared" | "direct"): Universal.Channel.Type {
+  return type === "direct" ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT;
+}
+
+function buildDueEvent(row: Schedule, occurrenceAt: string): EventRecord<"schedule.due"> {
+  return {
+    eventType: "schedule.due",
+    platform: row.platform,
+    selfId: row.selfId,
+    timestamp: Date.now(),
+    channel: { id: row.channelId, type: toUniversalChannelType(row.type) },
+    text: `Schedule "${row.title}" is due.\n${row.prompt}`,
+    schedule: {
+      id: row.id,
+      title: row.title,
+      kind: row.kind,
+      scheduledFor: occurrenceAt,
+    },
+  };
 }

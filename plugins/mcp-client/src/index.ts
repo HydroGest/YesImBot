@@ -8,10 +8,10 @@ import { connectMcpServer } from "./transports";
 import type { McpClientConfig, McpClientTransport } from "./types";
 
 export default class McpClientPlugin {
-  static name = "yesimbot-mcp-client";
-  static usage = "MCP 客户端插件，用于连接 MCP 服务器并注册工具";
-  static inject = ["yesimbot"];
-  static Config: Schema<McpClientConfig> = Schema.object({
+  public static name = "yesimbot-mcp-client";
+  public static usage = "MCP 客户端插件，用于连接 MCP 服务器并注册工具";
+  public static inject = ["yesimbot"];
+  public static Config: Schema<McpClientConfig> = Schema.object({
     mcpServers: Schema.dict(
       Schema.intersect([
         Schema.object({
@@ -63,7 +63,7 @@ export default class McpClientPlugin {
     ctx.on("dispose", this.stop.bind(this));
   }
 
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     this.ctx.logger.info("初始化 MCP 客户端...");
     for (const [name, server] of Object.entries(this.config.mcpServers)) {
       try {
@@ -144,7 +144,7 @@ export default class McpClientPlugin {
     this.ctx.logger.success("MCP 客户端初始化完成");
   }
 
-  async stop(): Promise<void> {
+  public async stop(): Promise<void> {
     this.ctx.logger.info("清理 MCP 客户端...");
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;

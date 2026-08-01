@@ -1,5 +1,5 @@
 export class AgentRuntimeError extends Error {
-  declare cause?: unknown;
+  declare public cause?: unknown;
 
   constructor(message: string, options: { cause?: unknown } = {}) {
     super(message, options);

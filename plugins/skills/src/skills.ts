@@ -12,6 +12,25 @@ const MAX_NAME_LENGTH = 64;
 /** Max description length per spec */
 const MAX_DESCRIPTION_LENGTH = 1024;
 
+export interface LoadSkillsFromDirOptions {
+  /** Directory to scan for skills */
+  dir: string;
+}
+
+export interface LoadSkillsOptions {
+  /** Working directory for project-local skills. */
+  cwd: string;
+  /** Explicit skill paths (files or directories) */
+  skillPaths: string[];
+}
+
+// ========
+
+type ParsedFrontmatter<T extends Record<string, unknown>> = {
+  frontmatter: T;
+  body: string;
+};
+
 /**
  * Validate skill name per Agent Skills spec.
  * Returns array of validation error messages (empty if valid).
@@ -55,11 +74,6 @@ function validateDescription(description: string | undefined): string[] {
   }
 
   return errors;
-}
-
-export interface LoadSkillsFromDirOptions {
-  /** Directory to scan for skills */
-  dir: string;
 }
 
 /**
@@ -257,13 +271,6 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-export interface LoadSkillsOptions {
-  /** Working directory for project-local skills. */
-  cwd: string;
-  /** Explicit skill paths (files or directories) */
-  skillPaths: string[];
-}
-
 function normalizePath(input: string): string {
   const trimmed = input.trim();
   if (trimmed === "~") return homedir();
@@ -365,13 +372,6 @@ export async function loadSkills(options: LoadSkillsOptions): Promise<LoadSkills
     diagnostics: [...allDiagnostics, ...collisionDiagnostics],
   };
 }
-
-// ========
-
-type ParsedFrontmatter<T extends Record<string, unknown>> = {
-  frontmatter: T;
-  body: string;
-};
 
 export const parseFrontmatter = <T extends Record<string, unknown> = Record<string, unknown>>(
   content: string,

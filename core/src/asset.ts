@@ -18,7 +18,7 @@ export interface AssetStore {
 export class AssetService {
   constructor(private readonly storage: ChannelStorage) {}
 
-  createStore(scope: ChannelScope): AssetStore {
+  public createStore(scope: ChannelScope): AssetStore {
     return new ScopedAssetStore(this.storage, scope);
   }
 }
@@ -29,7 +29,7 @@ class ScopedAssetStore implements AssetStore {
     private readonly scope: ChannelScope,
   ) {}
 
-  async put(data: Uint8Array): Promise<Element> {
+  public async put(data: Uint8Array): Promise<Element> {
     if (!(data instanceof Uint8Array)) throw new Error("Asset data must be bytes");
     const copied = data.slice();
     const id = createHash("sha256").update(copied).digest("hex").slice(0, 32);
@@ -45,7 +45,7 @@ class ScopedAssetStore implements AssetStore {
     return h("img", { id });
   }
 
-  async get(idOrPrefix: string): Promise<Uint8Array> {
+  public async get(idOrPrefix: string): Promise<Uint8Array> {
     if (COMPLETE_ID.test(idOrPrefix))
       return new Uint8Array(await readFile(await this.path(idOrPrefix)));
     if (!PREFIX_ID.test(idOrPrefix)) throw new Error("Invalid asset id");
@@ -64,7 +64,7 @@ class ScopedAssetStore implements AssetStore {
     return new Uint8Array(await readFile(join(directory, candidates[0]!)));
   }
 
-  async clear(): Promise<void> {
+  public async clear(): Promise<void> {
     await rm(await this.path(), { recursive: true, force: true });
   }
 

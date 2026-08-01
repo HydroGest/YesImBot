@@ -10,8 +10,8 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../src/runtime/index.js", () => ({
   RuntimeManager: class {
-    reset = vi.fn(async () => undefined);
-    stop = vi.fn(async () => {
+    public reset = vi.fn(async () => undefined);
+    public stop = vi.fn(async () => {
       state.order.push("runtime.stop");
       return state.stop();
     });
@@ -20,9 +20,9 @@ vi.mock("../src/runtime/index.js", () => ({
 
 vi.mock("../src/gateway.js", () => ({
   Gateway: class {
-    register = vi.fn(() => vi.fn());
-    close = vi.fn(() => state.order.push("gateway.close"));
-    drain = vi.fn(async () => state.order.push("gateway.drain"));
+    public register = vi.fn(() => vi.fn());
+    public close = vi.fn(() => state.order.push("gateway.close"));
+    public drain = vi.fn(async () => state.order.push("gateway.drain"));
   },
 }));
 

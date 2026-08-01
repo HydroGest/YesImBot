@@ -9,8 +9,6 @@ import type { ChannelScope } from "../channel.js";
 
 export const CORE_CONSTITUTION_VERSION = 3 as const;
 
-export type PromptResource = "constitution" | "athena-persona";
-
 // Resolve the package root by name instead of a relative path from this module's own
 // location: pkgroll bundles this module into a single dist/index.js at the package root,
 // while vitest runs it unbundled from src/runtime/, so no fixed `..` depth is correct
@@ -21,16 +19,18 @@ const resourceRoot = join(
   "resources",
 );
 
-export async function readPromptResource(name: PromptResource): Promise<string> {
-  const content = (await readFile(join(resourceRoot, `${name}.md`), "utf8")).trim();
-  if (content.length === 0) throw new Error(`Prompt resource ${name} is empty`);
-  return content;
-}
+export type PromptResource = "constitution" | "athena-persona";
 
 export interface CoreSystemPromptOptions {
   readonly basePath: string;
   readonly channel: ChannelScope;
   readonly logger?: Logger;
+}
+
+export async function readPromptResource(name: PromptResource): Promise<string> {
+  const content = (await readFile(join(resourceRoot, `${name}.md`), "utf8")).trim();
+  if (content.length === 0) throw new Error(`Prompt resource ${name} is empty`);
+  return content;
 }
 
 async function readPromptFile(

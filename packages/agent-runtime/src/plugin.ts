@@ -100,13 +100,6 @@ export interface ToolResultContext extends ToolCallContext {
   isError: boolean;
 }
 
-export function orderPlugins(plugins: readonly AgentPlugin[]): AgentPlugin[] {
-  const pre = plugins.filter((plugin) => plugin.enforce === "pre");
-  const normal = plugins.filter((plugin) => plugin.enforce !== "pre" && plugin.enforce !== "post");
-  const post = plugins.filter((plugin) => plugin.enforce === "post");
-  return [...pre, ...normal, ...post];
-}
-
 export interface PluginHostRuntime extends AgentPluginRuntime {
   readonly storage: AgentStorage<AgentEntry>;
 }
@@ -143,6 +136,13 @@ export interface PluginHost {
   init(options?: PluginHostInitOptions): Promise<void>;
   stop(): Promise<void>;
   emitPluginError(pluginName: string, error: unknown): void;
+}
+
+export function orderPlugins(plugins: readonly AgentPlugin[]): AgentPlugin[] {
+  const pre = plugins.filter((plugin) => plugin.enforce === "pre");
+  const normal = plugins.filter((plugin) => plugin.enforce !== "pre" && plugin.enforce !== "post");
+  const post = plugins.filter((plugin) => plugin.enforce === "post");
+  return [...pre, ...normal, ...post];
 }
 export function normalizeSystemPromptAppend(value: SystemPromptAppend): SystemModelMessage[] {
   const blocks = Array.isArray(value) ? value : [value];

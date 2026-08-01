@@ -20,6 +20,74 @@ const SEARCH_ENDPOINT = "https://api.tavily.com/search";
 const EXTRACT_ENDPOINT = "https://api.tavily.com/extract";
 const MAX_URLS_PER_SCRAPE = 20;
 
+export const tavilyConfigSchema: Schema<TavilyConfig> = Schema.object({
+  apiKey: Schema.string().required().description("Tavily API Key"),
+  searchEndpoint: Schema.string().default(SEARCH_ENDPOINT).description("Tavily 搜索端点"),
+  extractEndpoint: Schema.string().default(EXTRACT_ENDPOINT).description("Tavily 提取端点"),
+  searchDepth: Schema.union([Schema.const("basic"), Schema.const("advanced")])
+    .default("basic")
+    .description("搜索深度"),
+  topic: Schema.union([
+    Schema.const("general"),
+    Schema.const("news"),
+    Schema.const("finance"),
+  ]).description("搜索主题"),
+  timeRange: Schema.union([
+    Schema.const("day"),
+    Schema.const("week"),
+    Schema.const("month"),
+    Schema.const("year"),
+  ]).description("时间范围"),
+});
+
+const searchInputSchema = jsonSchema<TavilySearchInput>({
+  type: "object",
+  properties: {
+    query: { type: "string", minLength: 1, description: "Search query." },
+    limit: {
+      type: "number",
+      minimum: 1,
+      description: "Maximum number of results.",
+    },
+    searchDepth: {
+      type: "string",
+      enum: ["basic", "advanced"],
+      description: "Search depth.",
+    },
+    topic: {
+      type: "string",
+      enum: ["general", "news", "finance"],
+      description: "Search topic.",
+    },
+    timeRange: {
+      type: "string",
+      enum: ["day", "week", "month", "year"],
+      description: "Time range.",
+    },
+    startDate: { type: "string", description: "Start date for the search." },
+    endDate: { type: "string", description: "End date for the search." },
+    includeRawContent: {
+      type: "string",
+      enum: ["none", "text", "markdown"],
+      description: "Include raw content in the results.",
+    },
+  },
+  required: ["query"],
+});
+
+const scrapeInputSchema = jsonSchema<TavilyScrapeInput>({
+  type: "object",
+  properties: {
+    urls: {
+      type: "array",
+      items: { type: "string", format: "uri" },
+      minItems: 1,
+      description: "HTTP or HTTPS URLs to extract.",
+    },
+  },
+  required: ["urls"],
+});
+
 type TavilySearchDepth = "basic" | "advanced";
 type TavilyTopic = "general" | "news" | "finance";
 type TavilyTimeRange = "day" | "week" | "month" | "year";
@@ -82,97 +150,8 @@ interface TavilyExtractResponse {
   failed_results?: Array<{ url: string; error: string }>;
 }
 
-export const tavilyConfigSchema: Schema<TavilyConfig> = Schema.object({
-  apiKey: Schema.string().required().description("Tavily API Key"),
-  searchEndpoint: Schema.string().default(SEARCH_ENDPOINT).description("Tavily 搜索端点"),
-  extractEndpoint: Schema.string().default(EXTRACT_ENDPOINT).description("Tavily 提取端点"),
-  searchDepth: Schema.union([Schema.const("basic"), Schema.const("advanced")])
-    .default("basic")
-    .description("搜索深度"),
-  topic: Schema.union([
-    Schema.const("general"),
-    Schema.const("news"),
-    Schema.const("finance"),
-  ]).description("搜索主题"),
-  timeRange: Schema.union([
-    Schema.const("day"),
-    Schema.const("week"),
-    Schema.const("month"),
-    Schema.const("year"),
-  ]).description("时间范围"),
-});
-
-const searchInputSchema = jsonSchema<TavilySearchInput>({
-  type: "object",
-  properties: {
-    query: { type: "string", minLength: 1, description: "Search query." },
-    limit: { type: "number", minimum: 1, description: "Maximum number of results." },
-    searchDepth: {
-      type: "string",
-      enum: ["basic", "advanced"],
-      description: "Search depth.",
-    },
-    topic: {
-      type: "string",
-      enum: ["general", "news", "finance"],
-      description: "Search topic.",
-    },
-    timeRange: {
-      type: "string",
-      enum: ["day", "week", "month", "year"],
-      description: "Time range.",
-    },
-    startDate: { type: "string", description: "Start date for the search." },
-    endDate: { type: "string", description: "End date for the search." },
-    includeRawContent: {
-      type: "string",
-      enum: ["none", "text", "markdown"],
-      description: "Include raw content in the results.",
-    },
-  },
-  required: ["query"],
-});
-
-const scrapeInputSchema = jsonSchema<TavilyScrapeInput>({
-  type: "object",
-  properties: {
-    urls: {
-      type: "array",
-      items: { type: "string", format: "uri" },
-      minItems: 1,
-      description: "HTTP or HTTPS URLs to extract.",
-    },
-  },
-  required: ["urls"],
-});
-
-export function createTavilyBackend(
-  ctx: Context,
-  config: TavilyConfig | undefined,
-  runtime: SearchRuntimeConfig,
-  logger: Logger,
-): SearchBackend {
-  if (!config?.apiKey) {
-    throw new Error("Tavily provider requires tavily.apiKey to be configured");
-  }
-
-  return new TavilyBackend(
-    ctx,
-    {
-      ...runtime,
-      apiKey: config.apiKey,
-      searchEndpoint: config.searchEndpoint ?? SEARCH_ENDPOINT,
-      extractEndpoint: config.extractEndpoint ?? EXTRACT_ENDPOINT,
-      searchDepth: config.searchDepth ?? "basic",
-      topic: config.topic,
-      timeRange: config.timeRange,
-    },
-    logger,
-  );
-}
-
 class TavilyBackend implements SearchBackend {
-  readonly name = "tavily";
+  public readonly name = "tavily";
 
   private readonly blacklist: RegExp[];
 
@@ -184,7 +163,7 @@ class TavilyBackend implements SearchBackend {
     this.blacklist = compileBlacklist(config.blacklist);
   }
 
-  createSearchTool(): AgentTool<TavilySearchInput, WebSearchOutput> {
+  public createSearchTool(): AgentTool<TavilySearchInput, WebSearchOutput> {
     return {
       name: "web_search",
       description:
@@ -196,7 +175,7 @@ class TavilyBackend implements SearchBackend {
     };
   }
 
-  createScrapeTool(): AgentTool<TavilyScrapeInput, WebScrapeOutput> {
+  public createScrapeTool(): AgentTool<TavilyScrapeInput, WebScrapeOutput> {
     return {
       name: "web_scrape",
       description:
@@ -316,4 +295,29 @@ class TavilyBackend implements SearchBackend {
       };
     }
   }
+}
+
+export function createTavilyBackend(
+  ctx: Context,
+  config: TavilyConfig | undefined,
+  runtime: SearchRuntimeConfig,
+  logger: Logger,
+): SearchBackend {
+  if (!config?.apiKey) {
+    throw new Error("Tavily provider requires tavily.apiKey to be configured");
+  }
+
+  return new TavilyBackend(
+    ctx,
+    {
+      ...runtime,
+      apiKey: config.apiKey,
+      searchEndpoint: config.searchEndpoint ?? SEARCH_ENDPOINT,
+      extractEndpoint: config.extractEndpoint ?? EXTRACT_ENDPOINT,
+      searchDepth: config.searchDepth ?? "basic",
+      topic: config.topic,
+      timeRange: config.timeRange,
+    },
+    logger,
+  );
 }

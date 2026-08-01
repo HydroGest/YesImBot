@@ -4,6 +4,8 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { Context, Logger } from "koishi";
 
+const MAX_DIRECTORY_NAME_LENGTH = 200;
+
 export type ChannelScope = SharedChannelScope | DirectChannelScope;
 
 interface SharedChannelScope {
@@ -22,8 +24,6 @@ interface DirectChannelScope {
 
 type ChannelManifest = ChannelScope & { createdAt: string };
 
-const MAX_DIRECTORY_NAME_LENGTH = 200;
-
 export class ChannelStorage {
   private readonly channelsPath: string;
   private readonly manifests = new Map<string, ChannelManifest>();
@@ -37,7 +37,7 @@ export class ChannelStorage {
     this.channelsPath = resolve(basePath, "channels");
   }
 
-  async start(): Promise<void> {
+  public async start(): Promise<void> {
     await fs.mkdir(this.channelsPath, { recursive: true });
     for (const entry of await fs.readdir(this.channelsPath, { withFileTypes: true })) {
       if (!entry.isDirectory()) {
@@ -60,7 +60,7 @@ export class ChannelStorage {
     }
   }
 
-  async getStoragePath(scope: ChannelScope): Promise<string> {
+  public async getStoragePath(scope: ChannelScope): Promise<string> {
     await this.start();
     await this.ensureChannel(scope);
     const root = join(this.channelsPath, channelDirectoryName(scope));

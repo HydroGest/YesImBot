@@ -10,13 +10,13 @@ export const MAX_TITLE_LENGTH = 120;
 export const MAX_PROMPT_LENGTH = 2000;
 export const MAX_ENABLED_SCHEDULES = 20;
 
+const RFC_3339_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
 /** The rule half of a schedule before validation: at most one of `at`/`cron` is expected. */
 export type ScheduleRuleShape = { kind: "once" | "cron"; at?: string; cron?: string };
 
 /** A validated rule: exactly one of `at` or `cron` is defined. */
 export type ScheduleRule = { kind: "once"; at: string } | { kind: "cron"; cron: string };
-
-const RFC_3339_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
 function isFiveFieldCron(cron: string): boolean {
   return cron.trim().split(/\s+/).length === 5;
