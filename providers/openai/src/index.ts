@@ -1,10 +1,14 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { Schema } from "koishi";
-import { type BaseProviderConfig, createProviderPlugin } from "koishi-plugin-yesimbot";
+import { Context, Schema } from "koishi";
+import { type BaseProviderConfig } from "koishi-plugin-yesimbot";
 
 interface Config extends BaseProviderConfig {
   format: "chat" | "responses";
 }
+
+export const name = "yesimbot-provider-openai";
+export const usage = "OpenAI 提供商插件";
+export const inject = ["yesimbot"];
 
 export const Config: Schema<Config> = Schema.object({
   id: Schema.string().default("openai").description("提供商标识"),
@@ -38,12 +42,23 @@ export const Config: Schema<Config> = Schema.object({
     .description("可用嵌入模型列表"),
 });
 
-export default createProviderPlugin<Config, ReturnType<typeof createOpenAI>>({
-  name: "yesimbot-provider-openai",
-  capabilities: { chat: true, embedding: true },
-  Config,
-  createClient: ({ apiKey, baseURL }) => createOpenAI({ apiKey, baseURL }),
-  chat: (client, modelId, config) =>
-    config.format === "responses" ? client.responses(modelId) : client.chat(modelId),
-  embedding: (client, modelId) => client.embedding(modelId),
-});
+export function apply(ctx: Context, config: Config) {
+  ctx.on("ready", () => {
+    const client = createOpenAI({
+      apiKey: config.apiKey,
+      baseURL: config.baseURL,
+    });
+    const dispose = ctx.yesimbot.model.register({
+      id: config.id,
+      capabilities: { chat: true, embedding: true },
+      chatModels: () => config.chatModels,
+      embeddingModels: () => config.embeddingModels ?? [],
+      chat: (modelId: string) =>
+        config.format === "responses"
+          ? client.responses(modelId)
+          : client.chat(modelId),
+      embedding: (modelId: string) => client.embedding(modelId),
+    });
+    ctx.on("dispose", dispose);
+  });
+}

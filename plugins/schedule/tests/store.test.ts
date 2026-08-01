@@ -15,8 +15,8 @@ import {
 } from "minato";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ScheduleStore, registerScheduleModel } from "../src/store";
-import type { ScheduleCreateInput, ScheduleUpdateInput } from "../src/types";
+import { ScheduleStore, registerScheduleModel } from "../src/store.js";
+import type { ScheduleCreateInput, ScheduleUpdateInput } from "../src/types.js";
 
 const sharedScope: ChannelScope = {
   type: "shared",

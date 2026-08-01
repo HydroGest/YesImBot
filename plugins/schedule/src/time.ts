@@ -1,7 +1,7 @@
 import { CronExpressionParser } from "cron-parser";
 import type { CronExpression } from "cron-parser";
 
-import type { ScheduleCreateInput } from "./types";
+import type { ScheduleCreateInput } from "./types.js";
 
 export const SCHEDULE_TIME_ZONE = "Asia/Shanghai";
 

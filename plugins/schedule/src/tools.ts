@@ -1,13 +1,13 @@
 import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 
-import type { ScheduleStore } from "./store";
+import type { ScheduleStore } from "./store.js";
 import type {
   Schedule,
   ScheduleCreateInput,
   ScheduleProjection,
   ScheduleUpdateInput,
-} from "./types";
+} from "./types.js";
 
 const CREATE_SCHEMA = jsonSchema<CreateToolInput>({
   type: "object",

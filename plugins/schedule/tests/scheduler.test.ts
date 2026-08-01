@@ -16,9 +16,9 @@ import {
 } from "minato";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { MAX_CONCURRENT_TRIGGERS, ScheduleScheduler } from "../src/scheduler";
-import { ScheduleStore, registerScheduleModel } from "../src/store";
-import type { Schedule } from "../src/types";
+import { MAX_CONCURRENT_TRIGGERS, ScheduleScheduler } from "../src/scheduler.js";
+import { ScheduleStore, registerScheduleModel } from "../src/store.js";
+import type { Schedule } from "../src/types.js";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
@@ -195,7 +195,7 @@ describe("ScheduleScheduler", () => {
     registerScheduleModel(model);
     store = new ScheduleStore(model);
     trigger = vi.fn(async (_event: EventRecord) => {});
-    scheduler = new ScheduleScheduler(store, { trigger });
+    scheduler = new ScheduleScheduler(store, trigger);
     vi.useFakeTimers();
     vi.setSystemTime(new Date(T0));
   });

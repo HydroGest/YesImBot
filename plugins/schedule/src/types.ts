@@ -1,5 +1,3 @@
-// Anchors the module augmentation to the resolved koishi-plugin-yesimbot types.
-import type { EventMap } from "koishi-plugin-yesimbot";
 export type ScheduleState = "enabled" | "paused" | "cancelled" | "completed";
 
 export type ScheduleLastResult = {
@@ -71,9 +69,6 @@ export type ScheduleRow = {
   createdAt: string;
   updatedAt: string;
 };
-
-// Compile-time witness that the merged due extension carries only schedule metadata.
-type _dueKind = EventMap["schedule.due"]["schedule"]["kind"];
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {

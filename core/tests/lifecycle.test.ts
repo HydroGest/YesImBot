@@ -27,7 +27,7 @@ vi.mock("../src/gateway/index.js", () => ({
 }));
 
 import type { Config } from "../src/config.js";
-import { YesImBotService } from "../src/service.js";
+import YesImBotService from "../src/index.js";
 
 const config: Config = {
   basePath: "data/yesimbot-lifecycle",

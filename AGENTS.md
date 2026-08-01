@@ -67,7 +67,7 @@ npx vitest run plugins/memos-client/tests/tools.test.ts
 - 模块级声明顺序：imports → 常量 → 接口 → 类型 → class → function → 重新导出；同类声明（interface 与 interface、type 与 type）保持相邻。
 - 导入分组：外部依赖在前，仓库内部模块在后；类型导入遵循项目既有约定，不为排序改变导入方式或产生循环依赖。
 - 各声明类别内部：对外导出优先于局部声明；运行时依赖的声明保持安全且等价的初始化顺序。
-- class 成员顺序：公共静态字段/方法 → 公共实例字段 → constructor → 公共实例方法 → protected → private。
+- class 成员顺序：公共静态字段/方法 → 所有实例字段（public → protected → private）→ constructor → 公共实例方法 → protected 方法 → private 方法。
 - 可见性显式化：所有公开方法、公开字段（含静态）必须显式 `public`；protected/private 同理显式标注。
 - `declare module` 类型增强置于顶层类型区（类型定义之后、class 之前）。
 - 重新导出（`export { ... }` / `export * from ...`）统一置于文件末尾。
@@ -85,7 +85,7 @@ npx vitest run plugins/memos-client/tests/tools.test.ts
 - Reset stops a cached Runtime and clears only `sessions/` and `assets`, preserving the Manifest, workspace, and plugin-selected children. Global stop closes admission, stops runtimes, waits active Gateway handlers, and preserves data. Old layouts and JSONL remain unread; no migration, dual read, alias, or fallback exists.
 - ChannelRuntime initialization uses Constitution version 3, optional `<agents>`, exactly one `<persona>`, and `<runtime_context>` from ChannelScope plus Bot selfId before plugin instructions, native tools, and model. Do not confuse runtime `AGENTS.md` and `PERSONA.md` prompt files with this repository developer guide.
 - `core/src/model/` owns `ctx["yesimbot.model"]`, `models.json` loading, aliases/defaults, Koishi schema refresh, and provider registration.
-- Provider packages use `createProviderPlugin()` from `koishi-plugin-yesimbot/model` and AI SDK provider packages.
+- Provider packages are standalone Koishi plugins that directly use `ctx.yesimbot.model.register()` from `koishi-plugin-yesimbot` and AI SDK provider packages.
 - `packages/agent-runtime/src/agent.ts` owns the turn lifecycle: `append()`, `send()`, `run()`, idle `wait()`, interruption, storage serialization, tool wrapping, streamed model execution, and terminal events. `Agent.setModel()` and `Agent.setTools()` no longer exist; runtime replacement activates stable resource changes.
 - `packages/agent-runtime/src/plugin.ts` owns ordered plugin hooks: append/message transforms, model projection, prompt/tool extension, tool call hooks, and turn finish hooks.
 - Optional plugins register Agent behavior through `ctx.yesimbot.registerAgentPlugin(factory)`; trusted plugins use `getStoragePath(scope)` and select their own channel-root child paths.

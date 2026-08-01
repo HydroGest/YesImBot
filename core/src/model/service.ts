@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { EmbeddingModel, LanguageModel } from "ai";
-import { Context, Schema, Service } from "koishi";
+import { Context, Logger, Schema, Service } from "koishi";
 
 import {
   type ChatModelConfig,
@@ -71,13 +71,10 @@ interface EmbeddingModelRecord {
   config: EmbeddingModelConfig;
 }
 
-declare module "koishi" {
-  interface Context {
-    "yesimbot.model": ModelService;
-  }
-}
+export class ModelService {
+  private readonly ctx: Context;
+  private readonly config: ModelServiceConfig;
 
-export class ModelService extends Service<ModelServiceConfig> {
   private providers = new Map<string, Provider>();
   private chatModels = new Map<string, ChatModelRecord>();
   private embeddingModels = new Map<string, EmbeddingModelRecord>();
@@ -87,18 +84,23 @@ export class ModelService extends Service<ModelServiceConfig> {
     chat?: ModelId;
     embedding?: ModelId;
   } = {};
+  private readonly logger: Logger;
 
   constructor(ctx: Context, config: ModelServiceConfig) {
-    super(ctx, "yesimbot.model", true);
+    this.ctx = ctx;
     this.config = config;
+    this.logger = ctx.logger("yesimbot.model");
     this.logger.level = config.logLevel ?? 2;
+
+    this.ctx.on("ready", this.start.bind(this));
+    this.ctx.on("dispose", this.stop.bind(this));
   }
 
   private getModelsConfigPath(): string {
     return join(resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir), "models.json");
   }
 
-  public override async start(): Promise<void> {
+  private async start(): Promise<void> {
     const { config: modelsConfig, warnings } = await loadModelsConfig(this.getModelsConfigPath());
     this.modelsConfig = modelsConfig;
     for (const warning of warnings) {
@@ -106,6 +108,8 @@ export class ModelService extends Service<ModelServiceConfig> {
     }
     this.refreshModels();
   }
+
+  private async stop(): Promise<void> {}
 
   private refreshSchemas(): void {
     const options: Schema<string>[] = [];

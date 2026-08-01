@@ -12,7 +12,7 @@ import {
   validateRule,
   type ScheduleRule,
   type ScheduleRuleShape,
-} from "./time";
+} from "./time.js";
 import type {
   Schedule,
   ScheduleCreateInput,
@@ -20,7 +20,7 @@ import type {
   ScheduleRow,
   ScheduleState,
   ScheduleUpdateInput,
-} from "./types";
+} from "./types.js";
 
 export const SCHEDULE_TABLE = "yesimbot_schedule";
 
@@ -43,7 +43,7 @@ const SCHEDULE_FIELDS = {
 } satisfies Field.Extension<ScheduleRow, Types>;
 
 /** The database surface the Store needs: the raw Minato model service. */
-export type ScheduleModel = Pick<Context["model"], "extend" | "get" | "create" | "set" | "remove">;
+type ScheduleModel = Pick<Context["model"], "extend" | "get" | "create" | "set" | "remove">;
 
 /**
  * Single-table, channel-scoped Schedule persistence. Every mutation is
@@ -52,31 +52,18 @@ export type ScheduleModel = Pick<Context["model"], "extend" | "get" | "create" |
  * for read-your-writes behavior.
  */
 export class ScheduleStore {
+  private readonly model: ScheduleModel;
   private mutationTail: Promise<void> = Promise.resolve();
 
-  constructor(private readonly model: ScheduleModel) {}
-
-  private mutate<T>(operation: () => Promise<T>): Promise<T> {
-    const next = this.mutationTail.then(operation, operation);
-    this.mutationTail = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
+  public constructor(model: ScheduleModel) {
+    this.model = model;
   }
 
   public create(scope: ChannelScope, input: ScheduleCreateInput): Promise<Schedule> {
     return this.mutate(async () => {
       const now = new Date(Date.now());
       validateCreate(input, now);
-      const query = scopeQuery(scope);
-      const enabled = await this.model.get(SCHEDULE_TABLE, {
-        ...query,
-        state: "enabled",
-      });
-      if (enabled.length >= MAX_ENABLED_SCHEDULES) {
-        throw new Error(`channel already has ${MAX_ENABLED_SCHEDULES} enabled schedules`);
-      }
+      await this.assertEnabledCapacity(scope);
       const rule: ScheduleRule =
         input.kind === "once" ? { kind: "once", at: input.at } : { kind: "cron", cron: input.cron };
       const row: ScheduleRow = {
@@ -188,13 +175,7 @@ export class ScheduleStore {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       if (row.state !== "paused") throw new Error(`schedule ${id} is not paused`);
-      const enabled = await this.model.get(SCHEDULE_TABLE, {
-        ...scopeQuery(scope),
-        state: "enabled",
-      });
-      if (enabled.length >= MAX_ENABLED_SCHEDULES) {
-        throw new Error(`channel already has ${MAX_ENABLED_SCHEDULES} enabled schedules`);
-      }
+      await this.assertEnabledCapacity(scope);
       const now = new Date(Date.now());
       const rule = ruleOfRow(row);
       if (rule.kind === "once" && Date.parse(rule.at) <= now.getTime()) {
@@ -380,6 +361,25 @@ export class ScheduleStore {
         }
       }
     });
+  }
+
+  private mutate<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.mutationTail.then(operation, operation);
+    this.mutationTail = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }
+
+  private async assertEnabledCapacity(scope: ChannelScope): Promise<void> {
+    const enabled = await this.model.get(SCHEDULE_TABLE, {
+      ...scopeQuery(scope),
+      state: "enabled",
+    });
+    if (enabled.length >= MAX_ENABLED_SCHEDULES) {
+      throw new Error(`channel already has ${MAX_ENABLED_SCHEDULES} enabled schedules`);
+    }
   }
 
   private async fetchRow(scope: ChannelScope, id: string): Promise<ScheduleRow> {

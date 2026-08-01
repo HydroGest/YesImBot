@@ -19,10 +19,12 @@
   ],
   "type": "module",
   "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "module": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
     "./package.json": "./package.json"
@@ -32,7 +34,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "npx pkgroll --sourcemap",
+    "build": "npx pkgroll --sourcemap=inline",
     "check-types": "tsc --noEmit",
     "clean": "rimraf .turbo && rimraf dist && rimraf tsconfig.tsbuildinfo",
     "fmt": "oxfmt",

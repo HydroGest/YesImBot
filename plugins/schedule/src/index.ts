@@ -3,10 +3,10 @@ import { Context, Logger } from "koishi";
 import type { Command, Session } from "koishi";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 
-import { ScheduleScheduler } from "./scheduler";
-import { registerScheduleModel, ScheduleStore } from "./store";
-import { createScheduleTools } from "./tools";
-import type { Schedule, ScheduleCreateInput, ScheduleUpdateInput } from "./types";
+import { ScheduleScheduler } from "./scheduler.js";
+import { registerScheduleModel, ScheduleStore } from "./store.js";
+import { createScheduleTools } from "./tools.js";
+import type { Schedule, ScheduleCreateInput, ScheduleUpdateInput } from "./types.js";
 
 /**
  * The optional Koishi plugin that wires the Schedule capability into Core
@@ -22,17 +22,16 @@ export default class SchedulePlugin {
   public static name = "yesimbot-schedule";
   public static usage = "为当前频道提供持久化的定时事件触发能力";
   public static inject = ["yesimbot", "database"];
-
-  public readonly ctx: Context;
-  public readonly logger: Logger;
-  public readonly store: ScheduleStore;
+  private readonly ctx: Context;
+  private readonly logger: Logger;
+  private readonly store: ScheduleStore;
 
   private scheduler?: ScheduleScheduler;
   private disposeAgentPlugin?: () => void;
   private readonly commandDisposers = new Set<() => unknown>();
   private started = false;
 
-  constructor(ctx: Context) {
+  public constructor(ctx: Context) {
     this.ctx = ctx;
     this.logger = ctx.logger("yesimbot-schedule");
     registerScheduleModel(ctx.model);
@@ -45,9 +44,9 @@ export default class SchedulePlugin {
     if (this.started) return;
     this.started = true;
     try {
-      this.scheduler = new ScheduleScheduler(this.store, {
-        trigger: (event) => this.ctx.yesimbot.trigger(event),
-      });
+      this.scheduler = new ScheduleScheduler(this.store, (event) =>
+        this.ctx.yesimbot.trigger(event),
+      );
       await this.scheduler.start();
       this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((scope) => {
         return {

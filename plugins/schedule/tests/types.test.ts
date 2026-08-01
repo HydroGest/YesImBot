@@ -7,7 +7,7 @@ import type {
   ScheduleLastResult,
   ScheduleState,
   ScheduleUpdateInput,
-} from "../src/types";
+} from "../src/types.js";
 
 // The due extension must carry exactly one top-level field: schedule metadata.
 type _dueKeys = [keyof EventMap["schedule.due"]] extends ["schedule"]
@@ -19,7 +19,7 @@ const _dueKeysCheck: _dueKeys = true;
 
 describe("Schedule domain types", () => {
   it("exposes the schedule domain module", async () => {
-    await expect(import("../src/types")).resolves.toBeDefined();
+    await expect(import("../src/types.js")).resolves.toBeDefined();
   });
 
   it("keeps selfId on a direct schedule", () => {

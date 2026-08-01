@@ -66,13 +66,11 @@ function createManager(
   const matchingBot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn() };
   const otherBot = { platform: "test", selfId: "other", sendMessage: vi.fn() };
   ctx.bots.push(matchingBot as never, otherBot as never);
-  const model = { modelId: "test-model" };
-  const resolveChatModel = vi.fn(() => ({ model, providerId: "test", entry: {} }));
+  const modelInstance = { modelId: "test-model" };
+  const resolveChatModel = vi.fn(() => ({ model: modelInstance, providerId: "test", entry: {} }));
+  const modelService = { resolveChatModel } as never;
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
-  Object.assign(ctx, {
-    database,
-    "yesimbot.model": { resolveChatModel },
-  });
+  Object.assign(ctx, { database });
   const storage = new ChannelStorage(ctx, basePath);
   const assets = {
     clear: vi.fn(async () => undefined),
@@ -89,20 +87,19 @@ function createManager(
     reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
   };
   return {
-    manager: new RuntimeManager({
+    manager: new RuntimeManager(
       ctx,
-      config,
-      logger: { warn: vi.fn() } as never,
-      assets: assets as never,
+      modelService,
+      assets as never,
       storage,
-      getAgentPluginFactories,
-    }),
+      { config, logger: { warn: vi.fn() } as never, getAgentPluginFactories },
+    ),
     assets,
     ctx,
     resolveChatModel,
     matchingBot,
     otherBot,
-    model,
+    model: modelInstance,
     database,
     config,
     storage,

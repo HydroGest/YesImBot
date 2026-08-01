@@ -5,7 +5,12 @@ import { deliverOutput } from "../delivery.js";
 import type { EventRecord, MessageRecord, RecordBase } from "../messages.js";
 import type { ChannelRuntimeResult } from "../runtime/index.js";
 import { defaultTranslator } from "./default.js";
-import type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
+import type {
+  ChannelAllowRule,
+  GatewayConfig,
+  GatewayOptions,
+  PlatformTranslator,
+} from "./types.js";
 
 export class Gateway {
   private readonly ctx: Context;

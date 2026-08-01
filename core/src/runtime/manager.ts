@@ -8,6 +8,7 @@ import type { AssetService } from "../asset.js";
 import { scopeMapKey, type ChannelScope, type ChannelStorage } from "../channel.js";
 import type { ImageBudget, Config } from "../config.js";
 import type { EventRecord, MessageRecord } from "../messages.js";
+import { ModelService } from "../model/index.js";
 import {
   ChannelRuntime,
   type ChannelRuntimeOptions,
@@ -17,11 +18,8 @@ import { createJsonlStorage } from "./storage.js";
 import { createWillEngine } from "./will.js";
 
 export interface RuntimeManagerOptions {
-  readonly ctx: Context;
   readonly config: Config;
   readonly logger: Logger;
-  readonly assets: AssetService;
-  readonly storage: ChannelStorage;
   readonly getAgentPluginFactories: () => readonly AgentPluginFactory[];
 }
 
@@ -35,7 +33,25 @@ export class RuntimeManager {
   private stopped = false;
   private stopTask: Promise<void> | undefined;
 
-  constructor(private readonly opts: RuntimeManagerOptions) {}
+  private readonly ctx: Context;
+  private readonly model: ModelService;
+  private readonly opts: RuntimeManagerOptions;
+  private readonly assets: AssetService;
+  private readonly storage: ChannelStorage;
+
+  constructor(
+    ctx: Context,
+    model: ModelService,
+    assets: AssetService,
+    storage: ChannelStorage,
+    options: RuntimeManagerOptions,
+  ) {
+    this.ctx = ctx;
+    this.model = model;
+    this.assets = assets;
+    this.storage = storage;
+    this.opts = options;
+  }
 
   public async route(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
     this.assertOpen();
@@ -81,14 +97,14 @@ export class RuntimeManager {
     }
     try {
       await createJsonlStorage(
-        join(await this.opts.storage.getStoragePath(scope), "sessions", "messages.jsonl"),
+        join(await this.storage.getStoragePath(scope), "sessions", "messages.jsonl"),
       ).clear();
     } catch (cause) {
       failure ??= cause;
       this.warn("storage_clear_failed", { scope, cause });
     }
     try {
-      await this.opts.assets.createStore(scope).clear();
+      await this.assets.createStore(scope).clear();
     } catch (cause) {
       failure ??= cause;
       this.warn("asset_clear_failed", { scope, cause });
@@ -147,11 +163,11 @@ export class RuntimeManager {
 
   private async createRuntime(scope: ChannelScope): Promise<ChannelRuntime> {
     this.assertOpen();
-    const bot = this.opts.ctx.bots.find(
+    const bot = this.ctx.bots.find(
       (candidate) => candidate.platform === scope.platform && candidate.selfId === scope.selfId,
     );
     if (!bot) throw new Error(`No Bot is available for ${scope.platform}:${scope.selfId}`);
-    const resolved = this.opts.ctx["yesimbot.model"].resolveChatModel(this.opts.config.chatModel);
+    const resolved = this.model.resolveChatModel(this.opts.config.chatModel);
     const factories = this.opts.getAgentPluginFactories();
     const plugins = (await Promise.all(factories.map((factory) => factory(scope, bot)))).filter(
       (plugin): plugin is AgentPlugin => plugin !== null,
@@ -160,25 +176,25 @@ export class RuntimeManager {
       config: {
         ...this.opts.config,
         basePath: resolve(
-          this.opts.ctx.baseDir,
-          this.opts.config.basePath || this.opts.ctx.baseDir,
+          this.ctx.baseDir,
+          this.opts.config.basePath || this.ctx.baseDir,
         ),
       },
       scope,
       bot,
-      will: createWillEngine(this.opts.ctx, this.opts.config.will),
-      assets: this.opts.assets.createStore(scope),
+      will: createWillEngine(this.ctx, this.opts.config.will),
+      assets: this.assets.createStore(scope),
       model: resolved.model,
       imageBudget: this.opts.config.imageInput
         ? ({ ...this.opts.config.imageInput } as ImageBudget)
         : null,
       agentPlugins: plugins,
       storage: createJsonlStorage(
-        join(await this.opts.storage.getStoragePath(scope), "sessions", "messages.jsonl"),
+        join(await this.storage.getStoragePath(scope), "sessions", "messages.jsonl"),
         (cause) => this.warn("storage.line_invalid", { scope, cause }),
       ),
     };
-    const runtime = new ChannelRuntime(this.opts.ctx, options);
+    const runtime = new ChannelRuntime(this.ctx, options);
     try {
       await runtime.init();
     } catch (cause) {

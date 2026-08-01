@@ -1,5 +1,4 @@
-import type { EmbeddingModel, LanguageModel } from "ai";
-import { Context, Schema } from "koishi";
+import type { LanguageModel } from "ai";
 
 export const CHAT_MODEL_MODALITIES = ["text", "audio", "image", "video", "pdf"] as const;
 
@@ -46,23 +45,6 @@ export interface BaseProviderConfig {
   embeddingModels?: EmbeddingModelConfig[];
 }
 
-export interface CreateProviderOptions<TConfig extends BaseProviderConfig, TClient> {
-  name: string;
-  capabilities: { chat: boolean; embedding: boolean };
-  Config: unknown;
-  createClient: (config: { apiKey: string; baseURL?: string }) => TClient;
-  chat: (client: TClient, modelId: string, config: TConfig) => LanguageModel;
-  embedding?: (client: TClient, modelId: string, config: TConfig) => EmbeddingModel;
-}
-
-export interface ProviderPlugin<TConfig extends BaseProviderConfig> {
-  name: string;
-  reusable: boolean;
-  inject: string[];
-  Config: unknown;
-  apply: (ctx: Context, config: TConfig) => void;
-}
-
 export function isChatModelModality(value: string): value is ChatModelModality {
   return CHAT_MODEL_MODALITIES.some((modality) => modality === value);
 }
@@ -77,41 +59,4 @@ export function formatModelId(providerId: string, modelId: string): ModelId {
   return `${providerId}:${modelId}`;
 }
 
-export function createProviderPlugin<TConfig extends BaseProviderConfig, TClient>(
-  options: CreateProviderOptions<TConfig, TClient>,
-): ProviderPlugin<TConfig> {
-  const { name, capabilities, Config, createClient, chat, embedding } = options;
 
-  return {
-    name,
-    reusable: true,
-    inject: ["yesimbot.model"],
-    Config,
-    apply(ctx: Context, config: TConfig) {
-      const client = createClient({
-        apiKey: config.apiKey,
-        baseURL: config.baseURL,
-      });
-
-      const provider = {
-        id: config.id,
-        capabilities,
-        chatModels: () => (capabilities.chat ? config.chatModels : []),
-        embeddingModels: () => (capabilities.embedding ? (config.embeddingModels ?? []) : []),
-        chat: capabilities.chat
-          ? (modelId: string) => chat(client, modelId, config)
-          : () => {
-              throw new Error(`Provider "${config.id}" does not support chat`);
-            },
-        embedding: capabilities.embedding
-          ? (modelId: string) => embedding!(client, modelId, config)
-          : () => {
-              throw new Error(`Provider "${config.id}" does not support embedding`);
-            },
-      };
-
-      const disposeProvider = ctx["yesimbot.model"].register(provider);
-      ctx.on("dispose", disposeProvider);
-    },
-  };
-}

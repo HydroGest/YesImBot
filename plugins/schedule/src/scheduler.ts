@@ -1,19 +1,14 @@
 import { Universal } from "koishi";
 import type { EventRecord } from "koishi-plugin-yesimbot";
 
-import { ScheduleStore } from "./store";
-import type { Schedule } from "./types";
+import { ScheduleStore } from "./store.js";
+import type { Schedule } from "./types.js";
 
 /** Upper bound on concurrent Core trigger calls the scheduler admits. */
 export const MAX_CONCURRENT_TRIGGERS = 5;
 
 /** Node's largest reliable timeout delay; longer waits are re-evaluated in chunks. */
 const MAX_TIMER_DELAY = 0x7fffffff;
-
-/** The single Core surface the scheduler consumes: the real `yesimbot.trigger` facade. */
-export interface SchedulerFacade {
-  trigger(event: EventRecord): Promise<void>;
-}
 
 /**
  * Earliest-due timer scheduler over the durable ScheduleStore. It arms one
@@ -25,14 +20,16 @@ export interface SchedulerFacade {
  * are the direct global `Date.now()`, `setTimeout()`, and `clearTimeout()`.
  */
 export class ScheduleScheduler {
+  private readonly store: ScheduleStore;
+  private readonly trigger: (event: EventRecord) => Promise<void>;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private activeTriggers = 0;
   private running = false;
 
-  constructor(
-    private readonly store: ScheduleStore,
-    private readonly facade: SchedulerFacade,
-  ) {}
+  public constructor(store: ScheduleStore, trigger: (event: EventRecord) => Promise<void>) {
+    this.store = store;
+    this.trigger = trigger;
+  }
 
   /** Recovers persisted schedules, then arms the earliest due timer. */
   public async start(): Promise<void> {
@@ -110,7 +107,7 @@ export class ScheduleScheduler {
   private async runTrigger(row: Schedule, occurrenceAt: string): Promise<void> {
     const event = buildDueEvent(row, occurrenceAt);
     try {
-      await this.facade.trigger(event);
+      await this.trigger(event);
       await this.store.finish(row.id, occurrenceAt, "accepted");
     } catch (cause) {
       const error =

@@ -22,10 +22,10 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { Config } from "../../../core/src/config.js";
+import YesImBot from "../../../core/src/index.js";
 import type { EventRecord } from "../../../core/src/messages.js";
-import { YesImBotService } from "../../../core/src/service.js";
-import SchedulePlugin from "../src";
-import { SCHEDULE_TABLE } from "../src/store";
+import SchedulePlugin from "../src/index.js";
+import { SCHEDULE_TABLE, ScheduleStore } from "../src/store.js";
 
 const state = vi.hoisted(() => ({
   agent: undefined as Record<string, ReturnType<typeof vi.fn>> | undefined,
@@ -76,8 +76,9 @@ type CommandStub = {
 
 type Fixture = {
   ctx: Context;
-  service: YesImBotService;
+  service: YesImBot;
   plugin: SchedulePlugin;
+  store: ScheduleStore;
   trigger: Mock<(event: EventRecord) => Promise<void>>;
   sendMessage: Mock;
   resolveChatModel: Mock;
@@ -273,13 +274,6 @@ async function createFixture(
   }) as never);
   vi.spyOn(ctx, "middleware").mockReturnValue(vi.fn() as never);
 
-  const resolveChatModel = vi.fn(() => ({
-    model: {},
-    providerId: "test",
-    entry: {},
-  }));
-  Object.assign(ctx, { "yesimbot.model": { resolveChatModel } });
-
   const sendMessage = vi.fn(async () => []);
   if (options.withBot !== false) {
     ctx.bots.push({ platform: "test", selfId: "bot-1", sendMessage } as never);
@@ -299,8 +293,14 @@ async function createFixture(
     },
     reply: { pacing: { charactersPerSecond: 1000, maxTotalDelayMs: 10_000 } },
   };
-  const service = new YesImBotService(ctx as never, config);
+  const service = new YesImBot(ctx as never, config);
   Object.assign(ctx, { yesimbot: service });
+
+  const resolveChatModel = vi.spyOn(service.model, "resolveChatModel").mockReturnValue({
+    model: {},
+    providerId: "test",
+    entry: {},
+  } as never);
   // Create the channel runtime with real timers before the fake-clock window:
   // real fs work inside a fake-timer callback chain is not reliably serviced
   // by the event loop, so the runtime must already exist when the fake clock
@@ -314,11 +314,13 @@ async function createFixture(
     (event: EventRecord) => Promise<void>
   >;
   const plugin = new SchedulePlugin(ctx as never);
+  const store = new ScheduleStore(ctx.model);
 
   return {
     ctx,
     service,
     plugin,
+    store,
     trigger,
     sendMessage,
     resolveChatModel,
@@ -453,7 +455,7 @@ describe("Schedule proactive trigger integration", () => {
 
   it("submits one due schedule.due event through the real Core trigger and delivers via the matching Bot only", async () => {
     const dueIso = futureInstant();
-    const created = await fixture.plugin.store.create(SCOPE, {
+    const created = await fixture.store.create(SCOPE, {
       title: "standup",
       prompt: "Prepare the daily standup.",
       kind: "once",
@@ -466,7 +468,7 @@ describe("Schedule proactive trigger integration", () => {
 
     await startPluginAt(fixture, dueIso);
     await settleUntil("initial due-event delivery", async () => {
-      const [row] = await fixture.plugin.store.list(SCOPE);
+      const [row] = await fixture.store.list(SCOPE);
       return fixture.sendMessage.mock.calls.length === 1 && row?.lastResult?.status === "accepted";
     });
 
@@ -520,7 +522,7 @@ describe("Schedule proactive trigger integration", () => {
     expect(fixture.sendMessage).toHaveBeenCalledOnce();
     expect(fixture.sendMessage).toHaveBeenCalledWith("room-1", [h.text("reply")]);
 
-    const [row] = await fixture.plugin.store.list(SCOPE);
+    const [row] = await fixture.store.list(SCOPE);
     expect(row.state).toBe("completed");
     expect(row.nextRunAt).toBeNull();
     expect(row.lastResult).toMatchObject({
@@ -531,13 +533,13 @@ describe("Schedule proactive trigger integration", () => {
 
   it("joins a busy runtime with one event and no second output owner", async () => {
     const dueIso = futureInstant();
-    const first = await fixture.plugin.store.create(SCOPE, {
+    const first = await fixture.store.create(SCOPE, {
       title: "first",
       prompt: "Ping.",
       kind: "once",
       at: dueIso,
     });
-    const second = await fixture.plugin.store.create(SCOPE, {
+    const second = await fixture.store.create(SCOPE, {
       title: "second",
       prompt: "Pong.",
       kind: "once",
@@ -574,7 +576,7 @@ describe("Schedule proactive trigger integration", () => {
 
     release.resolve();
     await settleUntil("joined turn delivery", async () => {
-      const rows = await fixture.plugin.store.list(SCOPE);
+      const rows = await fixture.store.list(SCOPE);
       return (
         fixture.sendMessage.mock.calls.length === 1 &&
         rows.every((row) => row.lastResult?.status === "accepted")
@@ -582,13 +584,13 @@ describe("Schedule proactive trigger integration", () => {
     });
 
     expect(fixture.sendMessage).toHaveBeenCalledOnce();
-    const rows = await fixture.plugin.store.list(SCOPE);
+    const rows = await fixture.store.list(SCOPE);
     expect(rows.map((row) => row.lastResult?.status)).toEqual(["accepted", "accepted"]);
   });
 
   it("rejects a due event with no matching Bot as failed without retry", async () => {
     const dueIso = futureInstant();
-    await fixture.plugin.store.create(
+    await fixture.store.create(
       {
         type: "shared",
         platform: "test",
@@ -600,7 +602,7 @@ describe("Schedule proactive trigger integration", () => {
 
     await startPluginAt(fixture, dueIso);
     await settleUntil("missing-Bot rejection", async () => {
-      const [row] = await fixture.plugin.store.list({
+      const [row] = await fixture.store.list({
         type: "shared",
         platform: "test",
         selfId: "ghost-bot",
@@ -611,7 +613,7 @@ describe("Schedule proactive trigger integration", () => {
 
     expect(fixture.trigger).toHaveBeenCalledTimes(1);
     expect(fixture.sendMessage).not.toHaveBeenCalled();
-    const [row] = await fixture.plugin.store.list({
+    const [row] = await fixture.store.list({
       type: "shared",
       platform: "test",
       selfId: "ghost-bot",
@@ -640,7 +642,7 @@ describe("Schedule proactive trigger integration", () => {
     fixture.resolveChatModel.mockImplementation(() => {
       throw new Error("unknown model");
     });
-    await fixture.plugin.store.create(SCOPE, {
+    await fixture.store.create(SCOPE, {
       title: "model",
       prompt: "Ping.",
       kind: "once",
@@ -649,13 +651,13 @@ describe("Schedule proactive trigger integration", () => {
 
     await startPluginAt(fixture, dueIso);
     await settleUntil("model-resolution rejection", async () => {
-      const [row] = await fixture.plugin.store.list(SCOPE);
+      const [row] = await fixture.store.list(SCOPE);
       return row?.lastResult?.status === "failed";
     });
 
     expect(fixture.trigger).toHaveBeenCalledTimes(1);
     expect(fixture.sendMessage).not.toHaveBeenCalled();
-    const [row] = await fixture.plugin.store.list(SCOPE);
+    const [row] = await fixture.store.list(SCOPE);
     expect(row.state).toBe("completed");
     expect(row.lastResult).toMatchObject({
       occurrenceAt: dueIso,
@@ -665,7 +667,7 @@ describe("Schedule proactive trigger integration", () => {
   });
 
   it("preserves Schedule rows and future occurrences across a Core reset", async () => {
-    const created = await fixture.plugin.store.create(SCOPE, {
+    const created = await fixture.store.create(SCOPE, {
       title: "quarterly",
       prompt: "Ping.",
       kind: "cron",
@@ -679,18 +681,18 @@ describe("Schedule proactive trigger integration", () => {
 
     await startPluginAt(fixture, firstDue);
     await settleUntil("first scheduled delivery", async () => {
-      const [row] = await fixture.plugin.store.list(SCOPE);
+      const [row] = await fixture.store.list(SCOPE);
       return fixture.sendMessage.mock.calls.length === 1 && row?.lastResult?.status === "accepted";
     });
     expect(fixture.sendMessage).toHaveBeenCalledOnce();
-    expect(await fixture.plugin.store.list(SCOPE)).toHaveLength(1);
-    const [rowBeforeReset] = await fixture.plugin.store.list(SCOPE);
+    expect(await fixture.store.list(SCOPE)).toHaveLength(1);
+    const [rowBeforeReset] = await fixture.store.list(SCOPE);
     const secondDue = rowBeforeReset.nextRunAt!;
     expect(secondDue).not.toBe(firstDue);
 
     // Core reset stops the runtime and clears Core storage only; rows stay.
     await fixture.service.reset(SCOPE);
-    expect(await fixture.plugin.store.list(SCOPE)).toHaveLength(1);
+    expect(await fixture.store.list(SCOPE)).toHaveLength(1);
 
     // Re-create the runtime with real timers, then re-arm the scheduler at
     // the next occurrence under a fresh fake clock (the previous fake timer
@@ -708,13 +710,13 @@ describe("Schedule proactive trigger integration", () => {
       { type: "turn.done", id: "event-4", timestamp: 4, turnId: "turn-1" },
     ]);
     await settleUntil("post-reset scheduled delivery", async () => {
-      const [row] = await fixture.plugin.store.list(SCOPE);
+      const [row] = await fixture.store.list(SCOPE);
       return fixture.sendMessage.mock.calls.length === 2 && row?.lastResult?.status === "accepted";
     });
 
     expect(fixture.sendMessage).toHaveBeenCalledTimes(2);
     expect(fixture.sendMessage).toHaveBeenLastCalledWith("room-1", [h.text("second")]);
-    const [row] = await fixture.plugin.store.list(SCOPE);
+    const [row] = await fixture.store.list(SCOPE);
     expect(row.state).toBe("enabled");
     expect(row.lastResult).toMatchObject({ status: "accepted" });
     expect(row.nextRunAt).not.toBe(firstDue);
@@ -722,7 +724,7 @@ describe("Schedule proactive trigger integration", () => {
 
   it("recovers a submitting occurrence as interrupted through the real plugin start", async () => {
     const dueIso = futureInstant();
-    const created = await fixture.plugin.store.create(SCOPE, {
+    const created = await fixture.store.create(SCOPE, {
       title: "standup",
       prompt: "Prepare the daily standup.",
       kind: "once",
@@ -731,7 +733,7 @@ describe("Schedule proactive trigger integration", () => {
 
     await startPluginAt(fixture, dueIso);
     // The durable claim happened, then the process stopped before the result.
-    const claimed = await fixture.plugin.store.claim(created.id, dueIso);
+    const claimed = await fixture.store.claim(created.id, dueIso);
     expect(claimed?.lastResult).toMatchObject({
       occurrenceAt: dueIso,
       status: "submitting",
@@ -741,12 +743,12 @@ describe("Schedule proactive trigger integration", () => {
     vi.setSystemTime(new Date(Date.parse(dueIso) + 1_000));
     await fixture.plugin.start();
     await settleUntil("submitting occurrence recovery", async () => {
-      const [row] = await fixture.plugin.store.list(SCOPE);
+      const [row] = await fixture.store.list(SCOPE);
       return row?.lastResult?.status === "interrupted";
     });
 
     expect(fixture.trigger).not.toHaveBeenCalled();
-    const [row] = await fixture.plugin.store.list(SCOPE);
+    const [row] = await fixture.store.list(SCOPE);
     expect(row.state).toBe("completed");
     expect(row.lastResult).toMatchObject({
       occurrenceAt: dueIso,
@@ -756,7 +758,7 @@ describe("Schedule proactive trigger integration", () => {
   });
 
   it("produces no later trigger after plugin disposal and preserves rows", async () => {
-    const created = await fixture.plugin.store.create(SCOPE, {
+    const created = await fixture.store.create(SCOPE, {
       title: "quarterly",
       prompt: "Ping.",
       kind: "cron",
@@ -770,7 +772,7 @@ describe("Schedule proactive trigger integration", () => {
     await vi.advanceTimersByTimeAsync(0);
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(fixture.trigger).not.toHaveBeenCalled();
-    const [row] = await fixture.plugin.store.list(SCOPE);
+    const [row] = await fixture.store.list(SCOPE);
     expect(row.state).toBe("enabled");
     expect(row.nextRunAt).toBe(firstDue);
     expect(row.lastResult).toBeUndefined();
@@ -779,7 +781,7 @@ describe("Schedule proactive trigger integration", () => {
   it("delegates a delivery failure to Core delivery.failed feedback without retry or schedule history", async () => {
     const dueIso = futureInstant();
     fixture.sendMessage.mockRejectedValueOnce(new Error("offline"));
-    await fixture.plugin.store.create(SCOPE, {
+    await fixture.store.create(SCOPE, {
       title: "standup",
       prompt: "Prepare the daily standup.",
       kind: "once",
@@ -794,7 +796,7 @@ describe("Schedule proactive trigger integration", () => {
     await settleUntil("Core delivery failure feedback", async () => {
       const appended = state.agent?.append.mock.calls.map(([input]) => input as unknown);
       const feedback = appended?.some((input) => isEventAppend(input, "delivery.failed")) ?? false;
-      const [row] = await fixture.plugin.store.list(SCOPE);
+      const [row] = await fixture.store.list(SCOPE);
       return feedback && row?.lastResult?.status === "accepted";
     });
 
@@ -834,7 +836,7 @@ describe("Schedule proactive trigger integration", () => {
 
     // No Schedule retry and no Schedule-owned history row appeared: the
     // plugin-owned table still holds exactly the one original schedule.
-    const [row] = await fixture.plugin.store.list(SCOPE);
+    const [row] = await fixture.store.list(SCOPE);
     expect(row.lastResult).toMatchObject({
       occurrenceAt: dueIso,
       status: "accepted",

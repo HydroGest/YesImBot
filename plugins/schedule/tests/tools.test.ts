@@ -3,9 +3,9 @@ import Ajv from "ajv";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
-import type { ScheduleStore } from "../src/store";
-import { createScheduleTools } from "../src/tools";
-import type { Schedule, ScheduleProjection } from "../src/types";
+import type { ScheduleStore } from "../src/store.js";
+import { createScheduleTools } from "../src/tools.js";
+import type { Schedule, ScheduleProjection } from "../src/types.js";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 

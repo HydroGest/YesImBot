@@ -115,28 +115,30 @@ function createIntegratedGateway(basePath: string) {
     createStore: vi.fn(() => ({ clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() })),
   };
   const model = { modelId: "test-model" };
+  const resolveChatModel = vi.fn(() => ({ model, providerId: "test", entry: {} }));
+  const modelService = { resolveChatModel } as never;
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
-  Object.assign(ctx, {
-    database,
-    "yesimbot.model": { resolveChatModel: vi.fn(() => ({ model, entry: {} })) },
-  });
+  Object.assign(ctx, { database });
   ctx.bots.push({ platform: "test", selfId: "bot-1", sendMessage: vi.fn() } as never);
-  const manager = new RuntimeManager({
+  const manager = new RuntimeManager(
     ctx,
-    config: {
-      basePath,
-      chatModel: "test:model",
-      logLevel: 2,
-      allowedChannels: [],
-      imageInput: false,
-      will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
-      reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
-    },
-    logger: { debug: vi.fn(), warn: vi.fn() } as never,
-    assets: assets as never,
+    modelService,
+    assets as never,
     storage,
-    getAgentPluginFactories: () => [],
-  });
+    {
+      config: {
+        basePath,
+        chatModel: "test:model",
+        logLevel: 2,
+        allowedChannels: [],
+        imageInput: false,
+        will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
+        reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+      },
+      logger: { debug: vi.fn(), warn: vi.fn() } as never,
+      getAgentPluginFactories: () => [],
+    },
+  );
   const gateway = new Gateway(
     ctx,
     {

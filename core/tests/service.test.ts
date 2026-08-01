@@ -31,7 +31,13 @@ vi.mock("../src/runtime/index.js", () => ({
     public stop = vi.fn(async () => undefined);
     public trigger = vi.fn(async () => undefined);
 
-    constructor(readonly options: { getAgentPluginFactories(): readonly AgentPluginFactory[] }) {
+    constructor(
+      _ctx: unknown,
+      _model: unknown,
+      _assets: unknown,
+      _storage: unknown,
+      readonly options: { getAgentPluginFactories(): readonly AgentPluginFactory[] },
+    ) {
       state.runtime = this;
     }
   },
@@ -40,7 +46,7 @@ vi.mock("../src/runtime/index.js", () => ({
 import type { Config } from "../src/config.js";
 import { Gateway } from "../src/gateway/index.js";
 import type { AgentPluginFactory } from "../src/index.js";
-import { YesImBotService } from "../src/service.js";
+import YesImBotService from "../src/index.js";
 
 const config: Config = {
   basePath: "data/yesimbot-service",

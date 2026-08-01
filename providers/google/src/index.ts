@@ -1,8 +1,12 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { Schema } from "koishi";
-import { type BaseProviderConfig, createProviderPlugin } from "koishi-plugin-yesimbot";
+import { Context, Schema } from "koishi";
+import { type BaseProviderConfig } from "koishi-plugin-yesimbot";
 
 interface Config extends BaseProviderConfig {}
+
+export const name = "yesimbot-provider-google";
+export const usage = "Google 提供商插件";
+export const inject = ["yesimbot"];
 
 export const Config: Schema<Config> = Schema.object({
   id: Schema.string().default("google").description("提供商标识"),
@@ -33,11 +37,20 @@ export const Config: Schema<Config> = Schema.object({
     .description("可用嵌入模型列表"),
 });
 
-export default createProviderPlugin<Config, ReturnType<typeof createGoogleGenerativeAI>>({
-  name: "yesimbot-provider-google",
-  capabilities: { chat: true, embedding: true },
-  Config,
-  createClient: ({ apiKey, baseURL }) => createGoogleGenerativeAI({ apiKey, baseURL }),
-  chat: (client, modelId) => client.chat(modelId),
-  embedding: (client, modelId) => client.embedding(modelId),
-});
+export function apply(ctx: Context, config: Config) {
+  ctx.on("ready", () => {
+    const client = createGoogleGenerativeAI({
+      apiKey: config.apiKey,
+      baseURL: config.baseURL,
+    });
+    const dispose = ctx.yesimbot.model.register({
+      id: config.id,
+      capabilities: { chat: true, embedding: true },
+      chatModels: () => config.chatModels,
+      embeddingModels: () => config.embeddingModels ?? [],
+      chat: (modelId: string) => client.chat(modelId),
+      embedding: (modelId: string) => client.embedding(modelId),
+    });
+    ctx.on("dispose", dispose);
+  });
+}

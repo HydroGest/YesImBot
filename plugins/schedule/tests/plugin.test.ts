@@ -12,9 +12,9 @@ vi.mock("koishi", () => ({
   },
 }));
 
-import SchedulePlugin from "../src";
-import { ScheduleScheduler } from "../src/scheduler";
-import type { ScheduleRow } from "../src/types";
+import SchedulePlugin from "../src/index.js";
+import { ScheduleScheduler } from "../src/scheduler.js";
+import type { ScheduleRow } from "../src/types.js";
 
 type Factory = (scope: ChannelScope, bot: unknown) => AgentPlugin;
 
