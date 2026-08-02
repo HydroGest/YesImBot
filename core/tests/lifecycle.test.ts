@@ -36,7 +36,11 @@ const config: Config = {
   allowedChannels: [],
   imageInput: false,
   will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
-  reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+  reply: {
+    pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+    customInnerThought: false,
+    newlineFallback: true,
+  },
 };
 
 describe("YesImBotService lifecycle", () => {

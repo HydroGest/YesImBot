@@ -6,12 +6,29 @@ const SEPARATOR = "sep";
 const INNER_THOUGHT = "inner_thought";
 const MARK = "\u0000";
 
-export function parseReply(raw: string): Element[][] {
+export interface ParseReplyOptions {
+  readonly newlineFallback?: boolean;
+}
+
+export function parseReply(raw: string, options: ParseReplyOptions = {}): Element[][] {
   const source = raw.replaceAll(MARK, "");
   const nonce = `${MARK}r${Math.random().toString(36).slice(2)}`;
   const captured: string[] = [];
   const masked = maskRaw(source, nonce, captured);
-  return partition(h.parse(masked))
+  const tree = h.parse(masked);
+  if (
+    options.newlineFallback === true &&
+    captured.length === 0 &&
+    !hasExplicitSeparator(masked)
+  ) {
+    const fallback = splitPlain(tree);
+    if (fallback !== undefined) {
+      return fallback
+        .map((segment) => segment.map((element) => restore(element, nonce, captured)))
+        .filter((segment) => !isBlank(segment));
+    }
+  }
+  return partition(tree)
     .map((segment) => segment.map((element) => restore(element, nonce, captured)))
     .filter((segment) => !isBlank(segment));
 }
@@ -30,6 +47,46 @@ function maskRaw(source: string, nonce: string, captured: string[]): string {
     if (close < 0) return masked;
     cursor = close + RAW_CLOSE.length;
   }
+}
+
+// A literal <sep/> outside <raw> (already masked away) disables the fallback:
+// explicit separators stay authoritative. Any <raw> capture also disables the
+// fallback: raw bodies are masked placeholders at parse time, so their content
+// cannot be vetted for code/URLs/quotes, and splitting around verbatim content
+// is never safe. Uncertain text remains one message.
+function hasExplicitSeparator(masked: string): boolean {
+  return /<sep\b[^>]*>/.test(masked);
+}
+
+// Conservative fallback: only an all-plain-text tree of safe prose may be split
+// on blank lines. Fenced/inline code, URLs, quoted text, <raw> placeholders,
+// and structured elements all disqualify the whole reply, which stays one
+// message.
+function splitPlain(tree: readonly Element[]): Element[][] | undefined {
+  if (!tree.every((element) => element.type === "text")) return undefined;
+  const segments: Element[][] = [];
+  for (const element of tree) {
+    const content = `${element.attrs["content"] ?? ""}`;
+    if (!isSafeProse(content)) return undefined;
+    for (const part of content.split(/\r?\n[ \t]*\r?\n+/)) {
+      segments.push([h.text(part)]);
+    }
+  }
+  return segments;
+}
+
+function isSafeProse(content: string): boolean {
+  if (
+    content.includes("```") ||
+    content.includes("`") ||
+    content.includes("http://") ||
+    content.includes("https://") ||
+    content.includes("www.") ||
+    content.includes("](")
+  ) {
+    return false;
+  }
+  return !content.split("\n").some((line) => line.trimStart().startsWith(">"));
 }
 
 function partition(tree: readonly Element[]): Element[][] {

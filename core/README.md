@@ -64,14 +64,24 @@ It holds no live Koishi Session.
 
 `runtime/model-input.ts` formats persisted input and projects local image assets for a model call. It scans history before current input, reads only the channel-scoped `AssetStore`, recognizes JPEG, PNG, WebP, and GIF bytes, and applies a per-call `imageInput` budget. Model image capability comes only from `models.json`; `imageInput: false` disables image projection. PlatformTranslator download limits remain platform policy.
 
-## Prompt resources
+## Prompt composition
 
-`core/resources/constitution.md` and `core/resources/athena-persona.md` are
-package resources. `runtime/prompt.ts` resolves the package root with
-`createRequire(import.meta.url)` and the package name so both pkgroll ESM and
-CJS entries locate those Markdown files. Constitution version is 3. The system
-prompt orders constitution, optional `<agents>`, one `<persona>`, then runtime
-context from `ChannelScope` and the current Bot `selfId`.
+Core composes its stable system prompt inline in Chinese from `runtime/prompt.ts`:
+an identity-neutral constitution, optional `AGENTS.md` operator policy, exactly one
+`<persona>` (user `PERSONA.md`, or the inline default persona when missing or
+empty), then `<runtime_context>` from `ChannelScope` and the current Bot `selfId`.
+On first start `YesImBotService.start()` atomically creates `PERSONA.md` under the
+resolved `basePath` with the inline default content only when the file is absent;
+user-authored and empty files are never touched. No package prompt resources are
+published or loaded, and there is no constitution version constant.
+
+`reply.customInnerThought` (default `false`) adds the Core-owned custom
+`<inner_thought>` protocol to the constitution when enabled; when disabled the
+prompt contains no Core-owned inner-thought instruction. Provider-native
+reasoning parts are preserved by `@yesimbot/agent-runtime` either way.
+`reply.newlineFallback` (default `true`) lets `parseReply` conservatively split
+plain prose on blank lines only when no `<sep/>` is present; `<sep/>` remains the
+primary model-authored message boundary and uncertain text stays one message.
 
 ## Storage and records
 

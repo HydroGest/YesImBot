@@ -29,7 +29,7 @@ import {
 import { createModelInputPlugin } from "./model-input.js";
 import { OutputQueue } from "./output-queue.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
-import { parseReply } from "./reply.js";
+import { parseReply, type ParseReplyOptions } from "./reply.js";
 import { ChannelScope, scopeMapKey } from "./storage.js";
 import type { WillEngine } from "./will.js";
 
@@ -102,16 +102,16 @@ export class ChannelRuntime {
       : resolve(this.ctx.baseDir, opts.config.basePath);
     const sendMessageTool: AgentTool<SendMessageInput, SendMessageResult> = {
       name: "sendMessage",
-      description: "Send a message to an explicit channel using the current bot.",
+      description: "使用当前 Bot 向指定频道发送一条消息。",
       inputSchema: jsonSchema<SendMessageInput>({
         type: "object",
         properties: {
           channelId: {
             type: "string",
             minLength: 1,
-            description: "The ID of the channel to send the message to",
+            description: "要发送消息的目标频道 ID",
           },
-          content: { type: "string", description: "The content of the message" },
+          content: { type: "string", description: "要发送的消息内容" },
         },
         required: ["channelId", "content"],
       }),
@@ -136,7 +136,13 @@ export class ChannelRuntime {
       id: scopeMapKey(this.scope),
       model: opts.model,
       storage: opts.storage,
-      systemPrompt: () => buildCoreSystemPrompt({ basePath, channel: this.scope, logger: this.logger }),
+      systemPrompt: () =>
+        buildCoreSystemPrompt({
+          basePath,
+          channel: this.scope,
+          logger: this.logger,
+          customInnerThought: opts.config.reply.customInnerThought,
+        }),
       tools,
       plugins: [
         createModelInputPlugin({
@@ -269,7 +275,9 @@ export class ChannelRuntime {
     try {
       for await (const event of stream) {
         if (isAssistantMessage(event)) {
-          const segments = parseAssistantContent(event.message.content);
+          const segments = parseAssistantContent(event.message.content, {
+            newlineFallback: this.opts.config.reply.newlineFallback,
+          });
           if (segments !== undefined) output.push({ turnId: event.turnId, messageId: event.message.id, segments });
         }
         if (event.type === "turn.failed") {
@@ -340,7 +348,7 @@ export function renderAssistantText(content: AssistantContent): string | undefin
   return text.trim().length > 0 ? text : undefined;
 }
 
-export function parseAssistantContent(content: AssistantContent): Element[][] | undefined {
+export function parseAssistantContent(content: AssistantContent, options?: ParseReplyOptions): Element[][] | undefined {
   const text = renderAssistantText(content);
-  return text === undefined ? undefined : parseReply(text);
+  return text === undefined ? undefined : parseReply(text, options);
 }

@@ -17,8 +17,7 @@
     "directory": "core"
   },
   "files": [
-    "dist",
-    "resources"
+    "dist"
   ],
   "main": "./dist/index.cjs",
   "types": "./dist/index.d.ts",

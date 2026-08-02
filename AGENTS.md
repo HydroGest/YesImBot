@@ -83,7 +83,7 @@ npx vitest run plugins/memos-client/tests/tools.test.ts
 - `core/src/asset.ts` implements the public `AssetService` / `AssetStore` interfaces exposed at `ctx.yesimbot.assets`. Translator code owns image downloads and decides which bytes to persist; `runtime/model-input.ts` projects persisted asset images for model calls.
 - The input pipeline is: allowlist -> shared assignee admission -> channel AssetStore -> PlatformTranslator -> final Message/Event record -> RuntimeManager -> ChannelRuntime FIFO -> wait, join, or one output consumer -> passive Gateway delivery. A delivery failure returns through the producing Runtime.
 - Reset stops a cached Runtime and clears only `sessions/` and `assets`, preserving the Manifest, workspace, and plugin-selected children. Global stop closes admission, stops runtimes, waits active Gateway handlers, and preserves data. Old layouts and JSONL remain unread; no migration, dual read, alias, or fallback exists.
-- ChannelRuntime initialization uses Constitution version 3, optional `<agents>`, exactly one `<persona>`, and `<runtime_context>` from ChannelScope plus Bot selfId before plugin instructions, native tools, and model. Do not confuse runtime `AGENTS.md` and `PERSONA.md` prompt files with this repository developer guide.
+- ChannelRuntime initialization composes an inline Chinese Core constitution (identity-neutral, no published version), optional `<agents>`, exactly one `<persona>` (user `PERSONA.md` or the inline default), and `<runtime_context>` from ChannelScope plus Bot selfId before plugin instructions, native tools, and model. `PERSONA.md` is created with the default persona only when absent. Do not confuse runtime `AGENTS.md` and `PERSONA.md` prompt files with this repository developer guide.
 - `core/src/model/` owns `ctx["yesimbot.model"]`, `models.json` loading, aliases/defaults, Koishi schema refresh, and provider registration.
 - Provider packages are standalone Koishi plugins that directly use `ctx.yesimbot.model.register()` from `koishi-plugin-yesimbot` and AI SDK provider packages.
 - `packages/agent-runtime/src/agent.ts` owns the turn lifecycle: `append()`, `send()`, `run()`, idle `wait()`, interruption, storage serialization, tool wrapping, streamed model execution, and terminal events. `Agent.setModel()` and `Agent.setTools()` no longer exist; runtime replacement activates stable resource changes.
@@ -117,7 +117,7 @@ Load these on demand when deeper context is needed:
 - `core/src/messages.ts` — declaration-mergeable EventMap, versionless Message/Event records, RecordBase, assembleEvent, and Agent custom-message helpers.
 - `core/src/runtime/manager.ts` — RuntimeManager lifecycle and runtime construction.
 - `core/src/runtime/channel.ts` — ChannelRuntime FIFO, Agent assembly, model input, output ownership, and delivery feedback.
-- `core/src/runtime/prompt.ts` — package prompt resources and core system-prompt construction.
+- `core/src/runtime/prompt.ts` — inline Chinese Core constitution/default persona, user `AGENTS.md`/`PERSONA.md` reads, and core system-prompt construction.
 - `core/src/runtime/storage.ts` — JSONL append and parse-only read-back.
 - `core/src/runtime/{will,reply,output-queue,model-input}.ts` — ChannelRuntime-internal decision, output, and model projection helpers.
 - `core/src/model/` — model config, provider contracts, schema helpers, and model resolution.

@@ -127,7 +127,11 @@ function createIntegratedGateway(basePath: string) {
     allowedChannels: [],
     imageInput: false,
     will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
-    reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+    reply: {
+      pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+      customInnerThought: false,
+      newlineFallback: true,
+    },
   };
   const manager = new RuntimeManager(ctx, modelService, assets as never, storage, config, new Set());
   const gateway = new Gateway(

@@ -129,16 +129,16 @@ The Core Constitution's output control instruction MUST direct the model to deci
 - **WHEN** Core enforces a maximum segment count or delay ceiling
 - **THEN** the Constitution MUST NOT present those values to the model
 
-### Requirement: Constitution Version Two Cache Lifecycle
+### Requirement: Constitution Change Cache Lifecycle
 
-Raising the Core Constitution to version 2 MUST start a new cache lifecycle for every ChannelRuntime. Core MUST drain and replace each ChannelRuntime rather than mutating a running one, and MUST NOT retain a prompt prefix built from version 1.
+Any change to the Core Constitution MUST start a new cache lifecycle for every ChannelRuntime. Core MUST drain and replace each ChannelRuntime rather than mutating a running one, and MUST NOT retain a prompt prefix built from an earlier constitution. The Constitution carries no version number and is embedded in the runtime snapshot.
 
-#### Scenario: Constitution version changes
-- **WHEN** the Core Constitution version changes from 1 to 2
+#### Scenario: Constitution content changes
+- **WHEN** the Core Constitution content changes
 - **THEN** Core MUST drain and replace every ChannelRuntime
-- **AND** it MUST NOT reuse a version 1 prompt prefix
+- **AND** it MUST NOT reuse a prompt prefix built from the previous constitution
 
-#### Scenario: Rollback to version one
-- **WHEN** the Constitution is reverted to version 1
+#### Scenario: Constitution change is reverted
+- **WHEN** the Constitution change is reverted
 - **THEN** Core MUST start a new cache lifecycle again
 - **AND** output without control elements MUST deliver as one message

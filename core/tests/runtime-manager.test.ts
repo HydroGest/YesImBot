@@ -80,7 +80,11 @@ function createManager(
     allowedChannels: [],
     imageInput: false,
     will,
-    reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+    reply: {
+      pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+      customInnerThought: false,
+      newlineFallback: true,
+    },
   };
   return {
     manager: new RuntimeManager(ctx, modelService, assets as never, storage, config, channelPlugins),

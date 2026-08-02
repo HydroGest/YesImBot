@@ -97,3 +97,75 @@ describe("parseReply", () => {
     expect(sleep?.attrs["ms"]).toBe("10");
   });
 });
+
+describe("parseReply newline fallback", () => {
+  it("splits plain paragraphs on blank lines when newlineFallback is enabled", () => {
+    const segments = parseReply("First paragraph.\n\nSecond paragraph.", { newlineFallback: true });
+    expect(segments.map(text)).toEqual(["First paragraph.", "Second paragraph."]);
+  });
+
+  it("keeps blank-line text as one segment when newlineFallback is disabled or omitted", () => {
+    expect(parseReply("First paragraph.\n\nSecond paragraph.", { newlineFallback: false }).map(text)).toEqual([
+      "First paragraph.\n\nSecond paragraph.",
+    ]);
+    expect(parseReply("First paragraph.\n\nSecond paragraph.").map(text)).toEqual([
+      "First paragraph.\n\nSecond paragraph.",
+    ]);
+  });
+
+  it("treats explicit <sep/> as authoritative and skips the fallback", () => {
+    const segments = parseReply("a\n\nb<sep/>c", { newlineFallback: true });
+    expect(segments.map(text)).toEqual(["a\n\nb", "c"]);
+  });
+
+  it("does not split on single newlines", () => {
+    const segments = parseReply("line one\nline two", { newlineFallback: true });
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("line one\nline two");
+  });
+
+  it("does not split fenced code, inline code, URLs, or quoted text", () => {
+    const fenced = parseReply("intro\n\n```ts\nconst a: number = 1;\n```\n\noutro", { newlineFallback: true });
+    expect(fenced).toHaveLength(1);
+    const inline = parseReply("use `x`\n\nthen y", { newlineFallback: true });
+    expect(inline).toHaveLength(1);
+    const url = parseReply("see https://example.com\n\nmore", { newlineFallback: true });
+    expect(url).toHaveLength(1);
+    const quoted = parseReply("> quote\n\nnext", { newlineFallback: true });
+    expect(quoted).toHaveLength(1);
+  });
+
+  it("does not split inside <raw> or structured Koishi elements", () => {
+    const raw = parseReply("<raw>a\n\nb</raw>", { newlineFallback: true });
+    expect(raw).toHaveLength(1);
+    expect(text(raw[0])).toBe("a\n\nb");
+    const structured = parseReply('before\n\n<at id="42"/>\n\nafter', { newlineFallback: true });
+    expect(structured).toHaveLength(1);
+    const at = structured[0].find((element) => element.type === "at");
+    expect(at).toBeDefined();
+    expect(at?.attrs["id"]).toBe("42");
+  });
+
+  it("does not apply the fallback when any <raw> content is present", () => {
+    const fenced = parseReply("<raw>```ts\nconst x = 1;\n```</raw>\n\nmore", { newlineFallback: true });
+    expect(fenced).toHaveLength(1);
+    expect(text(fenced[0])).toBe("```ts\nconst x = 1;\n```\n\nmore");
+    const plain = parseReply("<raw>a\n\nb</raw>\n\nnext", { newlineFallback: true });
+    expect(plain).toHaveLength(1);
+    expect(text(plain[0])).toBe("a\n\nb\n\nnext");
+  });
+
+  it("recognizes CRLF blank lines as paragraph breaks", () => {
+    const segments = parseReply("First\r\n\r\nSecond", { newlineFallback: true });
+    expect(segments.map(text)).toEqual(["First", "Second"]);
+  });
+
+  it("does not split prose containing scheme-less URLs or markdown links", () => {
+    const bare = parseReply("see www.example.com\n\nmore", { newlineFallback: true });
+    expect(bare).toHaveLength(1);
+    expect(text(bare[0])).toBe("see www.example.com\n\nmore");
+    const markdown = parseReply("see [docs](www.example.com)\n\nmore", { newlineFallback: true });
+    expect(markdown).toHaveLength(1);
+    expect(text(markdown[0])).toBe("see [docs](www.example.com)\n\nmore");
+  });
+});

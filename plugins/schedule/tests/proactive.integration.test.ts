@@ -279,7 +279,11 @@ async function createFixture(options: { withBot?: boolean; warmUp?: boolean } = 
       mention: "trigger",
       group: "wait",
     },
-    reply: { pacing: { charactersPerSecond: 1000, maxTotalDelayMs: 10_000 } },
+    reply: {
+      pacing: { charactersPerSecond: 1000, maxTotalDelayMs: 10_000 },
+      customInnerThought: false,
+      newlineFallback: true,
+    },
   };
   const service = new YesImBot(ctx as never, config);
   Object.assign(ctx, { yesimbot: service });

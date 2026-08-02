@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
 import { createJsonlStorage, createMessageEntry, orderPlugins } from "@yesimbot/agent-runtime";
-import type { AgentPlugin, ModelMessageContext } from "@yesimbot/agent-runtime";
+import type { AgentPlugin, AgentTool, ModelMessageContext } from "@yesimbot/agent-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -64,7 +64,7 @@ import {
 import { ChannelRuntime } from "../src/runtime/index.js";
 import type { WillEngine } from "../src/runtime/will.js";
 
-function runtimeConfig(basePath: string): Config {
+function runtimeConfig(basePath: string, reply: Partial<Config["reply"]> = {}): Config {
   return {
     basePath,
     chatModel: "test:model",
@@ -72,7 +72,12 @@ function runtimeConfig(basePath: string): Config {
     allowedChannels: [],
     imageInput: false,
     will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
-    reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+    reply: {
+      pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+      customInnerThought: false,
+      newlineFallback: true,
+      ...reply,
+    },
   };
 }
 
@@ -111,11 +116,12 @@ function createRuntime(
   will: WillEngine,
   sendMessage = vi.fn(async () => ["sent-1"]),
   basePath = "/tmp/yesimbot-channel-runtime",
+  reply?: Partial<Config["reply"]>,
 ) {
   const ctx = new Context();
   const assets = { clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() };
   const runtime = new ChannelRuntime(ctx, {
-    config: runtimeConfig(basePath),
+    config: runtimeConfig(basePath, reply),
     scope: { platform: "test", selfId: "bot-1", channelId: "room-1", type: "shared" },
     bot: { sendMessage } as never,
     will,
@@ -156,6 +162,21 @@ describe("ChannelRuntime", () => {
     state.stream = undefined;
     state.resolvedSystem = undefined;
     state.resolvedSystem = undefined;
+  });
+
+  it("describes the Core sendMessage tool and its fields in Chinese", () => {
+    const { runtime } = createRuntime({ decide: async () => "wait" });
+    const tools = state.options?.tools as AgentTool[] | undefined;
+    const send = tools?.find((tool) => tool.name === "sendMessage");
+    expect(send).toBeDefined();
+    const schema = (send?.inputSchema as { jsonSchema?: { properties?: Record<string, { description?: string }> } })
+      .jsonSchema;
+    expect(send?.description).toMatch(/[\u4e00-\u9fff]/);
+    expect(schema?.properties?.["channelId"]?.description).toMatch(/[\u4e00-\u9fff]/);
+    expect(schema?.properties?.["content"]?.description).toMatch(/[\u4e00-\u9fff]/);
+    // Tool and field names stay protocol-stable.
+    expect(send?.name).toBe("sendMessage");
+    expect(Object.keys(schema?.properties ?? {})).toEqual(["channelId", "content"]);
   });
 
   it("continues channel FIFO work after a rejected operation", async () => {
@@ -431,6 +452,60 @@ describe("ChannelRuntime", () => {
         turnId: "turn-1",
         messageId: "assistant-1",
         segments: [[h.text("first")], [h.text("second")]],
+      },
+    ]);
+  });
+
+  it("splits plain assistant prose on blank lines when the runtime enables the fallback", async () => {
+    state.stream = streamFrom([
+      {
+        type: "message.appended",
+        id: "event-1",
+        timestamp: 1,
+        turnId: "turn-1",
+        message: { id: "assistant-1", role: "assistant", content: "first part\n\nsecond part" },
+      },
+      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
+    ]);
+    const { runtime } = createRuntime({ decide: async () => "trigger" });
+
+    const result = await runtime.handle(record());
+
+    expect(result.kind).toBe("run");
+    if (result.kind !== "run") return;
+    await expect(Array.fromAsync(result.output)).resolves.toEqual([
+      {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        segments: [[h.text("first part")], [h.text("second part")]],
+      },
+    ]);
+  });
+
+  it("keeps blank-line prose as one segment when the runtime disables the fallback", async () => {
+    state.stream = streamFrom([
+      {
+        type: "message.appended",
+        id: "event-1",
+        timestamp: 1,
+        turnId: "turn-1",
+        message: { id: "assistant-1", role: "assistant", content: "first part\n\nsecond part" },
+      },
+      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
+    ]);
+    const { runtime } = createRuntime({ decide: async () => "trigger" }, undefined, undefined, {
+      newlineFallback: false,
+    });
+
+    const result = await runtime.handle(record());
+
+    expect(result.kind).toBe("run");
+    if (result.kind !== "run") return;
+    await expect(Array.fromAsync(result.output)).resolves.toEqual([
+      {
+        turnId: "turn-1",
+        messageId: "assistant-1",
+        segments: [[h.text("first part\n\nsecond part")]],
       },
     ]);
   });

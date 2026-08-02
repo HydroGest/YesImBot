@@ -1,3 +1,5 @@
+import { readFile, rm } from "node:fs/promises";
+
 import { Context } from "@koishijs/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +8,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { h, type Session } from "koishi";
 
 import { type RecordBase, type EventRecord } from "../src/messages.js";
+import { DEFAULT_PERSONA } from "../src/runtime/prompt.js";
 
 const state = vi.hoisted(() => ({
   runtime: undefined as
@@ -56,7 +59,11 @@ const config: Config = {
   allowedChannels: [],
   imageInput: false,
   will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
-  reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+  reply: {
+    pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+    customInnerThought: false,
+    newlineFallback: true,
+  },
 };
 
 const event: EventRecord<"delivery.failed"> = {
@@ -275,6 +282,17 @@ describe("YesImBotService facade", () => {
     await service.start();
     await expect(service.getStoragePath(scope)).resolves.toBe(
       "/tmp/yesimbot-service/data/yesimbot-service/channels/shared-onebot-123456",
+    );
+  });
+
+  it("creates the default PERSONA.md on first start without overwriting user files", async () => {
+    const { service } = createService();
+    await rm("/tmp/yesimbot-service/data/yesimbot-service/PERSONA.md", { force: true });
+
+    await service.start();
+
+    await expect(readFile("/tmp/yesimbot-service/data/yesimbot-service/PERSONA.md", "utf8")).resolves.toBe(
+      DEFAULT_PERSONA,
     );
   });
 
