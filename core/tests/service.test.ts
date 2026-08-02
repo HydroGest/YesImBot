@@ -49,7 +49,7 @@ import type { AgentPluginFactory } from "../src/index.js";
 import YesImBotService from "../src/index.js";
 
 const config: Config = {
-  basePath: "data/yesimbot-service",
+  basePath: "/tmp/yesimbot-service/data/yesimbot-service",
   chatModel: "mock:model",
   logLevel: 2,
   allowedChannels: [],

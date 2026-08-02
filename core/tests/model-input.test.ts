@@ -7,7 +7,6 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { h } from "koishi";
 
 import type { AssetStore } from "../src/asset.js";
-import type { ChannelScope } from "../src/channel.js";
 import {
   createEvent,
   createMessage,
@@ -17,6 +16,7 @@ import {
   type MessageRecord,
 } from "../src/messages.js";
 import { createModelInputPlugin } from "../src/runtime/model-input.js";
+import type { ChannelScope } from "../src/runtime/storage.js";
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {

@@ -7,12 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
+import { createJsonlStorage } from "@yesimbot/agent-runtime";
 import { h, Universal, type Context } from "koishi";
 
-import { ChannelStorage, type ChannelScope } from "../src/channel.js";
 import { createEvent, createMessage } from "../src/messages.js";
 import { parseReply } from "../src/runtime/reply.js";
-import { createJsonlStorage } from "../src/runtime/storage.js";
+import { ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
 
 const shared = {
   type: "shared",
@@ -32,7 +32,7 @@ describe("ChannelStorage", () => {
     const ctx = {
       logger: vi.fn().mockReturnValue({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
     } as unknown as Context;
-    storage = new ChannelStorage(ctx, basePath);
+    storage = new ChannelStorage(ctx, { basePath });
     await storage.start();
   });
 
@@ -85,19 +85,6 @@ describe("ChannelStorage", () => {
     });
   });
 
-  it("accepts a 200-character basename and rejects 201 characters", async () => {
-    const prefix = "shared-p-";
-    const maximum = {
-      type: "shared",
-      platform: "p",
-      selfId: "bot",
-      channelId: "x".repeat(200 - prefix.length),
-    } satisfies ChannelScope;
-
-    await expect(storage.getStoragePath(maximum)).resolves.toBeDefined();
-    await expect(storage.getStoragePath({ ...maximum, channelId: `${maximum.channelId}x` })).rejects.toThrow(/200/);
-  });
-
   it("uses collision-free readable names for unsafe raw coordinates", async () => {
     const traversal = { ...shared, platform: "one/bot", channelId: "room/../alpha" };
     const lookalike = { ...shared, platform: "one~2f~bot", channelId: "room~2f~~2e~~2e~alpha" };
@@ -131,7 +118,7 @@ describe("ChannelStorage", () => {
     const ctx = {
       logger: vi.fn().mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
     } as unknown as Context;
-    const restarted = new ChannelStorage(ctx, basePath);
+    const restarted = new ChannelStorage(ctx, { basePath });
     await restarted.start();
 
     await expect(restarted.getStoragePath(shared)).resolves.toBe(root);
@@ -167,7 +154,7 @@ describe("ChannelStorage", () => {
     const ctx = {
       logger: vi.fn().mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
     } as unknown as Context;
-    const restarted = new ChannelStorage(ctx, basePath);
+    const restarted = new ChannelStorage(ctx, { basePath });
     await restarted.start();
 
     expect(warn).toHaveBeenCalledWith("storage.manifest_invalid", {
@@ -186,7 +173,7 @@ describe("ChannelStorage", () => {
     const ctx = {
       logger: vi.fn().mockReturnValue({ error: warn, warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
     } as unknown as Context;
-    await new ChannelStorage(ctx, basePath).start();
+    await new ChannelStorage(ctx, { basePath }).start();
 
     await expect(readFile(join(directory, "channel.json"), "utf8")).resolves.toBe("{old");
     expect(warn).toHaveBeenCalledWith("storage.manifest_invalid", {

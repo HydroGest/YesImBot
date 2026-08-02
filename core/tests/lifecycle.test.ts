@@ -30,7 +30,7 @@ import type { Config } from "../src/config.js";
 import YesImBotService from "../src/index.js";
 
 const config: Config = {
-  basePath: "data/yesimbot-lifecycle",
+  basePath: "/tmp/yesimbot-lifecycle/data/yesimbot-lifecycle",
   chatModel: "mock:model",
   logLevel: 2,
   allowedChannels: [],

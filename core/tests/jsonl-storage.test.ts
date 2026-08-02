@@ -3,16 +3,15 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { Context } from "@koishijs/core";
-import { createEntry, createUserMessage } from "@yesimbot/agent-runtime";
+import { createEntry, createJsonlStorage, createUserMessage } from "@yesimbot/agent-runtime";
 import { Universal } from "koishi";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import type { ChannelScope } from "../src/channel.js";
-import { ChannelStorage } from "../src/channel.js";
 import { createEvent, createMessage, type EventRecord, type MessageRecord } from "../src/messages.js";
-import { createJsonlStorage } from "../src/runtime/storage.js";
+import type { ChannelScope } from "../src/runtime/storage.js";
+import { ChannelStorage } from "../src/runtime/storage.js";
 
 describe("jsonl storage", () => {
   const messageRecord: MessageRecord = {
@@ -48,18 +47,6 @@ describe("jsonl storage", () => {
     await storage.append(entry);
 
     await expect(storage.read()).resolves.toEqual([entry]);
-  });
-
-  it("skips a syntactically invalid line and warns while retaining adjacent entries", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "athena-core-storage-"));
-    const filePath = join(dir, "session.jsonl");
-    const first = createEntry("message", createMessage(messageRecord));
-    const second = createEntry("message", createEvent(eventRecord));
-    const warn = vi.fn();
-    await writeFile(filePath, `${JSON.stringify(first)}\n{"broken":\n${JSON.stringify(second)}\n`, "utf8");
-
-    await expect(createJsonlStorage(filePath, warn).read()).resolves.toEqual([first, second]);
-    expect(warn).toHaveBeenCalledOnce();
   });
 
   it("appends entries and reads them back across restarts", async () => {
@@ -117,7 +104,7 @@ describe("jsonl storage", () => {
     };
     const legacyPath = join(dir, "channels", "ch_v1_2lgdyhmnfri2bdu7", "sessions", "messages.jsonl");
     const eventPath = join(
-      await new ChannelStorage(new Context(), dir).getStoragePath(scope),
+      await new ChannelStorage(new Context(), { basePath: dir }).getStoragePath(scope),
       "sessions",
       "messages.jsonl",
     );

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
-import { createMessageEntry, orderPlugins } from "@yesimbot/agent-runtime";
+import { createJsonlStorage, createMessageEntry, orderPlugins } from "@yesimbot/agent-runtime";
 import type { AgentPlugin, ModelMessageContext } from "@yesimbot/agent-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,7 +62,6 @@ import {
   type MessageRecord,
 } from "../src/messages.js";
 import { ChannelRuntime } from "../src/runtime/index.js";
-import { createJsonlStorage } from "../src/runtime/storage.js";
 import type { WillEngine } from "../src/runtime/will.js";
 
 function runtimeConfig(basePath: string): Config {

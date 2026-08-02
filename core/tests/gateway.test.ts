@@ -5,7 +5,6 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { h, type Session, Universal, Context } from "koishi";
 
 import type { AssetStore } from "../src/asset.js";
-import type { ChannelScope } from "../src/channel.js";
 import { Config } from "../src/config.js";
 import {
   Gateway,
@@ -14,6 +13,7 @@ import {
   type PlatformTranslator,
 } from "../src/gateway/index.js";
 import { assembleEvent, type RecordBase, type EventRecord, type MessageRecord } from "../src/messages.js";
+import type { ChannelScope } from "../src/runtime/storage.js";
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {

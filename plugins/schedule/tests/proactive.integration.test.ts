@@ -268,7 +268,7 @@ async function createFixture(options: { withBot?: boolean; warmUp?: boolean } = 
   }
 
   const config: Config = {
-    basePath: "data/yesimbot",
+    basePath: join(basePath, "data", "yesimbot"),
     chatModel: "test:model",
     logLevel: 2,
     allowedChannels: [],

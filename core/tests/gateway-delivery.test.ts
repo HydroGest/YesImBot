@@ -7,14 +7,14 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
+import { createJsonlStorage } from "@yesimbot/agent-runtime";
 import { h } from "koishi";
 
-import { ChannelStorage } from "../src/channel.js";
 import type { PacingConfig } from "../src/config.js";
 import { Gateway } from "../src/gateway/index.js";
 import type { MessageRecord } from "../src/messages.js";
 import { RuntimeManager } from "../src/runtime/index.js";
-import { createJsonlStorage } from "../src/runtime/storage.js";
+import { ChannelStorage } from "../src/runtime/storage.js";
 
 function session(send = vi.fn(async () => ["receipt-1"])) {
   return {
@@ -110,7 +110,7 @@ function createGateway(
 
 function createIntegratedGateway(basePath: string) {
   const ctx = new Context();
-  const storage = new ChannelStorage(ctx, basePath);
+  const storage = new ChannelStorage(ctx, { basePath });
   const assets = {
     createStore: vi.fn(() => ({ clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() })),
   };

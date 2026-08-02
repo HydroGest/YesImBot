@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { channelDirectoryName, type ChannelScope } from "../src/channel.js";
 import * as core from "../src/index.js";
+import { channelDirectoryName, type ChannelScope } from "../src/runtime/storage.js";
 
 const shared = (selfId: string): ChannelScope => ({
   type: "shared",

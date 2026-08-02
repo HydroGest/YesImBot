@@ -8,10 +8,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/channel.js";
 import type { Config as CoreConfig } from "../src/config.js";
 import type { EventRecord, MessageRecord } from "../src/messages.js";
 import { ChannelRuntime, type ChannelRuntimeOptions, RuntimeManager } from "../src/runtime/index.js";
+import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
 import { RoutingWillEngine, WillingnessWillEngine } from "../src/runtime/will.js";
 
 function record(channelId: string, overrides: Partial<MessageRecord> = {}): MessageRecord {
@@ -67,7 +67,7 @@ function createManager(
   const modelService = { resolveChatModel } as never;
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
   Object.assign(ctx, { database });
-  const storage = new ChannelStorage(ctx, basePath);
+  const storage = new ChannelStorage(ctx, { basePath });
   const assets = {
     clear: vi.fn(async () => undefined),
     createStore: vi.fn(() => ({ clear: assets.clear, get: vi.fn(), put: vi.fn() })),
@@ -377,7 +377,7 @@ describe("RuntimeManager", () => {
       channelId: "uncached",
       type: "shared",
     } satisfies ChannelScope;
-    const path = join(await new ChannelStorage(ctx, basePath).getStoragePath(scope), "sessions", "messages.jsonl");
+    const path = join(await new ChannelStorage(ctx, { basePath }).getStoragePath(scope), "sessions", "messages.jsonl");
     await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "stored\n");
 
@@ -429,7 +429,7 @@ describe("RuntimeManager", () => {
       channelId: "room",
       type: "shared",
     } satisfies ChannelScope;
-    const path = join(await new ChannelStorage(ctx, basePath).getStoragePath(scope), "sessions", "messages.jsonl");
+    const path = join(await new ChannelStorage(ctx, { basePath }).getStoragePath(scope), "sessions", "messages.jsonl");
     await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "persisted");
     await manager.route(record("room"));

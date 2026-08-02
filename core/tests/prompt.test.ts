@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ChannelScope } from "../src/channel.js";
 import { buildCoreSystemPrompt, CORE_CONSTITUTION_VERSION, readPromptResource } from "../src/runtime/prompt.js";
+import type { ChannelScope } from "../src/runtime/storage.js";
 
 const roots: string[] = [];
 const scope = {

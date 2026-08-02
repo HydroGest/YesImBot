@@ -11,7 +11,7 @@ import { h } from "koishi";
 import type { Context } from "koishi";
 
 import { AssetService } from "../src/asset.js";
-import { ChannelStorage, type ChannelScope } from "../src/channel.js";
+import { ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
 
 const scope: ChannelScope = {
   type: "shared",
@@ -32,7 +32,7 @@ describe("AssetService", () => {
     const ctx = {
       logger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
     } as unknown as Context;
-    storage = new ChannelStorage(ctx, basePath);
+    storage = new ChannelStorage(ctx, { basePath });
   });
 
   afterEach(async () => {
