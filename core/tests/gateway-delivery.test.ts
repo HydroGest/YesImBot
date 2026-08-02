@@ -130,7 +130,6 @@ function createIntegratedGateway(basePath: string) {
     reply: {
       pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
       customInnerThought: false,
-      newlineFallback: true,
     },
   };
   const manager = new RuntimeManager(ctx, modelService, assets as never, storage, config, new Set());

@@ -289,6 +289,14 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 
 这次决定把下一阶段的门槛抬高了：任何新的平台、媒体、主动性或跨频道能力都必须先证明现有 Gateway、Runtime、AssetStore 和 AgentPlugin seam 无法承载，再提出独立设计。
 
+### 2026-08-02：回复交还标准 Koishi 元素流
+
+证据：`core/src/runtime/reply.ts`、`core/src/runtime/prompt.ts`、`openspec/specs/reply-output-control-language/spec.md` `[C]`；Satori 元素规范和 Sandbox `MessageEncoder` 实际发送序列 `[S]`。
+
+真实故障来自把模型文本同时当作自由文本与元素语法解析：未保护的尖括号可被 `h.parse` 吞进元素属性或变成不受适配器支持的元素。以 Core 白名单决定哪些元素可通过，虽然暂时避免丢失，却重复了平台元素协议，也阻断了标准 `<message>` 的原生分段。
+
+新基线只保留两个 Core 边界：递归移除 `<inner_thought>`，以及用 `<text>` 逐字保护本来就要显示的尖括号文本。其余输出直接作为 Koishi 元素流交给平台；`<message>` 与嵌套 `<message>` 由编码器按标准拆分，Core 不再维护 `<sep/>`、`<elements>`、元素白名单或空行分段回退。模型必须把会形成元素的文字手动转义或置于 `<text>`。
+
 ## 4. 决策索引
 
 ### 当前有效

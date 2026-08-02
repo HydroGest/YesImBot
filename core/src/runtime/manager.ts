@@ -17,8 +17,7 @@ export interface ChannelPluginContext {
   readonly bot: Bot;
 }
 
-export type ChannelPluginFactory =
-  (context: ChannelPluginContext) => Awaitable<AgentPlugin | null>;
+export type ChannelPluginFactory = (context: ChannelPluginContext) => Awaitable<AgentPlugin | null>;
 
 export class RuntimeManager {
   private readonly runtimes = new Map<string, ChannelRuntime>();
@@ -161,9 +160,9 @@ export class RuntimeManager {
     );
     if (!bot) throw new Error(`No Bot is available for ${scope.platform}:${scope.selfId}`);
     const resolved = this.model.resolveChatModel(this.config.chatModel);
-    const plugins = (await Promise.all(
-      [...this.channelPlugins].map((resolver) => resolver({ scope, bot })),
-    )).filter((plugin): plugin is AgentPlugin => plugin !== null);
+    const plugins = (await Promise.all([...this.channelPlugins].map((resolver) => resolver({ scope, bot })))).filter(
+      (plugin): plugin is AgentPlugin => plugin !== null,
+    );
     const options: ChannelRuntimeOptions = {
       config: {
         ...this.config,

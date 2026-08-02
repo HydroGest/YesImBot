@@ -10,7 +10,12 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { Config as CoreConfig } from "../src/config.js";
 import type { EventRecord, MessageRecord } from "../src/messages.js";
-import { ChannelRuntime, type ChannelRuntimeOptions, RuntimeManager, type ChannelPluginFactory } from "../src/runtime/index.js";
+import {
+  ChannelRuntime,
+  type ChannelRuntimeOptions,
+  RuntimeManager,
+  type ChannelPluginFactory,
+} from "../src/runtime/index.js";
 import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
 import { RoutingWillEngine, WillingnessWillEngine } from "../src/runtime/will.js";
 
@@ -83,7 +88,6 @@ function createManager(
     reply: {
       pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
       customInnerThought: false,
-      newlineFallback: true,
     },
   };
   return {

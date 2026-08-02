@@ -135,7 +135,7 @@ Gateway 用产生输入的 Session 被动发送。首段成功只通知一次 Wi
 
 ### 5.6 Prompt、回复与公共 API 保持小而固定
 
-Core Constitution、persona、可选 agents 和 runtime context 按固定顺序组成系统提示词。Reply 的 `<raw>`、`<sep/>`、`inner_thought` 和未知 Element 行为保持协议。公共 facade 不为未来的 identity、delivery、reload、storage registry 或 Will factory 预留入口。
+Core Constitution、persona、可选 agents 和 runtime context 按固定顺序组成系统提示词。Reply 直接传递标准 Koishi 元素，`<message>` 负责平台原生分段，`<text>` 保护逐字内容，`inner_thought` 是唯一 Core 私有元素。公共 facade 不为未来的 identity、delivery、reload、storage registry 或 Will factory 预留入口。
 
 ### 5.7 延后方向保持显式边界
 

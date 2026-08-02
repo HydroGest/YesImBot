@@ -39,7 +39,6 @@ const config: Config = {
   reply: {
     pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
     customInnerThought: false,
-    newlineFallback: true,
   },
 };
 

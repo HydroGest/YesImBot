@@ -62,7 +62,6 @@ const config: Config = {
   reply: {
     pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
     customInnerThought: false,
-    newlineFallback: true,
   },
 };
 
@@ -355,9 +354,7 @@ describe("YesImBotService facade", () => {
     disposeFirst();
     const scope = { platform: "test", selfId: "bot-1", channelId: "room", type: "shared" } as const;
     const bot = {} as never;
-    const plugins = await Promise.all(
-      [...(state.runtime?.channelPlugins ?? [])].map((f) => f({ scope, bot })),
-    );
+    const plugins = await Promise.all([...(state.runtime?.channelPlugins ?? [])].map((f) => f({ scope, bot })));
 
     expect(plugins).toEqual([{ name: "plugin" }]);
   });

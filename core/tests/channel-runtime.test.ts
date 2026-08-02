@@ -75,7 +75,6 @@ function runtimeConfig(basePath: string, reply: Partial<Config["reply"]> = {}): 
     reply: {
       pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
       customInnerThought: false,
-      newlineFallback: true,
       ...reply,
     },
   };
@@ -246,11 +245,10 @@ describe("ChannelRuntime", () => {
     const { ctx, runtime } = createRuntime(will);
     state.agent?.append.mockImplementation(async () => order.push("persist"));
     ctx.on("yesimbot/message", () => order.push("event"));
-    ctx.on("yesimbot/will", () => order.push("will-observation"));
 
     const result = await runtime.handle(record());
 
-    expect(order).toEqual(["persist", "event", "will", "will-observation"]);
+    expect(order).toEqual(["persist", "event", "will"]);
     expect(result.kind).toBe("wait");
   });
 
@@ -265,7 +263,6 @@ describe("ChannelRuntime", () => {
     const { ctx, runtime } = createRuntime(will);
     state.agent?.append.mockImplementation(async () => order.push("persist"));
     ctx.on("yesimbot/event", () => order.push("event"));
-    ctx.on("yesimbot/will", () => order.push("will-observation"));
     const notice: EventRecord<"delivery.failed"> = {
       eventType: "delivery.failed",
       platform: "test",
@@ -283,7 +280,7 @@ describe("ChannelRuntime", () => {
     };
 
     await expect(runtime.handle(notice)).resolves.toMatchObject({ kind: "wait" });
-    expect(order).toEqual(["persist", "event", "will", "will-observation"]);
+    expect(order).toEqual(["persist", "event", "will"]);
   });
 
   it("does not run or join when Will waits", async () => {
@@ -426,7 +423,7 @@ describe("ChannelRuntime", () => {
     ]);
   });
 
-  it("keeps raw assistant output while exposing only sanitized ReplyPlan segments", async () => {
+  it("keeps raw assistant output while removing only inner thought", async () => {
     state.stream = streamFrom([
       {
         type: "message.appended",
@@ -436,7 +433,7 @@ describe("ChannelRuntime", () => {
         message: {
           id: "assistant-1",
           role: "assistant",
-          content: "<inner_thought>private reasoning</inner_thought>first<sep/>second",
+          content: "<inner_thought>private reasoning</inner_thought>first<message/>second",
         },
       },
       { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
@@ -451,12 +448,12 @@ describe("ChannelRuntime", () => {
       {
         turnId: "turn-1",
         messageId: "assistant-1",
-        segments: [[h.text("first")], [h.text("second")]],
+        segments: [[h.text("first"), h("message"), h.text("second")]],
       },
     ]);
   });
 
-  it("splits plain assistant prose on blank lines when the runtime enables the fallback", async () => {
+  it("keeps blank-line prose in one fragment for native message delivery", async () => {
     state.stream = streamFrom([
       {
         type: "message.appended",
@@ -468,34 +465,6 @@ describe("ChannelRuntime", () => {
       { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
     ]);
     const { runtime } = createRuntime({ decide: async () => "trigger" });
-
-    const result = await runtime.handle(record());
-
-    expect(result.kind).toBe("run");
-    if (result.kind !== "run") return;
-    await expect(Array.fromAsync(result.output)).resolves.toEqual([
-      {
-        turnId: "turn-1",
-        messageId: "assistant-1",
-        segments: [[h.text("first part")], [h.text("second part")]],
-      },
-    ]);
-  });
-
-  it("keeps blank-line prose as one segment when the runtime disables the fallback", async () => {
-    state.stream = streamFrom([
-      {
-        type: "message.appended",
-        id: "event-1",
-        timestamp: 1,
-        turnId: "turn-1",
-        message: { id: "assistant-1", role: "assistant", content: "first part\n\nsecond part" },
-      },
-      { type: "turn.done", id: "event-2", timestamp: 2, turnId: "turn-1" },
-    ]);
-    const { runtime } = createRuntime({ decide: async () => "trigger" }, undefined, undefined, {
-      newlineFallback: false,
-    });
 
     const result = await runtime.handle(record());
 
@@ -633,7 +602,7 @@ describe("ChannelRuntime", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it("preserves raw assistant control content in JSONL history", async () => {
+  it("preserves raw assistant output in JSONL history", async () => {
     const directory = await mkdtemp(join(tmpdir(), "yesimbot-raw-assistant-"));
     const path = join(directory, "messages.jsonl");
     const storage = createJsonlStorage(path);
@@ -641,7 +610,7 @@ describe("ChannelRuntime", () => {
       id: "assistant-1",
       timestamp: 1,
       role: "assistant" as const,
-      content: "<inner_thought>private reasoning</inner_thought>first<sep/>second",
+      content: "<inner_thought>private reasoning</inner_thought>first<message/>second",
     };
 
     await storage.append(createMessageEntry(assistant, { id: "entry-assistant", timestamp: 1 }));

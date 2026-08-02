@@ -194,7 +194,7 @@ describe("ChannelStorage", () => {
   it("round-trips Message, Event, and raw assistant reply JSONL entries", async () => {
     const root = await storage.getStoragePath(shared);
     const jsonl = createJsonlStorage(join(root, "sessions", "messages.jsonl"));
-    const reply = "<inner_thought>private</inner_thought>first<sep/>second";
+    const reply = "<inner_thought>private</inner_thought>first<message/>second";
     const message = createMessage({
       platform: shared.platform,
       selfId: shared.selfId,
@@ -238,6 +238,6 @@ describe("ChannelStorage", () => {
       data: { type: "yesimbot.event", data: { eventType: "delivery.failed" } },
     });
     expect(entries[2]).toMatchObject({ type: "message", data: { content: reply } });
-    expect(parseReply(reply)).toEqual([[h.text("first")], [h.text("second")]]);
+    expect(parseReply(reply)).toEqual([[h.text("first"), h("message"), h.text("second")]]);
   });
 });

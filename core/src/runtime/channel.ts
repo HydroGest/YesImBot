@@ -29,7 +29,7 @@ import {
 import { createModelInputPlugin } from "./model-input.js";
 import { OutputQueue } from "./output-queue.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
-import { parseReply, type ParseReplyOptions } from "./reply.js";
+import { parseReply } from "./reply.js";
 import { ChannelScope, scopeMapKey } from "./storage.js";
 import type { WillEngine } from "./will.js";
 
@@ -275,9 +275,7 @@ export class ChannelRuntime {
     try {
       for await (const event of stream) {
         if (isAssistantMessage(event)) {
-          const segments = parseAssistantContent(event.message.content, {
-            newlineFallback: this.opts.config.reply.newlineFallback,
-          });
+          const segments = parseAssistantContent(event.message.content);
           if (segments !== undefined) output.push({ turnId: event.turnId, messageId: event.message.id, segments });
         }
         if (event.type === "turn.failed") {
@@ -348,7 +346,7 @@ export function renderAssistantText(content: AssistantContent): string | undefin
   return text.trim().length > 0 ? text : undefined;
 }
 
-export function parseAssistantContent(content: AssistantContent, options?: ParseReplyOptions): Element[][] | undefined {
+export function parseAssistantContent(content: AssistantContent): Element[][] | undefined {
   const text = renderAssistantText(content);
-  return text === undefined ? undefined : parseReply(text, options);
+  return text === undefined ? undefined : parseReply(text);
 }

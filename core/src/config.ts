@@ -32,7 +32,6 @@ export interface Config {
   reply: {
     pacing: PacingConfig;
     customInnerThought: boolean;
-    newlineFallback: boolean;
   };
 }
 
@@ -96,9 +95,6 @@ export const Config: Schema<Config> = Schema.intersect([
       customInnerThought: Schema.boolean()
         .description("在系统提示中加入 Core 自定义 <inner_thought> 内心独白协议")
         .default(false),
-      newlineFallback: Schema.boolean()
-        .description("无 <sep/> 时，保守地把纯文本空行分段作为回退")
-        .default(true),
     }),
   }).description("回复分段与节奏"),
 ]) as Schema<Config>;

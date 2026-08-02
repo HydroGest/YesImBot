@@ -79,9 +79,9 @@ published or loaded, and there is no constitution version constant.
 `<inner_thought>` protocol to the constitution when enabled; when disabled the
 prompt contains no Core-owned inner-thought instruction. Provider-native
 reasoning parts are preserved by `@yesimbot/agent-runtime` either way.
-`reply.newlineFallback` (default `true`) lets `parseReply` conservatively split
-plain prose on blank lines only when no `<sep/>` is present; `<sep/>` remains the
-primary model-authored message boundary and uncertain text stays one message.
+`<message>` is the sole explicit message boundary. Core passes its element tree to
+the selected platform encoder, including nested `message` elements; Core never
+splits blank-line prose.
 
 ## Storage and records
 
