@@ -1,7 +1,7 @@
 import { type AgentPlugin, type AgentTool, jsonSchema } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
 import type { OneBot, OneBotBot } from "koishi-plugin-adapter-onebot";
-import type { AgentPluginFactory, ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelPluginFactory, ChannelPluginContext } from "koishi-plugin-yesimbot";
 
 import { createForwardReader } from "./forward.js";
 import type { ForwardReaderConfig, ForwardResult, ForwardToolInput } from "./types.js";
@@ -112,8 +112,8 @@ function createOneBotTools(bot: Bot, config: Readonly<ForwardReaderConfig>): Age
   return [getForwardMessageTool, createReactionTool, setEssenceTool];
 }
 
-function createOneBotPluginFactory(config: OnebotUtilsConfig): AgentPluginFactory {
-  return async (scope: ChannelScope, bot: Bot) => {
+function createOneBotPluginFactory(config: OnebotUtilsConfig): ChannelPluginFactory {
+  return async ({ scope, bot }: ChannelPluginContext) => {
     if (scope.platform !== "onebot") return null;
 
     const forwardConfig = Object.freeze({
@@ -152,7 +152,7 @@ export default class OnebotUtilsPlugin {
 
   public async start(): Promise<void> {
     this.disposeAgentPlugin?.();
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin(createOneBotPluginFactory(this.config));
+    this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(createOneBotPluginFactory(this.config));
   }
 
   public async stop(): Promise<void> {

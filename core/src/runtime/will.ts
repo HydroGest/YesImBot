@@ -37,17 +37,6 @@ export namespace WillEngine {
   }
 }
 
-export interface WillEngineObservation {
-  readonly event: Message | Event;
-  readonly decision: WillEngine.Decision;
-}
-
-declare module "koishi" {
-  interface Events {
-    "yesimbot/will": (observation: WillEngineObservation) => void;
-  }
-}
-
 export class RoutingWillEngine implements WillEngine {
   private readonly config: RoutingConfig;
 

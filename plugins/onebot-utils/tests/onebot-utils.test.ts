@@ -1,5 +1,5 @@
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
-import type { AgentPluginFactory } from "koishi-plugin-yesimbot";
+import type { ChannelPluginFactory, ChannelPluginContext } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -45,13 +45,13 @@ function createContext() {
     vi.fn<() => ReturnType<typeof createLogger>>(() => scopedLogger),
     createLogger(),
   );
-  const factories: AgentPluginFactory[] = [];
+  const factories: ChannelPluginFactory[] = [];
   const dispose = vi.fn<() => void>();
   const ctx = {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      registerAgentPlugin: vi.fn((factory: AgentPluginFactory) => {
+      registerChannelPlugin: vi.fn((factory: ChannelPluginFactory) => {
         factories.push(factory);
         return dispose;
       }),
@@ -82,7 +82,7 @@ async function createRuntime(
   const { ctx, factories } = createContext();
   const plugin = new OnebotUtilsPlugin(ctx as never, config as never);
   await plugin.start();
-  const runtimePlugin = await factories[0]!(createChannelScope() as never, bot as never);
+  const runtimePlugin = await factories[0]!({ scope: createChannelScope(), bot } as never);
   const tools = await getTools(runtimePlugin);
 
   return {
@@ -107,7 +107,7 @@ describe("onebot-utils plugin", () => {
     await plugin.start();
     await plugin.stop();
 
-    expect(ctx.yesimbot.registerAgentPlugin).toHaveBeenCalledOnce();
+    expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledOnce();
     expect(dispose).toHaveBeenCalledOnce();
   });
 
@@ -125,7 +125,7 @@ describe("onebot-utils plugin", () => {
     await plugin.start();
 
     await expect(
-      factories[0]!({ platform: "discord", selfId: "bot", channelId: "channel" } as never, {} as never),
+      factories[0]!({ scope: { platform: "discord", selfId: "bot", channelId: "channel" } } as never),
     ).resolves.toBeNull();
   });
 
@@ -134,7 +134,7 @@ describe("onebot-utils plugin", () => {
     const plugin = new OnebotUtilsPlugin(ctx as never, {});
     await plugin.start();
 
-    const runtimePlugin = await factories[0]!(createChannelScope() as never, {} as never);
+    const runtimePlugin = await factories[0]!({ scope: createChannelScope() } as never);
     const tools = await getTools(runtimePlugin);
 
     expect(tools.map((tool) => tool.name)).toEqual([

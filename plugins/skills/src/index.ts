@@ -92,7 +92,7 @@ export default class SkillPlugin {
       },
     };
 
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin(() => {
+    this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(() => {
       return {
         name: "skill",
         tools: [skillTool],

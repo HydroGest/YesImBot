@@ -46,7 +46,7 @@ export default class SchedulePlugin {
     try {
       this.scheduler = new ScheduleScheduler(this.store, (event) => this.ctx.yesimbot.trigger(event));
       await this.scheduler.start();
-      this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((scope) => {
+      this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope }) => {
         return {
           name: "schedule",
           tools: () => createScheduleTools(scope, this.store, () => this.scheduler?.rearm() ?? Promise.resolve()),

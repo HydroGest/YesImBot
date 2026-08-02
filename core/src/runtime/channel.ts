@@ -169,7 +169,6 @@ export class ChannelRuntime {
       this.assertOpen();
       const input = await this.commit(record);
       const decision = await this.opts.will.decide(input, this.readState());
-      this.ctx.emit("yesimbot/will", { event: input, decision });
       return this.applyDecision(input, decision);
     });
   }

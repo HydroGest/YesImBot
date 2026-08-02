@@ -108,7 +108,7 @@ export default class SearchService {
     }
 
     this.disposeAgentPlugin?.();
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin(() => {
+    this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(() => {
       return {
         name: "search-service",
         tools: searchTools,

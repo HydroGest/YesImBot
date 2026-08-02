@@ -16,7 +16,7 @@ import SchedulePlugin from "../src/index.js";
 import { ScheduleScheduler } from "../src/scheduler.js";
 import type { ScheduleRow } from "../src/types.js";
 
-type Factory = (scope: ChannelScope, bot: unknown) => AgentPlugin;
+type Factory = (context: { readonly scope: ChannelScope }) => AgentPlugin;
 
 type CommandRecord = {
   name: string;
@@ -96,7 +96,7 @@ function createContext(model: TestModel) {
   const factories: Factory[] = [];
   const { commands, command } = createCommandMock();
   const trigger = vi.fn(async () => undefined);
-  const registerAgentPlugin = vi.fn((factory: Factory) => {
+  const registerChannelPlugin = vi.fn((factory: Factory) => {
     factories.push(factory);
     return vi.fn();
   });
@@ -114,9 +114,9 @@ function createContext(model: TestModel) {
     }),
     command,
     model,
-    yesimbot: { trigger, registerAgentPlugin },
+    yesimbot: { trigger, registerChannelPlugin },
   };
-  return { ctx, ready, dispose, factories, commands, trigger, registerAgentPlugin };
+  return { ctx, ready, dispose, factories, commands, trigger, registerChannelPlugin };
 }
 
 async function toolNames(plugin: AgentPlugin): Promise<string[]> {
@@ -169,16 +169,16 @@ describe("SchedulePlugin", () => {
 
   it("registers the model, AgentPlugin factory, and authority-4 commands on ready", async () => {
     const model = createModel();
-    const { ctx, ready, factories, commands, registerAgentPlugin } = createContext(model);
+    const { ctx, ready, factories, commands, registerChannelPlugin } = createContext(model);
     const plugin = new SchedulePlugin(ctx as never);
 
     expect(model.extend).toHaveBeenCalledOnce();
-    expect(registerAgentPlugin).not.toHaveBeenCalled();
+    expect(registerChannelPlugin).not.toHaveBeenCalled();
     expect(commands).toHaveLength(0);
 
     await ready[0]?.();
 
-    expect(registerAgentPlugin).toHaveBeenCalledOnce();
+    expect(registerChannelPlugin).toHaveBeenCalledOnce();
     const names = commands.map(({ name }) => name);
     expect(names).toEqual([
       "yesimbot.schedule",
@@ -198,7 +198,7 @@ describe("SchedulePlugin", () => {
       expect(record.optionCalls.map(({ name }) => name)).not.toContain("channel");
     }
 
-    const agent = factories[0]?.({ type: "shared", platform: "onebot", selfId: "bot", channelId: "room" }, {});
+    const agent = factories[0]?.({ scope: { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } });
     expect(agent).toBeDefined();
     expect(await toolNames(agent!)).toEqual([
       "schedule_create",
@@ -341,12 +341,12 @@ describe("SchedulePlugin", () => {
     const upcoming = futureRow();
     model.tables.set("yesimbot_schedule", [upcoming]);
 
-    const { ctx, ready, dispose, trigger, registerAgentPlugin } = createContext(model);
+    const { ctx, ready, dispose, trigger, registerChannelPlugin } = createContext(model);
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
     expect(vi.getTimerCount()).toBe(1);
 
-    const disposeFactory = registerAgentPlugin.mock.results[0]?.value as () => void;
+    const disposeFactory = registerChannelPlugin.mock.results[0]?.value as () => void;
     const clearSpy = vi.spyOn(globalThis, "clearTimeout");
     await dispose[0]?.();
 
@@ -373,7 +373,7 @@ describe("SchedulePlugin", () => {
     const { ctx, ready, factories, trigger } = createContext(model);
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
-    const agent = factories[0]!({ type: "shared", platform: "onebot", selfId: "bot", channelId: "room" }, {});
+    const agent = factories[0]!({ scope: { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } });
     const create = (await agent.tools!({} as never))!.find((tool) => tool.name === "schedule_create")!;
 
     await create.execute!({ title: "agent", prompt: "Run.", at: "2026-08-01T00:01:00.000Z" }, {} as never);
@@ -407,7 +407,7 @@ describe("SchedulePlugin", () => {
     const rearm = vi.spyOn(ScheduleScheduler.prototype, "rearm");
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
-    const agent = factories[0]!({ type: "shared", platform: "onebot", selfId: "bot", channelId: "room" }, {});
+    const agent = factories[0]!({ scope: { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } });
     const tools = (await agent.tools!({} as never))!;
     const create = tools.find((tool) => tool.name === "schedule_create")!;
     const update = tools.find((tool) => tool.name === "schedule_update")!;

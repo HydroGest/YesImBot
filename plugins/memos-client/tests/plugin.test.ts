@@ -93,8 +93,8 @@ function createContext() {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      registerAgentPlugin: vi.fn<(factory: (scope: any, bot: any) => AgentPlugin) => () => void>((factory) => {
-        factories.push((context) => factory(context.channel ?? context, context.bot));
+      registerChannelPlugin: vi.fn<(factory: (context: any) => AgentPlugin) => () => void>((factory) => {
+        factories.push(factory);
         return dispose;
       }),
     },
@@ -105,7 +105,7 @@ function createContext() {
 
 function channelContext() {
   return {
-    channel: {
+    scope: {
       platform: "onebot",
       selfId: "bot-raw",
       channelId: "group-raw",
@@ -136,7 +136,7 @@ describe("MemosClientPlugin", () => {
 
     await plugin.start();
 
-    expect(ctx.yesimbot.registerAgentPlugin).not.toHaveBeenCalled();
+    expect(ctx.yesimbot.registerChannelPlugin).not.toHaveBeenCalled();
     expect(scopedLogger.warn).toHaveBeenCalledWith("MemOS client plugin disabled: apiKey is required.");
   });
 
@@ -146,7 +146,7 @@ describe("MemosClientPlugin", () => {
 
     await plugin.start();
 
-    expect(ctx.yesimbot.registerAgentPlugin).toHaveBeenCalledOnce();
+    expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledOnce();
     const runtimePlugin = factories[0]!(channelContext() as never);
     const tools = await getTools(runtimePlugin);
 

@@ -89,7 +89,7 @@ export default class McpClientPlugin {
       }
 
       this.disposeAgentPlugin?.();
-      this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin(() => {
+      this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(() => {
         return {
           name: "mcp-client",
           tools: registeredTools,

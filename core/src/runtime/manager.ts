@@ -12,15 +12,13 @@ import { ChannelRuntime, type ChannelRuntimeOptions, type ChannelRuntimeResult }
 import { ChannelScope, ChannelStorage, scopeMapKey } from "./storage.js";
 import { createWillEngine } from "./will.js";
 
-export interface RuntimeManagerOptions {
-  readonly config: Config;
-  readonly logger: Logger;
-  readonly getAgentPluginFactories: () => readonly AgentPluginFactory[];
+export interface ChannelPluginContext {
+  readonly scope: ChannelScope;
+  readonly bot: Bot;
 }
 
-export interface AgentPluginFactory {
-  (scope: ChannelScope, bot: Bot): Awaitable<AgentPlugin | null>;
-}
+export type ChannelPluginFactory =
+  (context: ChannelPluginContext) => Awaitable<AgentPlugin | null>;
 
 export class RuntimeManager {
   private readonly runtimes = new Map<string, ChannelRuntime>();
@@ -29,8 +27,10 @@ export class RuntimeManager {
   private stopTask: Promise<void> | undefined;
 
   private readonly ctx: Context;
+  private readonly config: Config;
   private readonly model: ModelService;
-  private readonly opts: RuntimeManagerOptions;
+  private readonly logger: Logger;
+  private readonly channelPlugins: ReadonlySet<ChannelPluginFactory>;
   private readonly assets: AssetService;
   private readonly storage: ChannelStorage;
 
@@ -39,13 +39,16 @@ export class RuntimeManager {
     model: ModelService,
     assets: AssetService,
     storage: ChannelStorage,
-    options: RuntimeManagerOptions,
+    config: Config,
+    channelPlugins: ReadonlySet<ChannelPluginFactory>,
   ) {
     this.ctx = ctx;
+    this.config = config;
     this.model = model;
+    this.logger = ctx.logger("runtime");
     this.assets = assets;
     this.storage = storage;
-    this.opts = options;
+    this.channelPlugins = channelPlugins;
   }
 
   public async route(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
@@ -85,7 +88,7 @@ export class RuntimeManager {
         await runtime.stop();
       } catch (cause) {
         failure = cause;
-        this.warn("runtime.stop_failed", { scope, cause });
+        this.logger.warn("runtime.stop_failed", { scope, cause });
       } finally {
         if (this.runtimes.get(key) === runtime) this.runtimes.delete(key);
       }
@@ -94,13 +97,13 @@ export class RuntimeManager {
       await createJsonlStorage(join(await this.storage.getStoragePath(scope), "sessions", "messages.jsonl")).clear();
     } catch (cause) {
       failure ??= cause;
-      this.warn("storage_clear_failed", { scope, cause });
+      this.logger.warn("storage_clear_failed", { scope, cause });
     }
     try {
       await this.assets.createStore(scope).clear();
     } catch (cause) {
+      this.logger.warn("asset_clear_failed", { scope, cause });
       failure ??= cause;
-      this.warn("asset_clear_failed", { scope, cause });
     }
     if (failure) throw failure;
   }
@@ -157,22 +160,21 @@ export class RuntimeManager {
       (candidate) => candidate.platform === scope.platform && candidate.selfId === scope.selfId,
     );
     if (!bot) throw new Error(`No Bot is available for ${scope.platform}:${scope.selfId}`);
-    const resolved = this.model.resolveChatModel(this.opts.config.chatModel);
-    const factories = this.opts.getAgentPluginFactories();
-    const plugins = (await Promise.all(factories.map((factory) => factory(scope, bot)))).filter(
-      (plugin): plugin is AgentPlugin => plugin !== null,
-    );
+    const resolved = this.model.resolveChatModel(this.config.chatModel);
+    const plugins = (await Promise.all(
+      [...this.channelPlugins].map((resolver) => resolver({ scope, bot })),
+    )).filter((plugin): plugin is AgentPlugin => plugin !== null);
     const options: ChannelRuntimeOptions = {
       config: {
-        ...this.opts.config,
-        basePath: resolve(this.ctx.baseDir, this.opts.config.basePath || this.ctx.baseDir),
+        ...this.config,
+        basePath: resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir),
       },
       scope,
       bot,
-      will: createWillEngine(this.ctx, this.opts.config.will),
+      will: createWillEngine(this.ctx, this.config.will),
       assets: this.assets.createStore(scope),
       model: resolved.model,
-      imageBudget: this.opts.config.imageInput ? ({ ...this.opts.config.imageInput } as ImageBudget) : null,
+      imageBudget: this.config.imageInput ? ({ ...this.config.imageInput } as ImageBudget) : null,
       agentPlugins: plugins,
       storage: createJsonlStorage(join(await this.storage.getStoragePath(scope), "sessions", "messages.jsonl")),
     };
@@ -196,17 +198,11 @@ export class RuntimeManager {
     try {
       await runtime.stop();
     } catch (cause) {
-      this.warn("runtime.stop_failed", { key, cause });
+      this.logger.warn("runtime.stop_failed", { key, cause });
     }
   }
 
   private assertOpen(): void {
     if (this.stopped) throw new Error("Runtime manager is stopped");
-  }
-
-  private warn(event: string, fields: Record<string, unknown>): void {
-    try {
-      this.opts.logger.warn({ event, ...fields });
-    } catch {}
   }
 }

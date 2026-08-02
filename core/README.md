@@ -10,7 +10,7 @@ Gateway, channel storage, assets, and the per-channel runtime.
 - `model`
 - `assets`, an `AssetService`; call `assets.createStore(scope)` to obtain an
   `AssetStore` with `put()`, `get()`, and `clear()` for that channel
-- `registerTranslator()` and `registerAgentPlugin()`
+- `registerTranslator()` and `registerChannelPlugin()`
 - `getStoragePath(scope)`
 - `reset(scope)` and `stop()`
 
@@ -32,7 +32,7 @@ helper, storage implementation, Gateway, RuntimeManager, or ChannelRuntime.
 
 The package root exports `Config`, `ChannelScope`, input contracts and input
 helpers, `PlatformTranslator`, `RecordBase`, `assembleEvent`, `AssetService`, `AssetStore`,
-`AgentPluginFactory`, and `YesImBotService`. The only supported code subpath is `./model`.
+`ChannelPluginFactory`, and `YesImBotService`. The only supported code subpath is `./model`.
 
 ## Gateway and runtime
 

@@ -1,10 +1,10 @@
-import type { AgentMessage, AgentPlugin, ModelMessageContext } from "@yesimbot/agent-runtime";
+import type { AgentPlugin, ModelMessageContext } from "@yesimbot/agent-runtime";
 import type { FilePart, UserModelMessage } from "ai";
 import { h, type Element } from "koishi";
 
 import type { AssetStore } from "../asset.js";
 import type { ImageBudget } from "../config.js";
-import { EventRecord, isEvent, isMessage, Message, MessageRecord, Event } from "../messages.js";
+import { Event, isEvent, isMessage, Message } from "../messages.js";
 
 const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 

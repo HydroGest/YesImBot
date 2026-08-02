@@ -7,7 +7,7 @@ import { Gateway, type PlatformTranslator } from "./gateway/index.js";
 import { createOneBotTranslator } from "./gateway/onebot.js";
 import type { EventMap, EventRecord } from "./messages.js";
 import { ModelService } from "./model/index.js";
-import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
+import { RuntimeManager, type ChannelPluginFactory } from "./runtime/index.js";
 import { ChannelScope, ChannelStorage } from "./runtime/storage.js";
 
 declare module "koishi" {
@@ -27,7 +27,7 @@ export default class YesImBotService extends Service<Config> {
   private readonly storage: ChannelStorage;
   private readonly rt: RuntimeManager;
   private readonly gate: Gateway;
-  private readonly plugins = new Set<{ readonly factory: AgentPluginFactory }>();
+  private readonly channelPlugins = new Set<ChannelPluginFactory>();
   private readonly commandDisposers = new Set<() => unknown>();
   private triggerClosed = false;
   private readonly triggerTasks = new Set<Promise<void>>();
@@ -42,11 +42,7 @@ export default class YesImBotService extends Service<Config> {
     });
     this.storage = new ChannelStorage(ctx, { basePath: config.basePath || ctx.baseDir });
     this.assets = new AssetService(this.storage);
-    this.rt = new RuntimeManager(ctx, this.model, this.assets, this.storage, {
-      config,
-      logger: this.logger,
-      getAgentPluginFactories: () => [...this.plugins].map((p) => p.factory),
-    });
+    this.rt = new RuntimeManager(ctx, this.model, this.assets, this.storage, config, this.channelPlugins);
     this.gate = new Gateway(
       ctx,
       {
@@ -78,10 +74,9 @@ export default class YesImBotService extends Service<Config> {
     return this.gate.registerTranslator(translator);
   }
 
-  public registerAgentPlugin(factory: AgentPluginFactory): () => void {
-    const registration = { factory };
-    this.plugins.add(registration);
-    return () => this.plugins.delete(registration);
+  public registerChannelPlugin(resolver: ChannelPluginFactory): () => void {
+    this.channelPlugins.add(resolver);
+    return () => this.channelPlugins.delete(resolver);
   }
 
   public getStoragePath(scope: ChannelScope): Promise<string> {
@@ -184,5 +179,5 @@ export type { AssetService, AssetStore } from "./asset.js";
 export type { PlatformTranslator } from "./gateway/types.js";
 export * from "./messages.js";
 export * from "./model/index.js";
-export type { AgentPluginFactory } from "./runtime/index.js";
+export type { ChannelPluginFactory, ChannelPluginContext } from "./runtime/index.js";
 export type { ChannelScope } from "./runtime/storage.js";

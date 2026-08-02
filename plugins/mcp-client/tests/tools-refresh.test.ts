@@ -62,7 +62,7 @@ function createContext() {
     logger: rootLogger,
     on: vi.fn<() => void>(),
     yesimbot: {
-      registerAgentPlugin: vi.fn<(factory: () => AgentPlugin) => () => void>((factory) => {
+      registerChannelPlugin: vi.fn<(factory: () => AgentPlugin) => () => void>((factory) => {
         factories.push(factory);
         const dispose = vi.fn<() => void>();
         disposers.push(dispose);
@@ -140,7 +140,7 @@ describe("mcp-client tool registry", () => {
 
     expect(client.listTools).toHaveBeenCalledTimes(2);
     expect(disposers[0]).toHaveBeenCalledOnce();
-    expect(ctx.yesimbot.registerAgentPlugin).toHaveBeenCalledTimes(2);
+    expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledTimes(2);
     expect(await resolveToolNames(factories[1]!())).toEqual(["docs-gamma"]);
   });
 });

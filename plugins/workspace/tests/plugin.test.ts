@@ -55,7 +55,7 @@ vi.mock("koishi", () => ({
 import WorkspacePlugin from "../src";
 import { Workspace } from "../src/workspace";
 
-type WorkspaceFactory = (scope: ChannelScope, bot: unknown) => AgentPlugin;
+type WorkspaceFactory = (context: { readonly scope: ChannelScope }) => AgentPlugin;
 
 function workspaceCache(plugin: WorkspacePlugin): ReadonlyMap<string, Workspace> {
   const value: unknown = Reflect.get(plugin, "workspaces");
@@ -106,7 +106,7 @@ function createContext(baseDir: string) {
       }),
       yesimbot: {
         getStoragePath,
-        registerAgentPlugin: vi.fn((factory: WorkspaceFactory) => {
+        registerChannelPlugin: vi.fn((factory: WorkspaceFactory) => {
           factories.push(factory);
           return vi.fn();
         }),
@@ -145,7 +145,7 @@ describe("WorkspacePlugin", () => {
       }),
       yesimbot: {
         getStoragePath,
-        registerAgentPlugin: vi.fn((factory: WorkspaceFactory) => {
+        registerChannelPlugin: vi.fn((factory: WorkspaceFactory) => {
           factories.push(factory);
           return vi.fn();
         }),
@@ -164,7 +164,7 @@ describe("WorkspacePlugin", () => {
       channelId: "room",
       type: "shared",
     } satisfies ChannelScope;
-    const agentPlugin = factories[0]?.(scope, {});
+    const agentPlugin = factories[0]?.({ scope });
     expect(agentPlugin).toBeDefined();
     expect((await tools(agentPlugin!)).map((tool) => tool.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
     expect(getStoragePath).toHaveBeenCalledWith(scope);
@@ -188,7 +188,7 @@ describe("WorkspacePlugin", () => {
       channelId: "room",
       type: "shared",
     } satisfies ChannelScope;
-    await tools(mocks.factories[0]!(scope, {}));
+    await tools(mocks.factories[0]!({ scope }));
     const root = join(baseDir, "channels", "shared-onebot-room", "workspace");
 
     await mocks.dispose[0]?.();
@@ -212,7 +212,7 @@ describe("WorkspacePlugin", () => {
       enableNetwork: false,
     });
     await first.ready[0]?.();
-    await tools(first.factories[0]!(scope, {}));
+    await tools(first.factories[0]!({ scope }));
     const firstRoot = workspaceRoot(firstPlugin, JSON.stringify(["onebot", "room"]));
     await first.dispose[0]?.();
 
@@ -223,7 +223,7 @@ describe("WorkspacePlugin", () => {
       enableNetwork: false,
     });
     await second.ready[0]?.();
-    await tools(second.factories[0]!(scope, {}));
+    await tools(second.factories[0]!({ scope }));
     expect(workspaceRoot(secondPlugin, JSON.stringify(["onebot", "room"]))).toBe(firstRoot);
   });
 
@@ -237,10 +237,10 @@ describe("WorkspacePlugin", () => {
     });
     await mocks.ready[0]?.();
     const factory = mocks.factories[0]!;
-    await tools(factory({ platform: "onebot", selfId: "old", channelId: "room", type: "shared" }, {}));
-    await tools(factory({ platform: "onebot", selfId: "new", channelId: "room", type: "shared" }, {}));
-    await tools(factory({ platform: "onebot", selfId: "old", channelId: "room", type: "direct" }, {}));
-    await tools(factory({ platform: "onebot", selfId: "new", channelId: "room", type: "direct" }, {}));
+    await tools(factory({ scope: { platform: "onebot", selfId: "old", channelId: "room", type: "shared" } }));
+    await tools(factory({ scope: { platform: "onebot", selfId: "new", channelId: "room", type: "shared" } }));
+    await tools(factory({ scope: { platform: "onebot", selfId: "old", channelId: "room", type: "direct" } }));
+    await tools(factory({ scope: { platform: "onebot", selfId: "new", channelId: "room", type: "direct" } }));
 
     expect(workspaceCache(plugin).size).toBe(3);
     expect(mocks.getStoragePath).toHaveBeenCalledTimes(3);
@@ -259,10 +259,9 @@ describe("WorkspacePlugin", () => {
       enableNetwork: false,
     });
     await mocks.ready[0]?.();
-    const prompt = await mocks.factories[0]!(
-      { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" },
-      {},
-    ).appendSystemPrompt?.({} as never);
+    const prompt = await mocks.factories[0]!({
+      scope: { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" },
+    }).appendSystemPrompt?.({} as never);
     expect(String(prompt)).toContain("Network access: disabled");
     expect(String(prompt)).toContain("Command timeout: 5000 ms");
     expect(String(prompt)).toContain("/shared");

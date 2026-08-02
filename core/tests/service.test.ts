@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
         reset: ReturnType<typeof vi.fn>;
         stop: ReturnType<typeof vi.fn>;
         trigger: ReturnType<typeof vi.fn>;
-        options: { getAgentPluginFactories(): readonly AgentPluginFactory[] };
+        channelPlugins: ReadonlySet<ChannelPluginFactory>;
       }
     | undefined,
 }));
@@ -36,7 +36,8 @@ vi.mock("../src/runtime/index.js", () => ({
       _model: unknown,
       _assets: unknown,
       _storage: unknown,
-      readonly options: { getAgentPluginFactories(): readonly AgentPluginFactory[] },
+      _config: unknown,
+      readonly channelPlugins: ReadonlySet<ChannelPluginFactory>,
     ) {
       state.runtime = this;
     }
@@ -45,7 +46,7 @@ vi.mock("../src/runtime/index.js", () => ({
 
 import type { Config } from "../src/config.js";
 import { Gateway } from "../src/gateway/index.js";
-import type { AgentPluginFactory } from "../src/index.js";
+import type { ChannelPluginFactory } from "../src/index.js";
 import YesImBotService from "../src/index.js";
 
 const config: Config = {
@@ -103,7 +104,7 @@ describe("YesImBotService facade", () => {
 
     expect(ctx.yesimbot.model).toBeDefined();
     expect(ctx.yesimbot.registerTranslator).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.registerAgentPlugin).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.registerChannelPlugin).toEqual(expect.any(Function));
     expect(ctx.yesimbot.getStoragePath).toEqual(expect.any(Function));
     expect(ctx.yesimbot.trigger).toEqual(expect.any(Function));
     expect("channelKey" in ctx.yesimbot).toBe(false);
@@ -127,8 +128,8 @@ describe("YesImBotService facade", () => {
     expect(service["gate"]["config"].allowedChannels).toEqual(allowedChannels);
   });
 
-  it("accepts the public AgentPluginFactory parameters", () => {
-    const factory: AgentPluginFactory = async (scope, bot) => ({
+  it("accepts the public ChannelPluginFactory parameters", () => {
+    const factory: ChannelPluginFactory = async ({ scope, bot }) => ({
       name: `plugin-${scope.platform}`,
       tools: bot ? [] : [],
     });
@@ -326,17 +327,18 @@ describe("YesImBotService facade", () => {
     expect(runtime.route).toHaveBeenCalledOnce();
   });
 
-  it("keeps a later registration of the same Agent plugin factory live", async () => {
+  it("keeps a later registration of the same channel plugin factory live", async () => {
     const { service } = createService();
-    const factory = vi.fn(async () => ({ name: "plugin" }));
-    const disposeFirst = service.registerAgentPlugin(factory);
-    service.registerAgentPlugin(factory);
+    const firstFactory = vi.fn(async () => ({ name: "plugin" }));
+    const secondFactory = vi.fn(async () => ({ name: "plugin" }));
+    const disposeFirst = service.registerChannelPlugin(firstFactory);
+    service.registerChannelPlugin(secondFactory);
 
     disposeFirst();
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room", type: "shared" } as const;
+    const bot = {} as never;
     const plugins = await Promise.all(
-      state.runtime?.options
-        .getAgentPluginFactories()
-        .map((factory) => factory({} as Parameters<AgentPluginFactory>[0], {} as never)) ?? [],
+      [...(state.runtime?.channelPlugins ?? [])].map((f) => f({ scope, bot })),
     );
 
     expect(plugins).toEqual([{ name: "plugin" }]);

@@ -10,7 +10,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { Config as CoreConfig } from "../src/config.js";
 import type { EventRecord, MessageRecord } from "../src/messages.js";
-import { ChannelRuntime, type ChannelRuntimeOptions, RuntimeManager } from "../src/runtime/index.js";
+import { ChannelRuntime, type ChannelRuntimeOptions, RuntimeManager, type ChannelPluginFactory } from "../src/runtime/index.js";
 import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
 import { RoutingWillEngine, WillingnessWillEngine } from "../src/runtime/will.js";
 
@@ -72,7 +72,7 @@ function createManager(
     clear: vi.fn(async () => undefined),
     createStore: vi.fn(() => ({ clear: assets.clear, get: vi.fn(), put: vi.fn() })),
   };
-  const getAgentPluginFactories = vi.fn(() => []);
+  const channelPlugins = new Set<ChannelPluginFactory>();
   const config: CoreConfig = {
     basePath,
     chatModel: "test:model",
@@ -83,11 +83,7 @@ function createManager(
     reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
   };
   return {
-    manager: new RuntimeManager(ctx, modelService, assets as never, storage, {
-      config,
-      logger: { warn: vi.fn() } as never,
-      getAgentPluginFactories,
-    }),
+    manager: new RuntimeManager(ctx, modelService, assets as never, storage, config, channelPlugins),
     assets,
     ctx,
     resolveChatModel,
@@ -97,7 +93,7 @@ function createManager(
     database,
     config,
     storage,
-    getAgentPluginFactories,
+    channelPlugins,
   };
 }
 
@@ -292,15 +288,18 @@ describe("RuntimeManager", () => {
   });
 
   it("snapshots the resolved model and agent plugins per runtime", async () => {
-    const { manager, model, getAgentPluginFactories } = createManager();
+    const { manager, model, channelPlugins } = createManager();
     const first = { name: "first" };
     const second = { name: "second" };
-    getAgentPluginFactories.mockReturnValueOnce([async () => first]).mockReturnValue([async () => second]);
+    channelPlugins.add(async () => first);
+    const result = await manager.route(record("room-a"));
+    expect(runtimeOptions(state.runtimes[0]!)).toMatchObject({ model, agentPlugins: [first] });
+    channelPlugins.clear();
+    channelPlugins.add(async () => second);
+    state.handle.mockResolvedValueOnce({ kind: "join" as const, eventId: "event-2", turnId: "turn-2" });
 
-    await manager.route(record("room-a"));
     await manager.route(record("room-b"));
 
-    expect(runtimeOptions(state.runtimes[0]!)).toMatchObject({ model, agentPlugins: [first] });
     expect(runtimeOptions(state.runtimes[1]!)).toMatchObject({ model, agentPlugins: [second] });
   });
 

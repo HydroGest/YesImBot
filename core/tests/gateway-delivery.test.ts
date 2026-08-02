@@ -120,19 +120,16 @@ function createIntegratedGateway(basePath: string) {
   const database = { get: vi.fn(async () => [{ assignee: "bot-1" }]) };
   Object.assign(ctx, { database });
   ctx.bots.push({ platform: "test", selfId: "bot-1", sendMessage: vi.fn() } as never);
-  const manager = new RuntimeManager(ctx, modelService, assets as never, storage, {
-    config: {
-      basePath,
-      chatModel: "test:model",
-      logLevel: 2,
-      allowedChannels: [],
-      imageInput: false,
-      will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
-      reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
-    },
-    logger: { debug: vi.fn(), warn: vi.fn() } as never,
-    getAgentPluginFactories: () => [],
-  });
+  const config = {
+    basePath,
+    chatModel: "test:model",
+    logLevel: 2,
+    allowedChannels: [],
+    imageInput: false,
+    will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
+    reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
+  };
+  const manager = new RuntimeManager(ctx, modelService, assets as never, storage, config, new Set());
   const gateway = new Gateway(
     ctx,
     {

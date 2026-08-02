@@ -88,7 +88,7 @@ export default class WorkspacePlugin {
     this.logger.info(`Read-only paths: ${JSON.stringify(normalizedMounts.readOnlyPaths, null, 2)}`);
     this.logger.info(`Overlay paths: ${JSON.stringify(normalizedMounts.overlayPaths, null, 2)}`);
 
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((scope) => {
+    this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope }) => {
       return {
         name: "workspace",
         tools: async () => {
