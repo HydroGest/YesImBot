@@ -103,17 +103,13 @@ describe("Workspace filesystem", () => {
     const which = await workspace.bash.exec(`which ${COMMON_COMMANDS.join(" ")}`);
 
     expect(rootListing.exitCode).toBe(0);
-    expect(lines(rootListing.stdout)).toEqual(
-      expect.arrayContaining(["bin", "custom", "home", "tmp", "usr"]),
-    );
+    expect(lines(rootListing.stdout)).toEqual(expect.arrayContaining(["bin", "custom", "home", "tmp", "usr"]));
     expect(binListing.exitCode).toBe(0);
     expect(lines(binListing.stdout)).toEqual(expect.arrayContaining(COMMON_COMMANDS));
     expect(usrBinListing.exitCode).toBe(0);
     expect(lines(usrBinListing.stdout)).toEqual(expect.arrayContaining(COMMON_COMMANDS));
     expect(usrLocalBinListing.exitCode).toBe(0);
-    expect(lines(path.stdout)[0]?.split(":")).toEqual(
-      expect.arrayContaining(["/usr/local/bin", "/usr/bin", "/bin"]),
-    );
+    expect(lines(path.stdout)[0]?.split(":")).toEqual(expect.arrayContaining(["/usr/local/bin", "/usr/bin", "/bin"]));
     expect(which.exitCode).toBe(0);
     for (const command of COMMON_COMMANDS) {
       expect(lines(which.stdout)).toContain(`/usr/bin/${command}`);

@@ -10,9 +10,7 @@ export const searxngConfigSchema: Schema<SearXNGConfig> = Schema.object({
   engines: Schema.array(Schema.string()).default([]).description("搜索引擎列表"),
   language: Schema.string().description("搜索语言"),
   categories: Schema.array(Schema.string()).default([]).description("搜索类别"),
-  safeSearch: Schema.union([Schema.const(0), Schema.const(1), Schema.const(2)]).description(
-    "安全搜索级别",
-  ),
+  safeSearch: Schema.union([Schema.const(0), Schema.const(1), Schema.const(2)]).description("安全搜索级别"),
   username: Schema.string().description("HTTP Basic 用户名"),
   password: Schema.string().description("HTTP Basic 密码"),
 });
@@ -134,17 +132,16 @@ class SearXNGBackend implements SearchBackend {
     const headers: Record<string, string> = {};
 
     if (this.config.username && this.config.password) {
-      const credentials = Buffer.from(`${this.config.username}:${this.config.password}`).toString(
-        "base64",
-      );
+      const credentials = Buffer.from(`${this.config.username}:${this.config.password}`).toString("base64");
       headers.Authorization = `Basic ${credentials}`;
     }
 
     try {
-      const response = await this.ctx.http.get<SearXNGResponse>(
-        normalizeSearchUrl(this.config.endpoint),
-        { params, headers, timeout: this.config.timeoutMs },
-      );
+      const response = await this.ctx.http.get<SearXNGResponse>(normalizeSearchUrl(this.config.endpoint), {
+        params,
+        headers,
+        timeout: this.config.timeoutMs,
+      });
       const rawResults = Array.isArray(response.results) ? response.results : [];
       const mapped = rawResults.map((result) => ({
         title: result.title ?? "",

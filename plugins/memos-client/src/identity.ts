@@ -11,18 +11,13 @@ import type {
 
 const BASE32 = "abcdefghijklmnopqrstuvwxyz234567";
 
-function legacyChannelHash(input: {
-  readonly channelScope: MemosIdentityInput["channelScope"];
-}): string {
+function legacyChannelHash(input: { readonly channelScope: MemosIdentityInput["channelScope"] }): string {
   const scope = input.channelScope;
   const canonical =
     scope.type === "direct"
       ? ["yesimbot.channel", 1, "direct", scope.platform, scope.selfId, scope.channelId]
       : ["yesimbot.channel", 1, "shared", scope.platform, null, scope.channelId];
-  const bytes = createHash("sha256")
-    .update(JSON.stringify(canonical), "utf8")
-    .digest()
-    .subarray(0, 16);
+  const bytes = createHash("sha256").update(JSON.stringify(canonical), "utf8").digest().subarray(0, 16);
   let buffer = 0;
   let bits = 0;
   let output = "";
@@ -54,11 +49,7 @@ function sceneForChannelType(channelType: MemosChannelType): MemosIdentityInfo["
   return channelType === "group" ? "group_chat" : "private_chat";
 }
 
-function deriveSubjectHash(
-  platform: string,
-  channelType: MemosChannelType,
-  subjectRawId: string,
-): string {
+function deriveSubjectHash(platform: string, channelType: MemosChannelType, subjectRawId: string): string {
   return hashMemosIdParts(["memos-subject-v1", platform, channelType, subjectRawId]);
 }
 
@@ -96,17 +87,9 @@ function deriveImportChunkConversationHash(input: MemosImportChunkIdentityInput)
 export function deriveMemosIdentity(input: MemosIdentityInput): MemosIdentity {
   const channelScopeId = legacyChannelHash(input);
   const subjectRawId = input.channelScope.channelId;
-  const subjectHash = deriveSubjectHash(
-    input.channelScope.platform,
-    input.channelType,
-    subjectRawId,
-  );
+  const subjectHash = deriveSubjectHash(input.channelScope.platform, input.channelType, subjectRawId);
   const agentHash = deriveAgentHash(input.channelScope.platform, input.channelScope.selfId);
-  const authorHash = hashMemosIdParts([
-    "memos-author-v1",
-    input.channelScope.platform,
-    input.authorId,
-  ]);
+  const authorHash = hashMemosIdParts(["memos-author-v1", input.channelScope.platform, input.authorId]);
   const messageHash = input.messageId
     ? hashMemosIdParts(["memos-message-v1", input.channelScope.platform, input.messageId])
     : undefined;
@@ -142,16 +125,10 @@ export function deriveMemosIdentity(input: MemosIdentityInput): MemosIdentity {
   };
 }
 
-export function deriveMemosImportChunkIdentity(
-  input: MemosImportChunkIdentityInput,
-): MemosIdentity {
+export function deriveMemosImportChunkIdentity(input: MemosImportChunkIdentityInput): MemosIdentity {
   const channelScopeId = legacyChannelHash(input);
   const subjectRawId = input.channelScope.channelId;
-  const subjectHash = deriveSubjectHash(
-    input.channelScope.platform,
-    input.channelType,
-    subjectRawId,
-  );
+  const subjectHash = deriveSubjectHash(input.channelScope.platform, input.channelType, subjectRawId);
   const conversationHash = deriveImportChunkConversationHash(input);
   const memoryScope: ResolvedMemosMemoryScope = input.channelType === "group" ? "channel" : "user";
   const info: MemosIdentityInfo = {

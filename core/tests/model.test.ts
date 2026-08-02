@@ -50,11 +50,7 @@ function createProviderWithImage(): ModelProvider {
   };
 }
 
-async function createModelService(
-  models: unknown,
-  basePath?: string,
-  provider?: ModelProvider,
-): Promise<ModelService> {
+async function createModelService(models: unknown, basePath?: string, provider?: ModelProvider): Promise<ModelService> {
   const directory = basePath ?? (await createModelsPath(models)).slice(0, -"/models.json".length);
   const ctx = new Context();
   ctx.baseDir = "/";
@@ -65,9 +61,7 @@ async function createModelService(
 }
 
 afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })),
-  );
+  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })));
 });
 
 describe("models.json modalities", () => {

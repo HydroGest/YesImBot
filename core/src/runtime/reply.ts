@@ -53,9 +53,7 @@ function strip(element: Element): Element {
   return h(
     element.type,
     element.attrs,
-    element.children
-      .filter((child) => child.type !== INNER_THOUGHT && child.type !== SEPARATOR)
-      .map(strip),
+    element.children.filter((child) => child.type !== INNER_THOUGHT && child.type !== SEPARATOR).map(strip),
   );
 }
 
@@ -84,14 +82,11 @@ function expand(value: string, nonce: string, captured: string[]): string {
     if (start < 0) return expanded + value.slice(cursor);
     const end = value.indexOf(MARK, start + nonce.length);
     if (end < 0) return expanded + value.slice(cursor);
-    expanded +=
-      value.slice(cursor, start) + (captured[Number(value.slice(start + nonce.length, end))] ?? "");
+    expanded += value.slice(cursor, start) + (captured[Number(value.slice(start + nonce.length, end))] ?? "");
     cursor = end + 1;
   }
 }
 
 function isBlank(segment: readonly Element[]): boolean {
-  return segment.every(
-    (element) => element.type === "text" && `${element.attrs["content"] ?? ""}`.trim().length === 0,
-  );
+  return segment.every((element) => element.type === "text" && `${element.attrs["content"] ?? ""}`.trim().length === 0);
 }

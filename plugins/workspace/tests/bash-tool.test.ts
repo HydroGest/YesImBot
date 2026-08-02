@@ -45,9 +45,7 @@ describe("bash-tool adapter", () => {
 
   it("combines the agent abort signal with the command timeout signal", async () => {
     const workspace = await createWorkspace();
-    const exec = vi
-      .spyOn(workspace.bash, "exec")
-      .mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    const exec = vi.spyOn(workspace.bash, "exec").mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
     const tools = await createBashToolSet(workspace);
     const bash = tools.find((tool) => tool.name === "bash");
     const abortController = new AbortController();

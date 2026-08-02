@@ -105,17 +105,13 @@ describe("public types", () => {
 
   it("keeps merge surfaces importable and typed", () => {
     expectTypeOf<Array<keyof AgentCustomMessages>>().toEqualTypeOf<
-      Array<
-        "example.custom" | "example.user" | "compact.summary" | "custom.note" | "custom.visible"
-      >
+      Array<"example.custom" | "example.user" | "compact.summary" | "custom.note" | "custom.visible">
     >();
     expectTypeOf<Array<keyof AgentCustomEntries>>().toEqualTypeOf<
       Array<"event" | "example.entry" | "message" | "state">
     >();
     expectTypeOf<AgentCustomState>().toMatchTypeOf<{ exampleFlag?: boolean }>();
-    expectTypeOf<Array<keyof AgentCustomChannelEvents>>().toEqualTypeOf<
-      Array<"example" | "internal" | "stream">
-    >();
+    expectTypeOf<Array<keyof AgentCustomChannelEvents>>().toEqualTypeOf<Array<"example" | "internal" | "stream">>();
     expectTypeOf<AgentInternalEventInit>().toMatchTypeOf<{
       type: string;
     }>();

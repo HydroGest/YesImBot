@@ -1,8 +1,4 @@
-import type {
-  LanguageModelV3,
-  LanguageModelV3FinishReason,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3, LanguageModelV3FinishReason, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { createAgent } from "../src/agent.js";

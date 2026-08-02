@@ -4,13 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Context } from "koishi";
 
-import type {
-  McpClientTransport,
-  McpHttpServer,
-  McpServer,
-  McpSseServer,
-  McpStdioServer,
-} from "./types";
+import type { McpClientTransport, McpHttpServer, McpServer, McpSseServer, McpStdioServer } from "./types";
 
 export async function connectMcpServer(
   ctx: Context,
@@ -82,21 +76,15 @@ async function connectToSseServer(
   return connectToRemoteServer(ctx, name, "SSE", server, SSEClientTransport);
 }
 
-async function connectToRemoteServer<
-  TTransport extends StreamableHTTPClientTransport | SSEClientTransport,
->(
+async function connectToRemoteServer<TTransport extends StreamableHTTPClientTransport | SSEClientTransport>(
   ctx: Context,
   name: string,
   protocol: "HTTP" | "SSE",
   server: McpHttpServer | McpSseServer,
-  Transport: new (
-    url: URL,
-    options: { requestInit: { headers: Record<string, string> } },
-  ) => TTransport,
+  Transport: new (url: URL, options: { requestInit: { headers: Record<string, string> } }) => TTransport,
 ): Promise<{ client: Client; transport: TTransport }> {
   ctx.logger.info(`连接到 ${protocol} 服务器 ${name}，URL: ${server.url}`);
-  const headers =
-    typeof server.headers === "string" ? parseKeyValueString(server.headers) : server.headers || {};
+  const headers = typeof server.headers === "string" ? parseKeyValueString(server.headers) : server.headers || {};
   ctx.logger.debug(`HTTP 请求头: ${JSON.stringify(headers)}`);
 
   const transport = new Transport(new URL(server.url), {

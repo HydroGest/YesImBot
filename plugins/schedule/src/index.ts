@@ -44,19 +44,12 @@ export default class SchedulePlugin {
     if (this.started) return;
     this.started = true;
     try {
-      this.scheduler = new ScheduleScheduler(this.store, (event) =>
-        this.ctx.yesimbot.trigger(event),
-      );
+      this.scheduler = new ScheduleScheduler(this.store, (event) => this.ctx.yesimbot.trigger(event));
       await this.scheduler.start();
       this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin((scope) => {
         return {
           name: "schedule",
-          tools: () =>
-            createScheduleTools(
-              scope,
-              this.store,
-              () => this.scheduler?.rearm() ?? Promise.resolve(),
-            ),
+          tools: () => createScheduleTools(scope, this.store, () => this.scheduler?.rearm() ?? Promise.resolve()),
         } satisfies AgentPlugin;
       });
       this.registerCommands();
@@ -101,10 +94,7 @@ export default class SchedulePlugin {
       this.ctx
         .command("yesimbot.schedule.create <title> <prompt>", "创建定时任务", { authority: 4 })
         .option("at", "<at> 一次性执行的 RFC 3339 时刻（如 2030-01-01T08:00:00+08:00）")
-        .option(
-          "cron",
-          "<cron> Asia/Shanghai 时区的五段式 cron 表达式（相邻两次执行至少间隔 15 分钟）",
-        )
+        .option("cron", "<cron> Asia/Shanghai 时区的五段式 cron 表达式（相邻两次执行至少间隔 15 分钟）")
         .action(async ({ session, options }, title, prompt) => {
           const scope = scopeOf(session);
           if (!scope) return "无法获取当前频道信息";
@@ -120,9 +110,7 @@ export default class SchedulePlugin {
             return "只能提供 --at 或 --cron 之一";
           }
           const input: ScheduleCreateInput =
-            at !== undefined
-              ? { title, prompt, kind: "once", at }
-              : { title, prompt, kind: "cron", cron };
+            at !== undefined ? { title, prompt, kind: "once", at } : { title, prompt, kind: "cron", cron };
           try {
             const schedule = await this.store.create(scope, input);
             await this.scheduler?.rearm();
@@ -179,25 +167,19 @@ export default class SchedulePlugin {
     track(
       this.ctx
         .command("yesimbot.schedule.pause <id>", "暂停定时任务", { authority: 4 })
-        .action(async ({ session }, id) =>
-          this.stateAction("已暂停", "暂停失败", scopeOf(session), id, "pause"),
-        ),
+        .action(async ({ session }, id) => this.stateAction("已暂停", "暂停失败", scopeOf(session), id, "pause")),
     );
 
     track(
       this.ctx
         .command("yesimbot.schedule.resume <id>", "恢复定时任务", { authority: 4 })
-        .action(async ({ session }, id) =>
-          this.stateAction("已恢复", "恢复失败", scopeOf(session), id, "resume"),
-        ),
+        .action(async ({ session }, id) => this.stateAction("已恢复", "恢复失败", scopeOf(session), id, "resume")),
     );
 
     track(
       this.ctx
         .command("yesimbot.schedule.cancel <id>", "取消定时任务", { authority: 4 })
-        .action(async ({ session }, id) =>
-          this.stateAction("已取消", "取消失败", scopeOf(session), id, "cancel"),
-        ),
+        .action(async ({ session }, id) => this.stateAction("已取消", "取消失败", scopeOf(session), id, "cancel")),
     );
   }
 

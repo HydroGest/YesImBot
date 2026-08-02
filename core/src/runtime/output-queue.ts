@@ -1,8 +1,6 @@
 export class OutputQueue<T> implements AsyncIterable<T> {
   private items: T[] = [];
-  private pendingNext:
-    | { resolve: (result: IteratorResult<T>) => void; reject: (cause: unknown) => void }
-    | undefined;
+  private pendingNext: { resolve: (result: IteratorResult<T>) => void; reject: (cause: unknown) => void } | undefined;
   private error: unknown;
   private done = false;
 

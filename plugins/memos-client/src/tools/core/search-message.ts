@@ -56,10 +56,7 @@ interface SearchMemoryData {
   }>;
 }
 
-function buildSearchFilter(
-  identity: MemosIdentity,
-  config: MemosClientConfig,
-): MemosSearchFilter | undefined {
+function buildSearchFilter(identity: MemosIdentity, config: MemosClientConfig): MemosSearchFilter | undefined {
   if (config.searchFilterMode === "off") {
     return undefined;
   }

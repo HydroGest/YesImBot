@@ -47,10 +47,7 @@ function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   };
 }
 
-function messageRecordWithText(
-  text: string,
-  overrides: { timestamp?: number } = {},
-): MessageRecord {
+function messageRecordWithText(text: string, overrides: { timestamp?: number } = {}): MessageRecord {
   return {
     ...messageRecord(overrides),
     elements: h.parse(text),
@@ -105,10 +102,7 @@ type TestAssetStore = Pick<AssetStore, "get"> & {
 const fiveMiBPngBytes = pngBytesOfLength(FIVE_MIB);
 const oversizedPngBytes = pngBytesOfLength(FIVE_MIB + 1);
 
-function context(
-  history: readonly AgentMessage[],
-  current: readonly AgentMessage[] = [],
-): ModelMessageContext {
+function context(history: readonly AgentMessage[], current: readonly AgentMessage[] = []): ModelMessageContext {
   return { history, current } as ModelMessageContext;
 }
 
@@ -137,9 +131,7 @@ async function project(input: Input, modelContext: ModelMessageContext, inputPlu
 
 describe("createModelInputPlugin", () => {
   it("always formats a message with the fixed header including its ID", async () => {
-    const input = createMessage(
-      messageRecord({ timestamp: new Date("2026-07-25T12:34:00.000Z").valueOf() }),
-    );
+    const input = createMessage(messageRecord({ timestamp: new Date("2026-07-25T12:34:00.000Z").valueOf() }));
     const inputPlugin = plugin(assetStore(), null);
 
     expect(inputPlugin.enforce).toBe("pre");
@@ -172,9 +164,7 @@ describe("createModelInputPlugin", () => {
 
   it("does not read images when image input is disabled", async () => {
     const assets = assetStore();
-    const input = createMessage(
-      messageRecordWithText('<img id="00000000000000000000000000000000"/>'),
-    );
+    const input = createMessage(messageRecordWithText('<img id="00000000000000000000000000000000"/>'));
 
     await expect(project(input, context([input]), plugin(assets, null))).resolves.toMatchObject({
       role: "user",
@@ -185,19 +175,13 @@ describe("createModelInputPlugin", () => {
   it("scans history then current and nested elements in document order", async () => {
     const assets = assetStore();
     assets.get.mockResolvedValue(pngBytes);
-    const historyFirst = createMessage(
-      messageRecordWithText('<img id="11111111111111111111111111111111"/>'),
-    );
+    const historyFirst = createMessage(messageRecordWithText('<img id="11111111111111111111111111111111"/>'));
     const historySecond = createMessage({
       ...messageRecord(),
       messageId: "m-2",
-      elements: [
-        h("p", {}, [h("span", {}, [h("img", { id: "22222222222222222222222222222222" })])]),
-      ],
+      elements: [h("p", {}, [h("span", {}, [h("img", { id: "22222222222222222222222222222222" })])])],
     });
-    const current = createMessage(
-      messageRecordWithText('<img id="33333333333333333333333333333333"/>'),
-    );
+    const current = createMessage(messageRecordWithText('<img id="33333333333333333333333333333333"/>'));
     const inputPlugin = plugin(assets, { maxCount: 3, maxBytesPerImage: 8, maxTotalBytes: 24 });
     const modelContext = context([historyFirst, historySecond], [current]);
 
@@ -222,9 +206,7 @@ describe("createModelInputPlugin", () => {
   ])("appends supported %s files without mutating source messages", async (bytes, mediaType) => {
     const assets = assetStore();
     assets.get.mockResolvedValue(bytes);
-    const input = createMessage(
-      messageRecordWithText('<img id="44444444444444444444444444444444"/>'),
-    );
+    const input = createMessage(messageRecordWithText('<img id="44444444444444444444444444444444"/>'));
     const original = input.data.elements;
     const result = await project(input, context([input]), plugin(assets));
 
@@ -242,8 +224,7 @@ describe("createModelInputPlugin", () => {
     const assets = assetStore();
     const warn = vi.fn();
     assets.get.mockImplementation(async (id) => {
-      if (id === "55555555555555555555555555555555")
-        return new Uint8Array([0x3c, 0x73, 0x76, 0x67]);
+      if (id === "55555555555555555555555555555555") return new Uint8Array([0x3c, 0x73, 0x76, 0x67]);
       if (id === "66666666666666666666666666666666") throw new Error("missing");
       return pngBytes;
     });
@@ -255,10 +236,7 @@ describe("createModelInputPlugin", () => {
     const result = await project(input, context([input]), plugin(assets, undefined, warn));
 
     expect(Array.isArray(result.content) && result.content).toHaveLength(2);
-    expect(warn.mock.calls.map(([event]) => event)).toEqual([
-      "asset_invalid_mime",
-      "asset_read_failed",
-    ]);
+    expect(warn.mock.calls.map(([event]) => event)).toEqual(["asset_invalid_mime", "asset_read_failed"]);
   });
 
   it("charges each reference and skips oversized candidates while accepting later files", async () => {
@@ -293,9 +271,7 @@ describe("createModelInputPlugin", () => {
         '<img id="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"/><img id="cccccccccccccccccccccccccccccccc"/><img id="dddddddddddddddddddddddddddddddd"/>',
       ),
     );
-    const second = createMessage(
-      messageRecordWithText('<img id="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"/>'),
-    );
+    const second = createMessage(messageRecordWithText('<img id="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"/>'));
     const inputPlugin = plugin(assets);
 
     const initial = await project(first, context([first]), inputPlugin);

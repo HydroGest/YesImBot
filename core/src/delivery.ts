@@ -12,13 +12,7 @@ interface DeliveryOptions {
   readonly warn: (cause: unknown) => void;
 }
 
-export async function deliverOutput({
-  record,
-  result,
-  pacing,
-  send,
-  warn,
-}: DeliveryOptions): Promise<void> {
+export async function deliverOutput({ record, result, pacing, send, warn }: DeliveryOptions): Promise<void> {
   let acknowledged = false;
   let consumedDeliveryMs = 0;
   for await (const output of result.output) {
@@ -94,9 +88,7 @@ function nextSegmentDelayMs(input: {
   const jitter = 0.85 + (1.15 - 0.85) * Math.random();
   const typingMs = ([...input.text].length / input.config.charactersPerSecond) * 1_000 * jitter;
   const delayMs = Math.min(Math.max(typingMs, 250), 10_000);
-  return input.consumedDeliveryMs + delayMs >= input.config.maxTotalDelayMs
-    ? 250
-    : Math.round(delayMs);
+  return input.consumedDeliveryMs + delayMs >= input.config.maxTotalDelayMs ? 250 : Math.round(delayMs);
 }
 
 function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -116,8 +108,6 @@ function waitForDelay(delayMs: number, signal: AbortSignal): Promise<void> {
 function normalizeDeliveryError(cause: unknown): { name: string; message: string; code?: string } {
   const error = cause instanceof Error ? cause : new Error(String(cause));
   const code =
-    typeof (cause as { code?: unknown } | null)?.code === "string"
-      ? (cause as { code: string }).code
-      : undefined;
+    typeof (cause as { code?: unknown } | null)?.code === "string" ? (cause as { code: string }).code : undefined;
   return { name: error.name, message: error.message, ...(code === undefined ? {} : { code }) };
 }

@@ -40,10 +40,7 @@ function normalizeMap(paths: Record<string, string> | undefined): Record<string,
 
   for (const [mountPoint, hostPath] of Object.entries(paths ?? {})) {
     const normalizedMount = normalizeVirtualMountPath(mountPoint);
-    if (
-      normalizedMount === DEFAULT_WORKSPACE_MOUNT ||
-      normalizedMount.startsWith(`${DEFAULT_WORKSPACE_MOUNT}/`)
-    ) {
+    if (normalizedMount === DEFAULT_WORKSPACE_MOUNT || normalizedMount.startsWith(`${DEFAULT_WORKSPACE_MOUNT}/`)) {
       throw new Error(`${normalizedMount} is a reserved mount point`);
     }
     if (Object.hasOwn(normalized, normalizedMount)) {
@@ -55,9 +52,7 @@ function normalizeMap(paths: Record<string, string> | undefined): Record<string,
   return normalized;
 }
 
-export function assertValidMountConfig(
-  config: WorkspaceMountConfig,
-): NormalizedWorkspaceMountConfig {
+export function assertValidMountConfig(config: WorkspaceMountConfig): NormalizedWorkspaceMountConfig {
   const normalized: NormalizedWorkspaceMountConfig = {
     persistPaths: normalizeMap(config.persistPaths),
     readOnlyPaths: normalizeMap(config.readOnlyPaths),

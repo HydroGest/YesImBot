@@ -8,9 +8,7 @@ import { parseReply } from "../src/runtime/reply.js";
 
 function text(segment: readonly Element[]): string {
   return segment
-    .map((element) =>
-      element.type === "text" ? `${element.attrs["content"] ?? ""}` : element.toString(),
-    )
+    .map((element) => (element.type === "text" ? `${element.attrs["content"] ?? ""}` : element.toString()))
     .join("");
 }
 

@@ -233,10 +233,7 @@ function parseArgs(argv: string[]): ParsedArgs {
         index += 1;
         break;
       case "--async-mode":
-        parsed.asyncMode = parseBoolean(
-          requireValue(argv[index + 1], "--async-mode"),
-          "--async-mode",
-        );
+        parsed.asyncMode = parseBoolean(requireValue(argv[index + 1], "--async-mode"), "--async-mode");
         index += 1;
         break;
       case "--base-url":
@@ -289,11 +286,7 @@ function inferGroupChannelId(fileName: string, chatInfo: RawChatInfo): string | 
   );
 }
 
-function inferPrivateChannelId(
-  messages: RawMessage[],
-  botSelfId: string,
-  chatInfo: RawChatInfo,
-): string | undefined {
+function inferPrivateChannelId(messages: RawMessage[], botSelfId: string, chatInfo: RawChatInfo): string | undefined {
   for (const message of messages) {
     const senderId = readString(message.sender?.uin);
     if (senderId && senderId !== botSelfId) return senderId;
@@ -350,8 +343,7 @@ function normalizeResources(content?: RawContent): string[] {
 }
 
 function getTimestampMs(timestamp: number | string | undefined): number {
-  if (typeof timestamp === "number")
-    return timestamp >= 1_000_000_000_000 ? timestamp : timestamp * 1000;
+  if (typeof timestamp === "number") return timestamp >= 1_000_000_000_000 ? timestamp : timestamp * 1000;
   const trimmed = timestamp?.trim();
   if (!trimmed) throw new Error("QQ message timestamp is missing");
   if (/^\d+$/u.test(trimmed)) {
@@ -409,13 +401,7 @@ async function parseQqExportFile(filePath: string, botSelfId: string): Promise<P
   const parsed = JSON.parse(raw) as unknown;
   if (!isRawQqExport(parsed)) throw new Error(`Unsupported QQ export shape: ${basename(filePath)}`);
   const conversationType = normalizeConversationType(parsed.chatInfo.type);
-  const channelId = inferChannelId(
-    filePath,
-    conversationType,
-    parsed.chatInfo,
-    parsed.messages,
-    botSelfId,
-  );
+  const channelId = inferChannelId(filePath, conversationType, parsed.chatInfo, parsed.messages, botSelfId);
   return parsed.messages.map((message, index) =>
     normalizeMessage(message, index, filePath, conversationType, channelId, botSelfId),
   );
@@ -424,8 +410,7 @@ async function parseQqExportFile(filePath: string, botSelfId: string): Promise<P
 async function discoverInputFiles(input: string): Promise<string[]> {
   const inputStat = await stat(input);
   if (inputStat.isFile()) {
-    if (!input.toLocaleLowerCase().endsWith(".json"))
-      throw new Error("--input file must be a JSON file");
+    if (!input.toLocaleLowerCase().endsWith(".json")) throw new Error("--input file must be a JSON file");
     return [input];
   }
   if (!inputStat.isDirectory()) throw new Error("--input must be a JSON file or directory");
@@ -445,10 +430,7 @@ function shouldImportMessage(message: ParsedMessage): boolean {
 }
 
 function hashText(value: string): string {
-  return createHash("sha256")
-    .update(value.trim().replace(/\s+/gu, " ").toLocaleLowerCase())
-    .digest("hex")
-    .slice(0, 16);
+  return createHash("sha256").update(value.trim().replace(/\s+/gu, " ").toLocaleLowerCase()).digest("hex").slice(0, 16);
 }
 
 function conversationKey(message: ParsedMessage): string {
@@ -497,8 +479,7 @@ function estimateTokens(value: string): number {
 
 function estimateRequestTokens(messages: ImportMessage[]): number {
   return messages.reduce(
-    (total, message) =>
-      total + estimateTokens(`${message.role}\n${message.content}\n${message.chat_time}`),
+    (total, message) => total + estimateTokens(`${message.role}\n${message.content}\n${message.chat_time}`),
     0,
   );
 }
@@ -615,8 +596,7 @@ function shouldSplitChunk(
   if (current.length === 0) return false;
   if (current.length + 1 > options.maxMessages) return true;
   const first = current[0];
-  if (first && next.timestampMs - first.timestampMs > options.maxHours * 60 * 60 * 1000)
-    return true;
+  if (first && next.timestampMs - first.timestampMs > options.maxHours * 60 * 60 * 1000) return true;
   return (
     createChunk([...current, next], 0, {
       botSelfId: options.botSelfId,
@@ -656,9 +636,7 @@ function createChunks(
   return chunks;
 }
 
-export async function buildQqMemosImportPlan(
-  config: QqMemosImportConfig,
-): Promise<QqMemosImportPlan> {
+export async function buildQqMemosImportPlan(config: QqMemosImportConfig): Promise<QqMemosImportPlan> {
   const maxTokens = config.maxTokens ?? DEFAULT_MAX_TOKENS;
   const maxMessages = config.maxMessages ?? DEFAULT_MAX_MESSAGES;
   const maxHours = config.maxHours ?? DEFAULT_MAX_HOURS;

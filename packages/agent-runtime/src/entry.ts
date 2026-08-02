@@ -9,8 +9,7 @@ export interface AgentCustomEntries {
   state: AgentState;
 }
 
-export type AgentCustomEntryData<T extends keyof AgentCustomEntries = keyof AgentCustomEntries> =
-  AgentCustomEntries[T];
+export type AgentCustomEntryData<T extends keyof AgentCustomEntries = keyof AgentCustomEntries> = AgentCustomEntries[T];
 
 export type AgentEntry<T extends keyof AgentCustomEntries = keyof AgentCustomEntries> =
   T extends keyof AgentCustomEntries
@@ -43,23 +42,14 @@ export function createEntry<T extends keyof AgentCustomEntries>(
   } as AgentEntry<T>;
 }
 
-export function createMessageEntry(
-  message: AgentMessage,
-  options: CreateEntryOptions = {},
-): AgentEntry<"message"> {
+export function createMessageEntry(message: AgentMessage, options: CreateEntryOptions = {}): AgentEntry<"message"> {
   return createEntry("message", message, options);
 }
 
-export function createStateEntry(
-  state: AgentState,
-  options: CreateEntryOptions = {},
-): AgentEntry<"state"> {
+export function createStateEntry(state: AgentState, options: CreateEntryOptions = {}): AgentEntry<"state"> {
   return createEntry("state", state, options);
 }
 
-export function createEventEntry(
-  event: AgentInternalEvent,
-  options: CreateEntryOptions = {},
-): AgentEntry<"event"> {
+export function createEventEntry(event: AgentInternalEvent, options: CreateEntryOptions = {}): AgentEntry<"event"> {
   return createEntry("event", event, options);
 }

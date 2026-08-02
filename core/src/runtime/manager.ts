@@ -1,20 +1,15 @@
 import { join, resolve } from "node:path";
 
-import type { AgentPlugin } from "@yesimbot/agent-runtime";
+import { createJsonlStorage, type AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 import { Universal } from "koishi";
 
 import type { AssetService } from "../asset.js";
-import { scopeMapKey, type ChannelScope, type ChannelStorage } from "../channel.js";
 import type { ImageBudget, Config } from "../config.js";
 import type { EventRecord, MessageRecord } from "../messages.js";
 import { ModelService } from "../model/index.js";
-import {
-  ChannelRuntime,
-  type ChannelRuntimeOptions,
-  type ChannelRuntimeResult,
-} from "./channel.js";
-import { createJsonlStorage } from "./storage.js";
+import { ChannelRuntime, type ChannelRuntimeOptions, type ChannelRuntimeResult } from "./channel.js";
+import { ChannelScope, ChannelStorage, scopeMapKey } from "./storage.js";
 import { createWillEngine } from "./will.js";
 
 export interface RuntimeManagerOptions {
@@ -96,9 +91,7 @@ export class RuntimeManager {
       }
     }
     try {
-      await createJsonlStorage(
-        join(await this.storage.getStoragePath(scope), "sessions", "messages.jsonl"),
-      ).clear();
+      await createJsonlStorage(join(await this.storage.getStoragePath(scope), "sessions", "messages.jsonl")).clear();
     } catch (cause) {
       failure ??= cause;
       this.warn("storage_clear_failed", { scope, cause });
@@ -141,10 +134,7 @@ export class RuntimeManager {
     }
   }
 
-  private async replaceRuntime(
-    scope: ChannelScope,
-    current: ChannelRuntime | undefined,
-  ): Promise<ChannelRuntime> {
+  private async replaceRuntime(scope: ChannelScope, current: ChannelRuntime | undefined): Promise<ChannelRuntime> {
     const key = scopeMapKey(scope);
     if (current && current.selfId !== scope.selfId) {
       await this.stopRuntime(key, current);
@@ -175,24 +165,16 @@ export class RuntimeManager {
     const options: ChannelRuntimeOptions = {
       config: {
         ...this.opts.config,
-        basePath: resolve(
-          this.ctx.baseDir,
-          this.opts.config.basePath || this.ctx.baseDir,
-        ),
+        basePath: resolve(this.ctx.baseDir, this.opts.config.basePath || this.ctx.baseDir),
       },
       scope,
       bot,
       will: createWillEngine(this.ctx, this.opts.config.will),
       assets: this.assets.createStore(scope),
       model: resolved.model,
-      imageBudget: this.opts.config.imageInput
-        ? ({ ...this.opts.config.imageInput } as ImageBudget)
-        : null,
+      imageBudget: this.opts.config.imageInput ? ({ ...this.opts.config.imageInput } as ImageBudget) : null,
       agentPlugins: plugins,
-      storage: createJsonlStorage(
-        join(await this.storage.getStoragePath(scope), "sessions", "messages.jsonl"),
-        (cause) => this.warn("storage.line_invalid", { scope, cause }),
-      ),
+      storage: createJsonlStorage(join(await this.storage.getStoragePath(scope), "sessions", "messages.jsonl")),
     };
     const runtime = new ChannelRuntime(this.ctx, options);
     try {
@@ -205,11 +187,7 @@ export class RuntimeManager {
   }
 
   private async stopInternal(): Promise<void> {
-    await Promise.all(
-      [...this.runtimes.entries()].map(([identity, runtime]) =>
-        this.stopRuntime(identity, runtime),
-      ),
-    );
+    await Promise.all([...this.runtimes.entries()].map(([identity, runtime]) => this.stopRuntime(identity, runtime)));
     this.runtimes.clear();
     this.creating.clear();
   }

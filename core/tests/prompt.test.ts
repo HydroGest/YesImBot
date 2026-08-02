@@ -5,11 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ChannelScope } from "../src/channel.js";
-import {
-  buildCoreSystemPrompt,
-  CORE_CONSTITUTION_VERSION,
-  readPromptResource,
-} from "../src/runtime/prompt.js";
+import { buildCoreSystemPrompt, CORE_CONSTITUTION_VERSION, readPromptResource } from "../src/runtime/prompt.js";
 
 const roots: string[] = [];
 const scope = {
@@ -144,9 +140,7 @@ describe("buildCoreSystemPrompt", () => {
     await mkdir(join(basePath, "AGENTS.md"));
     const logger = { debug: vi.fn(), warn: vi.fn() };
 
-    await expect(
-      buildCoreSystemPrompt({ basePath, channel: scope, logger: logger as never }),
-    ).rejects.toThrow();
+    await expect(buildCoreSystemPrompt({ basePath, channel: scope, logger: logger as never })).rejects.toThrow();
     expect(logger.warn).toHaveBeenCalledOnce();
   });
 

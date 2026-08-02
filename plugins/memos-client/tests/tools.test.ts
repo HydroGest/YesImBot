@@ -225,9 +225,7 @@ describe("MemOS tools", () => {
       },
     });
     expect(JSON.stringify(result)).not.toContain("mpg-secret");
-    expect(warn).toHaveBeenCalledWith(
-      "MemOS search failed: Authorization failed for Token [REDACTED]",
-    );
+    expect(warn).toHaveBeenCalledWith("MemOS search failed: Authorization failed for Token [REDACTED]");
   });
 
   it("exposes minimal add input", () => {
@@ -278,9 +276,7 @@ describe("MemOS tools", () => {
       now: () => new Date("2026-07-05T03:04:05.000Z"),
     });
 
-    await expect(
-      tool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext()),
-    ).resolves.toEqual({
+    await expect(tool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext())).resolves.toEqual({
       outcome: "accepted",
       taskId: "task-1",
     });
@@ -308,9 +304,7 @@ describe("MemOS tools", () => {
       resolveIdentity,
       now: () => new Date("2026-07-05T03:04:05.000Z"),
     });
-    await expect(
-      synchronousTool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext()),
-    ).resolves.toEqual({
+    await expect(synchronousTool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext())).resolves.toEqual({
       outcome: "persisted",
       taskId: "task-1",
     });

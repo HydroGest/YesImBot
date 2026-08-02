@@ -74,8 +74,7 @@ function createWorkspaceSandbox(workspace: Workspace, abortSignals: AbortSignalS
 
     async writeFiles(files) {
       for (const file of files) {
-        const content =
-          typeof file.content === "string" ? file.content : file.content.toString("utf-8");
+        const content = typeof file.content === "string" ? file.content : file.content.toString("utf-8");
         await workspace.fs.writeFile(file.path, content, "utf8");
       }
     },

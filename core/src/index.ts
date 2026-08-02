@@ -1,9 +1,6 @@
-import { resolve } from "node:path";
-
 import { Bot, Command, Context, Service } from "koishi";
 
 import { AssetService } from "./asset.js";
-import { ChannelStorage, type ChannelScope } from "./channel.js";
 import { Config } from "./config.js";
 import { deliverOutput } from "./delivery.js";
 import { Gateway, type PlatformTranslator } from "./gateway/index.js";
@@ -11,6 +8,7 @@ import { createOneBotTranslator } from "./gateway/onebot.js";
 import type { EventMap, EventRecord } from "./messages.js";
 import { ModelService } from "./model/index.js";
 import { RuntimeManager, type AgentPluginFactory } from "./runtime/index.js";
+import { ChannelScope, ChannelStorage } from "./runtime/storage.js";
 
 declare module "koishi" {
   interface Context {
@@ -42,7 +40,7 @@ export default class YesImBotService extends Service<Config> {
       basePath: config.basePath,
       logLevel: config.logLevel,
     });
-    this.storage = new ChannelStorage(ctx, resolve(ctx.baseDir, config.basePath || ctx.baseDir));
+    this.storage = new ChannelStorage(ctx, { basePath: config.basePath || ctx.baseDir });
     this.assets = new AssetService(this.storage);
     this.rt = new RuntimeManager(ctx, this.model, this.assets, this.storage, {
       config,
@@ -119,10 +117,7 @@ export default class YesImBotService extends Service<Config> {
     }
   }
 
-  private async runTrigger<K extends keyof EventMap>(
-    event: EventRecord<K>,
-    bot: Bot,
-  ): Promise<void> {
+  private async runTrigger<K extends keyof EventMap>(event: EventRecord<K>, bot: Bot): Promise<void> {
     const result = await this.rt.trigger(event);
     if (result.kind !== "run") return;
     await deliverOutput({
@@ -178,11 +173,7 @@ export default class YesImBotService extends Service<Config> {
     if (typeof command.dispose === "function") this.commandDisposers.add(() => command.dispose());
   }
 
-  private logError(
-    level: "debug" | "info" | "warn" | "error",
-    event: string,
-    cause: unknown,
-  ): void {
+  private logError(level: "debug" | "info" | "warn" | "error", event: string, cause: unknown): void {
     try {
       this.logger[level]({ event, cause: cause instanceof Error ? cause.message : String(cause) });
     } catch {}
@@ -190,8 +181,8 @@ export default class YesImBotService extends Service<Config> {
 }
 
 export type { AssetService, AssetStore } from "./asset.js";
-export type { ChannelScope } from "./channel.js";
 export type { PlatformTranslator } from "./gateway/types.js";
 export * from "./messages.js";
 export * from "./model/index.js";
 export type { AgentPluginFactory } from "./runtime/index.js";
+export type { ChannelScope } from "./runtime/storage.js";

@@ -12,11 +12,7 @@ import type { MemosChannelType, MemosClientConfig } from "./types.js";
 
 function captureMessageEvent(
   message: AgentMessage,
-  assign: (snapshot: {
-    authorId: string;
-    messageId: string;
-    channelType: MemosChannelType;
-  }) => void,
+  assign: (snapshot: { authorId: string; messageId: string; channelType: MemosChannelType }) => void,
 ): void {
   if (!isMessage(message)) {
     return;

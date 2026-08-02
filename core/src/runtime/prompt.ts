@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { SystemModelMessage } from "ai";
 import type { Logger } from "koishi";
 
-import type { ChannelScope } from "../channel.js";
+import { ChannelScope } from "./storage.js";
 
 export const CORE_CONSTITUTION_VERSION = 3 as const;
 
@@ -14,10 +14,7 @@ export const CORE_CONSTITUTION_VERSION = 3 as const;
 // while vitest runs it unbundled from src/runtime/, so no fixed `..` depth is correct
 // in both places. Package-name resolution is depth-independent in both cases.
 const require = createRequire(import.meta.url);
-const resourceRoot = join(
-  dirname(require.resolve("koishi-plugin-yesimbot/package.json")),
-  "resources",
-);
+const resourceRoot = join(dirname(require.resolve("koishi-plugin-yesimbot/package.json")), "resources");
 
 export type PromptResource = "constitution" | "athena-persona";
 
@@ -46,11 +43,7 @@ async function readPromptFile(
       logger?.debug(`Prompt file ${fileName} not found under ${basePath}`);
       return undefined;
     }
-    logger?.warn(
-      `Unable to read prompt file ${fileName}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    logger?.warn(`Unable to read prompt file ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }
@@ -85,9 +78,7 @@ function formatRuntimeContext(channel: ChannelScope): SystemModelMessage {
   };
 }
 
-export async function buildCoreSystemPrompt(
-  options: CoreSystemPromptOptions,
-): Promise<SystemModelMessage[]> {
+export async function buildCoreSystemPrompt(options: CoreSystemPromptOptions): Promise<SystemModelMessage[]> {
   const [agents, customPersona, constitution, defaultPersona] = await Promise.all([
     readPromptFile(options.basePath, "AGENTS.md", options.logger),
     readPromptFile(options.basePath, "PERSONA.md", options.logger),

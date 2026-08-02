@@ -95,11 +95,9 @@ function createClient(toolBatches: string[][]) {
         })),
       };
     }),
-    setNotificationHandler: vi.fn<(schema: unknown, handler: ToolListChangedHandler) => void>(
-      (_schema, handler) => {
-        toolListChanged = handler;
-      },
-    ),
+    setNotificationHandler: vi.fn<(schema: unknown, handler: ToolListChangedHandler) => void>((_schema, handler) => {
+      toolListChanged = handler;
+    }),
   };
 
   return {

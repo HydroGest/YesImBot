@@ -14,7 +14,6 @@ import type { AssistantContent, LanguageModel } from "ai";
 import type { Bot, Context, Element, Logger } from "koishi";
 
 import type { AssetStore } from "../asset.js";
-import { scopeMapKey, type ChannelScope } from "../channel.js";
 import type { Config, ImageBudget } from "../config.js";
 import {
   createEvent,
@@ -31,6 +30,7 @@ import { createModelInputPlugin } from "./model-input.js";
 import { OutputQueue } from "./output-queue.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
 import { parseReply } from "./reply.js";
+import { ChannelScope, scopeMapKey } from "./storage.js";
 import type { WillEngine } from "./will.js";
 
 export interface ChannelRuntimeOptions {
@@ -71,9 +71,7 @@ interface SendMessageInput {
   content: string;
 }
 
-type SendMessageResult =
-  | { ok: true; messageIds: string[] }
-  | { ok: false; error: { name: string; message: string } };
+type SendMessageResult = { ok: true; messageIds: string[] } | { ok: false; error: { name: string; message: string } };
 
 export class ChannelRuntime {
   public readonly scope: ChannelScope;
@@ -138,8 +136,7 @@ export class ChannelRuntime {
       id: scopeMapKey(this.scope),
       model: opts.model,
       storage: opts.storage,
-      systemPrompt: () =>
-        buildCoreSystemPrompt({ basePath, channel: this.scope, logger: this.logger }),
+      systemPrompt: () => buildCoreSystemPrompt({ basePath, channel: this.scope, logger: this.logger }),
       tools,
       plugins: [
         createModelInputPlugin({
@@ -202,10 +199,7 @@ export class ChannelRuntime {
     return input;
   }
 
-  private async applyDecision(
-    input: Message | Event,
-    decision: "wait" | "trigger",
-  ): Promise<ChannelRuntimeResult> {
+  private async applyDecision(input: Message | Event, decision: "wait" | "trigger"): Promise<ChannelRuntimeResult> {
     if (decision === "wait") return { kind: "wait", eventId: input.id };
     const activeTurnId = this.agent.getActiveTurnId();
     if (activeTurnId !== null) {
@@ -277,8 +271,7 @@ export class ChannelRuntime {
       for await (const event of stream) {
         if (isAssistantMessage(event)) {
           const segments = parseAssistantContent(event.message.content);
-          if (segments !== undefined)
-            output.push({ turnId: event.turnId, messageId: event.message.id, segments });
+          if (segments !== undefined) output.push({ turnId: event.turnId, messageId: event.message.id, segments });
         }
         if (event.type === "turn.failed") {
           controller.abort();
@@ -333,9 +326,7 @@ export function isAssistantMessage(event: AgentInternalEvent): event is AgentInt
   readonly turnId: string;
   readonly message: { readonly id: string; readonly role: "assistant"; readonly content: unknown };
 } {
-  return (
-    event.type === "message.appended" && "turnId" in event && event.message.role === "assistant"
-  );
+  return event.type === "message.appended" && "turnId" in event && event.message.role === "assistant";
 }
 
 export function renderAssistantText(content: AssistantContent): string | undefined {

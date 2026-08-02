@@ -1,8 +1,4 @@
-import type {
-  LanguageModelV3,
-  LanguageModelV3FinishReason,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3, LanguageModelV3FinishReason, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { createAgent } from "../src/agent.js";
@@ -81,9 +77,7 @@ describe("busy behavior", () => {
     const agent = createAgent({ model: createBlockingModel() });
     agent.send(createUserMessage("first"));
 
-    expect(() => agent.send(createUserMessage("second"), { ifBusy: "reject" })).toThrow(
-      AgentBusyError,
-    );
+    expect(() => agent.send(createUserMessage("second"), { ifBusy: "reject" })).toThrow(AgentBusyError);
   });
 
   it("keeps joined messages clean while retaining them in the active turn result", async () => {
@@ -96,9 +90,7 @@ describe("busy behavior", () => {
 
     const entries = await agent.storage.read();
     const messages = entries.filter((entry) => entry.type === "message");
-    const persistedJoined = messages.find(
-      (entry) => entry.data.role === "user" && entry.data.content === "joined",
-    );
+    const persistedJoined = messages.find((entry) => entry.data.role === "user" && entry.data.content === "joined");
 
     expect("turnId" in joinedMessage).toBe(false);
     expect("meta" in joinedMessage).toBe(false);
@@ -135,8 +127,7 @@ describe("busy behavior", () => {
     expect(deferredStorage.appended.length).toBeGreaterThan(0);
 
     const joinedBeforeRelease = deferredStorage.appended.filter(
-      (entry) =>
-        entry.type === "message" && entry.data.role === "user" && entry.data.content === "joined",
+      (entry) => entry.type === "message" && entry.data.role === "user" && entry.data.content === "joined",
     );
     expect(joinedBeforeRelease.length).toBeLessThanOrEqual(1);
 
@@ -145,8 +136,7 @@ describe("busy behavior", () => {
     expect(agent.isIdle()).toBe(true);
 
     const joinedAfterDone = (await agent.storage.read()).filter(
-      (entry) =>
-        entry.type === "message" && entry.data.role === "user" && entry.data.content === "joined",
+      (entry) => entry.type === "message" && entry.data.role === "user" && entry.data.content === "joined",
     );
     expect(joinedAfterDone).toHaveLength(1);
   });

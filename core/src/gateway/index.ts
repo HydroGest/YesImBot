@@ -1,16 +1,11 @@
 import { type Context, type Logger, type Session, Universal } from "koishi";
 
-import type { ChannelScope } from "../channel.js";
 import { deliverOutput } from "../delivery.js";
+import { ChannelScope } from "../index.js";
 import type { EventRecord, MessageRecord, RecordBase } from "../messages.js";
 import type { ChannelRuntimeResult } from "../runtime/index.js";
 import { defaultTranslator } from "./default.js";
-import type {
-  ChannelAllowRule,
-  GatewayConfig,
-  GatewayOptions,
-  PlatformTranslator,
-} from "./types.js";
+import type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
 
 export class Gateway {
   private readonly ctx: Context;
@@ -53,8 +48,7 @@ export class Gateway {
     }
     this.translators.set(translator.platform, translator);
     return () => {
-      if (this.translators.get(translator.platform) === translator)
-        this.translators.delete(translator.platform);
+      if (this.translators.get(translator.platform) === translator) this.translators.delete(translator.platform);
     };
   }
 
@@ -90,8 +84,7 @@ export class Gateway {
     try {
       await this.opts.ready();
       await assertAssignee(this.ctx, scope);
-      const translator =
-        this.translators.get(session.platform) ?? this.translators.get("*") ?? defaultTranslator;
+      const translator = this.translators.get(session.platform) ?? this.translators.get("*") ?? defaultTranslator;
       const base = sessionBase(session, scope);
       const record = await translator.translate(base, session, this.opts.assets.createStore(scope));
       if (!record) return;
@@ -136,10 +129,7 @@ class AssigneeAdmissionError extends Error {
   }
 }
 
-export function matchesAllowedChannel(
-  scope: ChannelScope,
-  rules: readonly ChannelAllowRule[] | undefined,
-): boolean {
+export function matchesAllowedChannel(scope: ChannelScope, rules: readonly ChannelAllowRule[] | undefined): boolean {
   return (
     rules?.some(
       (rule) =>
@@ -152,11 +142,7 @@ export function matchesAllowedChannel(
 
 async function assertAssignee(ctx: Context, scope: ChannelScope): Promise<void> {
   if (scope.type === "direct") return;
-  const [channel] = await ctx.database.get(
-    "channel",
-    { platform: scope.platform, id: scope.channelId },
-    ["assignee"],
-  );
+  const [channel] = await ctx.database.get("channel", { platform: scope.platform, id: scope.channelId }, ["assignee"]);
   if (!channel) throw new AssigneeAdmissionError("missing", scope);
   if (!channel.assignee) throw new AssigneeAdmissionError("empty", scope);
   if (channel.assignee !== scope.selfId) throw new AssigneeAdmissionError("mismatch", scope);
@@ -197,10 +183,5 @@ function isMessageSession(session: Session): boolean {
   return session.type === "message-created";
 }
 
-export type {
-  ChannelAllowRule,
-  GatewayConfig,
-  GatewayOptions,
-  PlatformTranslator,
-} from "./types.js";
+export type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
 export { defaultTranslator } from "./default.js";

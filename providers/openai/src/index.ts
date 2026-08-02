@@ -53,10 +53,7 @@ export function apply(ctx: Context, config: Config) {
       capabilities: { chat: true, embedding: true },
       chatModels: () => config.chatModels,
       embeddingModels: () => config.embeddingModels ?? [],
-      chat: (modelId: string) =>
-        config.format === "responses"
-          ? client.responses(modelId)
-          : client.chat(modelId),
+      chat: (modelId: string) => (config.format === "responses" ? client.responses(modelId) : client.chat(modelId)),
       embedding: (modelId: string) => client.embedding(modelId),
     });
     ctx.on("dispose", dispose);

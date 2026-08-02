@@ -9,7 +9,7 @@
   },
   "endOfLine": "lf",
   "semi": true,
-  "printWidth": 100,
+  "printWidth": 120,
   "singleQuote": false,
   "insertFinalNewline": true,
   "trailingComma": "all"

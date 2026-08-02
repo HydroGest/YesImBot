@@ -67,9 +67,7 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     will: Schema.intersect([
       Schema.object({
-        engine: Schema.union([Schema.const("routing"), Schema.const("willingness")]).default(
-          "routing",
-        ),
+        engine: Schema.union([Schema.const("routing"), Schema.const("willingness")]).default("routing"),
       }),
       Schema.union([
         Schema.object({

@@ -19,10 +19,7 @@ import { createMemoryStorage } from "../src/storage.js";
 
 declare module "../src/message.js" {
   interface AgentCustomMessages {
-    "compact.summary": CustomMessageBase<
-      "compact.summary",
-      { summary: string; entryIds: string[]; createdAt: number }
-    >;
+    "compact.summary": CustomMessageBase<"compact.summary", { summary: string; entryIds: string[]; createdAt: number }>;
     "custom.note": CustomMessageBase<"custom.note", { text: string }>;
     "custom.visible": CustomMessageBase<"custom.visible", { text: string }>;
   }
@@ -354,10 +351,7 @@ describe("model conversion", () => {
     });
 
     expect(result).toEqual([expect.objectContaining({ role: "user", content: "current" })]);
-    expect(seen).toEqual([
-      "broken-transform:Error:bad transform",
-      "broken-convert:Error:bad convert",
-    ]);
+    expect(seen).toEqual(["broken-transform:Error:bad transform", "broken-convert:Error:bad convert"]);
   });
 
   it("continues custom conversion until a plugin returns model messages", async () => {
@@ -451,15 +445,11 @@ describe("system prompt resolution", () => {
       },
       { role: "system", content: "plugin prompt" },
     ]);
-    expect(streamTextMock.mock.calls[1]![0].system).toEqual(
-      streamTextMock.mock.calls[0]![0].system,
-    );
+    expect(streamTextMock.mock.calls[1]![0].system).toEqual(streamTextMock.mock.calls[0]![0].system);
     const firstMessages = streamTextMock.mock.calls[0]![0].messages;
     const secondMessages = streamTextMock.mock.calls[1]![0].messages;
     expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages);
-    expect(secondMessages.at(-1)).toEqual(
-      expect.objectContaining({ role: "user", content: "second" }),
-    );
+    expect(secondMessages.at(-1)).toEqual(expect.objectContaining({ role: "user", content: "second" }));
   });
 
   it("snapshots configured and plugin system blocks for later model calls", async () => {
@@ -535,10 +525,7 @@ describe("system prompt resolution", () => {
     await agent.wait();
 
     expect(legacy).toHaveBeenCalledOnce();
-    expect(streamTextMock.mock.calls.map(([call]) => call.system)).toEqual([
-      "base\nlegacy",
-      "base\nlegacy",
-    ]);
+    expect(streamTextMock.mock.calls.map(([call]) => call.system)).toEqual(["base\nlegacy", "base\nlegacy"]);
   });
 
   it("allows structured prompt blocks without a base system prompt", async () => {
@@ -560,9 +547,7 @@ describe("system prompt resolution", () => {
     await agent.wait();
 
     expect(legacy).not.toHaveBeenCalled();
-    expect(streamTextMock.mock.calls[0]![0].system).toEqual([
-      { role: "system", content: "structured only" },
-    ]);
+    expect(streamTextMock.mock.calls[0]![0].system).toEqual([{ role: "system", content: "structured only" }]);
   });
 
   it("fails initialization before plugin startup when base system resolution fails", async () => {

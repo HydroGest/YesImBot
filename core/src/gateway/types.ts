@@ -13,11 +13,7 @@ export interface ChannelAllowRule {
 
 export interface PlatformTranslator {
   readonly platform: string;
-  translate(
-    base: RecordBase,
-    session: Session,
-    store: AssetStore,
-  ): Awaitable<MessageRecord | EventRecord | null>;
+  translate(base: RecordBase, session: Session, store: AssetStore): Awaitable<MessageRecord | EventRecord | null>;
 }
 
 export interface GatewayOptions {

@@ -122,12 +122,12 @@ describe("RoutingWillEngine", () => {
       will: { group: "trigger" },
     });
 
-    await expect(
-      new RoutingWillEngine(defaults.will).decide(ordinaryGroupMessageInput(), EMPTY_STATE),
-    ).resolves.toBe("wait");
-    await expect(
-      new RoutingWillEngine(overridden.will).decide(ordinaryGroupMessageInput(), EMPTY_STATE),
-    ).resolves.toBe("trigger");
+    await expect(new RoutingWillEngine(defaults.will).decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe(
+      "wait",
+    );
+    await expect(new RoutingWillEngine(overridden.will).decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe(
+      "trigger",
+    );
   });
 });
 

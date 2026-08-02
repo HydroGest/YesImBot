@@ -6,12 +6,7 @@ import { h, type Context, type Element, type Session } from "koishi";
 import type {} from "koishi-plugin-adapter-onebot";
 
 import type { AssetStore } from "../asset.js";
-import {
-  assembleEvent,
-  type EventRecord,
-  type MessageRecord,
-  type RecordBase,
-} from "../messages.js";
+import { assembleEvent, type EventRecord, type MessageRecord, type RecordBase } from "../messages.js";
 import type { PlatformTranslator } from "./types.js";
 
 const DATA_URL = /^data:([^;,]+)(;base64)?,([\s\S]*)$/;
@@ -54,10 +49,7 @@ export function createOneBotTranslator(ctx: Context): PlatformTranslator {
   };
 }
 
-export function translateOneBotEvent(
-  base: RecordBase,
-  session: Session,
-): EventRecord<OneBotEventType> | null {
+export function translateOneBotEvent(base: RecordBase, session: Session): EventRecord<OneBotEventType> | null {
   const { event } = session;
   if (event.type === "notice") {
     switch (event.subtype) {
@@ -87,9 +79,7 @@ export async function translateOneBotMessage(
   return {
     ...base,
     messageId: session.messageId,
-    elements: await Promise.all(
-      session.elements.map((element) => storeImages(ctx, element, store, budget)),
-    ),
+    elements: await Promise.all(session.elements.map((element) => storeImages(ctx, element, store, budget))),
   };
 }
 
@@ -125,10 +115,7 @@ async function storeImages(
 
 async function loadOneBotImage(ctx: Context, src: string, maxBytes: number): Promise<Uint8Array> {
   const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(new Error("Image download timed out")),
-    IMAGE_TIMEOUT_MS,
-  );
+  const timeout = setTimeout(() => controller.abort(new Error("Image download timed out")), IMAGE_TIMEOUT_MS);
   try {
     return await loadOneBotImageBytes(ctx, src, controller.signal, maxBytes);
   } finally {
@@ -150,11 +137,7 @@ async function loadOneBotImageBytes(
   return readBoundedStream(response.data, signal, maxBytes);
 }
 
-async function loadFileImage(
-  src: string,
-  signal: AbortSignal,
-  maxBytes: number,
-): Promise<Uint8Array> {
+async function loadFileImage(src: string, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
   const path = fileURLToPath(src);
   const entry = await stat(path);
   if (entry.size > maxBytes) throw new Error("Image exceeds byte limit");
@@ -203,8 +186,7 @@ function decodeDataImage(src: string, maxBytes: number): Uint8Array | null {
   const match = DATA_URL.exec(src);
   if (!match) return null;
   const [, _mime, base64, payload] = match;
-  if (base64 && Math.ceil(payload.length / 4) * 3 > maxBytes)
-    throw new Error("Image exceeds byte limit");
+  if (base64 && Math.ceil(payload.length / 4) * 3 > maxBytes) throw new Error("Image exceeds byte limit");
   if (!base64 && payload.length > maxBytes) throw new Error("Image exceeds byte limit");
   const decoded = base64
     ? new Uint8Array(Buffer.from(payload, "base64"))

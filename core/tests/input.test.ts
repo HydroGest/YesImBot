@@ -52,9 +52,7 @@ function recordBase(): RecordBase {
   };
 }
 
-function deliveryFailureRecord(
-  overrides: { timestamp?: number } = {},
-): EventRecord<"delivery.failed"> {
+function deliveryFailureRecord(overrides: { timestamp?: number } = {}): EventRecord<"delivery.failed"> {
   return {
     eventType: "delivery.failed",
     platform: "test",
@@ -241,14 +239,7 @@ describe("Event", () => {
       text: "variant",
       test: { value: 42 },
     });
-    expect(Object.keys(event.data).sort()).toEqual([
-      "channel",
-      "eventType",
-      "platform",
-      "selfId",
-      "test",
-      "text",
-    ]);
+    expect(Object.keys(event.data).sort()).toEqual(["channel", "eventType", "platform", "selfId", "test", "text"]);
     expect(event.data).not.toHaveProperty("message");
     expect(event.data).not.toHaveProperty("content");
     expect(event.data).not.toHaveProperty("type");

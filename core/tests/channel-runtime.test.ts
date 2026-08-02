@@ -185,11 +185,7 @@ describe("ChannelRuntime", () => {
     const basePath = await mkdtemp(join(tmpdir(), "yesimbot-channel-prompt-"));
     await writeFile(join(basePath, "AGENTS.md"), "first policy");
     const sendMessage = vi.fn(async () => ["sent-1"]);
-    const { runtime } = createRuntime(
-      { decide: async () => "wait" as const },
-      sendMessage,
-      basePath,
-    );
+    const { runtime } = createRuntime({ decide: async () => "wait" as const }, sendMessage, basePath);
 
     await runtime.init();
     await writeFile(join(basePath, "AGENTS.md"), "second policy");
@@ -476,9 +472,9 @@ describe("ChannelRuntime", () => {
 
   it("always formats message events with their ID", async () => {
     const { runtime } = createRuntime({ decide: async () => "wait" });
-    const formatter = (
-      state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
-    ).find((plugin) => plugin.name === "core.model-input");
+    const formatter = (state.options?.plugins as Array<{ name: string; toModelMessages: Function }>).find(
+      (plugin) => plugin.name === "core.model-input",
+    );
 
     await runtime.handle(record());
     const event = createMessage(record());
@@ -540,26 +536,20 @@ describe("ChannelRuntime", () => {
     const storage = createJsonlStorage(path);
     const replay = await storage.read();
     const inputs = replay
-      .filter(
-        (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
-      )
+      .filter((entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message")
       .map((entry) => entry.data)
       .filter((entry) => isMessage(entry) || isEvent(entry));
     const unsupported = replay
-      .filter(
-        (entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message",
-      )
+      .filter((entry): entry is typeof entry & { readonly type: "message" } => entry.type === "message")
       .map((entry) => entry.data)
       .filter((entry) => !isMessage(entry) && !isEvent(entry));
     const { runtime } = createRuntime({ decide: async () => "wait" });
-    const formatter = (
-      state.options?.plugins as Array<{ name: string; toModelMessages: Function }>
-    ).find((plugin) => plugin.name === "core.event-format");
+    const formatter = (state.options?.plugins as Array<{ name: string; toModelMessages: Function }>).find(
+      (plugin) => plugin.name === "core.event-format",
+    );
     const context = { history: inputs, current: [] } satisfies ModelMessageContext;
 
-    const projected = await Promise.all(
-      inputs.map((input) => formatter?.toModelMessages(input, context)),
-    );
+    const projected = await Promise.all(inputs.map((input) => formatter?.toModelMessages(input, context)));
 
     expect(runtime).toBeDefined();
     expect(inputs.map((input) => input.type)).toEqual(["yesimbot.message", "yesimbot.event"]);
@@ -613,15 +603,11 @@ describe("ChannelRuntime", () => {
     if (!Array.isArray(configured)) throw new Error("Agent plugins are unavailable");
     const ordered = orderPlugins(
       configured.filter(
-        (plugin): plugin is AgentPlugin =>
-          typeof plugin === "object" && plugin !== null && "name" in plugin,
+        (plugin): plugin is AgentPlugin => typeof plugin === "object" && plugin !== null && "name" in plugin,
       ),
     );
 
-    expect(ordered.map((plugin) => plugin.name)).toEqual([
-      "core.model-input",
-      "external.formatter",
-    ]);
+    expect(ordered.map((plugin) => plugin.name)).toEqual(["core.model-input", "external.formatter"]);
     expect(ordered.find((plugin) => plugin.toModelMessages)?.name).toBe("core.model-input");
     expect(ordered.filter((plugin) => plugin.onTurnFinish).map((plugin) => plugin.name)).toEqual([
       "external.formatter",
@@ -712,9 +698,7 @@ describe("ChannelRuntime", () => {
 
   it("does not notify Will for an aborted turn without acknowledgement", async () => {
     const onReply = vi.fn(async () => undefined);
-    state.stream = streamFrom([
-      { type: "turn.aborted", id: "event-1", timestamp: 1, turnId: "turn-1" },
-    ]);
+    state.stream = streamFrom([{ type: "turn.aborted", id: "event-1", timestamp: 1, turnId: "turn-1" }]);
     const { runtime } = createRuntime({ decide: async () => "trigger", onReply });
 
     const result = await runtime.handle(record());

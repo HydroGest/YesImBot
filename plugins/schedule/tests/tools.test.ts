@@ -90,9 +90,7 @@ describe("schedule agent tools", () => {
   it("create schema accepts exactly one canonical rule and rejects channel targets", () => {
     const [createTool] = createTools(createStoreDouble());
     const validate = ajv.compile(schemaOf(createTool));
-    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z" })).toBe(
-      true,
-    );
+    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z" })).toBe(true);
     expect(validate({ title: "Standup", prompt: "Run it.", cron: "0 9 * * 1" })).toBe(true);
     expect(validate({ title: "Standup", prompt: "Run it." })).toBe(false);
     expect(
@@ -142,17 +140,14 @@ describe("schedule agent tools", () => {
     expect(validate({ id: "s-1", at: "2030-01-01T00:00:00Z", platform: "onebot" })).toBe(false);
   });
 
-  it.each(["schedule_pause", "schedule_resume", "schedule_cancel"])(
-    "%s schema accepts only an id",
-    (name) => {
-      const tools = createTools(createStoreDouble());
-      const tool = tools.find((candidate) => candidate.name === name)!;
-      const validate = ajv.compile(schemaOf(tool));
-      expect(validate({ id: "s-1" })).toBe(true);
-      expect(validate({})).toBe(false);
-      expect(validate({ id: "s-1", channelId: "room-1" })).toBe(false);
-    },
-  );
+  it.each(["schedule_pause", "schedule_resume", "schedule_cancel"])("%s schema accepts only an id", (name) => {
+    const tools = createTools(createStoreDouble());
+    const tool = tools.find((candidate) => candidate.name === name)!;
+    const validate = ajv.compile(schemaOf(tool));
+    expect(validate({ id: "s-1" })).toBe(true);
+    expect(validate({})).toBe(false);
+    expect(validate({ id: "s-1", channelId: "room-1" })).toBe(false);
+  });
 
   it("list schema accepts an empty object only", () => {
     const [, listTool] = createTools(createStoreDouble());

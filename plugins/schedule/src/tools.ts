@@ -2,12 +2,7 @@ import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 
 import type { ScheduleStore } from "./store.js";
-import type {
-  Schedule,
-  ScheduleCreateInput,
-  ScheduleProjection,
-  ScheduleUpdateInput,
-} from "./types.js";
+import type { Schedule, ScheduleCreateInput, ScheduleProjection, ScheduleUpdateInput } from "./types.js";
 
 const CREATE_SCHEMA = jsonSchema<CreateToolInput>({
   type: "object",
@@ -31,8 +26,7 @@ const CREATE_SCHEMA = jsonSchema<CreateToolInput>({
     },
     cron: {
       type: "string",
-      description:
-        "周期执行：Asia/Shanghai 时区的五段式 cron 表达式（分 时 日 月 周），相邻两次执行至少间隔 15 分钟",
+      description: "周期执行：Asia/Shanghai 时区的五段式 cron 表达式（分 时 日 月 周），相邻两次执行至少间隔 15 分钟",
     },
   },
   required: ["title", "prompt"],
@@ -131,10 +125,7 @@ function createTool(
   };
 }
 
-function listTool(
-  scope: ChannelScope,
-  store: ScheduleStore,
-): AgentTool<Record<string, never>, ScheduleProjection[]> {
+function listTool(scope: ChannelScope, store: ScheduleStore): AgentTool<Record<string, never>, ScheduleProjection[]> {
   return {
     name: "schedule_list",
     description:

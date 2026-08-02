@@ -1,40 +1,29 @@
 import {
   hasToolCall,
   isLoopFinished,
-  LanguageModel,
   streamText,
-  type SystemModelMessage,
+  type LanguageModel,
   type LanguageModelUsage,
+  type SystemModelMessage,
 } from "ai";
 
 import { Awaitable } from "./base.js";
 import { AgentChannel, createAgentChannel } from "./channel.js";
-import { createEventEntry, createMessageEntry } from "./entry.js";
 import type { AgentEntry } from "./entry.js";
+import { createEventEntry, createMessageEntry } from "./entry.js";
 import { formatErrorCause } from "./errors.js";
-import { createDiagnostic, createInternalEvent } from "./event.js";
 import type { AgentInternalEvent, AgentInternalEventInit } from "./event.js";
-import { buildModelMessages, createAssistantMessage, createToolMessage } from "./message.js";
+import { createDiagnostic, createInternalEvent } from "./event.js";
 import type { AgentMessage } from "./message.js";
+import { buildModelMessages, createAssistantMessage, createToolMessage } from "./message.js";
+import type { AgentPlugin, AgentPluginRuntime, SystemPromptAppend, ToolHookContext } from "./plugin.js";
 import { createPluginHost, normalizeSystemPromptAppend } from "./plugin.js";
-import type {
-  AgentPlugin,
-  AgentPluginRuntime,
-  SystemPromptAppend,
-  ToolHookContext,
-} from "./plugin.js";
-import { AgentStateManager, createStateManager } from "./state.js";
 import type { AgentState } from "./state.js";
-import { createMemoryStorage } from "./storage.js";
+import { AgentStateManager, createStateManager } from "./state.js";
 import type { AgentStorage } from "./storage.js";
-import {
-  AgentTool,
-  AgentToolSet,
-  createTerminalTool,
-  resolveTerminalToolName,
-  toAiToolSet,
-} from "./tools.js";
+import { createMemoryStorage } from "./storage.js";
 import type { AgentToolExecuteContext } from "./tools.js";
+import { AgentTool, AgentToolSet, createTerminalTool, resolveTerminalToolName, toAiToolSet } from "./tools.js";
 import { createTurnQueue, TurnResult, type AgentWaitOptions, type TurnRequest } from "./turn.js";
 
 export interface AgentSendOptions {
@@ -48,9 +37,7 @@ export interface AgentTerminalToolConfig {
 export interface AgentConfig {
   id?: string;
   model: LanguageModel;
-  systemPrompt?:
-    | SystemPromptAppend
-    | ((runtime: AgentPluginRuntime) => Awaitable<SystemPromptAppend | void>);
+  systemPrompt?: SystemPromptAppend | ((runtime: AgentPluginRuntime) => Awaitable<SystemPromptAppend | void>);
   tools?: AgentToolSet;
   terminalTool?: boolean | AgentTerminalToolConfig;
   storage?: AgentStorage<AgentEntry>;
@@ -109,16 +96,12 @@ function raceAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   ]);
 }
 
-function isTurnScopedEvent(
-  event: AgentInternalEvent,
-): event is AgentInternalEvent & { turnId: string } {
+function isTurnScopedEvent(event: AgentInternalEvent): event is AgentInternalEvent & { turnId: string } {
   return "turnId" in event && typeof (event as { turnId?: unknown }).turnId === "string";
 }
 
 function isTerminalTurnEvent(event: AgentInternalEvent) {
-  return (
-    event.type === "turn.done" || event.type === "turn.failed" || event.type === "turn.aborted"
-  );
+  return event.type === "turn.done" || event.type === "turn.failed" || event.type === "turn.aborted";
 }
 
 async function resolveConfiguredSystemPrompt(
@@ -180,10 +163,7 @@ export function createAgent(config: AgentConfig): Agent {
   const turnStreams = new Map<string, Set<(event: AgentInternalEvent) => void>>();
   const turnEventBuffer = new Map<string, AgentInternalEvent[]>();
   let appendPipelineReady = Promise.resolve();
-  const submittedMessageEntries = new WeakMap<
-    object,
-    Array<Extract<AgentEntry, { type: "message" }>>
-  >();
+  const submittedMessageEntries = new WeakMap<object, Array<Extract<AgentEntry, { type: "message" }>>>();
 
   const runAppendPipeline = async <T>(operation: () => Promise<T>): Promise<T> => {
     const next = appendPipelineReady.then(operation, operation);
@@ -212,10 +192,7 @@ export function createAgent(config: AgentConfig): Agent {
     return created;
   };
 
-  const appendEntries = async (
-    entries: AgentEntry[],
-    options: { turnId?: string } = {},
-  ): Promise<AgentEntry[]> => {
+  const appendEntries = async (entries: AgentEntry[], options: { turnId?: string } = {}): Promise<AgentEntry[]> => {
     if (entries.length === 0) {
       return [];
     }
@@ -310,11 +287,7 @@ export function createAgent(config: AgentConfig): Agent {
                   toolName,
                   args: input,
                 };
-                const decision = await pluginHost.helpers.beforeToolCall(
-                  { type: "allow" },
-                  originalCall,
-                  hookContext,
-                );
+                const decision = await pluginHost.helpers.beforeToolCall({ type: "allow" }, originalCall, hookContext);
                 throwIfAborted(hookContext.signal);
 
                 const nextInput = decision.type === "replace" ? decision.args : input;
@@ -411,9 +384,7 @@ export function createAgent(config: AgentConfig): Agent {
   const collectHistoryMessageEntries = async () => {
     await appendPipelineReady;
     const entries = await storage.read();
-    return entries.filter(
-      (entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message",
-    );
+    return entries.filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message");
   };
 
   const rememberSubmittedEntries = (
@@ -464,9 +435,7 @@ export function createAgent(config: AgentConfig): Agent {
   ) => {
     const persisted = await collectHistoryMessageEntries();
     const currentEntryIds = new Set(currentEntries.map((entry) => entry.id));
-    const history = persisted
-      .filter((entry) => !currentEntryIds.has(entry.id))
-      .map((entry) => entry.data);
+    const history = persisted.filter((entry) => !currentEntryIds.has(entry.id)).map((entry) => entry.data);
     const current = currentEntries.map((entry) => entry.data);
 
     return buildModelMessages({
@@ -550,11 +519,7 @@ export function createAgent(config: AgentConfig): Agent {
         const currentEntries = await persistCurrentMessages(currentBatch, request.turnId);
         allMessages.push(...currentEntries.map((entry) => entry.data));
 
-        const modelMessages = await buildBoundaryModelMessages(
-          request.turnId,
-          currentEntries,
-          abortSignal,
-        );
+        const modelMessages = await buildBoundaryModelMessages(request.turnId, currentEntries, abortSignal);
 
         let aborted = false;
         let persistedResponseMessageCount = 0;
@@ -563,9 +528,7 @@ export function createAgent(config: AgentConfig): Agent {
           system: frozenSystemPrompt,
           messages: modelMessages,
           tools: toAiToolSet(resolveTools(request.turnId, abortSignal)),
-          stopWhen: terminalToolName
-            ? [isLoopFinished(), hasToolCall(terminalToolName)]
-            : isLoopFinished(),
+          stopWhen: terminalToolName ? [isLoopFinished(), hasToolCall(terminalToolName)] : isLoopFinished(),
           abortSignal,
           prepareStep: async ({ stepNumber }) => {
             if (stepNumber === 0) {
@@ -581,11 +544,7 @@ export function createAgent(config: AgentConfig): Agent {
             const joinedEntries = await persistCurrentMessages(joined, request.turnId);
             allMessages.push(...joinedEntries.map((entry) => entry.data));
             return {
-              messages: await buildBoundaryModelMessages(
-                request.turnId,
-                joinedEntries,
-                abortSignal,
-              ),
+              messages: await buildBoundaryModelMessages(request.turnId, joinedEntries, abortSignal),
             };
           },
           maxRetries: 0,
@@ -615,10 +574,7 @@ export function createAgent(config: AgentConfig): Agent {
               );
               allMessages.push(
                 ...stepEntries
-                  .filter(
-                    (entry): entry is Extract<AgentEntry, { type: "message" }> =>
-                      entry.type === "message",
-                  )
+                  .filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message")
                   .map((entry) => entry.data),
               );
             }
@@ -725,15 +681,12 @@ export function createAgent(config: AgentConfig): Agent {
       let persistence: Promise<void> | undefined;
 
       if (options.ifBusy === "join" && activeTurnId && !submittedMessageEntries.has(message)) {
-        persistence = appendEntries([createMessageEntry(message)], { turnId: activeTurnId }).then(
-          (entries) => {
-            const messageEntries = entries.filter(
-              (entry): entry is Extract<AgentEntry, { type: "message" }> =>
-                entry.type === "message",
-            );
-            rememberSubmittedEntries([message], messageEntries);
-          },
-        );
+        persistence = appendEntries([createMessageEntry(message)], { turnId: activeTurnId }).then((entries) => {
+          const messageEntries = entries.filter(
+            (entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message",
+          );
+          rememberSubmittedEntries([message], messageEntries);
+        });
       }
 
       const turnId = turnQueue.enqueue([message], options.ifBusy, persistence);

@@ -1,5 +1,3 @@
-export const agentRuntimePackageName = "@yesimbot/agent-runtime";
-
 export { jsonSchema } from "ai";
 export * from "./agent.js";
 export * from "./channel.js";

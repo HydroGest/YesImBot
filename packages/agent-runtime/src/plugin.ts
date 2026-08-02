@@ -30,10 +30,7 @@ export interface AgentPlugin {
   stop?(): Awaitable<void>;
   onAppend?(entries: AgentEntry[], context: AppendHookContext): Awaitable<AgentEntry[] | void>;
   /** @deprecated Define an explicit cache lifecycle before adding historical projection behavior. */
-  transformMessages?(
-    messages: AgentMessage[],
-    context: MessageTransformContext,
-  ): Awaitable<AgentMessage[]>;
+  transformMessages?(messages: AgentMessage[], context: MessageTransformContext): Awaitable<AgentMessage[]>;
   toModelMessages?(
     message: AgentMessage,
     context: ModelMessageContext,
@@ -44,10 +41,7 @@ export interface AgentPlugin {
   /** @deprecated Declare stable tools through `AgentPlugin.tools`. */
   extendTools?(tools: AgentToolSet, context: ToolExtensionContext): Awaitable<AgentToolSet | void>;
   beforeToolCall?(call: ToolCallContext, context: ToolHookContext): Awaitable<ToolDecision | void>;
-  afterToolCall?(
-    result: ToolResultContext,
-    context: ToolHookContext,
-  ): Awaitable<Partial<ToolResultContext> | void>;
+  afterToolCall?(result: ToolResultContext, context: ToolHookContext): Awaitable<Partial<ToolResultContext> | void>;
   onTurnFinish?(result: TurnResult, context: TurnFinishContext): Awaitable<void>;
 }
 
@@ -106,16 +100,9 @@ export interface PluginHostRuntime extends AgentPluginRuntime {
 
 export interface PluginHostHelpers {
   onAppend(entries: AgentEntry[], context: AppendHookContext): Promise<AgentEntry[]>;
-  transformMessages(
-    messages: AgentMessage[],
-    context: MessageTransformContext,
-  ): Promise<AgentMessage[]>;
+  transformMessages(messages: AgentMessage[], context: MessageTransformContext): Promise<AgentMessage[]>;
   toModelMessages(message: AgentMessage, context: ModelMessageContext): Promise<ModelMessage[]>;
-  beforeToolCall(
-    decision: ToolDecision,
-    call: ToolCallContext,
-    context: ToolHookContext,
-  ): Promise<ToolDecision>;
+  beforeToolCall(decision: ToolDecision, call: ToolCallContext, context: ToolHookContext): Promise<ToolDecision>;
   afterToolCall(result: ToolResultContext, context: ToolHookContext): Promise<ToolResultContext>;
   onTurnFinish(result: TurnResult, context: TurnFinishContext): Promise<void>;
 }
@@ -152,16 +139,11 @@ export function normalizeSystemPromptAppend(value: SystemPromptAppend): SystemMo
       : {
           ...block,
           content: structuredClone(block.content),
-          ...(block.providerOptions === undefined
-            ? {}
-            : { providerOptions: structuredClone(block.providerOptions) }),
+          ...(block.providerOptions === undefined ? {} : { providerOptions: structuredClone(block.providerOptions) }),
         },
   );
 }
-export function createPluginHost(options: {
-  plugins: readonly AgentPlugin[];
-  runtime: PluginHostRuntime;
-}): PluginHost {
+export function createPluginHost(options: { plugins: readonly AgentPlugin[]; runtime: PluginHostRuntime }): PluginHost {
   const plugins = orderPlugins(options.plugins);
   const activePlugins: AgentPlugin[] = [];
   const stableTools: AgentToolSet = [];
@@ -361,23 +343,19 @@ export function createPluginHost(options: {
           await plugin.init?.(options.runtime);
           didStartPlugin = true;
 
-          const declared =
-            typeof plugin.tools === "function" ? await plugin.tools(options.runtime) : plugin.tools;
+          const declared = typeof plugin.tools === "function" ? await plugin.tools(options.runtime) : plugin.tools;
           let candidateTools = mergeTools([nextTools, declared ?? []]);
           let candidateLegacy = nextLegacy;
           const appended = await plugin.appendSystemPrompt?.(initializationContext);
-          const candidateBlocks =
-            appended === undefined ? [] : normalizeSystemPromptAppend(appended);
+          const candidateBlocks = appended === undefined ? [] : normalizeSystemPromptAppend(appended);
 
           if (candidateLegacy !== undefined && plugin.extendSystemPrompt) {
             candidateLegacy =
-              (await plugin.extendSystemPrompt(candidateLegacy, initializationContext)) ??
-              candidateLegacy;
+              (await plugin.extendSystemPrompt(candidateLegacy, initializationContext)) ?? candidateLegacy;
           }
           if (plugin.extendTools) {
             candidateTools = mergeTools([
-              (await plugin.extendTools([...candidateTools], initializationContext)) ??
-                candidateTools,
+              (await plugin.extendTools([...candidateTools], initializationContext)) ?? candidateTools,
             ]);
           }
 

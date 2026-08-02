@@ -11,11 +11,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/channel.js";
 import type { Config as CoreConfig } from "../src/config.js";
 import type { EventRecord, MessageRecord } from "../src/messages.js";
-import {
-  ChannelRuntime,
-  type ChannelRuntimeOptions,
-  RuntimeManager,
-} from "../src/runtime/index.js";
+import { ChannelRuntime, type ChannelRuntimeOptions, RuntimeManager } from "../src/runtime/index.js";
 import { RoutingWillEngine, WillingnessWillEngine } from "../src/runtime/will.js";
 
 function record(channelId: string, overrides: Partial<MessageRecord> = {}): MessageRecord {
@@ -87,13 +83,11 @@ function createManager(
     reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 } },
   };
   return {
-    manager: new RuntimeManager(
-      ctx,
-      modelService,
-      assets as never,
-      storage,
-      { config, logger: { warn: vi.fn() } as never, getAgentPluginFactories },
-    ),
+    manager: new RuntimeManager(ctx, modelService, assets as never, storage, {
+      config,
+      logger: { warn: vi.fn() } as never,
+      getAgentPluginFactories,
+    }),
     assets,
     ctx,
     resolveChatModel,
@@ -113,18 +107,14 @@ describe("RuntimeManager", () => {
     state.runtimes = [];
     state.init.mockReset().mockResolvedValue(undefined);
     state.handle.mockReset().mockResolvedValue({ kind: "wait", eventId: "event-1" });
-    state.trigger
-      .mockReset()
-      .mockResolvedValue({ kind: "join", eventId: "event-1", turnId: "turn-1" });
+    state.trigger.mockReset().mockResolvedValue({ kind: "join", eventId: "event-1", turnId: "turn-1" });
     state.stop.mockReset().mockResolvedValue(undefined);
     vi.spyOn(ChannelRuntime.prototype, "init").mockImplementation(function () {
       state.runtimes.push(this);
       return state.init();
     });
     vi.spyOn(ChannelRuntime.prototype, "handle").mockImplementation(async () => state.handle());
-    vi.spyOn(ChannelRuntime.prototype, "trigger").mockImplementation(async (record) =>
-      state.trigger(record),
-    );
+    vi.spyOn(ChannelRuntime.prototype, "trigger").mockImplementation(async (record) => state.trigger(record));
     vi.spyOn(ChannelRuntime.prototype, "stop").mockImplementation(() => state.stop());
   });
 
@@ -305,9 +295,7 @@ describe("RuntimeManager", () => {
     const { manager, model, getAgentPluginFactories } = createManager();
     const first = { name: "first" };
     const second = { name: "second" };
-    getAgentPluginFactories
-      .mockReturnValueOnce([async () => first])
-      .mockReturnValue([async () => second]);
+    getAgentPluginFactories.mockReturnValueOnce([async () => first]).mockReturnValue([async () => second]);
 
     await manager.route(record("room-a"));
     await manager.route(record("room-b"));
@@ -389,11 +377,7 @@ describe("RuntimeManager", () => {
       channelId: "uncached",
       type: "shared",
     } satisfies ChannelScope;
-    const path = join(
-      await new ChannelStorage(ctx, basePath).getStoragePath(scope),
-      "sessions",
-      "messages.jsonl",
-    );
+    const path = join(await new ChannelStorage(ctx, basePath).getStoragePath(scope), "sessions", "messages.jsonl");
     await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "stored\n");
 
@@ -422,25 +406,18 @@ describe("RuntimeManager", () => {
       mkdir(join(root, "assets"), { recursive: true }),
       mkdir(join(root, "workspace"), { recursive: true }),
     ]);
-    await Promise.all([
-      writeFile(messages, "stored"),
-      writeFile(asset, "asset"),
-      writeFile(workspace, "keep"),
-    ]);
+    await Promise.all([writeFile(messages, "stored"), writeFile(asset, "asset"), writeFile(workspace, "keep")]);
     assets.createStore.mockImplementation((target) => ({
       get: vi.fn(),
       put: vi.fn(),
-      clear: async () =>
-        rm(join(await storage.getStoragePath(target), "assets"), { recursive: true, force: true }),
+      clear: async () => rm(join(await storage.getStoragePath(target), "assets"), { recursive: true, force: true }),
     }));
 
     await manager.reset(scope);
     await expect(access(messages)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(asset)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(access(workspace)).resolves.toBeUndefined();
-    await expect(
-      access(join(await storage.getStoragePath(scope), "channel.json")),
-    ).resolves.toBeUndefined();
+    await expect(access(join(await storage.getStoragePath(scope), "channel.json"))).resolves.toBeUndefined();
   });
 
   it("rejects reset after stop without clearing persisted data", async () => {
@@ -452,11 +429,7 @@ describe("RuntimeManager", () => {
       channelId: "room",
       type: "shared",
     } satisfies ChannelScope;
-    const path = join(
-      await new ChannelStorage(ctx, basePath).getStoragePath(scope),
-      "sessions",
-      "messages.jsonl",
-    );
+    const path = join(await new ChannelStorage(ctx, basePath).getStoragePath(scope), "sessions", "messages.jsonl");
     await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, "persisted");
     await manager.route(record("room"));

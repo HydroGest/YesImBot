@@ -1,8 +1,4 @@
-export function clampLimit(
-  value: number | undefined,
-  defaultLimit: number,
-  maxLimit: number,
-): number {
+export function clampLimit(value: number | undefined, defaultLimit: number, maxLimit: number): number {
   const limit = value ?? defaultLimit;
   return Math.max(1, Math.min(limit, maxLimit));
 }

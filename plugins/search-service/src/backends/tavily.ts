@@ -2,19 +2,8 @@ import { AgentTool, jsonSchema } from "@yesimbot/agent-runtime";
 import type { Context, Logger } from "koishi";
 import { Schema } from "koishi";
 
-import type {
-  SearchBackend,
-  SearchRuntimeConfig,
-  WebScrapeOutput,
-  WebSearchOutput,
-} from "../types";
-import {
-  clampLimit,
-  compileBlacklist,
-  dedupeByUrl,
-  filterBlockedResults,
-  normalizeUrlList,
-} from "../utils";
+import type { SearchBackend, SearchRuntimeConfig, WebScrapeOutput, WebSearchOutput } from "../types";
+import { clampLimit, compileBlacklist, dedupeByUrl, filterBlockedResults, normalizeUrlList } from "../utils";
 
 const SEARCH_ENDPOINT = "https://api.tavily.com/search";
 const EXTRACT_ENDPOINT = "https://api.tavily.com/extract";
@@ -27,11 +16,7 @@ export const tavilyConfigSchema: Schema<TavilyConfig> = Schema.object({
   searchDepth: Schema.union([Schema.const("basic"), Schema.const("advanced")])
     .default("basic")
     .description("搜索深度"),
-  topic: Schema.union([
-    Schema.const("general"),
-    Schema.const("news"),
-    Schema.const("finance"),
-  ]).description("搜索主题"),
+  topic: Schema.union([Schema.const("general"), Schema.const("news"), Schema.const("finance")]).description("搜索主题"),
   timeRange: Schema.union([
     Schema.const("day"),
     Schema.const("week"),
@@ -179,8 +164,7 @@ class TavilyBackend implements SearchBackend {
     return {
       name: "web_scrape",
       description:
-        "Extract readable content from one or more web pages. " +
-        "Use after web_search when full page text is needed.",
+        "Extract readable content from one or more web pages. " + "Use after web_search when full page text is needed.",
       inputSchema: scrapeInputSchema,
       execute: async (input) => {
         const normalized = normalizeUrlList(input.urls, MAX_URLS_PER_SCRAPE);
@@ -219,17 +203,13 @@ class TavilyBackend implements SearchBackend {
     };
 
     try {
-      const response = await this.ctx.http.post<TavilySearchResponse>(
-        this.config.searchEndpoint,
-        body,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.config.apiKey}`,
-          },
-          timeout: this.config.timeoutMs,
+      const response = await this.ctx.http.post<TavilySearchResponse>(this.config.searchEndpoint, body, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.config.apiKey}`,
         },
-      );
+        timeout: this.config.timeoutMs,
+      });
 
       const rawResults = Array.isArray(response.results) ? response.results : [];
       const mapped = rawResults.map((result) => ({

@@ -53,10 +53,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
   }
   public async stats(): Promise<Driver.Stats> {
     const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [
-        name,
-        { name, count: rows.length, size: 0 },
-      ]),
+      Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]),
     );
     return { tables, size: 0 };
   }
@@ -93,10 +90,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     );
   }
 
-  public async set(
-    sel: Selection.Mutable,
-    data: Record<string, unknown>,
-  ): Promise<Driver.WriteResult> {
+  public async set(sel: Selection.Mutable, data: Record<string, unknown>): Promise<Driver.WriteResult> {
     const { ref, query, table } = sel;
     const matched = this.table(table)
       .filter((row) => executeQuery(row, query, ref))
@@ -128,11 +122,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     return clone(data);
   }
 
-  public async upsert(
-    sel: Selection.Mutable,
-    data: Row[],
-    keys: string[],
-  ): Promise<Driver.WriteResult> {
+  public async upsert(sel: Selection.Mutable, data: Row[], keys: string[]): Promise<Driver.WriteResult> {
     const { table, model, ref } = sel;
     const result: Driver.WriteResult = { inserted: 0, matched: 0 };
     for (const update of data) {
@@ -367,9 +357,7 @@ describe("ScheduleScheduler", () => {
 
     expect(trigger).toHaveBeenCalledTimes(MAX_CONCURRENT_TRIGGERS);
     let rows = await store.list(sharedScope);
-    expect(rows.filter((row) => row.lastResult?.status === "submitting")).toHaveLength(
-      MAX_CONCURRENT_TRIGGERS,
-    );
+    expect(rows.filter((row) => row.lastResult?.status === "submitting")).toHaveLength(MAX_CONCURRENT_TRIGGERS);
     const missed = rows.find((row) => row.lastResult?.status === "missed");
     expect(missed).toBeDefined();
     expect(missed!.lastResult).toMatchObject({ occurrenceAt: T0, status: "missed" });
@@ -379,9 +367,7 @@ describe("ScheduleScheduler", () => {
     releases.forEach((release) => release());
     await vi.advanceTimersByTimeAsync(0);
     rows = await store.list(sharedScope);
-    expect(rows.filter((row) => row.lastResult?.status === "accepted")).toHaveLength(
-      MAX_CONCURRENT_TRIGGERS,
-    );
+    expect(rows.filter((row) => row.lastResult?.status === "accepted")).toHaveLength(MAX_CONCURRENT_TRIGGERS);
     expect(rows.filter((row) => row.lastResult?.status === "missed")).toHaveLength(1);
   });
 

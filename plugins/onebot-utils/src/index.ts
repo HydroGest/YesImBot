@@ -133,10 +133,7 @@ export default class OnebotUtilsPlugin {
   public static usage = "OneBot 工具插件，提供获取合并转发消息、表态和设置精华等功能";
   public static Config: Schema<OnebotUtilsConfig> = Schema.object({
     parseImages: Schema.boolean().default(false).description("解析转发消息中的图片元数据"),
-    maxForwardPageChars: Schema.number()
-      .min(1)
-      .default(6000)
-      .description("合并转发消息每页的最大文本字符数"),
+    maxForwardPageChars: Schema.number().min(1).default(6000).description("合并转发消息每页的最大文本字符数"),
   });
 
   public readonly ctx: Context;
@@ -155,9 +152,7 @@ export default class OnebotUtilsPlugin {
 
   public async start(): Promise<void> {
     this.disposeAgentPlugin?.();
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin(
-      createOneBotPluginFactory(this.config),
-    );
+    this.disposeAgentPlugin = this.ctx.yesimbot.registerAgentPlugin(createOneBotPluginFactory(this.config));
   }
 
   public async stop(): Promise<void> {

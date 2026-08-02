@@ -50,9 +50,7 @@ export interface ExecutionLimits {
 type HttpMethod = "GET" | "HEAD" | "POST" | "PUT" | "DELETE" | "PATCH" | "OPTIONS";
 
 export interface NetworkConfig extends BashNetworkConfig {
-  allowedUrlPrefixes?: Array<
-    string | { url: string; transform?: Array<{ headers: Record<string, string> }> }
-  >;
+  allowedUrlPrefixes?: Array<string | { url: string; transform?: Array<{ headers: Record<string, string> }> }>;
   allowedMethods?: HttpMethod[];
   dangerouslyAllowFullInternetAccess?: boolean;
 }

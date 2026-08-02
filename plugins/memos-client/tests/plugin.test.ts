@@ -83,20 +83,20 @@ function createContext() {
   );
   const factories: Array<(context: any) => AgentPlugin> = [];
   const dispose = vi.fn<() => void>();
-  const post = vi.fn<() => Promise<{ code: number; data: { task_id: string }; message: string }>>(
-    async () => ({ code: 0, data: { task_id: "task-1" }, message: "ok" }),
-  );
+  const post = vi.fn<() => Promise<{ code: number; data: { task_id: string }; message: string }>>(async () => ({
+    code: 0,
+    data: { task_id: "task-1" },
+    message: "ok",
+  }));
   const ctx = {
     http: { post },
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      registerAgentPlugin: vi.fn<(factory: (scope: any, bot: any) => AgentPlugin) => () => void>(
-        (factory) => {
-          factories.push((context) => factory(context.channel ?? context, context.bot));
-          return dispose;
-        },
-      ),
+      registerAgentPlugin: vi.fn<(factory: (scope: any, bot: any) => AgentPlugin) => () => void>((factory) => {
+        factories.push((context) => factory(context.channel ?? context, context.bot));
+        return dispose;
+      }),
     },
   };
 
@@ -126,9 +126,7 @@ function toolContext(turnId = "turn-real"): AgentToolExecuteContext {
 }
 
 async function getTools(plugin: AgentPlugin) {
-  return typeof plugin.tools === "function"
-    ? ((await plugin.tools({} as never)) ?? [])
-    : (plugin.tools ?? []);
+  return typeof plugin.tools === "function" ? ((await plugin.tools({} as never)) ?? []) : (plugin.tools ?? []);
 }
 
 describe("MemosClientPlugin", () => {
@@ -139,9 +137,7 @@ describe("MemosClientPlugin", () => {
     await plugin.start();
 
     expect(ctx.yesimbot.registerAgentPlugin).not.toHaveBeenCalled();
-    expect(scopedLogger.warn).toHaveBeenCalledWith(
-      "MemOS client plugin disabled: apiKey is required.",
-    );
+    expect(scopedLogger.warn).toHaveBeenCalledWith("MemOS client plugin disabled: apiKey is required.");
   });
 
   it("registers exactly search_message and add_message and extends prompt policy", async () => {

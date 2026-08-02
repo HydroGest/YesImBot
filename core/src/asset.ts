@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 import { h, type Element } from "koishi";
 
-import type { ChannelScope, ChannelStorage } from "./channel.js";
+import { ChannelScope, ChannelStorage } from "./runtime/storage.js";
 
 const COMPLETE_ID = /^[a-f0-9]{32}$/;
 const PREFIX_ID = /^[a-f0-9]{7,31}$/;
@@ -46,15 +46,12 @@ class ScopedAssetStore implements AssetStore {
   }
 
   public async get(idOrPrefix: string): Promise<Uint8Array> {
-    if (COMPLETE_ID.test(idOrPrefix))
-      return new Uint8Array(await readFile(await this.path(idOrPrefix)));
+    if (COMPLETE_ID.test(idOrPrefix)) return new Uint8Array(await readFile(await this.path(idOrPrefix)));
     if (!PREFIX_ID.test(idOrPrefix)) throw new Error("Invalid asset id");
     const directory = await this.path();
     let candidates: string[];
     try {
-      candidates = (await readdir(directory)).filter(
-        (name) => COMPLETE_ID.test(name) && name.startsWith(idOrPrefix),
-      );
+      candidates = (await readdir(directory)).filter((name) => COMPLETE_ID.test(name) && name.startsWith(idOrPrefix));
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code === "ENOENT") candidates = [];
       else throw cause;

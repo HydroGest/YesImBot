@@ -11,12 +11,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { ChannelScope } from "../src/channel.js";
 import { ChannelStorage } from "../src/channel.js";
-import {
-  createEvent,
-  createMessage,
-  type EventRecord,
-  type MessageRecord,
-} from "../src/messages.js";
+import { createEvent, createMessage, type EventRecord, type MessageRecord } from "../src/messages.js";
 import { createJsonlStorage } from "../src/runtime/storage.js";
 
 describe("jsonl storage", () => {
@@ -61,11 +56,7 @@ describe("jsonl storage", () => {
     const first = createEntry("message", createMessage(messageRecord));
     const second = createEntry("message", createEvent(eventRecord));
     const warn = vi.fn();
-    await writeFile(
-      filePath,
-      `${JSON.stringify(first)}\n{"broken":\n${JSON.stringify(second)}\n`,
-      "utf8",
-    );
+    await writeFile(filePath, `${JSON.stringify(first)}\n{"broken":\n${JSON.stringify(second)}\n`, "utf8");
 
     await expect(createJsonlStorage(filePath, warn).read()).resolves.toEqual([first, second]);
     expect(warn).toHaveBeenCalledOnce();
@@ -124,13 +115,7 @@ describe("jsonl storage", () => {
       channelId: "123456",
       type: "shared",
     };
-    const legacyPath = join(
-      dir,
-      "channels",
-      "ch_v1_2lgdyhmnfri2bdu7",
-      "sessions",
-      "messages.jsonl",
-    );
+    const legacyPath = join(dir, "channels", "ch_v1_2lgdyhmnfri2bdu7", "sessions", "messages.jsonl");
     const eventPath = join(
       await new ChannelStorage(new Context(), dir).getStoragePath(scope),
       "sessions",
@@ -144,9 +129,7 @@ describe("jsonl storage", () => {
       },
     };
 
-    expect(eventPath).toBe(
-      join(dir, "channels", "shared-onebot-123456", "sessions", "messages.jsonl"),
-    );
+    expect(eventPath).toBe(join(dir, "channels", "shared-onebot-123456", "sessions", "messages.jsonl"));
     await mkdir(dirname(legacyPath), { recursive: true });
     await writeFile(legacyPath, `${JSON.stringify(legacyEntry)}\n`, "utf8");
 

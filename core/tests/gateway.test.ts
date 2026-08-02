@@ -13,12 +13,7 @@ import {
   type ChannelAllowRule,
   type PlatformTranslator,
 } from "../src/gateway/index.js";
-import {
-  assembleEvent,
-  type RecordBase,
-  type EventRecord,
-  type MessageRecord,
-} from "../src/messages.js";
+import { assembleEvent, type RecordBase, type EventRecord, type MessageRecord } from "../src/messages.js";
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
@@ -137,18 +132,10 @@ describe("Channel allowlist", () => {
   });
 
   it("matches direct-only and shared-only rules", () => {
-    expect(
-      matchesAllowedChannel(direct, [{ platform: "test", channelId: "*", isDirect: true }]),
-    ).toBe(true);
-    expect(
-      matchesAllowedChannel(shared, [{ platform: "test", channelId: "*", isDirect: true }]),
-    ).toBe(false);
-    expect(
-      matchesAllowedChannel(shared, [{ platform: "test", channelId: "*", isDirect: false }]),
-    ).toBe(true);
-    expect(
-      matchesAllowedChannel(direct, [{ platform: "test", channelId: "*", isDirect: false }]),
-    ).toBe(false);
+    expect(matchesAllowedChannel(direct, [{ platform: "test", channelId: "*", isDirect: true }])).toBe(true);
+    expect(matchesAllowedChannel(shared, [{ platform: "test", channelId: "*", isDirect: true }])).toBe(false);
+    expect(matchesAllowedChannel(shared, [{ platform: "test", channelId: "*", isDirect: false }])).toBe(true);
+    expect(matchesAllowedChannel(direct, [{ platform: "test", channelId: "*", isDirect: false }])).toBe(false);
   });
 
   it("uses OR semantics across rules and defaults configuration to no access", () => {
@@ -227,9 +214,7 @@ describe("Gateway", () => {
     await gateway.handle(session());
 
     expect(database.get).toHaveBeenCalledOnce();
-    expect(database.get.mock.invocationCallOrder[0]).toBeLessThan(
-      translate.mock.invocationCallOrder[0] ?? Infinity,
-    );
+    expect(database.get.mock.invocationCallOrder[0]).toBeLessThan(translate.mock.invocationCallOrder[0] ?? Infinity);
   });
 
   it.each([[], [{ assignee: "" }], [{ assignee: "other" }]])(
@@ -265,8 +250,7 @@ describe("Gateway", () => {
     const { gateway, database, assets, runtime } = createGateway();
     gateway.registerTranslator({
       platform: "test",
-      translate: async (base) =>
-        messageRecord({ ...base, channel: { ...base.channel, name: "Direct room" } }),
+      translate: async (base) => messageRecord({ ...base, channel: { ...base.channel, name: "Direct room" } }),
     });
 
     await gateway.handle(session({ isDirect: true }));
@@ -306,8 +290,7 @@ describe("Gateway", () => {
     const { gateway, runtime } = createGateway();
     gateway.registerTranslator({
       platform: "test",
-      translate: async (base) =>
-        messageRecord(base, { channel: { ...base.channel, name: "Room" } }),
+      translate: async (base) => messageRecord(base, { channel: { ...base.channel, name: "Room" } }),
     });
 
     await gateway.handle(session());
@@ -333,15 +316,11 @@ describe("Gateway", () => {
     } satisfies PlatformTranslator;
     const disposeFirst = gateway.registerTranslator(first);
 
-    expect(() => gateway.registerTranslator(second)).toThrow(
-      'Translator for platform "test" is already registered',
-    );
+    expect(() => gateway.registerTranslator(second)).toThrow('Translator for platform "test" is already registered');
     disposeFirst();
     const disposeSecond = gateway.registerTranslator(second);
     disposeFirst();
-    expect(() => gateway.registerTranslator(first)).toThrow(
-      'Translator for platform "test" is already registered',
-    );
+    expect(() => gateway.registerTranslator(first)).toThrow('Translator for platform "test" is already registered');
     disposeSecond();
     expect(() => gateway.registerTranslator(first)).not.toThrow();
 
@@ -413,9 +392,7 @@ describe("Gateway", () => {
     expect(missing.store.put).not.toHaveBeenCalled();
 
     const nonMessage = createGateway();
-    await nonMessage.gateway.handle(
-      session({ platform: "missing", type: "notice", messageId: undefined }),
-    );
+    await nonMessage.gateway.handle(session({ platform: "missing", type: "notice", messageId: undefined }));
     expect(nonMessage.runtime.route).not.toHaveBeenCalled();
 
     const missingId = createGateway();
@@ -429,9 +406,7 @@ describe("Gateway", () => {
       platform: "*",
       translate: async (base) => messageRecord(base, { elements: [h.text("wildcard")] }),
     });
-    const exactTranslate = vi.fn(async (base: RecordBase) =>
-      messageRecord(base, { elements: [h.text("exact")] }),
-    );
+    const exactTranslate = vi.fn(async (base: RecordBase) => messageRecord(base, { elements: [h.text("exact")] }));
     exact.gateway.registerTranslator({
       platform: "test",
       translate: exactTranslate,
@@ -448,9 +423,7 @@ describe("Gateway", () => {
       expect.anything(),
       expect.anything(),
     );
-    expect(exact.runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({ elements: [h.text("exact")] }),
-    );
+    expect(exact.runtime.route).toHaveBeenCalledWith(expect.objectContaining({ elements: [h.text("exact")] }));
 
     const wildcard = createGateway();
     wildcard.gateway.registerTranslator({
@@ -458,9 +431,7 @@ describe("Gateway", () => {
       translate: async (base) => messageRecord(base, { elements: [h.text("wildcard")] }),
     });
     await wildcard.gateway.handle(session({ platform: "other" }));
-    expect(wildcard.runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({ elements: [h.text("wildcard")] }),
-    );
+    expect(wildcard.runtime.route).toHaveBeenCalledWith(expect.objectContaining({ elements: [h.text("wildcard")] }));
   });
 
   it("does not fall back after selected translator null or throw", async () => {
@@ -486,9 +457,7 @@ describe("Gateway", () => {
     });
     await failed.gateway.handle(session());
     expect(failed.runtime.route).not.toHaveBeenCalled();
-    expect(failed.logger.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "gateway.route_failed" }),
-    );
+    expect(failed.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ code: "gateway.route_failed" }));
   });
 
   it("deduplicates middleware and internal message admission while routing non-message internally", async () => {

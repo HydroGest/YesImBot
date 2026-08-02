@@ -58,5 +58,3 @@ export function parseModelId(fullId: string): { provider: string; model: string 
 export function formatModelId(providerId: string, modelId: string): ModelId {
   return `${providerId}:${modelId}`;
 }
-
-

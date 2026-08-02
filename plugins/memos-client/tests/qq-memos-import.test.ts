@@ -23,11 +23,7 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function createExportFixture(params: {
-  name: string;
-  type: "group" | "private";
-  messages: unknown[];
-}): unknown {
+function createExportFixture(params: { name: string; type: "group" | "private"; messages: unknown[] }): unknown {
   return {
     chatInfo: {
       name: params.name,
@@ -157,9 +153,7 @@ afterEach(async () => {
 describe("qq-memos-import script", () => {
   it("requires explicit input and bot self id", async () => {
     await expect(runQqMemosImportCli(["--dry-run"])).rejects.toThrow(/--input/u);
-    await expect(runQqMemosImportCli(["--input", "./exports", "--dry-run"])).rejects.toThrow(
-      /--bot-self-id/u,
-    );
+    await expect(runQqMemosImportCli(["--input", "./exports", "--dry-run"])).rejects.toThrow(/--bot-self-id/u);
   });
 
   it("dry-runs directory imports without calling MemOS", async () => {
@@ -170,15 +164,12 @@ describe("qq-memos-import script", () => {
     const stdout: string[] = [];
     const stderr: string[] = [];
 
-    await runQqMemosImportCli(
-      ["--input", inputDir, "--bot-self-id", BOT_SELF_ID, "--dry-run", "--debug"],
-      {
-        env: {},
-        fetch,
-        stdout: (line) => stdout.push(line),
-        stderr: (line) => stderr.push(line),
-      },
-    );
+    await runQqMemosImportCli(["--input", inputDir, "--bot-self-id", BOT_SELF_ID, "--dry-run", "--debug"], {
+      env: {},
+      fetch,
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+    });
 
     expect(fetch).not.toHaveBeenCalled();
     const summary = JSON.parse(stdout.join("\n")) as {
@@ -256,13 +247,9 @@ describe("qq-memos-import script", () => {
     const groupChunks = plan.chunks.filter((chunk) => chunk.channelId === GROUP_ID);
 
     expect(groupChunks).toHaveLength(2);
-    expect(new Set(groupChunks.map((chunk) => chunk.request.user_id))).toEqual(
-      new Set([runtimeIdentity.userId]),
-    );
+    expect(new Set(groupChunks.map((chunk) => chunk.request.user_id))).toEqual(new Set([runtimeIdentity.userId]));
     expect(new Set(groupChunks.map((chunk) => chunk.request.conversation_id)).size).toBe(2);
-    expect(groupChunks.map((chunk) => chunk.request.conversation_id)).not.toContain(
-      runtimeIdentity.conversationId,
-    );
+    expect(groupChunks.map((chunk) => chunk.request.conversation_id)).not.toContain(runtimeIdentity.conversationId);
     expect(groupChunks.every((chunk) => chunk.request.info.subject_hash)).toBe(true);
   });
 
@@ -274,10 +261,7 @@ describe("qq-memos-import script", () => {
       requests.push({
         url: String(url),
         body: JSON.parse(String(init?.body)) as unknown,
-        authorization:
-          init?.headers instanceof Headers
-            ? (init.headers.get("Authorization") ?? undefined)
-            : undefined,
+        authorization: init?.headers instanceof Headers ? (init.headers.get("Authorization") ?? undefined) : undefined,
       });
       return new Response(JSON.stringify({ code: 0, data: { task_id: "task-synthetic" } }), {
         status: 200,

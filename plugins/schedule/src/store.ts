@@ -98,8 +98,7 @@ export class ScheduleStore {
   public update(scope: ChannelScope, id: string, input: ScheduleUpdateInput): Promise<Schedule> {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
-      const ruleChanged =
-        input.kind !== undefined || input.at !== undefined || input.cron !== undefined;
+      const ruleChanged = input.kind !== undefined || input.at !== undefined || input.cron !== undefined;
       if (ruleChanged && (row.state === "cancelled" || row.state === "completed")) {
         throw new Error(`schedule ${id} cannot change its rule`);
       }
@@ -248,11 +247,7 @@ export class ScheduleStore {
         status: "submitting",
       };
       const updatedAt = now.toISOString();
-      await this.model.set(
-        SCHEDULE_TABLE,
-        { id },
-        { state, nextRunAt: next, lastResult, updatedAt },
-      );
+      await this.model.set(SCHEDULE_TABLE, { id }, { state, nextRunAt: next, lastResult, updatedAt });
       return toSchedule({
         ...row,
         state,
@@ -281,8 +276,7 @@ export class ScheduleStore {
       const rows = await this.model.get(SCHEDULE_TABLE, { id });
       const row = rows[0];
       const result = row?.lastResult;
-      if (!row || result?.status !== "submitting" || result.occurrenceAt !== occurrenceAt)
-        return null;
+      if (!row || result?.status !== "submitting" || result.occurrenceAt !== occurrenceAt) return null;
       const now = new Date(Date.now());
       const lastResult: ScheduleLastResult = {
         ...result,
@@ -316,11 +310,7 @@ export class ScheduleStore {
             status: "interrupted",
             finishedAt: updatedAt,
           };
-          if (
-            row.state === "enabled" &&
-            row.nextRunAt !== null &&
-            Date.parse(row.nextRunAt) < nowMs
-          ) {
+          if (row.state === "enabled" && row.nextRunAt !== null && Date.parse(row.nextRunAt) < nowMs) {
             await this.model.set(
               SCHEDULE_TABLE,
               { id: row.id },
@@ -335,8 +325,7 @@ export class ScheduleStore {
           }
           continue;
         }
-        if (row.state !== "enabled" || row.nextRunAt === null || Date.parse(row.nextRunAt) >= nowMs)
-          continue;
+        if (row.state !== "enabled" || row.nextRunAt === null || Date.parse(row.nextRunAt) >= nowMs) continue;
         const lastResult: ScheduleLastResult = {
           occurrenceAt: row.nextRunAt,
           status: "missed",
@@ -428,9 +417,7 @@ function toSchedule(row: ScheduleRow): Schedule {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
-  return row.kind === "once"
-    ? { ...base, kind: "once", at: row.at! }
-    : { ...base, kind: "cron", cron: row.cron! };
+  return row.kind === "once" ? { ...base, kind: "once", at: row.at! } : { ...base, kind: "cron", cron: row.cron! };
 }
 
 function compareByNextRun(a: Schedule, b: Schedule): number {

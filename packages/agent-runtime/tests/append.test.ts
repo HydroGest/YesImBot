@@ -223,9 +223,7 @@ describe("append", () => {
     await Array.fromAsync(agent.run(message));
 
     const entries = await storage.read();
-    expect(
-      entries.filter((entry) => entry.type === "message" && entry.data.id === message.id),
-    ).toHaveLength(1);
+    expect(entries.filter((entry) => entry.type === "message" && entry.data.id === message.id)).toHaveLength(1);
   });
 
   it("does not persist the same message again when append is followed by busy join", async () => {
@@ -265,9 +263,7 @@ describe("append", () => {
     await agent.wait();
 
     const entries = await agent.storage.read();
-    expect(
-      entries.filter((entry) => entry.type === "message" && entry.data.id === message.id),
-    ).toHaveLength(1);
+    expect(entries.filter((entry) => entry.type === "message" && entry.data.id === message.id)).toHaveLength(1);
   });
 
   it("persists messages through append hooks after initializing stable resources", async () => {
@@ -512,9 +508,7 @@ describe("append", () => {
 
     const assistantContent = secondPrompt[1].content;
     expect(Array.isArray(assistantContent)).toBe(true);
-    expect(assistantContent).toEqual([
-      expect.objectContaining({ type: "tool-call", toolName: "lookup" }),
-    ]);
+    expect(assistantContent).toEqual([expect.objectContaining({ type: "tool-call", toolName: "lookup" })]);
 
     const toolContent = secondPrompt[2].content;
     expect(Array.isArray(toolContent)).toBe(true);
@@ -553,16 +547,12 @@ describe("append", () => {
       [expect.objectContaining({ type: "tool-result", toolCallId: "call_2" })],
     ]);
 
-    const persistedMessages = (await agent.storage.read()).filter(
-      (entry) => entry.type === "message",
-    );
+    const persistedMessages = (await agent.storage.read()).filter((entry) => entry.type === "message");
     expect(
       persistedMessages.filter(
         (entry) =>
           entry.data.role === "tool" &&
-          entry.data.content.some(
-            (part) => part.type === "tool-result" && part.toolCallId === "call_1",
-          ),
+          entry.data.content.some((part) => part.type === "tool-result" && part.toolCallId === "call_1"),
       ),
     ).toHaveLength(1);
   });
@@ -596,9 +586,7 @@ describe("append", () => {
             if (
               entries.some(
                 (entry) =>
-                  entry.type === "message" &&
-                  entry.data.role === "user" &&
-                  entry.data.content === "slow observation",
+                  entry.type === "message" && entry.data.role === "user" && entry.data.content === "slow observation",
               )
             ) {
               await slowAppendReady;
@@ -677,10 +665,7 @@ describe("append", () => {
 
     const entries = await agent.storage.read();
     const joined = entries.filter(
-      (entry) =>
-        entry.type === "message" &&
-        entry.data.role === "user" &&
-        entry.data.content === "joined while busy",
+      (entry) => entry.type === "message" && entry.data.role === "user" && entry.data.content === "joined while busy",
     );
     expect(joined).toHaveLength(1);
 

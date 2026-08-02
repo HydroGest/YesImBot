@@ -1,8 +1,4 @@
-import {
-  createCustomMessage,
-  type AgentMessage,
-  type CustomMessageBase,
-} from "@yesimbot/agent-runtime";
+import { createCustomMessage, type AgentMessage, type CustomMessageBase } from "@yesimbot/agent-runtime";
 import type { Element, Universal } from "koishi";
 
 export interface EventMap {

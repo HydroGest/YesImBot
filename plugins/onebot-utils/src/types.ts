@@ -5,11 +5,7 @@ export type ForwardPart =
   | { image: readonly [summary: string, file: string, size: string | null] }
   | { forward: string };
 
-export type ForwardMessage = readonly [
-  sender: string,
-  time: string | null,
-  content: readonly ForwardPart[],
-];
+export type ForwardMessage = readonly [sender: string, time: string | null, content: readonly ForwardPart[]];
 
 export interface ForwardPage {
   messages: readonly ForwardMessage[];

@@ -23,10 +23,7 @@ export interface McpSseServer {
 
 export type McpServer = McpStdioServer | McpHttpServer | McpSseServer;
 
-export type McpClientTransport =
-  | StdioClientTransport
-  | StreamableHTTPClientTransport
-  | SSEClientTransport;
+export type McpClientTransport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport;
 
 export interface McpClientConfig {
   mcpServers: Record<string, McpServer>;

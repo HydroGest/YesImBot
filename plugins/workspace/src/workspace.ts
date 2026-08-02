@@ -1,15 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import {
-  Bash,
-  InitialFiles,
-  InMemoryFs,
-  type IFileSystem,
-  MountableFs,
-  OverlayFs,
-  ReadWriteFs,
-} from "just-bash";
+import { Bash, InitialFiles, InMemoryFs, type IFileSystem, MountableFs, OverlayFs, ReadWriteFs } from "just-bash";
 
 import { assertValidMountConfig, DEFAULT_WORKSPACE_MOUNT } from "./mounts";
 import type { WorkspaceConfig, WorkspaceMountSummary } from "./types";

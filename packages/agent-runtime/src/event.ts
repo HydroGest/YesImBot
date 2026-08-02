@@ -135,12 +135,10 @@ export interface AgentInternalEventMeta {
   timestamp: number;
 }
 
-export type AgentInternalEvent<T extends AgentInternalEventInit = AgentInternalEventInit> = T &
-  AgentInternalEventMeta;
+export type AgentInternalEvent<T extends AgentInternalEventInit = AgentInternalEventInit> = T & AgentInternalEventMeta;
 
-export type AgentCustomChannelEvent<
-  T extends keyof AgentCustomChannelEvents = keyof AgentCustomChannelEvents,
-> = AgentCustomChannelEvents[T];
+export type AgentCustomChannelEvent<T extends keyof AgentCustomChannelEvents = keyof AgentCustomChannelEvents> =
+  AgentCustomChannelEvents[T];
 
 function formatDiagnosticCause(cause: unknown): string | undefined {
   if (cause === undefined) {
@@ -169,9 +167,7 @@ export function createDiagnostic(error: unknown): AgentDiagnostic {
   };
 }
 
-export function createInternalEvent<T extends AgentInternalEventInit>(
-  event: T,
-): AgentInternalEvent<T> {
+export function createInternalEvent<T extends AgentInternalEventInit>(event: T): AgentInternalEvent<T> {
   return {
     id: createRandomId(),
     timestamp: Date.now(),

@@ -4,10 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createForwardReader } from "../src/forward.js";
 import type { OneBotForwardNode, OneBotForwardSegment } from "../src/types.js";
 
-function node(
-  message: OneBotForwardSegment[],
-  overrides: Partial<OneBotForwardNode> = {},
-): OneBotForwardNode {
+function node(message: OneBotForwardSegment[], overrides: Partial<OneBotForwardNode> = {}): OneBotForwardNode {
   return {
     sender: { user_id: 10001, nickname: "Alice", card: "" },
     time: 1_753_888_000,
@@ -28,9 +25,7 @@ function createReader(
 
 describe("createForwardReader", () => {
   it("projects array text exactly instead of reading raw CQ text", async () => {
-    const { reader } = createReader([
-      node([{ type: "text", data: { text: "https://example.test/docs" } }]),
-    ]);
+    const { reader } = createReader([node([{ type: "text", data: { text: "https://example.test/docs" } }])]);
 
     await expect(reader({ forwardId: "forward" })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), ["https://example.test/docs"]]],
@@ -86,11 +81,7 @@ describe("createForwardReader", () => {
 
     expect(result).toEqual({
       messages: [
-        [
-          "Alice (10001)",
-          expect.any(String),
-          ["before", { image: ["cover", "cover.jpg", "52.8 KB"] }, "after"],
-        ],
+        ["Alice (10001)", expect.any(String), ["before", { image: ["cover", "cover.jpg", "52.8 KB"] }, "after"]],
         ["Alice (10001)", expect.any(String), [{ image: ["", "one.bin", "1.0 KB"] }]],
         ["Alice (10001)", expect.any(String), [{ image: ["", "bad.bin", null] }]],
         ["Alice (10001)", expect.any(String), [{ image: ["", "unsafe.bin", null] }]],
@@ -123,10 +114,10 @@ describe("createForwardReader", () => {
   });
 
   it("returns a clear error result when neither cache nor OneBot has a forward", async () => {
-    const reader = createForwardReader(
-      { getForwardMsg: vi.fn(async () => undefined) } as OneBot.Internal,
-      { parseImages: false, maxForwardPageChars: 6000 },
-    );
+    const reader = createForwardReader({ getForwardMsg: vi.fn(async () => undefined) } as OneBot.Internal, {
+      parseImages: false,
+      maxForwardPageChars: 6000,
+    });
 
     await expect(reader({ forwardId: "missing" })).resolves.toEqual({
       error: "未找到合并转发消息: missing",
@@ -166,9 +157,7 @@ describe("createForwardReader", () => {
 
   it("defaults to thirty records, clamps direct page inputs, and returns an empty terminal page", async () => {
     const { reader } = createReader(
-      Array.from({ length: 61 }, (_, index) =>
-        node([{ type: "text", data: { text: String(index) } }]),
-      ),
+      Array.from({ length: 61 }, (_, index) => node([{ type: "text", data: { text: String(index) } }])),
     );
 
     const defaultPage = await reader({ forwardId: "forward" });
@@ -176,14 +165,10 @@ describe("createForwardReader", () => {
 
     expect(defaultPage.messages).toHaveLength(30);
     expect(defaultPage.nextOffset).toBe(30);
-    expect(defaultPage.tips).toBe(
-      "还有 31 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset 30。",
-    );
+    expect(defaultPage.tips).toBe("还有 31 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset 30。");
     expect(clampedPage.messages).toHaveLength(60);
     expect(clampedPage.nextOffset).toBe(60);
-    expect(clampedPage.tips).toBe(
-      "还有 1 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset 60。",
-    );
+    expect(clampedPage.tips).toBe("还有 1 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset 60。");
     await expect(reader({ forwardId: "forward", offset: 99 })).resolves.toEqual({ messages: [] });
   });
 

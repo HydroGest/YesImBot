@@ -198,23 +198,17 @@ export class ModelService {
 
     for (const [alias, target] of Object.entries(modelsConfig.aliases)) {
       if (this.chatModels.has(alias) || this.embeddingModels.has(alias)) {
-        this.logger.warn(
-          `Ignoring models.json alias "${alias}" because it conflicts with a full model id.`,
-        );
+        this.logger.warn(`Ignoring models.json alias "${alias}" because it conflicts with a full model id.`);
         continue;
       }
       const parsedTarget = parseModelId(target);
       if (!parsedTarget) {
-        this.logger.warn(
-          `Ignoring models.json alias "${alias}" because target "${target}" is not a valid model id.`,
-        );
+        this.logger.warn(`Ignoring models.json alias "${alias}" because target "${target}" is not a valid model id.`);
         continue;
       }
       const targetId = formatModelId(parsedTarget.provider, parsedTarget.model);
       if (!this.chatModels.has(targetId) && !this.embeddingModels.has(targetId)) {
-        this.logger.warn(
-          `Ignoring models.json alias "${alias}" because target "${target}" is not registered.`,
-        );
+        this.logger.warn(`Ignoring models.json alias "${alias}" because target "${target}" is not registered.`);
         continue;
       }
       this.aliases.set(alias, targetId);
@@ -254,9 +248,7 @@ export class ModelService {
 
     const provider = this.providers.get(parsed.provider);
     if (!provider) {
-      throw new Error(
-        `Provider "${parsed.provider}" not found. Available: [${this.listProviders().join(", ")}]`,
-      );
+      throw new Error(`Provider "${parsed.provider}" not found. Available: [${this.listProviders().join(", ")}]`);
     }
 
     if (!provider.capabilities.chat) {
@@ -270,9 +262,7 @@ export class ModelService {
       .filter((item) => item.providerId === parsed.provider)
       .map((item) => item.modelId)
       .join(", ");
-    throw new Error(
-      `Model "${parsed.model}" not found in provider "${parsed.provider}". Available: [${available}]`,
-    );
+    throw new Error(`Model "${parsed.model}" not found in provider "${parsed.provider}". Available: [${available}]`);
   }
 
   private getEmbeddingRecord(fullId: string): EmbeddingModelRecord {
@@ -294,9 +284,7 @@ export class ModelService {
       .filter((item) => item.providerId === parsed.provider)
       .map((item) => item.modelId)
       .join(", ");
-    throw new Error(
-      `Model "${parsed.model}" not found in provider "${parsed.provider}". Available: [${available}]`,
-    );
+    throw new Error(`Model "${parsed.model}" not found in provider "${parsed.provider}". Available: [${available}]`);
   }
 
   public register(provider: Provider): () => void {
@@ -376,11 +364,7 @@ function isPlainObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readObjectSection(
-  root: JsonObject,
-  key: keyof ModelsConfigData,
-  warnings: string[],
-): JsonObject {
+function readObjectSection(root: JsonObject, key: keyof ModelsConfigData, warnings: string[]): JsonObject {
   const value = root[key];
   if (value === undefined) return {};
   if (!isPlainObject(value)) {
@@ -406,9 +390,7 @@ function readLimit(value: unknown, fullId: string, warnings: string[]): ChatMode
   const context = value.context;
   const output = value.output;
   if (typeof context !== "number" || typeof output !== "number") {
-    warnings.push(
-      `models.json chat override for "${fullId}" limit must contain numeric context and output.`,
-    );
+    warnings.push(`models.json chat override for "${fullId}" limit must contain numeric context and output.`);
     return undefined;
   }
   return { context, output };
@@ -436,26 +418,17 @@ function isModelModality(
   return typeof value === "string" && isChatModelModality(value);
 }
 
-function readModalities(
-  value: unknown,
-  fullId: string,
-  warnings: string[],
-): ChatModelConfig["modalities"] {
+function readModalities(value: unknown, fullId: string, warnings: string[]): ChatModelConfig["modalities"] {
   if (!isPlainObject(value)) {
     warnings.push(`models.json chat override for "${fullId}" modalities must be an object.`);
     return undefined;
   }
   const input = readModalityArray(value.input, fullId, "input", warnings);
   const output = readModalityArray(value.output, fullId, "output", warnings);
-  return input || output
-    ? { ...(input ? { input } : {}), ...(output ? { output } : {}) }
-    : undefined;
+  return input || output ? { ...(input ? { input } : {}), ...(output ? { output } : {}) } : undefined;
 }
 
-function readChatOverrides(
-  section: JsonObject,
-  warnings: string[],
-): Record<string, ChatModelOverride> {
+function readChatOverrides(section: JsonObject, warnings: string[]): Record<string, ChatModelOverride> {
   const result: Record<string, ChatModelOverride> = {};
   for (const [fullId, value] of Object.entries(section)) {
     if (!isPlainObject(value)) {
@@ -468,20 +441,14 @@ function readChatOverrides(
       reasoning: readBoolean(value.reasoning),
       hidden: readBoolean(value.hidden),
       limit: value.limit === undefined ? undefined : readLimit(value.limit, fullId, warnings),
-      modalities:
-        value.modalities === undefined
-          ? undefined
-          : readModalities(value.modalities, fullId, warnings),
+      modalities: value.modalities === undefined ? undefined : readModalities(value.modalities, fullId, warnings),
       variants: readVariants(value.variants),
     };
   }
   return result;
 }
 
-function readEmbeddingOverrides(
-  section: JsonObject,
-  warnings: string[],
-): Record<string, EmbeddingModelOverride> {
+function readEmbeddingOverrides(section: JsonObject, warnings: string[]): Record<string, EmbeddingModelOverride> {
   const result: Record<string, EmbeddingModelOverride> = {};
   for (const [fullId, value] of Object.entries(section)) {
     if (!isPlainObject(value)) {

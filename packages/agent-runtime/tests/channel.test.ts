@@ -42,9 +42,7 @@ describe("channel", () => {
       seen.push(event.type);
     });
 
-    await expect(
-      channel.emit("internal", createInternalEvent({ type: "agent.stop" })),
-    ).resolves.toBeUndefined();
+    await expect(channel.emit("internal", createInternalEvent({ type: "agent.stop" }))).resolves.toBeUndefined();
     expect(seen).toEqual(["agent.stop"]);
   });
 });

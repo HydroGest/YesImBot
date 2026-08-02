@@ -84,17 +84,12 @@ function validateDescription(description: string | undefined): string[] {
  * - otherwise, load direct .md children in the root
  * - recurse into subdirectories to find SKILL.md
  */
-export async function loadSkillsFromDir(
-  options: LoadSkillsFromDirOptions,
-): Promise<LoadSkillsResult> {
+export async function loadSkillsFromDir(options: LoadSkillsFromDirOptions): Promise<LoadSkillsResult> {
   const { dir } = options;
   return loadSkillsFromDirInternal(dir, true);
 }
 
-async function loadSkillsFromDirInternal(
-  dir: string,
-  includeRootFiles: boolean,
-): Promise<LoadSkillsResult> {
+async function loadSkillsFromDirInternal(dir: string, includeRootFiles: boolean): Promise<LoadSkillsResult> {
   const skills: Skill[] = [];
   const diagnostics: ResourceDiagnostic[] = [];
 

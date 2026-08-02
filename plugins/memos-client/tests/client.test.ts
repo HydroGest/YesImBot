@@ -36,9 +36,9 @@ describe("memosConfigSchema", () => {
 
 describe("MemosCloudClient", () => {
   it("posts search requests with token auth", async () => {
-    const post = vi.fn<
-      () => Promise<{ code: number; data: { memory_detail_list: never[] }; message: string }>
-    >(async () => ({ code: 0, data: { memory_detail_list: [] }, message: "ok" }));
+    const post = vi.fn<() => Promise<{ code: number; data: { memory_detail_list: never[] }; message: string }>>(
+      async () => ({ code: 0, data: { memory_detail_list: [] }, message: "ok" }),
+    );
     const client = new MemosCloudClient({
       baseUrl: DEFAULT_MEMOS_BASE_URL,
       apiKey: "mpg-test",
@@ -70,9 +70,11 @@ describe("MemosCloudClient", () => {
   });
 
   it("posts add message requests with token auth", async () => {
-    const post = vi.fn<() => Promise<{ code: number; data: { task_id: string }; message: string }>>(
-      async () => ({ code: 0, data: { task_id: "task_1" }, message: "ok" }),
-    );
+    const post = vi.fn<() => Promise<{ code: number; data: { task_id: string }; message: string }>>(async () => ({
+      code: 0,
+      data: { task_id: "task_1" },
+      message: "ok",
+    }));
     const client = new MemosCloudClient({
       baseUrl: `${DEFAULT_MEMOS_BASE_URL}/`,
       apiKey: "mpg-test",
@@ -111,9 +113,7 @@ describe("MemosCloudClient", () => {
       post: vi.fn<() => Promise<string>>(async () => "bad response"),
     });
 
-    await expect(
-      client.searchMemory({ user_id: "yb_ch_abc", query: "hello" }),
-    ).rejects.toMatchObject({
+    await expect(client.searchMemory({ user_id: "yb_ch_abc", query: "hello" })).rejects.toMatchObject({
       name: "MemosCloudClientError",
       code: "invalid_response",
       message: "MemOS searchMemory returned an invalid response.",
@@ -136,19 +136,17 @@ describe("MemosCloudClient", () => {
       })),
     });
 
-    await expect(client.searchMemory({ user_id: "yb_ch_abc", query: "hello" })).rejects.toSatisfy(
-      (error: unknown) => {
-        expect(error).toBeInstanceOf(MemosCloudClientError);
-        expect(error).toMatchObject({
-          code: "api_error",
-          apiCode: 40132,
-        });
-        expect((error as Error).message).toBe(
-          "MemOS searchMemory failed with code 40132: Authorization failed for Token [REDACTED]",
-        );
-        expect(JSON.stringify(error)).not.toContain("mpg-secret-key");
-        return true;
-      },
-    );
+    await expect(client.searchMemory({ user_id: "yb_ch_abc", query: "hello" })).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(MemosCloudClientError);
+      expect(error).toMatchObject({
+        code: "api_error",
+        apiCode: 40132,
+      });
+      expect((error as Error).message).toBe(
+        "MemOS searchMemory failed with code 40132: Authorization failed for Token [REDACTED]",
+      );
+      expect(JSON.stringify(error)).not.toContain("mpg-secret-key");
+      return true;
+    });
   });
 });

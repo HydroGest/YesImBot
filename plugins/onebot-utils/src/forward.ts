@@ -36,9 +36,7 @@ export function createForwardReader(
     return page(records, start, limit, config.maxForwardPageChars);
   };
 
-  async function loadAndNormalize(
-    forwardId: string,
-  ): Promise<readonly ForwardMessage[] | undefined> {
+  async function loadAndNormalize(forwardId: string): Promise<readonly ForwardMessage[] | undefined> {
     const response = await internal.getForwardMsg(forwardId);
     if (!Array.isArray(response)) return undefined;
 
@@ -59,11 +57,7 @@ function normalizeNode(
   config: Readonly<ForwardReaderConfig>,
   nestedForwards: Map<string, readonly ForwardMessage[]>,
 ): ForwardMessage {
-  return [
-    formatSender(node.sender),
-    formatTime(node.time),
-    normalizeSegments(node.message, config, nestedForwards),
-  ];
+  return [formatSender(node.sender), formatTime(node.time), normalizeSegments(node.message, config, nestedForwards)];
 }
 
 function formatSender(sender: OneBot.SenderInfo): string {
@@ -96,9 +90,7 @@ function normalizeSegments(
         break;
       }
       case "image": {
-        const data = segment.data as
-          | { summary?: unknown; file?: unknown; file_size?: unknown }
-          | undefined;
+        const data = segment.data as { summary?: unknown; file?: unknown; file_size?: unknown } | undefined;
         if (typeof data?.summary !== "string" || typeof data.file !== "string") {
           appendString(parts, "[未知消息段]");
         } else if (config.parseImages) {
@@ -109,9 +101,7 @@ function normalizeSegments(
         break;
       }
       case "forward": {
-        const data = segment.data as
-          | { id?: unknown; content?: readonly OneBotForwardNode[] }
-          | undefined;
+        const data = segment.data as { id?: unknown; content?: readonly OneBotForwardNode[] } | undefined;
         if (typeof data?.id !== "string") {
           appendString(parts, "[未知消息段]");
           break;
@@ -159,11 +149,7 @@ function formatFileSize(value: unknown): string | null {
   if (bytes < 1000) return `${bytes} B`;
 
   const unit: readonly [number, string] =
-    bytes < 1_000_000
-      ? [1000, "KB"]
-      : bytes < 1_000_000_000
-        ? [1_000_000, "MB"]
-        : [1_000_000_000, "GB"];
+    bytes < 1_000_000 ? [1000, "KB"] : bytes < 1_000_000_000 ? [1_000_000, "MB"] : [1_000_000_000, "GB"];
   return `${(bytes / unit[0]).toFixed(1)} ${unit[1]}`;
 }
 
@@ -177,12 +163,7 @@ function clampLimit(value: number | undefined): number {
   return Math.min(60, Math.max(1, Math.trunc(value)));
 }
 
-function page(
-  records: readonly ForwardMessage[],
-  start: number,
-  limit: number,
-  budget: number,
-): ForwardPage {
+function page(records: readonly ForwardMessage[], start: number, limit: number, budget: number): ForwardPage {
   if (start >= records.length) return { messages: [] };
 
   const messages: ForwardMessage[] = [];
@@ -191,10 +172,7 @@ function page(
 
   while (index < records.length && messages.length < limit) {
     const record = records[index]!;
-    const recordChars = record[2].reduce(
-      (total, part) => total + (typeof part === "string" ? part.length : 0),
-      0,
-    );
+    const recordChars = record[2].reduce((total, part) => total + (typeof part === "string" ? part.length : 0), 0);
 
     if (messages.length === 0 && recordChars > budget) {
       return {

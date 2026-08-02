@@ -26,10 +26,7 @@ export type AgentTool<IN = any, OUT = any> = Omit<Tool<IN, OUT>, "execute"> & {
 
 export type AgentToolSet = AgentTool[];
 
-export type ToolDecision =
-  | { type: "allow" }
-  | { type: "block"; reason: string }
-  | { type: "replace"; args: unknown };
+export type ToolDecision = { type: "allow" } | { type: "block"; reason: string } | { type: "replace"; args: unknown };
 
 export interface TerminalToolOutput {
   finalized: true;
@@ -107,9 +104,7 @@ export function toAiToolSet(tools: AgentToolSet): ToolSet {
   return result;
 }
 
-export function resolveTerminalToolName(
-  config: boolean | { name?: string } | undefined,
-): string | undefined {
+export function resolveTerminalToolName(config: boolean | { name?: string } | undefined): string | undefined {
   if (!config) {
     return undefined;
   }
@@ -124,8 +119,7 @@ export function createTerminalTool(
 ): AgentTool<Record<string, never>, TerminalToolOutput> {
   return {
     name,
-    description:
-      "Mark the current assistant response as final. Call this after final text and required tools.",
+    description: "Mark the current assistant response as final. Call this after final text and required tools.",
     inputSchema: jsonSchema({
       type: "object",
       additionalProperties: false,

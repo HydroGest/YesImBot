@@ -29,12 +29,7 @@ describe("plugin host", () => {
 
     const host = createPluginHost({ plugins, runtime: createRuntime() });
 
-    expect(host.plugins.map((plugin) => plugin.name)).toEqual([
-      "pre",
-      "normal-1",
-      "normal-2",
-      "post",
-    ]);
+    expect(host.plugins.map((plugin) => plugin.name)).toEqual(["pre", "normal-1", "normal-2", "post"]);
   });
 
   it("resolves stable prompt and tool resources once in plugin order", async () => {
@@ -82,12 +77,7 @@ describe("plugin host", () => {
     });
     await host.init({ legacySystemPrompt: "ignored", baseTools: [], terminalTools: [] });
 
-    expect(calls).toEqual([
-      "tools:pre",
-      "prompt:pre",
-      "legacy-prompt:normal",
-      "legacy-tools:normal",
-    ]);
+    expect(calls).toEqual(["tools:pre", "prompt:pre", "legacy-prompt:normal", "legacy-tools:normal"]);
     expect(host.stableLegacySystemPrompt).toBe("base\nlegacy");
     expect(host.stablePromptBlocks).toEqual([
       { role: "system", content: "pre prompt" },

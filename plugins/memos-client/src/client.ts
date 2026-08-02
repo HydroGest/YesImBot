@@ -1,8 +1,4 @@
-import type {
-  MemosAddMessageRequest,
-  MemosApiResponse,
-  MemosSearchMemoryRequest,
-} from "./types.js";
+import type { MemosAddMessageRequest, MemosApiResponse, MemosSearchMemoryRequest } from "./types.js";
 
 export interface MemosHttpPostOptions {
   headers: Record<string, string>;
@@ -42,15 +38,11 @@ export class MemosCloudClientError extends Error {
 export class MemosCloudClient {
   constructor(private readonly options: MemosCloudClientOptions) {}
 
-  public searchMemory<TData = unknown>(
-    body: MemosSearchMemoryRequest,
-  ): Promise<MemosApiResponse<TData>> {
+  public searchMemory<TData = unknown>(body: MemosSearchMemoryRequest): Promise<MemosApiResponse<TData>> {
     return this.post<TData>("searchMemory", "/search/memory", body);
   }
 
-  public addMessage<TData = unknown>(
-    body: MemosAddMessageRequest,
-  ): Promise<MemosApiResponse<TData>> {
+  public addMessage<TData = unknown>(body: MemosAddMessageRequest): Promise<MemosApiResponse<TData>> {
     return this.post<TData>("addMessage", "/add/message", body);
   }
 
@@ -86,9 +78,7 @@ export class MemosCloudClient {
           endpoint,
           apiCode: response.code,
           message: `MemOS ${endpoint} failed with code ${response.code}: ${sanitizeMessage(
-            typeof response.message === "string" && response.message.length > 0
-              ? response.message
-              : "Unknown error.",
+            typeof response.message === "string" && response.message.length > 0 ? response.message : "Unknown error.",
             this.options.apiKey,
           )}`,
         });

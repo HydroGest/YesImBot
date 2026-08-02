@@ -72,9 +72,7 @@ function createChannelScope(overrides: Record<string, unknown> = {}) {
 
 async function getTools(plugin: AgentPlugin): Promise<AgentTool[]> {
   if (!plugin.tools) return [];
-  return typeof plugin.tools === "function"
-    ? ((await plugin.tools({} as never)) ?? [])
-    : plugin.tools;
+  return typeof plugin.tools === "function" ? ((await plugin.tools({} as never)) ?? []) : plugin.tools;
 }
 
 async function createRuntime(
@@ -127,10 +125,7 @@ describe("onebot-utils plugin", () => {
     await plugin.start();
 
     await expect(
-      factories[0]!(
-        { platform: "discord", selfId: "bot", channelId: "channel" } as never,
-        {} as never,
-      ),
+      factories[0]!({ platform: "discord", selfId: "bot", channelId: "channel" } as never, {} as never),
     ).resolves.toBeNull();
   });
 
@@ -152,9 +147,9 @@ describe("onebot-utils plugin", () => {
   it("fails forward requests when OneBot internals are unavailable", async () => {
     const runtime = await createRuntime({});
 
-    await expect(
-      runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never),
-    ).rejects.toThrow("当前频道适配器不支持 OneBot 协议内部接口");
+    await expect(runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never)).rejects.toThrow(
+      "当前频道适配器不支持 OneBot 协议内部接口",
+    );
   });
 
   it("returns compact default forward pages and documents continuation", async () => {
@@ -189,16 +184,8 @@ describe("onebot-utils plugin", () => {
       { parseImages: true, maxForwardPageChars: 6000 },
     );
 
-    await expect(
-      runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never),
-    ).resolves.toEqual({
-      messages: [
-        [
-          "Alice (1)",
-          expect.any(String),
-          ["before", { image: ["cover", "cover.jpg", "1.0 KB"] }, "after"],
-        ],
-      ],
+    await expect(runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({
+      messages: [["Alice (1)", expect.any(String), ["before", { image: ["cover", "cover.jpg", "1.0 KB"] }, "after"]]],
     });
   });
 
@@ -219,9 +206,9 @@ describe("onebot-utils plugin", () => {
       },
     });
 
-    await expect(
-      runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never),
-    ).resolves.toEqual({ messages: [["Alice (1)", expect.any(String), [{ forward: "child" }]]] });
+    await expect(runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({
+      messages: [["Alice (1)", expect.any(String), [{ forward: "child" }]]],
+    });
   });
 
   it("reuses one runtime-scoped forward reader across pages", async () => {
@@ -242,9 +229,9 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({ internal: {} });
     const tool = (await runtime.getTools()).find((item) => item.name === "onebot_create_reaction")!;
 
-    await expect(
-      tool.execute?.({ messageId: "message-id", emojiId: "128077" }, {} as never),
-    ).rejects.toThrow("当前频道适配器不支持 OneBot 请求接口");
+    await expect(tool.execute?.({ messageId: "message-id", emojiId: "128077" }, {} as never)).rejects.toThrow(
+      "当前频道适配器不支持 OneBot 请求接口",
+    );
   });
 
   it("creates reactions through OneBot request internals", async () => {
@@ -252,9 +239,9 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({ internal: { _request: request } });
     const tool = (await runtime.getTools()).find((item) => item.name === "onebot_create_reaction")!;
 
-    await expect(
-      tool.execute?.({ messageId: "message-id", emojiId: "128077" }, {} as never),
-    ).resolves.toEqual({ status: "ok" });
+    await expect(tool.execute?.({ messageId: "message-id", emojiId: "128077" }, {} as never)).resolves.toEqual({
+      status: "ok",
+    });
   });
 
   it("fails essence calls when OneBot internals are unavailable", async () => {

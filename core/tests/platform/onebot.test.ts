@@ -144,11 +144,7 @@ describe("OneBot translator", () => {
     const resolver = createOneBotTranslator({ http } as never);
     const source = `data:image/png;base64,${Buffer.from(PNG).toString("base64")}`;
 
-    await resolver.translate(
-      base(),
-      makeSession({ elements: [h("img", { src: source })] }),
-      assets,
-    );
+    await resolver.translate(base(), makeSession({ elements: [h("img", { src: source })] }), assets);
 
     expect(http).not.toHaveBeenCalled();
     expect(assets.put).toHaveBeenCalledWith(PNG);
@@ -181,11 +177,7 @@ describe("OneBot translator", () => {
     const assets = store();
     const resolver = createOneBotTranslator({ http } as never);
 
-    const dataResult = await resolver.translate(
-      base(),
-      makeSession({ elements: [dataOriginal] }),
-      assets,
-    );
+    const dataResult = await resolver.translate(base(), makeSession({ elements: [dataOriginal] }), assets);
     expect(dataResult).toMatchObject({ elements: [dataOriginal] });
 
     const directory = await mkdtemp(join(tmpdir(), "yesimbot-onebot-large-"));
@@ -193,11 +185,7 @@ describe("OneBot translator", () => {
       const path = join(directory, "large.png");
       await writeFile(path, new Uint8Array(5 * 1024 * 1024 + 1));
       const fileOriginal = h("img", { src: pathToFileURL(path).href });
-      const fileResult = await resolver.translate(
-        base(),
-        makeSession({ elements: [fileOriginal] }),
-        assets,
-      );
+      const fileResult = await resolver.translate(base(), makeSession({ elements: [fileOriginal] }), assets);
       expect(fileResult).toMatchObject({ elements: [fileOriginal] });
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -220,11 +208,7 @@ describe("OneBot translator", () => {
   });
 
   it("preserves unknown non-image element structure", async () => {
-    const text = h("p", { class: "copy" }, [
-      h.text("before"),
-      h("at", { id: "42" }),
-      h.text("after"),
-    ]);
+    const text = h("p", { class: "copy" }, [h.text("before"), h("at", { id: "42" }), h.text("after")]);
     const result = await createOneBotTranslator({ http: vi.fn() } as never).translate(
       base(),
       makeSession({ elements: [text] }),
@@ -236,9 +220,7 @@ describe("OneBot translator", () => {
 
   it("preserves quote and forward elements unchanged", async () => {
     const quote = h("quote", { id: 42, content: "preserve" }, [h.text("preserve")]);
-    const forward = h("forward", { id: "f-1", summary: "untrusted", extra: "preserve" }, [
-      h.text("preserve"),
-    ]);
+    const forward = h("forward", { id: "f-1", summary: "untrusted", extra: "preserve" }, [h.text("preserve")]);
     const legacyForward = h("message", { forward: true, id: 7 }, [h.text("preserve")]);
     const result = await createOneBotTranslator({ http: vi.fn() } as never).translate(
       base(),

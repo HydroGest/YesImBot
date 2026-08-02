@@ -142,11 +142,7 @@ export function createTurnQueue(options: TurnQueueOptions) {
       return active?.request.turnId;
     },
     isIdle,
-    enqueue(
-      messages: AgentMessage[],
-      behavior: BusyBehavior = "defer",
-      persistence?: Promise<void>,
-    ) {
+    enqueue(messages: AgentMessage[], behavior: BusyBehavior = "defer", persistence?: Promise<void>) {
       if (active && behavior === "reject") {
         throw new AgentBusyError();
       }

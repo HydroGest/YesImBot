@@ -22,9 +22,7 @@ function createToolModel() {
     async doStream(options: LanguageModelV3CallOptions) {
       const tools = options.tools ?? {};
       observedToolNames.push(
-        Array.isArray(tools)
-          ? tools.map((tool) => String((tool as { name: unknown }).name))
-          : Object.keys(tools),
+        Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools),
       );
       return {
         stream: new ReadableStream<LanguageModelV3StreamPart>({
@@ -69,9 +67,7 @@ function createSingleToolCallModel() {
       observedPrompts.push(structuredClone(options.prompt));
       const tools = options.tools ?? {};
       observedToolNames.push(
-        Array.isArray(tools)
-          ? tools.map((tool) => String((tool as { name: unknown }).name))
-          : Object.keys(tools),
+        Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools),
       );
       callCount += 1;
       if (callCount === 1) {
@@ -187,12 +183,7 @@ describe("tools", () => {
       { name: "legacy", description: "legacy original" },
       { name: "terminal", description: "terminal original" },
     ]);
-    expect(merged.map((tool) => tool.execute)).toEqual([
-      baseExecute,
-      pluginExecute,
-      legacyExecute,
-      terminalExecute,
-    ]);
+    expect(merged.map((tool) => tool.execute)).toEqual([baseExecute, pluginExecute, legacyExecute, terminalExecute]);
   });
 
   it("throws when plugins extend tools with a duplicate name", async () => {
@@ -204,10 +195,7 @@ describe("tools", () => {
         {
           name: "duplicate-tools",
           extendTools(tools) {
-            return [
-              ...tools,
-              { name: "search", inputSchema: z.object({}), execute: async () => "plugin" },
-            ] as never;
+            return [...tools, { name: "search", inputSchema: z.object({}), execute: async () => "plugin" }] as never;
           },
         },
       ],
@@ -255,11 +243,7 @@ describe("tools", () => {
   it("resolves deprecated tool extensions once and reuses the frozen registry", async () => {
     const model = createToolModel();
     const extend = vi.fn(
-      (tools) =>
-        [
-          ...tools,
-          { name: "legacy", inputSchema: z.object({}), execute: async () => "legacy" },
-        ] as never,
+      (tools) => [...tools, { name: "legacy", inputSchema: z.object({}), execute: async () => "legacy" }] as never,
     );
     const agent = createAgent({
       model,
@@ -621,9 +605,7 @@ function createObservedToolModel() {
     async doStream(options: LanguageModelV3CallOptions) {
       const tools = options.tools ?? {};
       observedToolNames.push(
-        Array.isArray(tools)
-          ? tools.map((tool) => String((tool as { name: unknown }).name))
-          : Object.keys(tools),
+        Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools),
       );
 
       return {

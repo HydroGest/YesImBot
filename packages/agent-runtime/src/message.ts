@@ -4,13 +4,7 @@ import type {
   ToolModelMessage,
   UserModelMessage,
 } from "@ai-sdk/provider-utils";
-import type {
-  AssistantContent,
-  LanguageModelUsage,
-  ModelMessage,
-  ToolContent,
-  UserContent,
-} from "ai";
+import type { AssistantContent, LanguageModelUsage, ModelMessage, ToolContent, UserContent } from "ai";
 
 import { createRandomId } from "./id.js";
 import { PluginHost } from "./plugin.js";
@@ -21,10 +15,7 @@ export interface AgentMessageBase {
   timestamp: number;
 }
 
-export interface CustomMessageBase<
-  T extends string = string,
-  D = unknown,
-> extends AgentMessageBase {
+export interface CustomMessageBase<T extends string = string, D = unknown> extends AgentMessageBase {
   role: "custom";
   type: T;
   data: D;
@@ -40,9 +31,7 @@ export type AgentCustomMessage<T extends keyof AgentCustomMessages = keyof Agent
 type AgentCustomMessageKey = Extract<keyof AgentCustomMessages, string>;
 
 export type AgentCustomMessageType = {
-  [K in AgentCustomMessageKey]: AgentCustomMessages[K] extends CustomMessageBase<K, unknown>
-    ? K
-    : never;
+  [K in AgentCustomMessageKey]: AgentCustomMessages[K] extends CustomMessageBase<K, unknown> ? K : never;
 }[AgentCustomMessageKey];
 
 export type AgentCustomMessageData<T extends AgentCustomMessageType> =
@@ -75,17 +64,11 @@ function createMessageBase(options: CreateMessageOptions = {}): AgentMessageBase
   };
 }
 
-export function createUserMessage(
-  content: UserContent,
-  options: CreateMessageOptions = {},
-): AgentUserMessage {
+export function createUserMessage(content: UserContent, options: CreateMessageOptions = {}): AgentUserMessage {
   return { ...createMessageBase(options), role: "user", content };
 }
 
-export function createSystemMessage(
-  content: string,
-  options: CreateMessageOptions = {},
-): AgentSystemMessage {
+export function createSystemMessage(content: string, options: CreateMessageOptions = {}): AgentSystemMessage {
   return { ...createMessageBase(options), role: "system", content };
 }
 
@@ -97,10 +80,7 @@ export function createAssistantMessage(
   return { ...createMessageBase({ id, timestamp }), role: "assistant", content, ...rest };
 }
 
-export function createToolMessage(
-  content: ToolContent,
-  options: CreateMessageOptions = {},
-): AgentToolMessage {
+export function createToolMessage(content: ToolContent, options: CreateMessageOptions = {}): AgentToolMessage {
   return { ...createMessageBase(options), role: "tool", content };
 }
 
@@ -117,18 +97,12 @@ export function createCustomMessage<T extends AgentCustomMessageType>(
   } as unknown as AgentCustomMessages[T];
 }
 
-function isModelMessageRole(
-  role: AgentMessage["role"],
-): role is Exclude<AgentMessage["role"], "custom"> {
+function isModelMessageRole(role: AgentMessage["role"]): role is Exclude<AgentMessage["role"], "custom"> {
   return role === "system" || role === "user" || role === "assistant" || role === "tool";
 }
 
 function toPlainModelMessage(
-  message:
-    | AgentUserMessage
-    | AgentAssistantMessage
-    | AgentToolMessage
-    | Extract<AgentMessage, { role: "system" }>,
+  message: AgentUserMessage | AgentAssistantMessage | AgentToolMessage | Extract<AgentMessage, { role: "system" }>,
 ): ModelMessage {
   switch (message.role) {
     case "system":
@@ -158,10 +132,7 @@ export async function buildModelMessages(options: {
   pluginHost: PluginHost;
   context: Omit<ModelMessageContext, "history" | "current">;
 }): Promise<ModelMessage[]> {
-  const history = await options.pluginHost.helpers.transformMessages(
-    options.history,
-    options.context,
-  );
+  const history = await options.pluginHost.helpers.transformMessages(options.history, options.context);
   const context: ModelMessageContext = Object.freeze({
     ...options.context,
     history: Object.freeze([...history]),

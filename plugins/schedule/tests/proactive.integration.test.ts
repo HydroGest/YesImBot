@@ -107,10 +107,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
   }
   public async stats(): Promise<Driver.Stats> {
     const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [
-        name,
-        { name, count: rows.length, size: 0 },
-      ]),
+      Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]),
     );
     return { tables, size: 0 };
   }
@@ -147,10 +144,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     );
   }
 
-  public async set(
-    sel: Selection.Mutable,
-    data: Record<string, unknown>,
-  ): Promise<Driver.WriteResult> {
+  public async set(sel: Selection.Mutable, data: Record<string, unknown>): Promise<Driver.WriteResult> {
     const { ref, query, table } = sel;
     const matched = this.table(table)
       .filter((row) => executeQuery(row, query, ref))
@@ -182,11 +176,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     return clone(data);
   }
 
-  public async upsert(
-    sel: Selection.Mutable,
-    data: Row[],
-    keys: string[],
-  ): Promise<Driver.WriteResult> {
+  public async upsert(sel: Selection.Mutable, data: Row[], keys: string[]): Promise<Driver.WriteResult> {
     const { table, model, ref } = sel;
     const result: Driver.WriteResult = { inserted: 0, matched: 0 };
     for (const update of data) {
@@ -251,9 +241,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
  * runtime paths; real fs inside a fake-timer callback chain is not reliably
  * serviced by the event loop.
  */
-async function createFixture(
-  options: { withBot?: boolean; warmUp?: boolean } = {},
-): Promise<Fixture> {
+async function createFixture(options: { withBot?: boolean; warmUp?: boolean } = {}): Promise<Fixture> {
   const basePath = await mkdtemp(join(tmpdir(), "yesimbot-schedule-int-"));
   const ctx = new Context();
   ctx.baseDir = basePath;
@@ -310,9 +298,7 @@ async function createFixture(
   if (options.withBot !== false && options.warmUp !== false) {
     await warmUpRuntime(service);
   }
-  const trigger = vi.spyOn(service, "trigger") as unknown as Mock<
-    (event: EventRecord) => Promise<void>
-  >;
+  const trigger = vi.spyOn(service, "trigger") as unknown as Mock<(event: EventRecord) => Promise<void>>;
   const plugin = new SchedulePlugin(ctx as never);
   const store = new ScheduleStore(ctx.model);
 
@@ -558,10 +544,7 @@ describe("Schedule proactive trigger integration", () => {
     })();
 
     await startPluginAt(fixture, dueIso);
-    await settleUntil(
-      "both due events to enter the runtime",
-      () => fixture.trigger.mock.calls.length === 2,
-    );
+    await settleUntil("both due events to enter the runtime", () => fixture.trigger.mock.calls.length === 2);
 
     expect(fixture.trigger).toHaveBeenCalledTimes(2);
     const submitted = fixture.trigger.mock.calls.map(([event]) => event.schedule?.id);
@@ -577,10 +560,7 @@ describe("Schedule proactive trigger integration", () => {
     release.resolve();
     await settleUntil("joined turn delivery", async () => {
       const rows = await fixture.store.list(SCOPE);
-      return (
-        fixture.sendMessage.mock.calls.length === 1 &&
-        rows.every((row) => row.lastResult?.status === "accepted")
-      );
+      return fixture.sendMessage.mock.calls.length === 1 && rows.every((row) => row.lastResult?.status === "accepted");
     });
 
     expect(fixture.sendMessage).toHaveBeenCalledOnce();
@@ -807,21 +787,15 @@ describe("Schedule proactive trigger integration", () => {
     const feedback = appended?.find((input) => isEventAppend(input, "delivery.failed"));
     expect(feedback).toBeDefined();
     const dueAppendIndex = appended?.findIndex((input) => isEventAppend(input, "schedule.due"));
-    const feedbackAppendIndex = appended?.findIndex((input) =>
-      isEventAppend(input, "delivery.failed"),
-    );
+    const feedbackAppendIndex = appended?.findIndex((input) => isEventAppend(input, "delivery.failed"));
     const appendOrder = state.agent?.append.mock.invocationCallOrder;
     const runOrder = state.agent?.run.mock.invocationCallOrder;
     expect(dueAppendIndex).toBeGreaterThanOrEqual(0);
     expect(feedbackAppendIndex).toBeGreaterThanOrEqual(0);
     expect(appendOrder?.[dueAppendIndex!]).toBeLessThan(runOrder?.[0]);
-    expect(fixture.trigger.mock.invocationCallOrder[0]).toBeLessThan(
-      appendOrder?.[dueAppendIndex!],
-    );
+    expect(fixture.trigger.mock.invocationCallOrder[0]).toBeLessThan(appendOrder?.[dueAppendIndex!]);
     expect(runOrder?.[0]).toBeLessThan(fixture.sendMessage.mock.invocationCallOrder[0]);
-    expect(fixture.sendMessage.mock.invocationCallOrder[0]).toBeLessThan(
-      appendOrder?.[feedbackAppendIndex!],
-    );
+    expect(fixture.sendMessage.mock.invocationCallOrder[0]).toBeLessThan(appendOrder?.[feedbackAppendIndex!]);
     expect(feedback && "data" in feedback ? feedback.data : undefined).toMatchObject({
       eventType: "delivery.failed",
       channel: { id: "room-1", type: 0 },
