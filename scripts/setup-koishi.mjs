@@ -286,7 +286,16 @@ function loadYaml() {
 }
 
 function configKey(name) {
-  if (name.startsWith("@")) return name;
+  if (name.startsWith("@")) {
+    const slash = name.indexOf("/");
+    if (slash >= 0) {
+      const rest = name.slice(slash + 1);
+      if (rest.startsWith("koishi-plugin-")) {
+        return name.slice(0, slash + 1) + rest.slice("koishi-plugin-".length);
+      }
+    }
+    return name;
+  }
   if (name.startsWith("koishi-plugin-")) return name.slice("koishi-plugin-".length);
   return name;
 }
@@ -303,7 +312,19 @@ function updateKoishi(plugins) {
     ? config.plugins[GROUP]
     : {};
 
-  const hasEntry = (base) => Object.keys(group).some((key) => {
+  const normalizedGroup = {};
+  for (const [key, value] of Object.entries(group)) {
+    const disabled = key.startsWith("~");
+    const body = disabled ? key.slice(1) : key;
+    const separator = body.indexOf(":");
+    const base = separator >= 0 ? body.slice(0, separator) : body;
+    const suffix = separator >= 0 ? body.slice(separator) : "";
+    const normalized = `${disabled ? "~" : ""}${configKey(base)}${suffix}`;
+    if (!(normalized in normalizedGroup)) normalizedGroup[normalized] = value;
+  }
+
+  const normalized = normalizedGroup;
+  const hasEntry = (base) => Object.keys(normalized).some((key) => {
     return key.replace(/^~/, "").split(":")[0] === base;
   });
 
@@ -311,13 +332,13 @@ function updateKoishi(plugins) {
     const key = configKey(plugin.name);
     if (!key) continue;
     if (key === "yesimbot") {
-      if (!hasEntry("yesimbot")) group.yesimbot = {};
+      if (!hasEntry("yesimbot")) normalized.yesimbot = {};
     } else if (!hasEntry(key)) {
-      group[`~${key}`] = {};
+      normalized[`~${key}`] = {};
     }
   }
 
-  config.plugins[GROUP] = group;
+  config.plugins[GROUP] = normalized;
   fs.writeFileSync(file, yaml.dump(config, { lineWidth: -1, noRefs: true }));
 }
 

@@ -108,10 +108,10 @@ node scripts/setup-koishi.mjs --create-app ../new-koishi --start
 plugins:
   group:yesimbot:
     yesimbot: {}
-    ~@yesimbot/koishi-plugin-provider-openai: {}
-    ~@yesimbot/koishi-plugin-provider-anthropic: {}
-    ~@yesimbot/koishi-plugin-provider-deepseek: {}
-    ~@yesimbot/koishi-plugin-provider-google: {}
+    ~@yesimbot/provider-openai: {}
+    ~@yesimbot/provider-anthropic: {}
+    ~@yesimbot/provider-deepseek: {}
+    ~@yesimbot/provider-google: {}
     ~yesimbot-mcp-client: {}
     ~yesimbot-memos-client: {}
     ~yesimbot-onebot-utils: {}
@@ -125,7 +125,7 @@ plugins:
 
 - 主插件 `yesimbot` 默认启用。
 - provider 和扩展插件默认以 `~` 禁用。
-- 禁用项也需要正确的完整短名，例如 `yesimbot-skills`，不能写成 `skills`。
+- 禁用项也需要使用 Koishi 可识别的短名，例如 `yesimbot-skills` 或 `@yesimbot/provider-openai`，不能写成 `koishi-plugin-` 完整包名。
 - 如果已有配置中已经存在同名插件，脚本不会重复添加。
 
 ## 运行前的配置
