@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,9 +12,7 @@ const GROUP = "group:yesimbot";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const yesimbotRoot = path.resolve(scriptDir, "..");
-const yesimbotMeta = JSON.parse(
-  fs.readFileSync(path.join(yesimbotRoot, "package.json"), "utf8"),
-);
+const yesimbotMeta = JSON.parse(fs.readFileSync(path.join(yesimbotRoot, "package.json"), "utf8"));
 
 const parsed = parseArgs();
 const appRoot = resolveAppRoot();
@@ -52,8 +50,7 @@ function parseArgs() {
 }
 
 function looksLikeKoishiApp(directory) {
-  return fs.existsSync(path.join(directory, "package.json"))
-    && fs.existsSync(path.join(directory, "koishi.yml"));
+  return fs.existsSync(path.join(directory, "package.json")) && fs.existsSync(path.join(directory, "koishi.yml"));
 }
 
 function resolveAppRoot() {
@@ -240,8 +237,7 @@ function collectPluginPackages() {
 }
 
 function isPluginName(name) {
-  return /^@koishijs\/plugin-[0-9a-z-]+$/.test(name)
-    || /(^|\/)koishi-plugin-[0-9a-z-]+$/.test(name);
+  return /^@koishijs\/plugin-[0-9a-z-]+$/.test(name) || /(^|\/)koishi-plugin-[0-9a-z-]+$/.test(name);
 }
 
 function toPosix(value) {
@@ -307,14 +303,10 @@ function configKey(name) {
 function updateKoishi(plugins) {
   const yaml = loadYaml();
   const file = path.join(appRoot, "koishi.yml");
-  const config = fs.existsSync(file)
-    ? (yaml.load(fs.readFileSync(file, "utf8")) || {})
-    : {};
+  const config = fs.existsSync(file) ? yaml.load(fs.readFileSync(file, "utf8")) || {} : {};
 
   config.plugins ||= {};
-  const group = config.plugins[GROUP] && typeof config.plugins[GROUP] === "object"
-    ? config.plugins[GROUP]
-    : {};
+  const group = config.plugins[GROUP] && typeof config.plugins[GROUP] === "object" ? config.plugins[GROUP] : {};
 
   const normalizedGroup = {};
   for (const [key, value] of Object.entries(group)) {
@@ -328,9 +320,10 @@ function updateKoishi(plugins) {
   }
 
   const normalized = normalizedGroup;
-  const hasEntry = (base) => Object.keys(normalized).some((key) => {
-    return key.replace(/^~/, "").split(":")[0] === base;
-  });
+  const hasEntry = (base) =>
+    Object.keys(normalized).some((key) => {
+      return key.replace(/^~/, "").split(":")[0] === base;
+    });
 
   for (const plugin of plugins) {
     const key = configKey(plugin.name);
@@ -370,16 +363,18 @@ function runCheck(plugins) {
 
 function main() {
   if (parsed.help) {
-    console.log([
-      "Usage: node scripts/setup-koishi.mjs [options]",
-      "",
-      "Options:",
-      "  --app <dir>      target Koishi app directory (auto-detected when omitted)",
-      "  --create-app <dir> create a new Koishi app before setup",
-      "  --check          verify the current setup without changing files",
-      "  --start          run `yarn start` after setup",
-      "  --repo <url>     git URL used when no origin remote exists",
-    ].join("\n"));
+    console.log(
+      [
+        "Usage: node scripts/setup-koishi.mjs [options]",
+        "",
+        "Options:",
+        "  --app <dir>      target Koishi app directory (auto-detected when omitted)",
+        "  --create-app <dir> create a new Koishi app before setup",
+        "  --check          verify the current setup without changing files",
+        "  --start          run `yarn start` after setup",
+        "  --repo <url>     git URL used when no origin remote exists",
+      ].join("\n"),
+    );
     return;
   }
 

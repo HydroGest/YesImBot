@@ -8,22 +8,22 @@ export function registerSessionCommands(
   manager: RuntimeManager,
   config: { authority: number },
 ): () => void {
-  const command = ctx.command("yesimbot session", { authority: config.authority });
+  const command = ctx.command("yesimbot.session", "会话管理", { authority: config.authority });
 
-  command.subcommand(".compact").action(async ({ session }) => {
+  command.subcommand(".compact", "压缩会话").action(async ({ session }) => {
     const scope = scopeFromSession(session);
     return scope ? manager.compact(scope) : undefined;
   });
 
   command
-    .subcommand(".archive")
+    .subcommand(".archive", "归档会话")
     .option("noSummary", "--no-summary")
     .action(async ({ session, options }) => {
       const scope = scopeFromSession(session);
       return scope ? manager.archive(scope, { noSummary: options?.noSummary }) : undefined;
     });
 
-  command.subcommand(".clear").action(async ({ session }) => {
+  command.subcommand(".clear", "清空会话").action(async ({ session }) => {
     const scope = scopeFromSession(session);
     if (!scope || !session) return;
     const confirmed = await session.prompt(60_000);
@@ -32,12 +32,12 @@ export function registerSessionCommands(
     return "已清空所有会话记录和资源文件。";
   });
 
-  command.subcommand(".status").action(({ session }) => {
+  command.subcommand(".status", "会话状态").action(({ session }) => {
     const scope = scopeFromSession(session);
     return scope ? manager.status(scope) : undefined;
   });
 
-  command.subcommand(".list").action(({ session }) => {
+  command.subcommand(".list", "会话列表").action(({ session }) => {
     const scope = scopeFromSession(session);
     return scope ? manager.list(scope) : undefined;
   });

@@ -1,16 +1,5 @@
 import type { OneBot } from "koishi-plugin-adapter-onebot";
 
-import type {
-  ForwardMessage,
-  ForwardPage,
-  ForwardResult,
-  ForwardPart,
-  ForwardReaderConfig,
-  ForwardToolInput,
-  OneBotForwardNode,
-  OneBotForwardSegment,
-} from "./types.js";
-
 const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
   year: "numeric",
@@ -20,6 +9,91 @@ const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
   hour12: false,
 });
+
+export interface ForwardToolInput {
+  forwardId: string;
+  offset?: number;
+  limit?: number;
+}
+
+interface ForwardPage {
+  messages: readonly ForwardMessage[];
+  nextOffset?: number;
+  tips?: string;
+  overLimit?: true;
+}
+
+interface ForwardFailure {
+  error: string;
+}
+
+interface ForwardReaderConfig {
+  parseImages: boolean;
+  maxForwardPageChars: number;
+}
+
+interface OneBotForwardNode {
+  sender: OneBot.SenderInfo;
+  time: OneBot.Message["time"];
+  message: readonly OneBotForwardSegment[];
+  raw_message?: OneBot.Payload["raw_message"];
+}
+
+interface OneBotTextSegment {
+  type: "text";
+  data: {
+    text: string;
+  };
+}
+
+interface OneBotImageSegment {
+  type: "image";
+  data: {
+    summary: string;
+    file: string;
+    file_size?: string;
+  };
+}
+
+interface OneBotNestedForwardSegment {
+  type: "forward";
+  data: {
+    id: string;
+    content?: readonly OneBotForwardNode[];
+  };
+}
+
+interface OneBotRecordSegment {
+  type: "record";
+  data: object;
+}
+
+interface OneBotVideoSegment {
+  type: "video";
+  data: object;
+}
+
+interface OneBotFileSegment {
+  type: "file";
+  data: object;
+}
+
+type ForwardPart =
+  | string
+  | { image: readonly [summary: string, file: string, size: string | null] }
+  | { forward: string };
+
+type ForwardMessage = readonly [sender: string, time: string | null, content: readonly ForwardPart[]];
+
+export type ForwardResult = ForwardPage | ForwardFailure;
+
+type OneBotForwardSegment =
+  | OneBotTextSegment
+  | OneBotImageSegment
+  | OneBotNestedForwardSegment
+  | OneBotRecordSegment
+  | OneBotVideoSegment
+  | OneBotFileSegment;
 
 export function createForwardReader(
   internal: OneBot.Internal,

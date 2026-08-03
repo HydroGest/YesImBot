@@ -132,3 +132,10 @@ When finishing a coding task, summarize:
 - What changed and where.
 - What verification ran, with failures or skipped checks called out clearly.
 - Any remaining risk or focused next step directly tied to the request.
+
+### Commit 规范
+
+- 格式：`<type>(scope): <summary>`
+- `scope` 可选
+- `summary` 使用项目语言、动词开头、长度 ≤ 50 字、不加句号
+- 常用 `type`：`feat` / `fix` / `refactor` / `docs` / `test` / `chore`

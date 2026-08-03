@@ -242,4 +242,34 @@ describe("turn lifecycle", () => {
       errorSpy.mockRestore();
     }
   });
+
+  it("applies prepareStep plugins before the initial model request", async () => {
+    const seen: unknown[] = [];
+    const model = createTextModel();
+    const originalDoStream = model.doStream;
+    model.doStream = async (...args) => {
+      seen.push(args[0]);
+      return originalDoStream.apply(model, args);
+    };
+    const preparedRoles: string[][] = [];
+    const agent = createAgent({
+      model,
+      plugins: [
+        {
+          name: "step-envelope",
+          prepareStep(messages: readonly { role: string }[]) {
+            preparedRoles.push(messages.map((message) => message.role));
+            return [{ role: "system", content: "before" }, ...messages, { role: "system", content: "after" }];
+          },
+        },
+      ],
+    });
+
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    expect(preparedRoles).toEqual([["user"]]);
+    expect(JSON.stringify(seen)).toContain("before");
+    expect(JSON.stringify(seen)).toContain("after");
+  });
 });

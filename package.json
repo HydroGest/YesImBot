@@ -22,6 +22,8 @@
     "clean": "turbo run clean && rimraf .turbo",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check .",
+    "koishi:dev": "node scripts/start-koishi.mjs --dev",
+    "koishi:start": "node scripts/start-koishi.mjs",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "prepare": "husky",
@@ -30,8 +32,6 @@
     "release:beta": "node scripts/release.mjs --beta",
     "setup-koishi": "node scripts/setup-koishi.mjs",
     "setup-koishi:check": "node scripts/setup-koishi.mjs --check",
-    "koishi:dev": "node scripts/start-koishi.mjs --dev",
-    "koishi:start": "node scripts/start-koishi.mjs",
     "test": "turbo run test"
   },
   "devDependencies": {

@@ -2,22 +2,18 @@ import type { OneBot } from "koishi-plugin-adapter-onebot";
 import { describe, expect, it, vi } from "vitest";
 
 import { createForwardReader } from "../src/forward.js";
-import type { OneBotForwardNode, OneBotForwardSegment } from "../src/types.js";
 
-function node(message: OneBotForwardSegment[], overrides: Partial<OneBotForwardNode> = {}): OneBotForwardNode {
+function node(message: unknown[], overrides: Record<string, unknown> = {}) {
   return {
     sender: { user_id: 10001, nickname: "Alice", card: "" },
     time: 1_753_888_000,
     message,
     raw_message: "[CQ:ignored]",
     ...overrides,
-  } as OneBotForwardNode;
+  };
 }
 
-function createReader(
-  records: readonly OneBotForwardNode[],
-  config = { parseImages: false, maxForwardPageChars: 6000 },
-) {
+function createReader(records: readonly unknown[], config = { parseImages: false, maxForwardPageChars: 6000 }) {
   const getForwardMsg = vi.fn(async () => records);
   const reader = createForwardReader({ getForwardMsg } as OneBot.Internal, config);
   return { getForwardMsg, reader };
@@ -39,7 +35,7 @@ describe("createForwardReader", () => {
         { type: "image", data: { summary: "cover", file: "cover.jpg", file_size: "52762" } },
         { type: "text", data: { text: " world" } },
         { type: "file", data: {} },
-        { type: "unknown", data: {} } as OneBotForwardSegment,
+        { type: "unknown", data: {} },
       ]),
     ]);
 

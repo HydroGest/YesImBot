@@ -233,6 +233,7 @@ export function createAgent(config: AgentConfig): Agent {
         id,
         channel,
         state,
+        storage,
       });
       await pluginHost.init({
         legacySystemPrompt: base.legacy,
@@ -532,20 +533,28 @@ export function createAgent(config: AgentConfig): Agent {
           stopWhen: terminalToolName ? [isLoopFinished(), hasToolCall(terminalToolName)] : isLoopFinished(),
           abortSignal,
           prepareStep: async ({ stepNumber }) => {
-            if (stepNumber === 0) {
-              return undefined;
+            let messages = modelMessages;
+            if (stepNumber > 0) {
+              const joined = await request.drainJoined();
+              if (joined.length === 0) {
+                messages = await buildBoundaryModelMessages(request.turnId, [], abortSignal);
+              } else {
+                const joinedEntries = await persistCurrentMessages(joined, request.turnId);
+                allMessages.push(...joinedEntries.map((entry) => entry.data));
+                messages = await buildBoundaryModelMessages(request.turnId, joinedEntries, abortSignal);
+              }
             }
 
-            const joined = await request.drainJoined();
-            if (joined.length === 0) {
-              return {
-                messages: await buildBoundaryModelMessages(request.turnId, [], abortSignal),
-              };
-            }
-            const joinedEntries = await persistCurrentMessages(joined, request.turnId);
-            allMessages.push(...joinedEntries.map((entry) => entry.data));
+            const prepared = await pluginHost.helpers.prepareStep(messages, {
+              runtime: { id },
+              channel,
+              state,
+              turnId: request.turnId,
+              stepNumber,
+              signal: abortSignal,
+            });
             return {
-              messages: await buildBoundaryModelMessages(request.turnId, joinedEntries, abortSignal),
+              messages: [...prepared],
             };
           },
           maxRetries: 0,

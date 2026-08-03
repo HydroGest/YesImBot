@@ -15,6 +15,7 @@ export interface AgentPluginRuntime {
   readonly id: string;
   readonly channel: AgentChannel;
   readonly state: AgentStateManager;
+  readonly storage: AgentStorage<AgentEntry>;
 }
 
 export type SystemPromptBlock = string | SystemModelMessage;
@@ -44,6 +45,10 @@ export interface AgentPlugin {
   beforeToolCall?(call: ToolCallContext, context: ToolHookContext): Awaitable<ToolDecision | void>;
   afterToolCall?(result: ToolResultContext, context: ToolHookContext): Awaitable<Partial<ToolResultContext> | void>;
   onTurnFinish?(result: TurnResult, context: TurnFinishContext): Awaitable<void>;
+  prepareStep?(
+    messages: readonly ModelMessage[],
+    context: PrepareStepContext,
+  ): Awaitable<readonly ModelMessage[] | void>;
 }
 
 export interface HookContextBase {
@@ -84,6 +89,11 @@ export interface TurnFinishContext extends HookContextBase {
   readonly turnId: string;
 }
 
+export interface PrepareStepContext extends HookContextBase {
+  readonly turnId: string;
+  readonly stepNumber: number;
+}
+
 export interface ToolCallContext {
   toolCallId: string;
   toolName: string;
@@ -104,6 +114,7 @@ export interface PluginHostHelpers {
   transformEntries(entries: readonly AgentEntry[]): Promise<readonly AgentEntry[]>;
   transformMessages(messages: AgentMessage[], context: MessageTransformContext): Promise<AgentMessage[]>;
   toModelMessages(message: AgentMessage, context: ModelMessageContext): Promise<ModelMessage[]>;
+  prepareStep(messages: readonly ModelMessage[], context: PrepareStepContext): Promise<readonly ModelMessage[]>;
   beforeToolCall(decision: ToolDecision, call: ToolCallContext, context: ToolHookContext): Promise<ToolDecision>;
   afterToolCall(result: ToolResultContext, context: ToolHookContext): Promise<ToolResultContext>;
   onTurnFinish(result: TurnResult, context: TurnFinishContext): Promise<void>;
@@ -259,6 +270,24 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
       }
 
       return [];
+    },
+
+    async prepareStep(messages, context) {
+      let current = messages;
+
+      for (const plugin of activePlugins) {
+        const hook = plugin?.prepareStep;
+        if (!hook) continue;
+
+        try {
+          const next = await hook(current, context);
+          if (next) current = next;
+        } catch (error) {
+          emitPluginError(plugin.name, error);
+        }
+      }
+
+      return current;
     },
 
     async beforeToolCall(decision, call, context) {

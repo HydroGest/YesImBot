@@ -42,8 +42,7 @@ function parseArgs() {
 }
 
 function looksLikeKoishiApp(directory) {
-  return fs.existsSync(path.join(directory, "package.json"))
-    && fs.existsSync(path.join(directory, "koishi.yml"));
+  return fs.existsSync(path.join(directory, "package.json")) && fs.existsSync(path.join(directory, "koishi.yml"));
 }
 
 function resolveAppRoot() {
@@ -123,14 +122,16 @@ function runYarn(commandArgs, options = {}) {
 
 function main() {
   if (parsed.help) {
-    console.log([
-      "Usage: node scripts/start-koishi.mjs [options]",
-      "",
-      "Options:",
-      "  --app <dir>      target Koishi app directory",
-      "  --check          verify the target app without starting it",
-      "  --dev            run `yarn dev` instead of the default `yarn start`",
-    ].join("\n"));
+    console.log(
+      [
+        "Usage: node scripts/start-koishi.mjs [options]",
+        "",
+        "Options:",
+        "  --app <dir>      target Koishi app directory",
+        "  --check          verify the target app without starting it",
+        "  --dev            run `yarn dev` instead of the default `yarn start`",
+      ].join("\n"),
+    );
     return;
   }
 

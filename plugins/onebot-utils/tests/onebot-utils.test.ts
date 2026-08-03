@@ -4,9 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   schema: {
+    array: vi.fn<() => unknown>(),
     boolean: vi.fn<() => unknown>(),
+    const: vi.fn<() => unknown>(),
     number: vi.fn<() => unknown>(),
     object: vi.fn<() => unknown>(),
+    union: vi.fn<() => unknown>(),
   },
 }));
 
@@ -15,11 +18,15 @@ vi.mock("koishi", () => {
     default: vi.fn<() => unknown>().mockReturnThis(),
     description: vi.fn<() => unknown>().mockReturnThis(),
     min: vi.fn<() => unknown>().mockReturnThis(),
+    role: vi.fn<() => unknown>().mockReturnThis(),
   });
 
+  mocks.schema.array.mockImplementation(chain);
   mocks.schema.boolean.mockImplementation(chain);
+  mocks.schema.const.mockImplementation(chain);
   mocks.schema.number.mockImplementation(chain);
   mocks.schema.object.mockImplementation(chain);
+  mocks.schema.union.mockImplementation(chain);
 
   return {
     Context: class Context {},
@@ -76,12 +83,14 @@ async function getTools(plugin: AgentPlugin): Promise<AgentTool[]> {
   return typeof plugin.tools === "function" ? ((await plugin.tools({} as never)) ?? []) : plugin.tools;
 }
 
+const DEFAULT_ENABLED_TOOLS = ["onebot_get_forward_message", "onebot_create_reaction", "onebot_set_essence"];
+
 async function createRuntime(
   bot: unknown,
   config: Record<string, unknown> = {},
 ): Promise<{ getForwardTool: () => AgentTool; getTools: () => Promise<AgentTool[]> }> {
   const { ctx, factories } = createContext();
-  const plugin = new OnebotUtilsPlugin(ctx as never, config as never);
+  const plugin = new OnebotUtilsPlugin(ctx as never, { enabledTools: DEFAULT_ENABLED_TOOLS, ...config } as never);
   await plugin.start();
   const runtimePlugin = await factories[0]!({ scope: createChannelScope(), bot } as never);
   const tools = await getTools(runtimePlugin);
@@ -112,11 +121,14 @@ describe("onebot-utils plugin", () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
-  it("declares only the approved forward configuration fields", () => {
+  it("declares the enabled-tool configuration fields", () => {
     const fields = mocks.schema.object.mock.calls[0]?.[0] as Record<string, unknown>;
 
-    expect(Object.keys(fields)).toEqual(["banTools", "parseImages", "maxForwardPageChars"]);
-    expect(mocks.schema.boolean).toHaveBeenCalledTimes(2);
+    expect(Object.keys(fields)).toEqual(["enabledTools", "parseImages", "maxForwardPageChars"]);
+    expect(mocks.schema.array).toHaveBeenCalledOnce();
+    expect(mocks.schema.union).toHaveBeenCalledOnce();
+    expect(mocks.schema.const).toHaveBeenCalledTimes(9);
+    expect(mocks.schema.boolean).toHaveBeenCalledOnce();
     expect(mocks.schema.number).toHaveBeenCalledOnce();
   });
 
@@ -132,17 +144,43 @@ describe("onebot-utils plugin", () => {
 
   it("exposes the migrated OneBot tools", async () => {
     const { ctx, factories } = createContext();
-    const plugin = new OnebotUtilsPlugin(ctx as never, {});
+    const plugin = new OnebotUtilsPlugin(
+      ctx as never,
+      {
+        enabledTools: [
+          "onebot_get_forward_message",
+          "onebot_create_reaction",
+          "onebot_set_essence",
+          "onebot_ban_user",
+          "onebot_unban_user",
+          "onebot_kick_user",
+          "onebot_ocr_image",
+          "onebot_set_qq_profile",
+          "onebot_set_qq_avatar",
+        ],
+      } as never,
+    );
     await plugin.start();
 
     const runtimePlugin = await factories[0]!({ scope: createChannelScope() } as never);
     const tools = await getTools(runtimePlugin);
 
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "onebot_get_forward_message",
-      "onebot_create_reaction",
-      "onebot_set_essence",
-    ]);
+    const names = tools.map((tool) => tool.name);
+
+    expect(names).toHaveLength(9);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "onebot_get_forward_message",
+        "onebot_create_reaction",
+        "onebot_set_essence",
+        "onebot_ban_user",
+        "onebot_unban_user",
+        "onebot_kick_user",
+        "onebot_ocr_image",
+        "onebot_set_qq_profile",
+        "onebot_set_qq_avatar",
+      ]),
+    );
   });
 
   it("fails forward requests when OneBot internals are unavailable", async () => {
@@ -264,7 +302,7 @@ describe("onebot-utils plugin", () => {
     });
   });
 
-  it("hides group management tools unless banTools is enabled", async () => {
+  it("hides group management tools unless selected", async () => {
     const runtime = await createRuntime({ internal: { _request: vi.fn() } });
     const names = (await runtime.getTools()).map((tool) => tool.name);
 
@@ -277,7 +315,7 @@ describe("onebot-utils plugin", () => {
     const request = vi.fn(async () => ({ status: "ok" }));
     const runtime = await createRuntime(
       { internal: { _request: request } },
-      { banTools: true },
+      { enabledTools: ["onebot_ban_user", "onebot_unban_user"] },
     );
     const tools = await runtime.getTools();
     const banTool = tools.find((tool) => tool.name === "onebot_ban_user")!;
@@ -304,15 +342,12 @@ describe("onebot-utils plugin", () => {
 
   it("kicks members through OneBot request internals", async () => {
     const request = vi.fn(async () => ({ status: "ok" }));
-    const runtime = await createRuntime(
-      { internal: { _request: request } },
-      { banTools: true },
-    );
+    const runtime = await createRuntime({ internal: { _request: request } }, { enabledTools: ["onebot_kick_user"] });
     const tool = (await runtime.getTools()).find((item) => item.name === "onebot_kick_user")!;
 
-    await expect(
-      tool.execute?.({ userId: "123", rejectAddRequest: true }, {} as never),
-    ).resolves.toEqual({ success: true });
+    await expect(tool.execute?.({ userId: "123", rejectAddRequest: true }, {} as never)).resolves.toEqual({
+      success: true,
+    });
     expect(request).toHaveBeenCalledWith("set_group_kick", {
       group_id: Number("group"),
       user_id: 123,
