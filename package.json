@@ -28,6 +28,8 @@
     "pub": "turbo run pub",
     "release": "node scripts/release.mjs",
     "release:beta": "node scripts/release.mjs --beta",
+    "setup-koishi": "node scripts/setup-koishi.mjs",
+    "setup-koishi:check": "node scripts/setup-koishi.mjs --check",
     "test": "turbo run test"
   },
   "devDependencies": {

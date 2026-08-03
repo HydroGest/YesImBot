@@ -46,6 +46,10 @@ npm install koishi-plugin-yesimbot
 > [!TIP]
 > 想了解详细的配置与使用方式？请查阅[官方文档站](https://docs.yesimbot.chat/)。
 
+### 自动接入 Koishi
+
+从零创建 Koishi 应用或把 yesimbot dev 分支接入已有 Koishi 应用，可以使用仓库内置脚本，详见 [docs/setup-koishi.md](docs/setup-koishi.md)。
+
 ### 升级配置迁移
 
 新版本的 `allowedChannels` 采用严格的默认拒绝策略。未配置或配置为
