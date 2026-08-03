@@ -177,6 +177,7 @@ yarn-error.log
 .vscode/
 references/
 
+.koishi-app-path
 .mcp.json
 *.o
 skills-lock.json
