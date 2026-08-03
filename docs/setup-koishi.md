@@ -20,19 +20,20 @@
 在 yesimbot 仓库内执行：
 
 ```bash
-yarn setup-koishi --create-app ../my-koishi
+node scripts/setup-koishi.mjs --create-app ../my-koishi
 ```
 
 脚本会完成以下步骤：
 
 1. 使用官方 `create-koishi@latest` 在 `../my-koishi` 创建新 Koishi 应用。
 2. 确保当前 yesimbot 仓库位于 `dev` 分支。
-3. 扫描 yesimbot 内的所有 Koishi 插件包。
-4. 修改 Koishi 应用的 `package.json`，加入 yesimbot workspace 和依赖。
-5. 执行 `yarn install`。
-6. 修改 Koishi 应用的 `koishi.yml`，创建 `group:yesimbot`。
-7. 构建 yesimbot 全部插件包。
-8. 验证所有插件都能被 Koishi 解析。
+3. 自动在 yesimbot 仓库内执行 `yarn install`，生成 `yarn.lock` 并安装依赖。
+4. 扫描 yesimbot 内的所有 Koishi 插件包。
+5. 修改 Koishi 应用的 `package.json`，加入 yesimbot workspace 和依赖。
+6. 在 Koishi 应用内执行 `yarn install`。
+7. 修改 Koishi 应用的 `koishi.yml`，创建 `group:yesimbot`。
+8. 构建 yesimbot 全部插件包。
+9. 验证所有插件都能被 Koishi 解析。
 
 创建完成后可以手动启动：
 
@@ -44,8 +45,10 @@ yarn dev
 也可以让脚本直接启动：
 
 ```bash
-yarn setup-koishi --create-app ../my-koishi --start
+node scripts/setup-koishi.mjs --create-app ../my-koishi --start
 ```
+
+首次运行请使用 `node scripts/setup-koishi.mjs`，这样脚本会先自动安装 yesimbot 仓库自身的依赖。之后 `yarn.lock` 已经存在，也可以继续使用 `yarn setup-koishi`。
 
 ## 接入已有 Koishi 应用
 
@@ -62,13 +65,13 @@ koishi-app/
 可以直接从 yesimbot 仓库执行：
 
 ```bash
-yarn setup-koishi
+node scripts/setup-koishi.mjs
 ```
 
 脚本会自动向上查找 Koishi 应用目录。如果 yesimbot 不在 Koishi 应用内，可以显式指定：
 
 ```bash
-yarn setup-koishi --app ../koishi-app
+node scripts/setup-koishi.mjs --app ../koishi-app
 ```
 
 ## 参数说明
@@ -88,13 +91,13 @@ yarn setup-koishi --app ../koishi-app
 
 ```bash
 # 检查当前 Koishi 应用是否已正确接入
-yarn setup-koishi:check
+node scripts/setup-koishi.mjs --check
 
 # 接入已有应用
-yarn setup-koishi --app ../koishi-app
+node scripts/setup-koishi.mjs --app ../koishi-app
 
 # 创建新应用并直接启动
-yarn setup-koishi --create-app ../new-koishi --start
+node scripts/setup-koishi.mjs --create-app ../new-koishi --start
 ```
 
 ## 生成的 Koishi 配置
@@ -158,7 +161,7 @@ git -C external/yesimbot stash
 显式传入应用目录：
 
 ```bash
-yarn setup-koishi --app D:\path\to\koishi-app
+node scripts/setup-koishi.mjs --app D:\path\to\koishi-app
 ```
 
 ### 不要使用 npm install

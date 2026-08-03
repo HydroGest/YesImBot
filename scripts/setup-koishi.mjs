@@ -356,6 +356,10 @@ function main() {
   }
 
   ensureDevBranch();
+
+  log("installing yesimbot workspace dependencies");
+  runYarn(["install"], { cwd: yesimbotRoot });
+
   const plugins = collectPluginPackages();
 
   log(`configuring Koishi app at ${appRoot}`);
