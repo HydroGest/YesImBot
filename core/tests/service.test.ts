@@ -1,7 +1,7 @@
 import { readFile, rm } from "node:fs/promises";
 
 import { Context } from "@koishijs/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
@@ -13,9 +13,14 @@ import { DEFAULT_PERSONA } from "../src/runtime/prompt.js";
 const state = vi.hoisted(() => ({
   runtime: undefined as
     | {
-        reset: ReturnType<typeof vi.fn>;
-        stop: ReturnType<typeof vi.fn>;
-        trigger: ReturnType<typeof vi.fn>;
+        reset: Mock;
+        compact: Mock;
+        archive: Mock;
+        clear: Mock;
+        status: Mock;
+        list: Mock;
+        stop: Mock;
+        trigger: Mock;
         channelPlugins: ReadonlySet<ChannelPluginFactory>;
       }
     | undefined,
@@ -24,13 +29,20 @@ const state = vi.hoisted(() => ({
 type RegisteredCommand = {
   readonly name: string;
   readonly options: unknown;
-  readonly action: ReturnType<typeof vi.fn>;
-  readonly dispose: ReturnType<typeof vi.fn>;
+  readonly action: Mock;
+  readonly dispose: Mock;
+  readonly subcommand: Mock;
+  readonly option: Mock;
 };
 
 vi.mock("../src/runtime/index.js", () => ({
   RuntimeManager: class {
     public reset = vi.fn(async () => undefined);
+    public compact = vi.fn(async () => "");
+    public archive = vi.fn(async () => "");
+    public clear = vi.fn(async () => undefined);
+    public status = vi.fn(async () => "");
+    public list = vi.fn(async () => "");
     public stop = vi.fn(async () => undefined);
     public trigger = vi.fn(async () => undefined);
 
@@ -90,8 +102,23 @@ function createService(serviceConfig: Config = config) {
   vi.spyOn(ctx, "middleware").mockReturnValue(vi.fn() as never);
   vi.spyOn(ctx, "on").mockReturnValue(vi.fn() as never);
   const commands: RegisteredCommand[] = [];
+  const createCommand = (name: string, options: unknown): RegisteredCommand => {
+    const command = {
+      name,
+      options,
+      action: vi.fn(),
+      dispose: vi.fn(),
+      subcommand: vi.fn((suffix: string) => {
+        const child = createCommand(`${name}${suffix}`, undefined);
+        commands.push(child);
+        return child;
+      }),
+      option: vi.fn(() => command),
+    };
+    return command;
+  };
   vi.spyOn(ctx, "command").mockImplementation((name, description, options) => {
-    const command = { name, options: options ?? description, action: vi.fn(), dispose: vi.fn() };
+    const command = createCommand(name, options ?? description);
     commands.push(command);
     return command as never;
   });
@@ -125,6 +152,23 @@ describe("YesImBotService facade", () => {
     expect("gateway" in ctx.yesimbot).toBe(false);
     expect("platform" in ctx.yesimbot).toBe(false);
     expect("delivery" in ctx.yesimbot).toBe(false);
+  });
+
+  it("registers the authority-gated session admin command group", () => {
+    const { commands } = createService();
+
+    expect(commands.find((command) => command.name === "yesimbot session")).toMatchObject({
+      options: { authority: 4 },
+    });
+    expect(commands.map((command) => command.name)).toEqual(
+      expect.arrayContaining([
+        "yesimbot session.compact",
+        "yesimbot session.archive",
+        "yesimbot session.clear",
+        "yesimbot session.status",
+        "yesimbot session.list",
+      ]),
+    );
   });
 
   it("passes configured channel allowlist rules to Gateway", () => {

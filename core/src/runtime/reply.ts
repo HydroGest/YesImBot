@@ -9,7 +9,6 @@ interface TextCapture {
   readonly content: string;
 }
 
-
 export function parseReply(raw: string): Element[][] {
   const source = raw.replaceAll(MARK, "");
   const nonce = `${MARK}t${Math.random().toString(36).slice(2)}`;

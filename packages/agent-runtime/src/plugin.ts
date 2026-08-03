@@ -29,6 +29,7 @@ export interface AgentPlugin {
   init?(runtime: AgentPluginRuntime): Awaitable<void>;
   stop?(): Awaitable<void>;
   onAppend?(entries: AgentEntry[], context: AppendHookContext): Awaitable<AgentEntry[] | void>;
+  transformEntries?(entries: readonly AgentEntry[]): AgentEntry[] | void;
   /** @deprecated Define an explicit cache lifecycle before adding historical projection behavior. */
   transformMessages?(messages: AgentMessage[], context: MessageTransformContext): Awaitable<AgentMessage[]>;
   toModelMessages?(
@@ -100,6 +101,7 @@ export interface PluginHostRuntime extends AgentPluginRuntime {
 
 export interface PluginHostHelpers {
   onAppend(entries: AgentEntry[], context: AppendHookContext): Promise<AgentEntry[]>;
+  transformEntries(entries: readonly AgentEntry[]): Promise<readonly AgentEntry[]>;
   transformMessages(messages: AgentMessage[], context: MessageTransformContext): Promise<AgentMessage[]>;
   toModelMessages(message: AgentMessage, context: ModelMessageContext): Promise<ModelMessage[]>;
   beforeToolCall(decision: ToolDecision, call: ToolCallContext, context: ToolHookContext): Promise<ToolDecision>;
@@ -196,6 +198,24 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
 
         try {
           const next = await hook(current, context);
+          if (next) current = next;
+        } catch (error) {
+          emitPluginError(plugin.name, error);
+        }
+      }
+
+      return current;
+    },
+
+    async transformEntries(entries) {
+      let current: readonly AgentEntry[] = entries;
+
+      for (const plugin of activePlugins) {
+        const hook = plugin?.transformEntries?.bind(plugin);
+        if (!hook) continue;
+
+        try {
+          const next = hook(current);
           if (next) current = next;
         } catch (error) {
           emitPluginError(plugin.name, error);

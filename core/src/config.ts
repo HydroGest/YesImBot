@@ -22,6 +22,23 @@ export interface PacingConfig {
   maxTotalDelayMs: number;
 }
 
+export interface SessionCompactConfig {
+  threshold: number;
+  charTokenRatio: number;
+  minMessages: number;
+  maxFailures: number;
+  model: string | undefined;
+}
+
+export interface SessionIdleConfig {
+  timeout: number;
+}
+
+export interface SessionConfig {
+  compact: SessionCompactConfig;
+  idle: SessionIdleConfig;
+}
+
 export interface Config {
   basePath: string;
   chatModel: string;
@@ -33,6 +50,7 @@ export interface Config {
     pacing: PacingConfig;
     customInnerThought: boolean;
   };
+  session: SessionConfig;
 }
 
 export const Config: Schema<Config> = Schema.intersect([
@@ -97,4 +115,18 @@ export const Config: Schema<Config> = Schema.intersect([
         .default(false),
     }),
   }).description("回复分段与节奏"),
+  Schema.object({
+    session: Schema.object({
+      compact: Schema.object({
+        threshold: Schema.number().min(0.1).max(1).default(0.9),
+        charTokenRatio: Schema.number().min(0.5).max(5).default(1.8),
+        minMessages: Schema.number().min(1).default(20),
+        maxFailures: Schema.number().min(1).default(3),
+        model: Schema.dynamic("registry.chatModels"),
+      }),
+      idle: Schema.object({
+        timeout: Schema.number().min(0).default(7_200_000).description("空闲压缩触发时长(ms)，0 = 禁用"),
+      }),
+    }),
+  }).description("会话管理"),
 ]) as Schema<Config>;

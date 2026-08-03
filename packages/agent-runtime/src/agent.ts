@@ -383,7 +383,8 @@ export function createAgent(config: AgentConfig): Agent {
 
   const collectHistoryMessageEntries = async () => {
     await appendPipelineReady;
-    const entries = await storage.read();
+    const rawEntries = await storage.read();
+    const entries = await pluginHost.helpers.transformEntries(rawEntries);
     return entries.filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message");
   };
 

@@ -92,6 +92,10 @@ async function readPromptFile(
   }
 }
 
+export async function readPersona(basePath: string, logger?: Logger): Promise<string> {
+  return (await readPromptFile(basePath, "PERSONA.md", logger)) ?? DEFAULT_PERSONA;
+}
+
 function escapeXml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -123,11 +127,10 @@ function formatRuntimeContext(channel: ChannelScope): SystemModelMessage {
 }
 
 export async function buildCoreSystemPrompt(options: CoreSystemPromptOptions): Promise<SystemModelMessage[]> {
-  const [agents, customPersona] = await Promise.all([
+  const [agents, persona] = await Promise.all([
     readPromptFile(options.basePath, "AGENTS.md", options.logger),
-    readPromptFile(options.basePath, "PERSONA.md", options.logger),
+    readPersona(options.basePath, options.logger),
   ]);
-  const persona = customPersona ?? DEFAULT_PERSONA;
 
   return [
     { role: "system", content: coreConstitution(options.customInnerThought) },

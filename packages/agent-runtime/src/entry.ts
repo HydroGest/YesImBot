@@ -3,7 +3,14 @@ import { createRandomId } from "./id.js";
 import type { AgentMessage } from "./message.js";
 import type { AgentState } from "./state.js";
 
+export interface CompactEntryData {
+  summary: string;
+  lastEntryId: string;
+  sourceSession?: string;
+}
+
 export interface AgentCustomEntries {
+  compact: CompactEntryData;
   event: AgentInternalEvent;
   message: AgentMessage;
   state: AgentState;

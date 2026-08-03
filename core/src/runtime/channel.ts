@@ -43,6 +43,8 @@ export interface ChannelRuntimeOptions {
   readonly imageBudget: ImageBudget | null;
   readonly agentPlugins: readonly AgentPlugin[];
   readonly storage: AgentStorage;
+  readonly idleTimeout?: number;
+  readonly compact?: () => Promise<void>;
 }
 
 export type ChannelOutput = {
@@ -89,11 +91,14 @@ export class ChannelRuntime {
   private controllers = new Set<AbortController>();
   private readonly agent: Agent;
   private initTask: Promise<void> | undefined;
+  private idleTimer: NodeJS.Timeout | undefined;
+  private readonly idleTimeout: number;
 
   constructor(ctx: Context, opts: ChannelRuntimeOptions) {
     this.ctx = ctx;
     this.logger = this.ctx.logger("yesimbot/channel-runtime");
     this.opts = opts;
+    this.idleTimeout = opts.idleTimeout ?? 0;
 
     this.scope = { ...opts.scope };
     this.selfId = opts.bot.selfId;
@@ -157,13 +162,14 @@ export class ChannelRuntime {
   }
 
   public init(): Promise<void> {
-    if (!this.initTask) this.initTask = this.agent.init();
+    if (!this.initTask) this.initTask = this.initialize();
     return this.initTask;
   }
 
   public stop(): Promise<void> {
     if (this.stopTask) return this.stopTask;
     this.stopped = true;
+    this.clearIdleTimer();
     for (const controller of this.controllers) controller.abort();
     this.stopTask = this.schedule(async () => this.teardown("stop"));
     return this.stopTask;
@@ -171,6 +177,7 @@ export class ChannelRuntime {
 
   public handle(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
+    this.clearIdleTimer();
     return this.schedule(async () => {
       this.assertOpen();
       const input = await this.commit(record);
@@ -181,6 +188,7 @@ export class ChannelRuntime {
 
   public trigger(record: EventRecord): Promise<ChannelRuntimeResult> {
     if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
+    this.clearIdleTimer();
     return this.schedule(async () => {
       this.assertOpen();
       const input = await this.commit(record);
@@ -192,6 +200,10 @@ export class ChannelRuntime {
       return this.startRun(input);
     });
   }
+  public compact(operation: () => Promise<void>): Promise<void> {
+    if (this.stopped) return Promise.reject(new Error("Channel runtime is stopped"));
+    return this.schedule(operation);
+  }
 
   private async commit(record: MessageRecord | EventRecord): Promise<Message | Event> {
     const input = isMessageRecord(record) ? createMessage(record) : createEvent(record);
@@ -201,6 +213,7 @@ export class ChannelRuntime {
     } else if (isEvent(input)) {
       this.ctx.emit("yesimbot/event", input);
     }
+    this.resetIdleTimer();
     return input;
   }
 
@@ -290,7 +303,40 @@ export class ChannelRuntime {
       output.close();
     } catch (cause) {
       output.close(cause);
+    } finally {
+      this.resetIdleTimer();
     }
+  }
+
+  private async initialize(): Promise<void> {
+    await this.agent.init();
+    if (this.idleTimeout <= 0) return;
+    const lastEntry = (await this.opts.storage.read()).at(-1);
+    if (!lastEntry) return;
+    this.resetIdleTimer(Math.max(0, this.idleTimeout - (Date.now() - lastEntry.timestamp)));
+  }
+
+  private resetIdleTimer(delay = this.idleTimeout): void {
+    this.clearIdleTimer();
+    if (this.stopped || this.idleTimeout <= 0) return;
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = undefined;
+      this.queueIdleCompact();
+    }, delay);
+  }
+
+  private clearIdleTimer(): void {
+    if (!this.idleTimer) return;
+    clearTimeout(this.idleTimer);
+    this.idleTimer = undefined;
+  }
+
+  private queueIdleCompact(): void {
+    if (!this.opts.compact) return;
+    void this.schedule(async () => {
+      if (this.stopped || this.agent.getActiveTurnId() !== null || !this.agent.isIdle()) return;
+      await this.opts.compact?.();
+    }).catch((cause) => this.logger.warn("idle_compact_failed", { cause }));
   }
 
   private readState(): WillEngine.State {

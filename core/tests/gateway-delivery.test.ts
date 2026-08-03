@@ -131,6 +131,10 @@ function createIntegratedGateway(basePath: string) {
       pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
       customInnerThought: false,
     },
+    session: {
+      compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined },
+      idle: { timeout: 0 },
+    },
   };
   const manager = new RuntimeManager(ctx, modelService, assets as never, storage, config, new Set());
   const gateway = new Gateway(
@@ -182,7 +186,13 @@ describe("Gateway passive delivery", () => {
     await first.manager.stop();
 
     const readableDirectory = join(basePath, "channels", "shared-test-room%2d%1");
-    const currentJsonl = join(readableDirectory, "sessions", "messages.jsonl");
+    const sessionsDir = join(readableDirectory, "sessions");
+    const sessionFiles = (await import("node:fs/promises")).readdir(sessionsDir);
+    const activeSessionFile = (await sessionFiles)
+      .filter((f) => f.endsWith(".jsonl") && f !== "messages.jsonl")
+      .sort()
+      .at(-1)!;
+    const currentJsonl = join(sessionsDir, activeSessionFile);
     const firstEntries = await createJsonlStorage(currentJsonl).read();
     const firstInput = firstEntries[0]?.type === "message" ? firstEntries[0].data : undefined;
     const eventInput = firstEntries[1]?.type === "message" ? firstEntries[1].data : undefined;

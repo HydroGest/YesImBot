@@ -9,8 +9,8 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h, Universal, type Session } from "koishi";
 
-import type { AssetStore } from "../../src/asset.js";
-import { translateOneBotEvent, createOneBotTranslator } from "../../src/gateway/onebot.js";
+import type { AssetStore } from "../src/asset.js";
+import { translateOneBotEvent, createOneBotTranslator } from "../src/gateway/onebot.js";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 const ID = "0123456789abcdef0123456789abcdef";

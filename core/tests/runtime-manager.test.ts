@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
+import { createEntry, createJsonlStorage } from "@yesimbot/agent-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -88,6 +89,10 @@ function createManager(
     reply: {
       pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
       customInnerThought: false,
+    },
+    session: {
+      compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined },
+      idle: { timeout: 7_200_000 },
     },
   };
   return {
@@ -301,14 +306,16 @@ describe("RuntimeManager", () => {
     const second = { name: "second" };
     channelPlugins.add(async () => first);
     const result = await manager.route(record("room-a"));
-    expect(runtimeOptions(state.runtimes[0]!)).toMatchObject({ model, agentPlugins: [first] });
+    expect(runtimeOptions(state.runtimes[0]!)).toMatchObject({ model });
+    expect(runtimeOptions(state.runtimes[0]!).agentPlugins).toContain(first);
     channelPlugins.clear();
     channelPlugins.add(async () => second);
     state.handle.mockResolvedValueOnce({ kind: "join" as const, eventId: "event-2", turnId: "turn-2" });
 
     await manager.route(record("room-b"));
 
-    expect(runtimeOptions(state.runtimes[1]!)).toMatchObject({ model, agentPlugins: [second] });
+    expect(runtimeOptions(state.runtimes[1]!)).toMatchObject({ model });
+    expect(runtimeOptions(state.runtimes[1]!).agentPlugins).toContain(second);
   });
 
   it("snapshots configured image budgets for each new runtime", async () => {
@@ -325,6 +332,30 @@ describe("RuntimeManager", () => {
       maxBytesPerImage: 1024,
       maxTotalBytes: 2048,
     });
+  });
+
+  it("injects configured idle compaction with the main model fallback", async () => {
+    const { manager, config, model, resolveChatModel } = createManager();
+    Object.assign(config, {
+      session: {
+        compact: {
+          threshold: 0.75,
+          charTokenRatio: 2,
+          minMessages: 3,
+          maxFailures: 2,
+          model: undefined,
+        },
+        idle: { timeout: 1_234 },
+      },
+    });
+
+    await manager.route(record("room"));
+
+    const options = runtimeOptions(state.runtimes[0]!);
+    expect(options).toMatchObject({ idleTimeout: 1_234, model });
+    expect(options.compact).toEqual(expect.any(Function));
+    expect(options.agentPlugins.some((plugin) => plugin.name === "yesimbot-compact")).toBe(true);
+    expect(resolveChatModel).toHaveBeenCalledOnce();
   });
 
   it("passes no formatter capability option to new runtimes", async () => {
@@ -436,15 +467,97 @@ describe("RuntimeManager", () => {
       channelId: "room",
       type: "shared",
     } satisfies ChannelScope;
-    const path = join(await new ChannelStorage(ctx, { basePath }).getStoragePath(scope), "sessions", "messages.jsonl");
-    await mkdir(join(path, ".."), { recursive: true });
-    await writeFile(path, "persisted");
+    const sessionsDir = join(await new ChannelStorage(ctx, { basePath }).getStoragePath(scope), "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    const sessionPath = join(sessionsDir, "20260803T143022Z.jsonl");
+    await writeFile(sessionPath, "persisted");
     await manager.route(record("room"));
     await manager.stop();
 
     await expect(manager.reset(scope)).rejects.toThrow("Runtime manager is stopped");
-    await expect(access(path)).resolves.toBeUndefined();
+    await expect(access(sessionPath)).resolves.toBeUndefined();
     expect(assets.clear).not.toHaveBeenCalled();
+  });
+
+  it("archives an active session without a summary and replaces its runtime", async () => {
+    const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
+    const { manager, storage } = createManager(basePath);
+    const scope = {
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room",
+      type: "shared",
+    } satisfies ChannelScope;
+    const sessionsDir = join(await storage.getStoragePath(scope), "sessions");
+    const active = join(sessionsDir, "20260803T143022Z.jsonl");
+    await mkdir(sessionsDir, { recursive: true });
+    await createJsonlStorage(active).append(
+      createEntry("message", { role: "user", id: "message-1", timestamp: 1, content: "hello" }),
+    );
+
+    await expect(manager.archive(scope, { noSummary: true })).resolves.toBe("已归档当前会话。");
+
+    expect(state.runtimes).toHaveLength(2);
+    expect(state.stop).toHaveBeenCalledOnce();
+    expect(await readdir(sessionsDir)).toHaveLength(2);
+    await expect(access(active)).resolves.toBeUndefined();
+  });
+  it("restores a usable runtime when summary archival fails", async () => {
+    const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
+    const { manager, storage } = createManager(basePath);
+    const scope = {
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room",
+      type: "shared",
+    } satisfies ChannelScope;
+    const sessionsDir = join(await storage.getStoragePath(scope), "sessions");
+    await mkdir(sessionsDir, { recursive: true });
+    await createJsonlStorage(join(sessionsDir, "20260803T143022Z.jsonl")).append(
+      createEntry("message", { role: "user", id: "message-1", timestamp: 1, content: "hello" }),
+    );
+    await manager.route(record("room"));
+
+    await expect(manager.archive(scope)).rejects.toThrow();
+    expect(state.runtimes).toHaveLength(2);
+    await expect(manager.route(record("room", { messageId: "after-failure" }))).resolves.toMatchObject({
+      kind: "wait",
+    });
+  });
+
+  it("reports and lists persisted session metadata without creating a runtime", async () => {
+    const basePath = await mkdtemp(join(tmpdir(), "yesimbot-runtime-manager-"));
+    const { manager, storage } = createManager(basePath);
+    const scope = {
+      platform: "test",
+      selfId: "bot-1",
+      channelId: "room",
+      type: "shared",
+    } satisfies ChannelScope;
+    const sessionsDir = join(await storage.getStoragePath(scope), "sessions");
+    const filename = "20260803T143022Z.jsonl";
+    await mkdir(sessionsDir, { recursive: true });
+    await createJsonlStorage(join(sessionsDir, filename)).append(
+      createEntry("message", { role: "user", id: "message-1", timestamp: 1, content: "hello" }),
+      createEntry("compact", { summary: "memory", lastEntryId: "entry-1" }),
+      createEntry("message", { role: "assistant", id: "message-2", timestamp: 2, content: "hi" }),
+    );
+
+    await expect(manager.status(scope)).resolves.toContain(`活动会话：${filename}`);
+    await expect(manager.status(scope)).resolves.toContain("消息：2");
+    await expect(manager.status(scope)).resolves.toContain("压缩：1");
+    await expect(manager.status(scope)).resolves.toContain("自上次压缩以来消息：1");
+    await expect(manager.list(scope)).resolves.toContain(`→ ${filename} (${filename.replace(".jsonl", "")}, 2 条`);
+    expect(state.runtimes).toHaveLength(0);
+  });
+
+  it("clears sessions and assets through the named admin operation", async () => {
+    const { manager, assets } = createManager();
+    const scope = { platform: "test", selfId: "bot-1", channelId: "room", type: "shared" } satisfies ChannelScope;
+
+    await manager.clear(scope);
+
+    expect(assets.clear).toHaveBeenCalledOnce();
   });
 
   it("keeps direct channels isolated by self id without assignee lookup", async () => {

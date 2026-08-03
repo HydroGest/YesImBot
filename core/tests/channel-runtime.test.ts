@@ -190,6 +190,27 @@ describe("ChannelRuntime", () => {
       kind: "wait",
     });
   });
+  it("queues manual compaction behind the current turn", async () => {
+    const entered = deferred();
+    const release = deferred();
+    const order: string[] = [];
+    const will: WillEngine = {
+      decide: async () => {
+        order.push("turn");
+        entered.resolve();
+        await release.promise;
+        return "wait";
+      },
+    };
+    const { runtime } = createRuntime(will);
+    const handling = runtime.handle(record());
+    await entered.promise;
+    const compacting = runtime.compact(async () => order.push("compact"));
+    expect(order).toEqual(["turn"]);
+    release.resolve();
+    await Promise.all([handling, compacting]);
+    expect(order).toEqual(["turn", "compact"]);
+  });
 
   it("initializes its Agent once", async () => {
     const { runtime } = createRuntime({ decide: async () => "wait" as const });

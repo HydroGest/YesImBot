@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { EmbeddingModel, LanguageModel } from "ai";
-import { Context, Logger, Schema, Service } from "koishi";
+import { Context, Logger, Schema } from "koishi";
 
 import {
   type ChatModelConfig,

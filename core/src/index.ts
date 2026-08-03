@@ -1,8 +1,9 @@
 import { resolve } from "node:path";
 
-import { Bot, Command, Context, Service } from "koishi";
+import { Bot, Context, Service } from "koishi";
 
 import { AssetService } from "./asset.js";
+import { registerSessionCommands } from "./commands/session.js";
 import { Config } from "./config.js";
 import { deliverOutput } from "./delivery.js";
 import { Gateway, type PlatformTranslator } from "./gateway/index.js";
@@ -60,17 +61,7 @@ export default class YesImBotService extends Service<Config> {
       },
     );
 
-    const resetCommand = ctx.command("yesimbot.reset", { authority: 4 });
-    resetCommand.action(async ({ session }) => {
-      if (!session?.platform || !session.selfId || !session.channelId) return;
-      await this.reset({
-        platform: session.platform,
-        selfId: session.selfId,
-        channelId: session.channelId,
-        type: session.isDirect ? "direct" : "shared",
-      });
-    });
-    this.registerCommand(resetCommand);
+    this.commandDisposers.add(registerSessionCommands(ctx, this.rt, { authority: 4 }));
   }
 
   public registerTranslator(translator: PlatformTranslator): () => void {
@@ -166,10 +157,6 @@ export default class YesImBotService extends Service<Config> {
       }
     }
     this.commandDisposers.clear();
-  }
-
-  private registerCommand(command: Command): void {
-    if (typeof command.dispose === "function") this.commandDisposers.add(() => command.dispose());
   }
 
   private logError(level: "debug" | "info" | "warn" | "error", event: string, cause: unknown): void {
