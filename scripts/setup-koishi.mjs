@@ -105,6 +105,7 @@ function run(command, commandArgs, options = {}) {
     cwd: options.cwd || appRoot,
     env: process.env,
     encoding: "utf8",
+    shell: options.shell ?? false,
     stdio: options.quiet ? "pipe" : "inherit",
   });
 
@@ -126,14 +127,21 @@ function runChecked(command, commandArgs, options = {}) {
   return result.stdout?.trim() || "";
 }
 
+function shellQuoted(commandArgs) {
+  if (process.platform !== "win32") return commandArgs;
+  return commandArgs.map((arg) => `"${arg.replace(/"/g, '\\"')}"`);
+}
+
 function runYarn(commandArgs, options = {}) {
-  const candidates = process.platform === "win32"
-    ? [["yarn.cmd", commandArgs], ["corepack.cmd", ["yarn", ...commandArgs]]]
-    : [["yarn", commandArgs], ["corepack", ["yarn", ...commandArgs]]];
+  const useShell = process.platform === "win32";
+  const candidates = [
+    ["yarn", commandArgs, useShell],
+    ["corepack", ["yarn", ...commandArgs], useShell],
+  ];
 
   let lastError;
-  for (const [command, args] of candidates) {
-    const result = run(command, args, options);
+  for (const [command, args, shell] of candidates) {
+    const result = run(command, shellQuoted(args), { ...options, shell });
     if (!result.errorMessage) return result;
     lastError = result.errorMessage;
   }
@@ -142,8 +150,9 @@ function runYarn(commandArgs, options = {}) {
 }
 
 function runNpx(commandArgs, options = {}) {
-  const command = process.platform === "win32" ? "npx.cmd" : "npx";
-  const result = run(command, ["--yes", ...commandArgs], options);
+  const useShell = process.platform === "win32";
+  const args = ["--yes", ...commandArgs];
+  const result = run("npx", shellQuoted(args), { ...options, shell: useShell });
   if (result.errorMessage) {
     throw new Error(`${result.errorMessage}\n${result.stderr?.trim() || ""}`);
   }
