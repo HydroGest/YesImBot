@@ -63,6 +63,7 @@ function createContext() {
 
 function createChannelScope(overrides: Record<string, unknown> = {}) {
   return {
+    type: "shared",
     platform: "onebot",
     selfId: "bot",
     channelId: "group",
@@ -114,8 +115,8 @@ describe("onebot-utils plugin", () => {
   it("declares only the approved forward configuration fields", () => {
     const fields = mocks.schema.object.mock.calls[0]?.[0] as Record<string, unknown>;
 
-    expect(Object.keys(fields)).toEqual(["parseImages", "maxForwardPageChars"]);
-    expect(mocks.schema.boolean).toHaveBeenCalledOnce();
+    expect(Object.keys(fields)).toEqual(["banTools", "parseImages", "maxForwardPageChars"]);
+    expect(mocks.schema.boolean).toHaveBeenCalledTimes(2);
     expect(mocks.schema.number).toHaveBeenCalledOnce();
   });
 
@@ -260,6 +261,62 @@ describe("onebot-utils plugin", () => {
 
     await expect(tool.execute?.({ messageId: "message-id" }, {} as never)).resolves.toEqual({
       success: true,
+    });
+  });
+
+  it("hides group management tools unless banTools is enabled", async () => {
+    const runtime = await createRuntime({ internal: { _request: vi.fn() } });
+    const names = (await runtime.getTools()).map((tool) => tool.name);
+
+    expect(names).not.toContain("onebot_ban_user");
+    expect(names).not.toContain("onebot_unban_user");
+    expect(names).not.toContain("onebot_kick_user");
+  });
+
+  it("bans and unbans through OneBot request internals", async () => {
+    const request = vi.fn(async () => ({ status: "ok" }));
+    const runtime = await createRuntime(
+      { internal: { _request: request } },
+      { banTools: true },
+    );
+    const tools = await runtime.getTools();
+    const banTool = tools.find((tool) => tool.name === "onebot_ban_user")!;
+    const unbanTool = tools.find((tool) => tool.name === "onebot_unban_user")!;
+
+    await expect(banTool.execute?.({ userId: "123", duration: 60 }, {} as never)).resolves.toEqual({
+      success: true,
+    });
+    await expect(unbanTool.execute?.({ userId: "123" }, {} as never)).resolves.toEqual({
+      success: true,
+    });
+
+    expect(request).toHaveBeenNthCalledWith(1, "set_group_ban", {
+      group_id: Number("group"),
+      user_id: 123,
+      duration: 60,
+    });
+    expect(request).toHaveBeenNthCalledWith(2, "set_group_ban", {
+      group_id: Number("group"),
+      user_id: 123,
+      duration: 0,
+    });
+  });
+
+  it("kicks members through OneBot request internals", async () => {
+    const request = vi.fn(async () => ({ status: "ok" }));
+    const runtime = await createRuntime(
+      { internal: { _request: request } },
+      { banTools: true },
+    );
+    const tool = (await runtime.getTools()).find((item) => item.name === "onebot_kick_user")!;
+
+    await expect(
+      tool.execute?.({ userId: "123", rejectAddRequest: true }, {} as never),
+    ).resolves.toEqual({ success: true });
+    expect(request).toHaveBeenCalledWith("set_group_kick", {
+      group_id: Number("group"),
+      user_id: 123,
+      reject_add_request: true,
     });
   });
 });
