@@ -30,6 +30,8 @@
     "release:beta": "node scripts/release.mjs --beta",
     "setup-koishi": "node scripts/setup-koishi.mjs",
     "setup-koishi:check": "node scripts/setup-koishi.mjs --check",
+    "koishi:dev": "node scripts/start-koishi.mjs --dev",
+    "koishi:start": "node scripts/start-koishi.mjs",
     "test": "turbo run test"
   },
   "devDependencies": {

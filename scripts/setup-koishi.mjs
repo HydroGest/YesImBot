@@ -198,6 +198,10 @@ function ensureDevBranch() {
   }
 }
 
+function saveAppPath() {
+  fs.writeFileSync(path.join(yesimbotRoot, ".koishi-app-path"), `${appRoot}\n`);
+}
+
 function collectPluginPackages() {
   const files = [];
 
@@ -373,7 +377,7 @@ function main() {
       "  --app <dir>      target Koishi app directory (auto-detected when omitted)",
       "  --create-app <dir> create a new Koishi app before setup",
       "  --check          verify the current setup without changing files",
-      "  --start          run `yarn dev` after setup",
+      "  --start          run `yarn start` after setup",
       "  --repo <url>     git URL used when no origin remote exists",
     ].join("\n"));
     return;
@@ -386,6 +390,7 @@ function main() {
   }
 
   ensureDevBranch();
+  saveAppPath();
 
   log("installing yesimbot workspace dependencies");
   runYarn(["install"], { cwd: yesimbotRoot });
@@ -409,7 +414,7 @@ function main() {
 
   if (parsed.start) {
     log("starting Koishi");
-    runYarn(["dev"]);
+    runYarn(["start"]);
   } else {
     log("done; run `yarn dev` or `yarn start` in the Koishi app to launch it");
   }

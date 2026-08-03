@@ -27,13 +27,14 @@ node scripts/setup-koishi.mjs --create-app ../my-koishi
 
 1. 使用官方 `create-koishi@latest` 在 `../my-koishi` 创建新 Koishi 应用。
 2. 确保当前 yesimbot 仓库位于 `dev` 分支。
-3. 自动在 yesimbot 仓库内执行 `yarn install`，生成 `yarn.lock` 并安装依赖。
-4. 扫描 yesimbot 内的所有 Koishi 插件包。
-5. 修改 Koishi 应用的 `package.json`，加入 yesimbot workspace 和依赖。
-6. 在 Koishi 应用内执行 `yarn install`。
-7. 修改 Koishi 应用的 `koishi.yml`，创建 `group:yesimbot`。
-8. 构建 yesimbot 全部插件包。
-9. 验证所有插件都能被 Koishi 解析。
+3. 把 Koishi 应用路径写入 yesimbot 的本地状态文件 `.koishi-app-path`。
+4. 自动在 yesimbot 仓库内执行 `yarn install`，生成 `yarn.lock` 并安装依赖。
+5. 扫描 yesimbot 内的所有 Koishi 插件包。
+6. 修改 Koishi 应用的 `package.json`，加入 yesimbot workspace 和依赖。
+7. 在 Koishi 应用内执行 `yarn install`。
+8. 修改 Koishi 应用的 `koishi.yml`，创建 `group:yesimbot`。
+9. 构建 yesimbot 全部插件包。
+10. 验证所有插件都能被 Koishi 解析。
 
 创建完成后可以手动启动：
 
@@ -49,6 +50,53 @@ node scripts/setup-koishi.mjs --create-app ../my-koishi --start
 ```
 
 首次运行请使用 `node scripts/setup-koishi.mjs`，这样脚本会先自动安装 yesimbot 仓库自身的依赖。之后 `yarn.lock` 已经存在，也可以继续使用 `yarn setup-koishi`。
+
+## 后续启动
+
+setup 会把目标 Koishi 应用路径记录在 yesimbot 仓库内的 `.koishi-app-path` 中。该文件已加入 `.gitignore`，不会提交到仓库。
+
+之后可以在 yesimbot 仓库内直接启动：
+
+```bash
+# 推荐：生产模式，动态配置可用
+yarn koishi:start
+
+# 仅在需要时使用开发模式
+yarn koishi:dev
+```
+
+`yarn koishi:start` 会执行 `yarn start`。Koishi 的 `dev` 模式不会加载动态 schema，而 yesimbot 的模型配置依赖动态配置，所以默认推荐 `yarn start`。
+
+如果状态文件丢失或需要临时指定其它应用：
+
+```bash
+node scripts/start-koishi.mjs --app ../my-koishi
+```
+
+也可以直接运行：
+
+```bash
+node scripts/start-koishi.mjs
+```
+
+需要开发模式时：
+
+```bash
+node scripts/start-koishi.mjs --dev
+```
+
+只查看脚本会启动哪个应用，不真正启动：
+
+```bash
+node scripts/start-koishi.mjs --check
+```
+
+脚本会按以下顺序查找 Koishi 应用：
+
+1. `--app` 显式指定的目录。
+2. `.koishi-app-path` 中记录的目录。
+3. 当前工作目录。
+4. 从 yesimbot 仓库向上查找包含 `koishi.yml` 和 `package.json` 的目录。
 
 ## 接入已有 Koishi 应用
 
