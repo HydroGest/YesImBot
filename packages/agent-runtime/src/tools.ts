@@ -1,14 +1,11 @@
-import { jsonSchema, type Tool, type ToolExecutionOptions, type ToolSet } from "ai";
+import { type Tool, type ToolExecutionOptions, type ToolSet } from "ai";
 
-import type { Awaitable } from "./base.js";
 import type { AgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
 import { ToolConflictError } from "./errors.js";
 import type { AgentPlugin, ToolCallContext, ToolHookContext, ToolResultContext } from "./plugin.js";
 import type { AgentStateManager } from "./state.js";
 import type { AgentStorage } from "./storage.js";
-
-export const DEFAULT_TERMINAL_TOOL_NAME = "finalize_response";
 
 export interface AgentToolExecuteContext extends ToolExecutionOptions {
   readonly runtime: { id: string };
@@ -18,19 +15,15 @@ export interface AgentToolExecuteContext extends ToolExecutionOptions {
   readonly turnId: string;
 }
 
-// oxlint-disable-next-line typescript/no-explicit-any
+// eslint-disable-next-line typescript/no-explicit-any
 export type AgentTool<IN = any, OUT = any> = Omit<Tool<IN, OUT>, "execute"> & {
   name: string;
-  execute?: (input: IN, options: AgentToolExecuteContext) => Awaitable<OUT>;
+  execute: (input: IN, options: AgentToolExecuteContext) => Promise<OUT> | OUT;
 };
 
 export type AgentToolSet = AgentTool[];
 
 export type ToolDecision = { type: "allow" } | { type: "block"; reason: string } | { type: "replace"; args: unknown };
-
-export interface TerminalToolOutput {
-  finalized: true;
-}
 
 export function mergeTools(toolSets: readonly AgentToolSet[]): AgentToolSet {
   const merged: AgentToolSet = [];
@@ -102,28 +95,4 @@ export function toAiToolSet(tools: AgentToolSet): ToolSet {
     result[tool.name] = aiTool as Tool;
   }
   return result;
-}
-
-export function resolveTerminalToolName(config: boolean | { name?: string } | undefined): string | undefined {
-  if (!config) {
-    return undefined;
-  }
-  if (config === true) {
-    return DEFAULT_TERMINAL_TOOL_NAME;
-  }
-  return config.name ?? DEFAULT_TERMINAL_TOOL_NAME;
-}
-
-export function createTerminalTool(
-  name = DEFAULT_TERMINAL_TOOL_NAME,
-): AgentTool<Record<string, never>, TerminalToolOutput> {
-  return {
-    name,
-    description: "Mark the current assistant response as final. Call this after final text and required tools.",
-    inputSchema: jsonSchema({
-      type: "object",
-      additionalProperties: false,
-    }),
-    execute: async () => ({ finalized: true }),
-  };
 }

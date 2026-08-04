@@ -1,13 +1,12 @@
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type { Awaitable } from "./base.js";
 import type { AgentEntry } from "./entry.js";
 
 export interface AgentStorage<T = AgentEntry> {
-  append: (...items: T[]) => Awaitable<void>;
-  clear: () => Awaitable<void>;
-  read: () => Awaitable<Readonly<T[]>>;
+  append: (...items: T[]) => Promise<void> | void;
+  clear: () => Promise<void> | void;
+  read: () => Promise<Readonly<T[]>> | Readonly<T[]>;
 }
 
 export function createMemoryStorage<T extends AgentEntry = AgentEntry>(

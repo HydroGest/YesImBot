@@ -1,6 +1,5 @@
 import type { ModelMessage, SystemModelMessage } from "ai";
 
-import { Awaitable } from "./base.js";
 import type { AgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
 import { createDiagnostic, createInternalEvent } from "./event.js";
@@ -20,6 +19,7 @@ export interface AgentPluginRuntime {
 
 export type SystemPromptBlock = string | SystemModelMessage;
 export type SystemPromptAppend = SystemPromptBlock | readonly SystemPromptBlock[];
+type Awaitable<T> = T | Promise<T>;
 
 export interface AgentPlugin {
   name: string;
@@ -30,14 +30,13 @@ export interface AgentPlugin {
   init?(runtime: AgentPluginRuntime): Awaitable<void>;
   stop?(): Awaitable<void>;
   onAppend?(entries: AgentEntry[], context: AppendHookContext): Awaitable<AgentEntry[] | void>;
-  transformEntries?(entries: readonly AgentEntry[]): AgentEntry[] | void;
+  transformEntries?(entries: readonly AgentEntry[]): Awaitable<AgentEntry[] | void>;
   /** @deprecated Define an explicit cache lifecycle before adding historical projection behavior. */
   transformMessages?(messages: AgentMessage[], context: MessageTransformContext): Awaitable<AgentMessage[]>;
   toModelMessages?(
     message: AgentMessage,
     context: ModelMessageContext,
   ): Awaitable<ModelMessage[] | ModelMessage | void>;
-  /** @deprecated Use structured `systemPrompt` input and `appendSystemPrompt`. */
   extendSystemPrompt?(prompt: string, context: PromptContext): Awaitable<string | void>;
   appendSystemPrompt?(context: PromptContext): Awaitable<SystemPromptAppend | void>;
   /** @deprecated Declare stable tools through `AgentPlugin.tools`. */
@@ -226,7 +225,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
         if (!hook) continue;
 
         try {
-          const next = hook(current);
+          const next = await hook(current);
           if (next) current = next;
         } catch (error) {
           emitPluginError(plugin.name, error);

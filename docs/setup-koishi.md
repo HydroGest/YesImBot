@@ -165,7 +165,6 @@ plugins:
     ~yesimbot-onebot-utils: {}
     ~yesimbot-schedule: {}
     ~yesimbot-search-service: {}
-    ~yesimbot-skills: {}
     ~yesimbot-workspace: {}
 ```
 
@@ -173,7 +172,7 @@ plugins:
 
 - 主插件 `yesimbot` 默认启用。
 - provider 和扩展插件默认以 `~` 禁用。
-- 禁用项也需要使用 Koishi 可识别的短名，例如 `yesimbot-skills` 或 `@yesimbot/provider-openai`，不能写成 `koishi-plugin-` 完整包名。
+- 禁用项也需要使用 Koishi 可识别的短名，例如 `yesimbot-workspace` 或 `@yesimbot/provider-openai`，不能写成 `koishi-plugin-` 完整包名。
 - 如果已有配置中已经存在同名插件，脚本不会重复添加。
 
 ## 运行前的配置

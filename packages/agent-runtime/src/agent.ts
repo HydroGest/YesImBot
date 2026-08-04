@@ -1,13 +1,13 @@
 import {
   hasToolCall,
   isLoopFinished,
+  jsonSchema,
   streamText,
   type LanguageModel,
   type LanguageModelUsage,
   type SystemModelMessage,
 } from "ai";
 
-import { Awaitable } from "./base.js";
 import { AgentChannel, createAgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
 import { createEventEntry, createMessageEntry } from "./entry.js";
@@ -23,23 +23,21 @@ import { AgentStateManager, createStateManager } from "./state.js";
 import type { AgentStorage } from "./storage.js";
 import { createMemoryStorage } from "./storage.js";
 import type { AgentToolExecuteContext } from "./tools.js";
-import { AgentTool, AgentToolSet, createTerminalTool, resolveTerminalToolName, toAiToolSet } from "./tools.js";
+import { AgentTool, AgentToolSet, toAiToolSet } from "./tools.js";
 import { createTurnQueue, TurnResult, type AgentWaitOptions, type TurnRequest } from "./turn.js";
 
 export interface AgentSendOptions {
   ifBusy?: "defer" | "join" | "reject";
 }
 
-export interface AgentTerminalToolConfig {
-  name?: string;
-}
-
 export interface AgentConfig {
   id?: string;
   model: LanguageModel;
-  systemPrompt?: SystemPromptAppend | ((runtime: AgentPluginRuntime) => Awaitable<SystemPromptAppend | void>);
+  systemPrompt?:
+    | SystemPromptAppend
+    | ((runtime: AgentPluginRuntime) => Promise<SystemPromptAppend | void> | SystemPromptAppend | void);
   tools?: AgentToolSet;
-  terminalTool?: boolean | AgentTerminalToolConfig;
+  terminalTool?: boolean | { name: string };
   storage?: AgentStorage<AgentEntry>;
   plugins?: AgentPlugin[];
   initialState?: AgentState;
@@ -57,7 +55,7 @@ export interface Agent {
   send(message: AgentMessage, options?: AgentSendOptions): string;
   run(message: AgentMessage, options?: AgentSendOptions): AsyncIterable<AgentInternalEvent>;
   wait(options?: AgentWaitOptions): Promise<void>;
-  interrupt(reason?: unknown): Awaitable<void>;
+  interrupt(reason?: unknown): Promise<void>;
   getModel(): LanguageModel;
   clear(): Promise<void>;
   getActiveTurnId(): string | null;
@@ -118,6 +116,13 @@ export function createAgent(config: AgentConfig): Agent {
   const id = config.id ?? crypto.randomUUID();
   const baseStorage = config.storage ?? createMemoryStorage();
   const channel = createAgentChannel();
+  const enableTerminalTool =
+    config.terminalTool === true || (config.terminalTool && typeof config.terminalTool === "object");
+  const terminalToolName = enableTerminalTool
+    ? config.terminalTool && typeof config.terminalTool === "object"
+      ? config.terminalTool.name
+      : "finalize"
+    : undefined;
 
   let storageReady = Promise.resolve();
   const mutateStorage = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -141,8 +146,6 @@ export function createAgent(config: AgentConfig): Agent {
 
   const model = config.model;
   const baseTools = config.tools ?? [];
-  const terminalToolName = resolveTerminalToolName(config.terminalTool);
-  const terminalTools = terminalToolName ? [createTerminalTool(terminalToolName)] : [];
   let frozenSystemPrompt: string | SystemModelMessage[] | undefined;
   let frozenTools: AgentToolSet = [];
 
@@ -235,6 +238,21 @@ export function createAgent(config: AgentConfig): Agent {
         state,
         storage,
       });
+
+      const terminalTools: AgentToolSet = enableTerminalTool
+        ? [
+            {
+              name: terminalToolName!,
+              description:
+                "Mark the current assistant response as final. Call this after final text and required tools.",
+              inputSchema: jsonSchema({
+                type: "object",
+                additionalProperties: false,
+              }),
+              execute: async () => ({ finalized: true }),
+            },
+          ]
+        : [];
       await pluginHost.init({
         legacySystemPrompt: base.legacy,
         baseTools,

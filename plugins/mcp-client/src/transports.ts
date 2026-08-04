@@ -4,7 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Context } from "koishi";
 
-import type { McpClientTransport, McpHttpServer, McpServer, McpSseServer, McpStdioServer } from "./types";
+import type { McpClientTransport, McpHttpServer, McpServer, McpSseServer, McpStdioServer } from "./types.js";
 
 export async function connectMcpServer(
   ctx: Context,

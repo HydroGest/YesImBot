@@ -1,4 +1,3 @@
-import { Awaitable } from "./base.js";
 import { createEntry } from "./entry.js";
 import type { AgentEntry } from "./entry.js";
 import type { AgentStorage } from "./storage.js";
@@ -11,8 +10,8 @@ export interface AgentState extends AgentCustomState {
 
 export interface AgentStateManager {
   get(): AgentState;
-  set(next: AgentState): Awaitable<void>;
-  update(updater: (current: AgentState) => AgentState): Awaitable<AgentState>;
+  set(next: AgentState): Promise<void> | void;
+  update(updater: (current: AgentState) => AgentState): Promise<AgentState> | AgentState;
 }
 
 export function createStateManager(options: {

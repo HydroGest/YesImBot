@@ -26,6 +26,7 @@ export function registerSessionCommands(
   command.subcommand(".clear", "清空会话").action(async ({ session }) => {
     const scope = scopeFromSession(session);
     if (!scope || !session) return;
+    await session.send("此操作将清空所有会话记录和资源文件，是否继续？（回复`确认`即可）");
     const confirmed = await session.prompt(60_000);
     if (!confirmed?.includes("确认")) return "操作已取消。";
     await manager.clear(scope);

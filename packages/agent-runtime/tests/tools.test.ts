@@ -1,5 +1,9 @@
-import type { LanguageModelV3FinishReason, LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import type { LanguageModelV3, LanguageModelV3CallOptions } from "ai";
+import type {
+  LanguageModelV3,
+  LanguageModelV3CallOptions,
+  LanguageModelV3FinishReason,
+  LanguageModelV3StreamPart,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -629,7 +633,7 @@ function createObservedToolModel() {
   } as unknown as LanguageModelV3 & { observedToolNames: string[][] };
 }
 
-function createTerminalToolCallModel(toolName = "finalize_response") {
+function createTerminalToolCallModel(toolName = "finalize") {
   let callCount = 0;
   const toolCallsReason = "tool-calls" as unknown as LanguageModelV3FinishReason;
   const stopReason = "stop" as unknown as LanguageModelV3FinishReason;
@@ -723,7 +727,7 @@ describe("terminal tool", () => {
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
-    expect(model.observedToolNames).toEqual([["finalize_response"]]);
+    expect(model.observedToolNames).toEqual([["finalize"]]);
   });
 
   it("stops the loop successfully when the terminal tool is called", async () => {
@@ -763,7 +767,7 @@ describe("terminal tool", () => {
       terminalTool: true,
       tools: [
         {
-          name: "finalize_response",
+          name: "finalize",
           inputSchema: z.object({}),
           execute: async () => ({ ok: true }),
         },
@@ -778,6 +782,6 @@ describe("terminal tool", () => {
     await agent.wait();
 
     expect(events).toHaveLength(1);
-    expect(events[0]?.error?.message).toContain("finalize_response");
+    expect(events[0]?.error?.message).toContain("finalize");
   });
 });

@@ -4,8 +4,15 @@ import { AgentTool, jsonSchema } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
 import type {} from "koishi-plugin-yesimbot";
 
-import { connectMcpServer } from "./transports";
-import type { McpClientConfig, McpClientTransport } from "./types";
+import { connectMcpServer } from "./transports.js";
+import type { McpClientConfig, McpClientTransport } from "./types.js";
+
+interface McpToolOutputBlock {
+  type: string;
+  text?: string;
+  data?: string;
+  mimeType?: string;
+}
 
 export default class McpClientPlugin {
   public static name = "yesimbot-mcp-client";
@@ -113,13 +120,37 @@ export default class McpClientPlugin {
                 name: tool.name,
                 arguments: structuredClone(params as Record<string, unknown>),
               });
-              return result.content;
+              return result.content as Array<McpToolOutputBlock>;
             } catch (error) {
               this.ctx.logger.error(`调用工具 ${tool.name} 失败: ${(error as Error).message}`);
               throw error;
             }
           },
-        };
+          toModelOutput(options) {
+            const { output } = options as { output: Array<McpToolOutputBlock> };
+            const content = output;
+            if (!content || content.length === 0) {
+              return { type: "text" as const, value: "" };
+            }
+            const hasNonText = content.some((block) => block.type !== "text");
+            if (!hasNonText) {
+              const text = content.map((block) => block.text ?? "").join("\n");
+              return { type: "text" as const, value: text };
+            }
+            return {
+              type: "content" as const,
+              value: content.map((block) => {
+                if (block.type === "text") {
+                  return { type: "text" as const, text: block.text ?? "" };
+                }
+                if (block.type === "image" && block.data && block.mimeType) {
+                  return { type: "image-data" as const, data: block.data, mediaType: block.mimeType };
+                }
+                return { type: "text" as const, text: JSON.stringify(block) };
+              }),
+            };
+          },
+        } satisfies AgentTool;
       }
       registry.set(name, { client, tools: toolDefs });
     };
