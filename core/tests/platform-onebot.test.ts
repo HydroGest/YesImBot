@@ -41,7 +41,7 @@ function base() {
   } as const;
 }
 
-function store(put: AssetStore["put"] = vi.fn(async () => h("img", { id: ID }))): AssetStore {
+function store(put: AssetStore["put"] = vi.fn(async () => ID)): AssetStore {
   return { put, get: vi.fn(), clear: vi.fn(async () => undefined) };
 }
 
@@ -234,9 +234,9 @@ describe("OneBot translator", () => {
   });
 
   it("persists nested images in document order and returns a final host record", async () => {
-    const first = h("img", { id: "11111111111111111111111111111111" });
-    const second = h("img", { id: "22222222222222222222222222222222" });
-    const put = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const firstId = "11111111111111111111111111111111";
+    const secondId = "22222222222222222222222222222222";
+    const put = vi.fn().mockResolvedValueOnce(firstId).mockResolvedValueOnce(secondId);
     const assets = store(put);
     const resolver = createOneBotTranslator({ http: vi.fn() } as never);
 
@@ -257,13 +257,13 @@ describe("OneBot translator", () => {
     expect(result).toMatchObject({
       platform: "onebot",
       selfId: "10000",
-      elements: [h("p", {}, [first, h("span", {}, [second])])],
+      elements: [h("p", {}, [h("img", { id: firstId }), h("span", {}, [h("img", { id: secondId })])])],
     });
   });
 
   it("retains one failed image and continues processing sibling images", async () => {
     const failed = h("img", { src: "https://onebot.example/fail" });
-    const saved = h("img", { id: ID });
+    const savedId = ID;
     const http = vi.fn(async (url: string) => {
       if (url.includes("fail")) throw new Error("offline");
       return {
@@ -275,7 +275,7 @@ describe("OneBot translator", () => {
         }),
       };
     });
-    const assets = store(vi.fn(async () => saved));
+    const assets = store(vi.fn(async () => savedId));
 
     const result = await createOneBotTranslator({ http } as never).translate(
       base(),
@@ -283,7 +283,7 @@ describe("OneBot translator", () => {
       assets,
     );
 
-    expect(result).toMatchObject({ elements: [failed, saved] });
+    expect(result).toMatchObject({ elements: [failed, h("img", { id: savedId })] });
     expect(assets.put).toHaveBeenCalledOnce();
   });
 

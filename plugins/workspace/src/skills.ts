@@ -1,142 +1,96 @@
-import { readdir, readFile, realpath, stat } from "fs/promises";
-import { homedir } from "os";
-import { basename, dirname, isAbsolute, join, resolve } from "path";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import matter from "gray-matter";
 
-import { LoadSkillsResult, Skill, ResourceDiagnostic, SkillFrontmatter } from "./types";
+import type { LoadSkillsOptions, LoadSkillsResult, ResourceDiagnostic, Skill, SkillFrontmatter } from "./types";
 
-/** Max name length per spec */
+export type { LoadSkillsOptions, LoadSkillsResult, ResourceDiagnostic, Skill, SkillFrontmatter } from "./types";
+
 const MAX_NAME_LENGTH = 64;
-
-/** Max description length per spec */
 const MAX_DESCRIPTION_LENGTH = 1024;
-
-export interface LoadSkillsFromDirOptions {
-  /** Directory to scan for skills */
-  dir: string;
-}
-
-export interface LoadSkillsOptions {
-  /** Working directory for project-local skills. */
-  cwd: string;
-  /** Explicit skill paths (files or directories) */
-  skillPaths: string[];
-}
-
-// ========
 
 type ParsedFrontmatter<T extends Record<string, unknown>> = {
   frontmatter: T;
   body: string;
 };
 
-/**
- * Validate skill name per Agent Skills spec.
- * Returns array of validation error messages (empty if valid).
- */
 function validateName(name: string, parentDirName: string): string[] {
   const errors: string[] = [];
-
-  if (name !== parentDirName) {
-    errors.push(`name "${name}" does not match parent directory "${parentDirName}"`);
-  }
-
-  if (name.length > MAX_NAME_LENGTH) {
-    errors.push(`name exceeds ${MAX_NAME_LENGTH} characters (${name.length})`);
-  }
-
-  if (!/^[a-z0-9-]+$/.test(name)) {
-    errors.push(`name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)`);
-  }
-
-  if (name.startsWith("-") || name.endsWith("-")) {
-    errors.push(`name must not start or end with a hyphen`);
-  }
-
-  if (name.includes("--")) {
-    errors.push(`name must not contain consecutive hyphens`);
-  }
-
+  if (name !== parentDirName) errors.push(`name "${name}" does not match parent directory "${parentDirName}"`);
+  if (name.length > MAX_NAME_LENGTH) errors.push(`name exceeds ${MAX_NAME_LENGTH} characters (${name.length})`);
+  if (!/^[a-z0-9-]+$/.test(name))
+    errors.push("name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)");
+  if (name.startsWith("-") || name.endsWith("-")) errors.push("name must not start or end with a hyphen");
+  if (name.includes("--")) errors.push("name must not contain consecutive hyphens");
   return errors;
 }
 
-/**
- * Validate description per Agent Skills spec.
- */
 function validateDescription(description: string | undefined): string[] {
   const errors: string[] = [];
-
   if (!description || description.trim() === "") {
     errors.push("description is required");
   } else if (description.length > MAX_DESCRIPTION_LENGTH) {
     errors.push(`description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${description.length})`);
   }
-
   return errors;
 }
 
 /**
- * Load skills from a directory.
- *
  * Discovery rules:
  * - if a directory contains SKILL.md, treat it as a skill root and do not recurse further
  * - otherwise, load direct .md children in the root
  * - recurse into subdirectories to find SKILL.md
  */
-export async function loadSkillsFromDir(options: LoadSkillsFromDirOptions): Promise<LoadSkillsResult> {
-  const { dir } = options;
-  return loadSkillsFromDirInternal(dir, true);
+export async function loadSkillsFromDir(dir: string): Promise<LoadSkillsResult> {
+  const rootDir = await realpath(dir).catch(() => resolve(dir));
+  return loadSkillsFromDirInternal(dir, true, rootDir, new Set());
 }
 
-async function loadSkillsFromDirInternal(dir: string, includeRootFiles: boolean): Promise<LoadSkillsResult> {
+async function loadSkillsFromDirInternal(
+  dir: string,
+  includeRootFiles: boolean,
+  rootDir: string,
+  visited: Set<string>,
+): Promise<LoadSkillsResult> {
   const skills: Skill[] = [];
   const diagnostics: ResourceDiagnostic[] = [];
+  let realDir: string;
+  try {
+    realDir = await realpath(dir);
+  } catch {
+    return { skills, diagnostics };
+  }
+  if (!isPathContained(rootDir, realDir) || visited.has(realDir)) return { skills, diagnostics };
+  visited.add(realDir);
 
   try {
     const entries = await readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (entry.name !== "SKILL.md") {
-        continue;
-      }
-
-      const fullPath = join(dir, entry.name);
-
+      if (entry.name !== "SKILL.md") continue;
+      const filePath = join(dir, entry.name);
       let isFile = entry.isFile();
       if (entry.isSymbolicLink()) {
         try {
-          isFile = (await stat(fullPath)).isFile();
+          isFile = (await stat(filePath)).isFile();
         } catch {
           continue;
         }
       }
-
-      if (!isFile) {
-        continue;
-      }
-
-      const result = await loadSkillFromFile(fullPath);
-      if (result.skill) {
-        skills.push(result.skill);
-      }
+      if (!isFile) continue;
+      const result = await loadSkillFromFile(filePath, rootDir);
+      if (result.skill) skills.push(result.skill);
       diagnostics.push(...result.diagnostics);
       return { skills, diagnostics };
     }
 
     for (const entry of entries) {
-      if (entry.name.startsWith(".")) {
-        continue;
-      }
-
-      // Skip node_modules to avoid scanning dependencies
-      if (entry.name === "node_modules") {
-        continue;
-      }
-
+      if (entry.name.startsWith(".")) continue;
+      if (entry.name === "node_modules") continue;
       const fullPath = join(dir, entry.name);
 
-      // For symlinks, check if they point to a directory and follow them
       let isDirectory = entry.isDirectory();
       let isFile = entry.isFile();
       if (entry.isSymbolicLink()) {
@@ -145,26 +99,31 @@ async function loadSkillsFromDirInternal(dir: string, includeRootFiles: boolean)
           isDirectory = stats.isDirectory();
           isFile = stats.isFile();
         } catch {
-          // Broken symlink, skip it
           continue;
         }
       }
 
+      let realEntryPath: string;
+      try {
+        realEntryPath = await realpath(fullPath);
+      } catch {
+        continue;
+      }
+      if (!isPathContained(rootDir, realEntryPath)) {
+        diagnostics.push({ type: "warning", message: "skill path escapes its configured root", path: fullPath });
+        continue;
+      }
+
       if (isDirectory) {
-        const subResult = await loadSkillsFromDirInternal(fullPath, false);
+        const subResult = await loadSkillsFromDirInternal(fullPath, false, rootDir, visited);
         skills.push(...subResult.skills);
         diagnostics.push(...subResult.diagnostics);
         continue;
       }
 
-      if (!isFile || !includeRootFiles || !entry.name.endsWith(".md")) {
-        continue;
-      }
-
-      const result = await loadSkillFromFile(fullPath);
-      if (result.skill) {
-        skills.push(result.skill);
-      }
+      if (!isFile || !includeRootFiles || !entry.name.endsWith(".md")) continue;
+      const result = await loadSkillFromFile(fullPath, rootDir);
+      if (result.skill) skills.push(result.skill);
       diagnostics.push(...result.diagnostics);
     }
   } catch {}
@@ -172,43 +131,50 @@ async function loadSkillsFromDirInternal(dir: string, includeRootFiles: boolean)
   return { skills, diagnostics };
 }
 
-async function loadSkillFromFile(filePath: string): Promise<{
+async function loadSkillFromFile(
+  filePath: string,
+  rootDir?: string,
+): Promise<{
   skill: Skill | null;
   diagnostics: ResourceDiagnostic[];
 }> {
   const diagnostics: ResourceDiagnostic[] = [];
-
   try {
-    const rawContent = await readFile(filePath, "utf-8");
+    const realFilePath = await realpath(filePath);
+    if (rootDir && !isPathContained(rootDir, realFilePath)) {
+      return {
+        skill: null,
+        diagnostics: [{ type: "warning", message: "skill path escapes its configured root", path: filePath }],
+      };
+    }
+    const rawContent = await readFile(realFilePath, "utf-8");
     const { frontmatter } = parseFrontmatter<SkillFrontmatter>(rawContent);
-    const skillDir = dirname(filePath);
+    const skillDir = dirname(realFilePath);
     const parentDirName = basename(skillDir);
+    const description = typeof frontmatter.description === "string" ? frontmatter.description : undefined;
 
-    // Validate description
-    const descErrors = validateDescription(frontmatter.description);
-    for (const error of descErrors) {
+    const descriptionErrors = validateDescription(description);
+    for (const error of descriptionErrors) {
       diagnostics.push({ type: "warning", message: error, path: filePath });
     }
-
-    // Use name from frontmatter, or fall back to parent directory name
-    const name = frontmatter.name || parentDirName;
-
-    // Validate name
+    const name = typeof frontmatter.name === "string" && frontmatter.name.length > 0 ? frontmatter.name : parentDirName;
     const nameErrors = validateName(name, parentDirName);
     for (const error of nameErrors) {
       diagnostics.push({ type: "warning", message: error, path: filePath });
     }
 
-    // Still load the skill even with warnings (unless description is completely missing)
-    if (!frontmatter.description || frontmatter.description.trim() === "") {
+    const invalidName = nameErrors.some(
+      (error) => error.includes("exceeds") || error.includes("invalid characters") || error.includes("must not"),
+    );
+    if (descriptionErrors.length > 0 || invalidName || !description) {
       return { skill: null, diagnostics };
     }
 
     return {
       skill: {
         name,
-        description: frontmatter.description,
-        filePath,
+        description,
+        filePath: realFilePath,
         baseDir: skillDir,
         disableModelInvocation: frontmatter["disable-model-invocation"] === true,
       },
@@ -222,24 +188,17 @@ async function loadSkillFromFile(filePath: string): Promise<{
 }
 
 /**
- * Format skills for inclusion in a system prompt.
- * Uses XML format per Agent Skills standard.
- * See: https://agentskills.io/integrate-skills
- *
- * Skills with disableModelInvocation=true are excluded from the prompt
- * (they can only be invoked explicitly via /skill:name commands).
+ * Format skills for inclusion in a system prompt using `skill://` locations.
+ * Skills with disableModelInvocation=true are excluded from the prompt.
  */
 export function formatSkillsForPrompt(skills: Skill[]): string {
-  const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
-
-  if (visibleSkills.length === 0) {
-    return "";
-  }
+  const visibleSkills = skills.filter((skill) => !skill.disableModelInvocation);
+  if (visibleSkills.length === 0) return "";
 
   const lines = [
     "\n\nThe following skills provide specialized instructions for specific tasks.",
-    "Use the `load_skill` tool to load a skill's file when the task matches its description.",
-    "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+    "Use the Core `read` tool to load a matching skill's instructions: skill://<skill-name>/SKILL.md",
+    "Read auxiliary skill files with skill://<skill-name>/<relative-path>. When Workspace mounts are active, execute Skill scripts only through /skills/<skill-name>/...; never pass skill:// to Bash.",
     "",
     "<available_skills>",
   ];
@@ -248,12 +207,11 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
     lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-    lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
+    lines.push(`    <location>skill://${escapeXml(skill.name)}/SKILL.md</location>`);
     lines.push("  </skill>");
   }
 
   lines.push("</available_skills>");
-
   return lines.join("\n");
 }
 
@@ -279,13 +237,9 @@ function resolveSkillPath(p: string, cwd: string): string {
   return isAbsolute(normalized) ? normalized : resolve(cwd, normalized);
 }
 
-/**
- * Load skills from all configured locations.
- * Returns skills and any validation diagnostics.
- */
+/** Load skills from all configured locations with deduplication and collision diagnostics. */
 export async function loadSkills(options: LoadSkillsOptions): Promise<LoadSkillsResult> {
   const { cwd, skillPaths } = options;
-
   const skillMap = new Map<string, Skill>();
   const realPathSet = new Set<string>();
   const allDiagnostics: ResourceDiagnostic[] = [];
@@ -294,19 +248,13 @@ export async function loadSkills(options: LoadSkillsOptions): Promise<LoadSkills
   async function addSkills(result: LoadSkillsResult) {
     allDiagnostics.push(...result.diagnostics);
     for (const skill of result.skills) {
-      // Resolve symlinks to detect duplicate files
       let realPath: string;
       try {
         realPath = await realpath(skill.filePath);
       } catch {
         realPath = skill.filePath;
       }
-
-      // Skip silently if we've already loaded this exact file (via symlink)
-      if (realPathSet.has(realPath)) {
-        continue;
-      }
-
+      if (realPathSet.has(realPath)) continue;
       const existing = skillMap.get(skill.name);
       if (existing) {
         collisionDiagnostics.push({
@@ -331,41 +279,31 @@ export async function loadSkills(options: LoadSkillsOptions): Promise<LoadSkills
     const resolvedPath = resolveSkillPath(rawPath, cwd);
     try {
       const stats = await stat(resolvedPath);
-
       if (stats.isDirectory()) {
-        await addSkills(await loadSkillsFromDirInternal(resolvedPath, true));
+        const rootDir = await realpath(resolvedPath);
+        await addSkills(await loadSkillsFromDirInternal(resolvedPath, true, rootDir, new Set()));
       } else if (stats.isFile() && resolvedPath.endsWith(".md")) {
-        const result = await loadSkillFromFile(resolvedPath);
+        const rootDir = await realpath(dirname(resolvedPath));
+        const result = await loadSkillFromFile(resolvedPath, rootDir);
         if (result.skill) {
           await addSkills({ skills: [result.skill], diagnostics: result.diagnostics });
         } else {
           allDiagnostics.push(...result.diagnostics);
         }
       } else {
-        allDiagnostics.push({
-          type: "warning",
-          message: "skill path is not a markdown file",
-          path: resolvedPath,
-        });
+        allDiagnostics.push({ type: "warning", message: "skill path is not a markdown file", path: resolvedPath });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "failed to read skill path";
       if (message.includes("ENOENT") || message.includes("no such file")) {
-        allDiagnostics.push({
-          type: "warning",
-          message: "skill path does not exist",
-          path: resolvedPath,
-        });
+        allDiagnostics.push({ type: "warning", message: "skill path does not exist", path: resolvedPath });
         continue;
       }
       allDiagnostics.push({ type: "warning", message, path: resolvedPath });
     }
   }
 
-  return {
-    skills: Array.from(skillMap.values()),
-    diagnostics: [...allDiagnostics, ...collisionDiagnostics],
-  };
+  return { skills: Array.from(skillMap.values()), diagnostics: [...allDiagnostics, ...collisionDiagnostics] };
 }
 
 export const parseFrontmatter = <T extends Record<string, unknown> = Record<string, unknown>>(
@@ -374,5 +312,10 @@ export const parseFrontmatter = <T extends Record<string, unknown> = Record<stri
   const parsed = matter(content);
   return { frontmatter: parsed.data as T, body: parsed.content.trim() };
 };
+
+function isPathContained(root: string, candidate: string): boolean {
+  const path = relative(resolve(root), resolve(candidate));
+  return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+}
 
 export const stripFrontmatter = (content: string): string => parseFrontmatter(content).body;

@@ -39,13 +39,13 @@ describe("AssetService", () => {
     await rm(basePath, { recursive: true, force: true });
   });
 
-  it("stores copied bytes as a full content-id image element", async () => {
+  it("stores copied bytes and returns the canonical content-id", async () => {
     const store = new AssetService(storage).createStore(scope);
     const source = PNG_BYTES.slice();
-    const element = await store.put(source);
+    const id = await store.put(source);
     source[0] = 0;
 
-    expect(element).toEqual(h("img", { id: PNG_ID }));
+    expect(id).toBe(PNG_ID);
     await expect(store.get(PNG_ID)).resolves.toEqual(PNG_BYTES);
     await expect(store.get(PNG_ID.slice(0, 7))).resolves.toEqual(PNG_BYTES);
   });
@@ -55,8 +55,8 @@ describe("AssetService", () => {
     const first = assets.createStore(scope);
     const second = assets.createStore({ ...scope, selfId: "bot-2" });
 
-    expect(await first.put(PNG_BYTES)).toEqual(h("img", { id: PNG_ID }));
-    expect(await second.put(PNG_BYTES)).toEqual(h("img", { id: PNG_ID }));
+    expect(await first.put(PNG_BYTES)).toBe(PNG_ID);
+    expect(await second.put(PNG_BYTES)).toBe(PNG_ID);
     await expect(second.get(PNG_ID)).resolves.toEqual(PNG_BYTES);
   });
 

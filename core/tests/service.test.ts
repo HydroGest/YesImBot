@@ -50,9 +50,11 @@ vi.mock("../src/runtime/index.js", () => ({
       _ctx: unknown,
       _model: unknown,
       _assets: unknown,
+      _artifacts: unknown,
       _storage: unknown,
       _config: unknown,
       readonly channelPlugins: ReadonlySet<ChannelPluginFactory>,
+      _resourceSchemeRegistrations: unknown,
     ) {
       state.runtime = this;
     }
@@ -148,6 +150,7 @@ describe("YesImBotService facade", () => {
     expect(ctx.yesimbot.reset).toEqual(expect.any(Function));
     expect(ctx.yesimbot.stop).toEqual(expect.any(Function));
     expect(ctx.yesimbot.assets).toBeDefined();
+    expect("artifacts" in ctx.yesimbot).toBe(false);
     expect("runtime" in ctx.yesimbot).toBe(false);
     expect("gateway" in ctx.yesimbot).toBe(false);
     expect("platform" in ctx.yesimbot).toBe(false);

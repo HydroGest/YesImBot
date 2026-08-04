@@ -100,7 +100,8 @@ async function storeImages(
       );
       if (budget.bytes + data.byteLength > MAX_TOTAL_BYTES) return element;
       budget.bytes += data.byteLength;
-      return await store.put(data);
+      const id = await store.put(data);
+      return h("img", { id });
     } catch {
       return element;
     }

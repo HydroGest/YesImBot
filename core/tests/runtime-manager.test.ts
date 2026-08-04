@@ -78,6 +78,10 @@ function createManager(
     clear: vi.fn(async () => undefined),
     createStore: vi.fn(() => ({ clear: assets.clear, get: vi.fn(), put: vi.fn() })),
   };
+  const artifacts = {
+    clear: vi.fn(async () => undefined),
+    createStore: vi.fn(() => ({ clear: artifacts.clear, forTool: vi.fn(), open: vi.fn() })),
+  };
   const channelPlugins = new Set<ChannelPluginFactory>();
   const config: CoreConfig = {
     basePath,
@@ -96,8 +100,18 @@ function createManager(
     },
   };
   return {
-    manager: new RuntimeManager(ctx, modelService, assets as never, storage, config, channelPlugins),
+    manager: new RuntimeManager(
+      ctx,
+      modelService,
+      assets as never,
+      artifacts as never,
+      storage,
+      config,
+      channelPlugins,
+      new Map(),
+    ),
     assets,
+    artifacts,
     ctx,
     resolveChatModel,
     matchingBot,

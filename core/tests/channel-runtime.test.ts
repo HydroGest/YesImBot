@@ -62,7 +62,7 @@ import {
   type MessageRecord,
 } from "../src/messages.js";
 import { ChannelRuntime } from "../src/runtime/index.js";
-import type { WillEngine } from "../src/runtime/will.js";
+import type { ResourceSchemeOpenHandler } from "../src/runtime/read.js";
 
 function runtimeConfig(basePath: string, reply: Partial<Config["reply"]> = {}): Config {
   return {
@@ -71,7 +71,7 @@ function runtimeConfig(basePath: string, reply: Partial<Config["reply"]> = {}): 
     logLevel: 2,
     allowedChannels: [],
     imageInput: false,
-    will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
+    resourceReadTimeoutMs: 30_000,
     reply: {
       pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
       customInnerThought: false,
@@ -116,15 +116,19 @@ function createRuntime(
   sendMessage = vi.fn(async () => ["sent-1"]),
   basePath = "/tmp/yesimbot-channel-runtime",
   reply?: Partial<Config["reply"]>,
+  registrations: ReadonlyMap<string, { prompt: string; open: ResourceSchemeOpenHandler }> = new Map(),
 ) {
   const ctx = new Context();
   const assets = { clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() };
+  const artifacts = { clear: vi.fn(async () => undefined), forTool: vi.fn(), open: vi.fn() };
   const runtime = new ChannelRuntime(ctx, {
     config: runtimeConfig(basePath, reply),
     scope: { platform: "test", selfId: "bot-1", channelId: "room-1", type: "shared" },
     bot: { sendMessage } as never,
     will,
     assets: assets as never,
+    artifacts: artifacts as never,
+    registrations,
     model: {} as never,
     imageBudget: null,
     agentPlugins: [],
@@ -176,6 +180,22 @@ describe("ChannelRuntime", () => {
     // Tool and field names stay protocol-stable.
     expect(send?.name).toBe("sendMessage");
     expect(Object.keys(schema?.properties ?? {})).toEqual(["channelId", "content"]);
+  });
+  it("builds fixed read guidance before schemes in sorted order", () => {
+    const registrations = new Map<string, { prompt: string; open: ResourceSchemeOpenHandler }>([
+      ["zeta", { prompt: "Z prompt", open: async () => ({ bytes: new Uint8Array() }) }],
+      ["alpha", { prompt: "A prompt", open: async () => ({ bytes: new Uint8Array() }) }],
+    ]);
+    createRuntime({ decide: async () => "wait" }, undefined, undefined, undefined, registrations);
+    const tools = state.options?.tools as AgentTool[] | undefined;
+    const read = tools?.find((tool) => tool.name === "read");
+    expect(read?.description).toContain("仅在确实需要内容时读取精确 URI");
+    expect(read?.description).toContain("读取不会创建另一个 artifact");
+    expect(read?.description).toContain("URI 字符串永不传给 Bash");
+    expect(read?.description).toContain("仅在图像能力模型显式相关读取后投影图像字节");
+    const description = read?.description ?? "";
+    expect(description.indexOf("- alpha://")).toBeLessThan(description.indexOf("- zeta://"));
+    expect(description.indexOf("- artifact://")).toBeLessThan(description.indexOf("- alpha://"));
   });
 
   it("continues channel FIFO work after a rejected operation", async () => {
@@ -246,6 +266,8 @@ describe("ChannelRuntime", () => {
       bot: { sendMessage: vi.fn() } as never,
       will: { decide: async () => "wait" },
       assets: { clear: vi.fn(), get: vi.fn(), put: vi.fn() } as never,
+      artifacts: { clear: vi.fn(), forTool: vi.fn(), open: vi.fn() } as never,
+      registrations: new Map(),
       model: {} as never,
       imageBudget: null,
       agentPlugins: [],
@@ -531,7 +553,7 @@ describe("ChannelRuntime", () => {
       ok: true,
       messageIds: ["sent-1"],
     });
-    expect(sendMessage).toHaveBeenCalledWith("room-2", "hello");
+    expect(sendMessage).toHaveBeenCalledWith("room-2", [h("text", { content: "hello" })]);
   });
 
   it("always formats message events with their ID", async () => {
@@ -657,6 +679,8 @@ describe("ChannelRuntime", () => {
       bot: { sendMessage: vi.fn() } as never,
       will: { decide: async () => "wait" },
       assets: { clear: vi.fn(), get: vi.fn(), put: vi.fn() } as never,
+      artifacts: { clear: vi.fn(), forTool: vi.fn(), open: vi.fn() } as never,
+      registrations: new Map(),
       model: {} as never,
       imageBudget: null,
       agentPlugins: [externalPlugin],
@@ -671,7 +695,11 @@ describe("ChannelRuntime", () => {
       ),
     );
 
-    expect(ordered.map((plugin) => plugin.name)).toEqual(["core.model-input", "external.formatter"]);
+    expect(ordered.map((plugin) => plugin.name)).toEqual([
+      "core.model-input",
+      "external.formatter",
+      "core.read-projection",
+    ]);
     expect(ordered.find((plugin) => plugin.toModelMessages)?.name).toBe("core.model-input");
     expect(ordered.filter((plugin) => plugin.onTurnFinish).map((plugin) => plugin.name)).toEqual([
       "external.formatter",

@@ -56,7 +56,7 @@ function createGateway(
 ) {
   const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
   const store: AssetStore = {
-    put: vi.fn(async () => h("img", { id: "0123456789abcdef0123456789abcdef" })),
+    put: vi.fn(async () => "0123456789abcdef0123456789abcdef"),
     get: vi.fn(),
     clear: vi.fn(async () => undefined),
   };

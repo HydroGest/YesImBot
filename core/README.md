@@ -62,7 +62,7 @@ It holds no live Koishi Session.
 
 ## Model input
 
-`runtime/model-input.ts` formats persisted input and projects local image assets for a model call. It scans history before current input, reads only the channel-scoped `AssetStore`, recognizes JPEG, PNG, WebP, and GIF bytes, and applies a per-call `imageInput` budget. Model image capability comes only from `models.json`; `imageInput: false` disables image projection. PlatformTranslator download limits remain platform policy.
+`runtime/read.ts` handles explicit `read` tool resource URIs (`asset://`, `artifact://`, and registered schemes), while image bytes are projected only from the current model step's successful read result under the per-call `imageInput` budget. `runtime/model-input.ts` formats persisted input; it does not scan history for images. Model image capability comes only from `models.json`; `imageInput: false` disables image projection. PlatformTranslator download limits remain platform policy.
 
 ## Prompt composition
 

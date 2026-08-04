@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { AgentTool, jsonSchema } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
+import type { ArtifactStore } from "koishi-plugin-yesimbot";
 import type {} from "koishi-plugin-yesimbot";
 
 import { connectMcpServer } from "./transports.js";
@@ -13,6 +14,23 @@ interface McpToolOutputBlock {
   data?: string;
   mimeType?: string;
 }
+
+/** ponytail: align MCP media with Core's default image-input budget. */
+const MCP_IMAGE_MAX_COUNT = 4;
+const MCP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const MCP_IMAGE_MAX_TOTAL_BYTES = 10 * 1024 * 1024;
+const MCP_MAX_OUTPUT_CHARS = 30_000;
+const MCP_MAX_BLOCK_TYPE_CHARS = 64;
+const SUPPORTED_IMAGE_MIMES: Record<string, true> = {
+  "image/jpeg": true,
+  "image/png": true,
+  "image/gif": true,
+  "image/webp": true,
+};
+
+const MCP_ARTIFACT_GUIDANCE =
+  "MCP 工具可能返回 artifact:// 媒体引用。这些是工具产生的不可变工件，不是内联媒体；" +
+  "需要媒体内容时请调用 Core 的 read 工具。媒体不会是 Base64，远端 URL 也不会被自动下载。";
 
 export default class McpClientPlugin {
   public static name = "yesimbot-mcp-client";
@@ -96,10 +114,12 @@ export default class McpClientPlugin {
       }
 
       this.disposeAgentPlugin?.();
-      this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(() => {
+      this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin((context) => {
+        const channelTools = registeredTools.map((tool) => wrapToolWithArtifacts(tool, context.artifacts));
         return {
           name: "mcp-client",
-          tools: registeredTools,
+          tools: channelTools,
+          appendSystemPrompt: () => MCP_ARTIFACT_GUIDANCE,
         };
       });
     };
@@ -112,7 +132,7 @@ export default class McpClientPlugin {
       for (const tool of tools) {
         toolDefs[tool.name] = {
           name: `${name}-${tool.name}`,
-          description: tool.description || "no description provided",
+          description: tool.description,
           inputSchema: jsonSchema(tool.inputSchema),
           execute: async (params: unknown) => {
             try {
@@ -125,30 +145,6 @@ export default class McpClientPlugin {
               this.ctx.logger.error(`调用工具 ${tool.name} 失败: ${(error as Error).message}`);
               throw error;
             }
-          },
-          toModelOutput(options) {
-            const { output } = options as { output: Array<McpToolOutputBlock> };
-            const content = output;
-            if (!content || content.length === 0) {
-              return { type: "text" as const, value: "" };
-            }
-            const hasNonText = content.some((block) => block.type !== "text");
-            if (!hasNonText) {
-              const text = content.map((block) => block.text ?? "").join("\n");
-              return { type: "text" as const, value: text };
-            }
-            return {
-              type: "content" as const,
-              value: content.map((block) => {
-                if (block.type === "text") {
-                  return { type: "text" as const, text: block.text ?? "" };
-                }
-                if (block.type === "image" && block.data && block.mimeType) {
-                  return { type: "image-data" as const, data: block.data, mediaType: block.mimeType };
-                }
-                return { type: "text" as const, text: JSON.stringify(block) };
-              }),
-            };
           },
         } satisfies AgentTool;
       }
@@ -199,4 +195,83 @@ export default class McpClientPlugin {
     this.transports.clear();
     this.ctx.logger.success("MCP 客户端已清理");
   }
+}
+
+function wrapToolWithArtifacts(tool: AgentTool, artifacts: ArtifactStore): AgentTool {
+  const writer = artifacts.forTool(tool.name);
+  return {
+    ...tool,
+    toModelOutput: async (options) => {
+      const { output } = options as { output: Array<McpToolOutputBlock> };
+      if (!output || output.length === 0) {
+        return { type: "text" as const, value: "" };
+      }
+
+      const lines: string[] = [];
+      let imageCount = 0;
+      let imageBytes = 0;
+      for (const block of output) {
+        if (!block || typeof block !== "object") {
+          lines.push("[不支持的内容块：unknown]");
+          continue;
+        }
+        if (block.type === "text") {
+          lines.push(block.text ?? "");
+          continue;
+        }
+
+        const mediaType = typeof block.mimeType === "string" ? block.mimeType.toLowerCase() : undefined;
+        if (
+          block.type === "image" &&
+          typeof block.data === "string" &&
+          mediaType !== undefined &&
+          SUPPORTED_IMAGE_MIMES[mediaType]
+        ) {
+          const bytes = decodeInlineImage(block.data);
+          if (!bytes) {
+            lines.push("[图片资源：数据无效或大小超出限制]");
+            continue;
+          }
+          if (imageCount >= MCP_IMAGE_MAX_COUNT || imageBytes + bytes.byteLength > MCP_IMAGE_MAX_TOTAL_BYTES) {
+            lines.push("[图片资源：超出图片限制]");
+            continue;
+          }
+          try {
+            const uri = await writer.put(bytes, {
+              mediaType,
+              filename: "mcp-image",
+            });
+            imageCount += 1;
+            imageBytes += bytes.byteLength;
+            lines.push(`[图片：${uri}（${mediaType}，${formatBytes(bytes.byteLength)}）]`);
+          } catch {
+            lines.push("[图片资源：持久化失败]");
+          }
+          continue;
+        }
+        // Unknown or unsupported blocks become bounded descriptions, never opaque JSON.
+        lines.push(`[不支持的内容块：${describeBlockType(block.type)}]`);
+      }
+
+      const value = lines.join("\n").trim().slice(0, MCP_MAX_OUTPUT_CHARS);
+      return { type: "text" as const, value };
+    },
+  };
+}
+
+function decodeInlineImage(data: string): Uint8Array | null {
+  if (data.length === 0 || data.length > Math.ceil(MCP_IMAGE_MAX_BYTES / 3) * 4) return null;
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) return null;
+  const bytes = Buffer.from(data, "base64");
+  return bytes.byteLength > 0 && bytes.byteLength <= MCP_IMAGE_MAX_BYTES ? bytes : null;
+}
+
+function describeBlockType(type: string): string {
+  return type.length > MCP_MAX_BLOCK_TYPE_CHARS ? `${type.slice(0, MCP_MAX_BLOCK_TYPE_CHARS)}…` : type;
+}
+
+function formatBytes(length: number): string {
+  if (length >= 1024 * 1024) return `${(length / (1024 * 1024)).toFixed(1)} MiB`;
+  if (length >= 1024) return `${(length / 1024).toFixed(1)} KiB`;
+  return `${length} B`;
 }

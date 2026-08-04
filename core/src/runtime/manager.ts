@@ -5,6 +5,7 @@ import { createJsonlStorage, type AgentEntry, type AgentPlugin, type AgentStorag
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 import { Universal } from "koishi";
 
+import type { ArtifactService, ArtifactStore } from "../artifact.js";
 import type { AssetService } from "../asset.js";
 import type { ImageBudget, Config } from "../config.js";
 import type { EventRecord, MessageRecord } from "../messages.js";
@@ -14,6 +15,7 @@ import { archiveSession } from "./compact/archive.js";
 import { HARD_TRUNCATION_MESSAGE } from "./compact/constants.js";
 import { createCompactPlugin, executeCompact, filterEntriesForCompression } from "./compact/index.js";
 import { readPersona } from "./prompt.js";
+import type { ResourceSchemeOpenHandler } from "./read.js";
 import { createNewSession, listSessions, migrateOldSession, resolveActiveSession } from "./session-files.js";
 import { ChannelScope, ChannelStorage, scopeMapKey } from "./storage.js";
 import { createWillEngine } from "./will.js";
@@ -21,6 +23,7 @@ import { createWillEngine } from "./will.js";
 export interface ChannelPluginContext {
   readonly scope: ChannelScope;
   readonly bot: Bot;
+  readonly artifacts: ArtifactStore;
 }
 
 export type ChannelPluginFactory = (context: ChannelPluginContext) => Awaitable<AgentPlugin | null>;
@@ -46,23 +49,32 @@ export class RuntimeManager {
   private readonly logger: Logger;
   private readonly channelPlugins: ReadonlySet<ChannelPluginFactory>;
   private readonly assets: AssetService;
+  private readonly artifacts: ArtifactService;
   private readonly storage: ChannelStorage;
+  private readonly resourceSchemeRegistrations: ReadonlyMap<
+    string,
+    { prompt: string; open: ResourceSchemeOpenHandler }
+  >;
 
   constructor(
     ctx: Context,
     model: ModelService,
     assets: AssetService,
+    artifacts: ArtifactService,
     storage: ChannelStorage,
     config: Config,
     channelPlugins: ReadonlySet<ChannelPluginFactory>,
+    resourceSchemeRegistrations: ReadonlyMap<string, { prompt: string; open: ResourceSchemeOpenHandler }>,
   ) {
     this.ctx = ctx;
     this.config = config;
     this.model = model;
     this.logger = ctx.logger("runtime");
     this.assets = assets;
+    this.artifacts = artifacts;
     this.storage = storage;
     this.channelPlugins = channelPlugins;
+    this.resourceSchemeRegistrations = resourceSchemeRegistrations;
   }
 
   public async route(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
@@ -164,6 +176,12 @@ export class RuntimeManager {
       await this.assets.createStore(scope).clear();
     } catch (cause) {
       this.logger.warn("asset_clear_failed", { scope, cause });
+      failure ??= cause;
+    }
+    try {
+      await this.artifacts.createStore(scope).clear();
+    } catch (cause) {
+      this.logger.warn("artifact_clear_failed", { scope, cause });
       failure ??= cause;
     }
     if (failure) throw failure;
@@ -298,9 +316,11 @@ export class RuntimeManager {
       },
       scheduleAppend: (append) => (runtime ? runtime.compact(append) : append()),
     });
+    const artifacts = this.artifacts.createStore(scope);
+    const registrations = new Map(this.resourceSchemeRegistrations);
     const plugins = [
       compactPlugin,
-      ...(await Promise.all([...this.channelPlugins].map((resolver) => resolver({ scope, bot })))).filter(
+      ...(await Promise.all([...this.channelPlugins].map((resolver) => resolver({ scope, bot, artifacts })))).filter(
         (plugin): plugin is AgentPlugin => plugin !== null,
       ),
     ];
@@ -318,8 +338,11 @@ export class RuntimeManager {
       bot,
       will: createWillEngine(this.ctx, this.config.will),
       assets: this.assets.createStore(scope),
+      artifacts,
+      registrations,
       model: resolved.model,
       imageBudget: this.config.imageInput ? ({ ...this.config.imageInput } as ImageBudget) : null,
+      imageCapable: resolved.entry.modalities?.input?.includes("image") ?? false,
       idleTimeout: this.config.session.idle.timeout,
       compact,
       agentPlugins: plugins,

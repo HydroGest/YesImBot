@@ -45,6 +45,7 @@ export interface Config {
   logLevel: number;
   allowedChannels: ChannelAllowRule[];
   imageInput: ImageInputConfig;
+  resourceReadTimeoutMs: number;
   will: WillConfig;
   reply: {
     pacing: PacingConfig;
@@ -82,6 +83,7 @@ export const Config: Schema<Config> = Schema.intersect([
         maxTotalBytes: Schema.number().default(10 * 1024 * 1024),
       }).description("启用"),
     ]),
+    resourceReadTimeoutMs: Schema.number().min(1).default(30_000).description("资源读取超时时间(ms)"),
   }).description("模型图片输入"),
   Schema.object({
     will: Schema.intersect([

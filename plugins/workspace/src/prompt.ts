@@ -28,5 +28,8 @@ export function formatWorkspacePrompt(workspace: Workspace): string {
     "Shell state such as cd, aliases, functions, and exported variables does not persist between bash calls. Filesystem changes do persist within the channel workspace.",
     "Use readFile for known files, writeFile for complete file writes, and bash for listing, searching, transformations, and pipelines.",
     "Use help or which before assuming a host binary exists; this is not the host shell.",
+    "",
+    "workspace:///relative/path is an external reference to the current channel workspace file. Use it with Core `read`, analysis tools, or as an img/file src when sending the file. Bash does not consume workspace:// URIs.",
+    "Skill files are read-only resources: Core `read` with skill://<skill-name>/SKILL.md or skill://<skill-name>/<relative-path>. Execute Skill scripts only through /skills/<skill-name>/... mounts.",
   ].join("\n");
 }

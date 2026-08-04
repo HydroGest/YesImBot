@@ -1,12 +1,10 @@
 import type { AgentMessage, AgentPlugin, ModelMessageContext } from "@yesimbot/agent-runtime";
-import type { Mock } from "vitest";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h } from "koishi";
 
-import type { AssetStore } from "../src/asset.js";
 import {
   createEvent,
   createMessage,
@@ -30,10 +28,9 @@ const scope: ChannelScope = {
   platform: "onebot",
   selfId: "bot-1",
   channelId: "room-42",
-  isDirect: false,
+  type: "shared",
 };
-const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-const FIVE_MIB = 5 * 1024 * 1024;
+const ASSET_ID = "00000000000000000000000000000000";
 
 function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
   return {
@@ -84,42 +81,14 @@ function formatterVariantRecord(): EventRecord<"formatter.variant"> {
   };
 }
 
-function assetStore() {
-  const get = vi.fn<(id: string) => Promise<Uint8Array>>();
-  return { get };
-}
-
-function pngBytesOfLength(byteLength: number): Uint8Array {
-  const data = new Uint8Array(byteLength);
-  data.set(pngBytes);
-
-  return data;
-}
-type TestAssetStore = Pick<AssetStore, "get"> & {
-  readonly get: Mock<(id: string) => Promise<Uint8Array>>;
-};
-
-const fiveMiBPngBytes = pngBytesOfLength(FIVE_MIB);
-const oversizedPngBytes = pngBytesOfLength(FIVE_MIB + 1);
-
 function context(history: readonly AgentMessage[], current: readonly AgentMessage[] = []): ModelMessageContext {
   return { history, current } as ModelMessageContext;
 }
 
 function plugin(
-  assets: TestAssetStore,
-  imageBudget: {
-    readonly maxCount: number;
-    readonly maxBytesPerImage: number;
-    readonly maxTotalBytes: number;
-  } | null = {
-    maxCount: 4,
-    maxBytesPerImage: FIVE_MIB,
-    maxTotalBytes: 10 * 1024 * 1024,
-  },
-  warn = vi.fn(),
+  imageBudget: { maxCount: number; maxBytesPerImage: number; maxTotalBytes: number } | null = null,
 ): AgentPlugin {
-  return createModelInputPlugin({ assets, imageBudget, warn });
+  return createModelInputPlugin({ imageBudget, warn: vi.fn() });
 }
 
 async function project(input: Input, modelContext: ModelMessageContext, inputPlugin: AgentPlugin) {
@@ -132,7 +101,7 @@ async function project(input: Input, modelContext: ModelMessageContext, inputPlu
 describe("createModelInputPlugin", () => {
   it("always formats a message with the fixed header including its ID", async () => {
     const input = createMessage(messageRecord({ timestamp: new Date("2026-07-25T12:34:00.000Z").valueOf() }));
-    const inputPlugin = plugin(assetStore(), null);
+    const inputPlugin = plugin();
 
     expect(inputPlugin.enforce).toBe("pre");
     await expect(project(input, context([input]), inputPlugin)).resolves.toEqual({
@@ -143,7 +112,7 @@ describe("createModelInputPlugin", () => {
 
   it("hydrates JSONL-replayed Elements before rendering", async () => {
     const replayed = JSON.parse(JSON.stringify(createMessage(messageRecord()))) as Input;
-    const inputPlugin = plugin(assetStore(), null);
+    const inputPlugin = plugin();
 
     const first = await project(replayed, context([replayed]), inputPlugin);
     const second = await project(replayed, context([replayed]), inputPlugin);
@@ -155,131 +124,54 @@ describe("createModelInputPlugin", () => {
 
   it("formats events from only eventType and text", async () => {
     const event: Event = createEvent(formatterVariantRecord());
-    const result = await project(event, context([event]), plugin(assetStore(), null));
+    const result = await project(event, context([event]), plugin());
 
     expect(result.content).toContain('"eventType":"formatter.variant"');
     expect(result.content).toContain('"text":"variant"');
     expect(result.content).not.toContain("extra");
   });
 
-  it("does not read images when image input is disabled", async () => {
-    const assets = assetStore();
-    const input = createMessage(messageRecordWithText('<img id="00000000000000000000000000000000"/>'));
+  it("renders persisted image references as safe asset text without bytes", async () => {
+    const input = createMessage(messageRecordWithText(`<img id="${ASSET_ID}"/>`));
+    const result = await project(input, context([input]), plugin());
 
-    await expect(project(input, context([input]), plugin(assets, null))).resolves.toMatchObject({
-      role: "user",
-    });
-    expect(assets.get).not.toHaveBeenCalled();
+    expect(result.content).toContain(`[图片：asset://${ASSET_ID}]`);
+    expect(result.content).not.toContain("<img");
   });
 
-  it("scans history then current and nested elements in document order", async () => {
-    const assets = assetStore();
-    assets.get.mockResolvedValue(pngBytes);
-    const historyFirst = createMessage(messageRecordWithText('<img id="11111111111111111111111111111111"/>'));
-    const historySecond = createMessage({
+  it("never leaks src, data URIs, or platform URLs for unpersisted images", async () => {
+    const input = createMessage(
+      messageRecordWithText('<img src="https://example.test/x.png"/><img src="data:image/png;base64,AAAA"/>'),
+    );
+    const result = await project(input, context([input]), plugin());
+
+    expect(result.content).toContain("[图片]");
+    expect(String(result.content)).not.toContain("https://");
+    expect(String(result.content)).not.toContain("base64");
+  });
+
+  it("keeps nested image elements discoverable in document order", async () => {
+    const input = createMessage({
       ...messageRecord(),
-      messageId: "m-2",
-      elements: [h("p", {}, [h("span", {}, [h("img", { id: "22222222222222222222222222222222" })])])],
+      elements: [h("p", {}, [h("span", {}, [h("img", { id: "11111111111111111111111111111111" })])])],
     });
-    const current = createMessage(messageRecordWithText('<img id="33333333333333333333333333333333"/>'));
-    const inputPlugin = plugin(assets, { maxCount: 3, maxBytesPerImage: 8, maxTotalBytes: 24 });
-    const modelContext = context([historyFirst, historySecond], [current]);
+    const result = await project(input, context([input]), plugin());
 
-    await Promise.all([
-      project(historyFirst, modelContext, inputPlugin),
-      project(historySecond, modelContext, inputPlugin),
-      project(current, modelContext, inputPlugin),
-    ]);
-
-    expect(assets.get.mock.calls.map(([id]) => id)).toEqual([
-      "11111111111111111111111111111111",
-      "22222222222222222222222222222222",
-      "33333333333333333333333333333333",
-    ]);
+    expect(result.content).toContain("[图片：asset://11111111111111111111111111111111]");
   });
 
-  it.each([
-    [new Uint8Array([0xff, 0xd8, 0xff]), "image/jpeg"],
-    [pngBytes, "image/png"],
-    [new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]), "image/gif"],
-    [new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]), "image/webp"],
-  ])("appends supported %s files without mutating source messages", async (bytes, mediaType) => {
-    const assets = assetStore();
-    assets.get.mockResolvedValue(bytes);
-    const input = createMessage(messageRecordWithText('<img id="44444444444444444444444444444444"/>'));
-    const original = input.data.elements;
-    const result = await project(input, context([input]), plugin(assets));
+  it("never reads asset bytes during model projection", async () => {
+    const input = createMessage(messageRecordWithText(`<img id="${ASSET_ID}"/>`));
+    const result = await project(input, context([input]), plugin());
 
-    expect(result.content).toEqual([
-      {
-        type: "text",
-        text: '[time="2026/7/18 20:34" sender="Alice (10001)" id="m-1"]\n<img id="44444444444444444444444444444444"/>',
-      },
-      { type: "file", data: bytes, mediaType },
-    ]);
-    expect(input.data.elements).toBe(original);
+    expect(result.content).toContain(`asset://${ASSET_ID}`);
   });
 
-  it("keeps text and records diagnostics for invalid or missing assets", async () => {
-    const assets = assetStore();
-    const warn = vi.fn();
-    assets.get.mockImplementation(async (id) => {
-      if (id === "55555555555555555555555555555555") return new Uint8Array([0x3c, 0x73, 0x76, 0x67]);
-      if (id === "66666666666666666666666666666666") throw new Error("missing");
-      return pngBytes;
-    });
-    const input = createMessage(
-      messageRecordWithText(
-        '<img id="55555555555555555555555555555555"/><img id="66666666666666666666666666666666"/><img id="77777777777777777777777777777777"/>',
-      ),
-    );
-    const result = await project(input, context([input]), plugin(assets, undefined, warn));
+  it("formats delivery-failed notifications without instruction text", async () => {
+    const event: Event = createEvent(deliveryFailureRecord());
+    const result = await project(event, context([event]), plugin());
 
-    expect(Array.isArray(result.content) && result.content).toHaveLength(2);
-    expect(warn.mock.calls.map(([event]) => event)).toEqual(["asset_invalid_mime", "asset_read_failed"]);
-  });
-
-  it("charges each reference and skips oversized candidates while accepting later files", async () => {
-    const assets = assetStore();
-    assets.get.mockImplementation(async (id) =>
-      id === "88888888888888888888888888888888" ? new Uint8Array(9) : pngBytes,
-    );
-    const input = createMessage(
-      messageRecordWithText(
-        '<img id="88888888888888888888888888888888"/><img id="99999999999999999999999999999999"/><img id="99999999999999999999999999999999"/><img id="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"/>',
-      ),
-    );
-    const result = await project(
-      input,
-      context([input]),
-      plugin(assets, { maxCount: 2, maxBytesPerImage: 8, maxTotalBytes: 16 }),
-    );
-
-    expect(Array.isArray(result.content) && result.content.slice(1)).toHaveLength(2);
-    expect(assets.get.mock.calls.map(([id]) => id)).toEqual([
-      "88888888888888888888888888888888",
-      "99999999999999999999999999999999",
-      "99999999999999999999999999999999",
-    ]);
-  });
-
-  it("accepts exact per-image and total limits and resets the budget for each context", async () => {
-    const assets = assetStore();
-    assets.get.mockResolvedValue(fiveMiBPngBytes);
-    const first = createMessage(
-      messageRecordWithText(
-        '<img id="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"/><img id="cccccccccccccccccccccccccccccccc"/><img id="dddddddddddddddddddddddddddddddd"/>',
-      ),
-    );
-    const second = createMessage(messageRecordWithText('<img id="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"/>'));
-    const inputPlugin = plugin(assets);
-
-    const initial = await project(first, context([first]), inputPlugin);
-    const later = await project(second, context([second]), inputPlugin);
-
-    expect(Array.isArray(initial.content) && initial.content.slice(1)).toHaveLength(2);
-    expect(Array.isArray(later.content) && later.content.slice(1)).toHaveLength(1);
-    expect(assets.get).toHaveBeenCalledTimes(3);
-    expect(oversizedPngBytes.byteLength).toBe(FIVE_MIB + 1);
+    expect(result.content).toContain("[SYSTEM_NOTIFICATION]");
+    expect(result.content).toContain('"eventType":"delivery.failed"');
   });
 });

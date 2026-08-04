@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 
 import { Bot, Context, Service } from "koishi";
 
+import { ArtifactService } from "./artifact.js";
 import { AssetService } from "./asset.js";
 import { registerSessionCommands } from "./commands/session.js";
 import { Config } from "./config.js";
@@ -12,6 +13,7 @@ import type { EventMap, EventRecord } from "./messages.js";
 import { ModelService } from "./model/index.js";
 import { RuntimeManager, type ChannelPluginFactory } from "./runtime/index.js";
 import { ensureDefaultPersona } from "./runtime/prompt.js";
+import type { ResourceSchemeOpenHandler } from "./runtime/read.js";
 import { ChannelScope, ChannelStorage } from "./runtime/storage.js";
 
 declare module "koishi" {
@@ -33,6 +35,7 @@ export default class YesImBotService extends Service<Config> {
   private readonly gate: Gateway;
   private readonly channelPlugins = new Set<ChannelPluginFactory>();
   private readonly commandDisposers = new Set<() => unknown>();
+  private readonly resourceSchemeRegistrations = new Map<string, { prompt: string; open: ResourceSchemeOpenHandler }>();
   private triggerClosed = false;
   private readonly triggerTasks = new Set<Promise<void>>();
 
@@ -46,7 +49,17 @@ export default class YesImBotService extends Service<Config> {
     });
     this.storage = new ChannelStorage(ctx, { basePath: config.basePath || ctx.baseDir });
     this.assets = new AssetService(this.storage);
-    this.rt = new RuntimeManager(ctx, this.model, this.assets, this.storage, config, this.channelPlugins);
+    const artifacts = new ArtifactService(this.storage);
+    this.rt = new RuntimeManager(
+      ctx,
+      this.model,
+      this.assets,
+      artifacts,
+      this.storage,
+      config,
+      this.channelPlugins,
+      this.resourceSchemeRegistrations,
+    );
     this.gate = new Gateway(
       ctx,
       {
@@ -71,6 +84,19 @@ export default class YesImBotService extends Service<Config> {
   public registerChannelPlugin(resolver: ChannelPluginFactory): () => void {
     this.channelPlugins.add(resolver);
     return () => this.channelPlugins.delete(resolver);
+  }
+
+  public registerResourceScheme(scheme: string, prompt: string, open: ResourceSchemeOpenHandler): () => void {
+    if (scheme === "asset" || scheme === "artifact") {
+      throw new Error(`Scheme "${scheme}" is reserved`);
+    }
+    if (this.resourceSchemeRegistrations.has(scheme)) {
+      throw new Error(`Scheme "${scheme}" is already registered`);
+    }
+    this.resourceSchemeRegistrations.set(scheme, { prompt, open });
+    return () => {
+      this.resourceSchemeRegistrations.delete(scheme);
+    };
   }
 
   public getStoragePath(scope: ChannelScope): Promise<string> {
@@ -166,9 +192,11 @@ export default class YesImBotService extends Service<Config> {
   }
 }
 
+export type { ArtifactStore, ArtifactWriter } from "./artifact.js";
 export type { AssetService, AssetStore } from "./asset.js";
 export type { PlatformTranslator } from "./gateway/types.js";
 export * from "./messages.js";
 export * from "./model/index.js";
 export type { ChannelPluginFactory, ChannelPluginContext } from "./runtime/index.js";
+export type { ResourceOpenResult, ResourceReadResult, ResourceSchemeOpenHandler } from "./runtime/read.js";
 export type { ChannelScope } from "./runtime/storage.js";

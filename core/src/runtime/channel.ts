@@ -13,6 +13,7 @@ import {
 import type { AssistantContent, LanguageModel } from "ai";
 import type { Bot, Context, Element, Logger } from "koishi";
 
+import type { ArtifactStore } from "../artifact.js";
 import type { AssetStore } from "../asset.js";
 import type { Config, ImageBudget } from "../config.js";
 import {
@@ -28,7 +29,15 @@ import {
 } from "../messages.js";
 import { createModelInputPlugin } from "./model-input.js";
 import { OutputQueue } from "./output-queue.js";
+import { prepareOutputSegments } from "./output.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
+import {
+  createReadProjectionPlugin,
+  createResourceReader,
+  type ResourceReadResult,
+  type ResourceReader,
+  type ResourceSchemeOpenHandler,
+} from "./read.js";
 import { parseReply } from "./reply.js";
 import { ChannelScope, scopeMapKey } from "./storage.js";
 import type { WillEngine } from "./will.js";
@@ -39,8 +48,11 @@ export interface ChannelRuntimeOptions {
   readonly bot: Bot;
   readonly will: WillEngine;
   readonly assets: AssetStore;
+  readonly artifacts: ArtifactStore;
+  readonly registrations: ReadonlyMap<string, { prompt: string; open: ResourceSchemeOpenHandler }>;
   readonly model: LanguageModel;
   readonly imageBudget: ImageBudget | null;
+  readonly imageCapable: boolean;
   readonly agentPlugins: readonly AgentPlugin[];
   readonly storage: AgentStorage;
   readonly idleTimeout?: number;
@@ -90,6 +102,7 @@ export class ChannelRuntime {
   private streams = new Set<Promise<void>>();
   private controllers = new Set<AbortController>();
   private readonly agent: Agent;
+  private readonly reader: ResourceReader;
   private initTask: Promise<void> | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
   private readonly idleTimeout: number;
@@ -107,7 +120,8 @@ export class ChannelRuntime {
       : resolve(this.ctx.baseDir, opts.config.basePath);
     const sendMessageTool: AgentTool<SendMessageInput, SendMessageResult> = {
       name: "sendMessage",
-      description: "使用当前 Bot 向指定频道发送一条消息。",
+      description:
+        "使用当前 Bot 向指定频道发送一条消息。img/file 的 src 可使用 asset://、artifact:// 或 workspace:// 引用现有频道资源，Core 会在发送前解析。",
       inputSchema: jsonSchema<SendMessageInput>({
         type: "object",
         properties: {
@@ -120,10 +134,14 @@ export class ChannelRuntime {
         },
         required: ["channelId", "content"],
       }),
-      execute: async ({ channelId, content }) => {
+      execute: async ({ channelId, content }, execution) => {
         this.logger.info({ event: "send_message", channelId, content });
         try {
-          const messageIds = await opts.bot.sendMessage(channelId, content);
+          const segments = await prepareOutputSegments(parseReply(content), this.reader, {
+            signal: execution.abortSignal,
+            warn: (event, fields) => this.logger.warn({ event, ...fields }),
+          });
+          const messageIds = await opts.bot.sendMessage(channelId, segments.flat());
           return { ok: true, messageIds };
         } catch (cause) {
           return {
@@ -136,7 +154,33 @@ export class ChannelRuntime {
         }
       },
     };
-    const tools: AgentToolSet = [sendMessageTool];
+    const reader = createResourceReader({
+      scope: this.scope,
+      assets: opts.assets,
+      artifacts: opts.artifacts,
+      registrations: new Map(opts.registrations),
+      config: opts.config,
+    });
+    this.reader = reader;
+    const readTool: AgentTool<{ uri: string }, object> = {
+      name: "read",
+      description: buildReadDescription(opts.registrations),
+      inputSchema: jsonSchema<{ uri: string }>({
+        type: "object",
+        properties: {
+          uri: {
+            type: "string",
+            description: "要读取的资源 URI",
+          },
+        },
+        required: ["uri"],
+      }),
+      execute: async ({ uri }, execution) => {
+        this.logger.info({ event: "resource_read", uri });
+        return reader.read(uri, execution.abortSignal);
+      },
+    };
+    const tools: AgentToolSet = [sendMessageTool, readTool];
     this.agent = createAgent({
       id: scopeMapKey(this.scope),
       model: opts.model,
@@ -151,10 +195,10 @@ export class ChannelRuntime {
       tools,
       plugins: [
         createModelInputPlugin({
-          assets: opts.assets,
           imageBudget: opts.imageBudget,
           warn: (event, fields) => this.logger.warn({ event, ...fields }),
         }),
+        createReadProjectionPlugin(reader, opts.imageCapable, opts.imageBudget),
         ...opts.agentPlugins,
       ],
       terminalTool: true,
@@ -289,7 +333,13 @@ export class ChannelRuntime {
       for await (const event of stream) {
         if (isAssistantMessage(event)) {
           const segments = parseAssistantContent(event.message.content);
-          if (segments !== undefined) output.push({ turnId: event.turnId, messageId: event.message.id, segments });
+          if (segments !== undefined) {
+            const prepared = await prepareOutputSegments(segments, this.reader, {
+              signal: controller.signal,
+              warn: (event, fields) => this.logger.warn({ event, ...fields }),
+            });
+            output.push({ turnId: event.turnId, messageId: event.message.id, segments: prepared });
+          }
         }
         if (event.type === "turn.failed") {
           controller.abort();
@@ -395,4 +445,22 @@ export function renderAssistantText(content: AssistantContent): string | undefin
 export function parseAssistantContent(content: AssistantContent): Element[][] | undefined {
   const text = renderAssistantText(content);
   return text === undefined ? undefined : parseReply(text);
+}
+
+function buildReadDescription(registrations: ReadonlyMap<string, { prompt: string }>): string {
+  const lines = [
+    "读取资源内容。仅在确实需要内容时读取精确 URI。支持以下 URI 方案：",
+    "- asset://<id>: 平台输入的不可变图片资源",
+    "- artifact://<tool>/<uuid>: 工具输出的不可变工件",
+    "- workspace:///<path>: 工作区文件（可变）",
+    "- skill://<name>/<path>: 只读技能文件（仅在 Workspace 启用时）",
+  ];
+  for (const [scheme, { prompt }] of [...registrations.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    lines.push(`- ${scheme}://: ${prompt}`);
+  }
+  lines.push("");
+  lines.push("URI 字符串永不传给 Bash。仅在图像能力模型显式相关读取后投影图像字节；读取不会创建另一个 artifact。");
+  return lines.join("\n");
 }

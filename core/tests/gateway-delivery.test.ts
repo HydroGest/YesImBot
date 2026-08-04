@@ -114,6 +114,9 @@ function createIntegratedGateway(basePath: string) {
   const assets = {
     createStore: vi.fn(() => ({ clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() })),
   };
+  const artifacts = {
+    createStore: vi.fn(() => ({ clear: vi.fn(async () => undefined), forTool: vi.fn(), open: vi.fn() })),
+  };
   const model = { modelId: "test-model" };
   const resolveChatModel = vi.fn(() => ({ model, providerId: "test", entry: {} }));
   const modelService = { resolveChatModel } as never;
@@ -136,7 +139,16 @@ function createIntegratedGateway(basePath: string) {
       idle: { timeout: 0 },
     },
   };
-  const manager = new RuntimeManager(ctx, modelService, assets as never, storage, config, new Set());
+  const manager = new RuntimeManager(
+    ctx,
+    modelService,
+    assets as never,
+    artifacts as never,
+    storage,
+    config,
+    new Set(),
+    new Map(),
+  );
   const gateway = new Gateway(
     ctx,
     {
@@ -462,6 +474,25 @@ describe("Gateway passive delivery", () => {
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith([h.text("  ordinary reply\n")]);
     expect(binding.onDelivered).toHaveBeenCalledOnce();
+  });
+  it("uses Session.send rather than Koishi's queued helper for passive delivery", async () => {
+    const binding = delivery();
+    const route = vi.fn(async () => ({
+      kind: "run" as const,
+      eventId: "event-1",
+      turnId: "turn-1",
+      output: outputs("ordinary reply"),
+      delivery: binding,
+    }));
+    const send = vi.fn(async () => []);
+    const sendQueued = vi.fn(async () => []);
+    const inbound = { ...session(send), sendQueued };
+    const { gateway } = createGateway(route);
+
+    await gateway.handle(inbound as never);
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(sendQueued).not.toHaveBeenCalled();
   });
 
   it("retains the originating Session only while consuming its active output", async () => {

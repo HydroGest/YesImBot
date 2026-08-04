@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,6 +11,7 @@ vi.mock("koishi", () => ({
   Context: class {},
   Logger: class {},
   Schema: {
+    array: (value: unknown) => value,
     object: (value: unknown) => value,
     path: () => ({
       default() {
@@ -57,6 +58,14 @@ import { Workspace } from "../src/workspace";
 
 type WorkspaceFactory = (context: { readonly scope: ChannelScope }) => AgentPlugin;
 
+type ResourceOpener = (
+  scope: ChannelScope,
+  uri: string,
+  options: { signal: AbortSignal; maxBytes: number },
+) => Promise<{ bytes: Uint8Array; mediaType?: string; filename?: string }>;
+
+type ResourceRegistration = { prompt: string; open: ResourceOpener };
+
 function workspaceCache(plugin: WorkspacePlugin): ReadonlyMap<string, Workspace> {
   const value: unknown = Reflect.get(plugin, "workspaces");
   if (!(value instanceof Map)) throw new Error("Workspace cache is unavailable");
@@ -77,6 +86,7 @@ function createContext(baseDir: string) {
   const ready: Array<() => Promise<void> | void> = [];
   const dispose: Array<() => Promise<void> | void> = [];
   const factories: WorkspaceFactory[] = [];
+  const schemes = new Map<string, ResourceRegistration>();
   const getStoragePath = vi.fn(async (scope: ChannelScope) => {
     const directory =
       scope.type === "direct"
@@ -110,8 +120,13 @@ function createContext(baseDir: string) {
           factories.push(factory);
           return vi.fn();
         }),
+        registerResourceScheme: vi.fn((scheme: string, prompt: string, open: ResourceOpener) => {
+          schemes.set(scheme, { prompt, open });
+          return vi.fn(() => schemes.delete(scheme));
+        }),
       },
     },
+    schemes,
   };
 }
 
@@ -149,6 +164,7 @@ describe("WorkspacePlugin", () => {
           factories.push(factory);
           return vi.fn();
         }),
+        registerResourceScheme: vi.fn(() => vi.fn()),
       },
     };
     const plugin = new WorkspacePlugin(ctx as never, {
@@ -171,6 +187,19 @@ describe("WorkspacePlugin", () => {
     expect(workspaceRoot(plugin, JSON.stringify(["onebot", "room"]))).toBe(
       join(baseDir, "channels", "shared-onebot-room", "workspace"),
     );
+  });
+  it("does not register a Skill scheme without a valid catalog", async () => {
+    baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-no-skills-"));
+    const mocks = createContext(baseDir);
+    new WorkspacePlugin(mocks.ctx as never, {
+      cwd: "/home/workspace",
+      skillPaths: [join(baseDir, "missing")],
+      timeoutMs: 1000,
+      enableNetwork: false,
+    });
+
+    await mocks.ready[0]?.();
+    expect([...mocks.schemes.keys()]).toEqual(["workspace"]);
   });
 
   it("clears process cache on stop without deleting workspace data", async () => {
@@ -292,5 +321,118 @@ describe("WorkspacePlugin", () => {
     });
     await expect(mocks.ready[0]?.()).resolves.toBeUndefined();
     await expect(access(join(baseDir, "created", "shared"), constants.F_OK)).resolves.toBeUndefined();
+  });
+  it("registers canonical Workspace and Skill URI readers and read-only Skill mounts", async () => {
+    baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
+    const skillRoot = join(baseDir, "skills", "csv");
+    await mkdir(join(skillRoot, "scripts"), { recursive: true });
+    await writeFile(join(skillRoot, "SKILL.md"), "---\nname: csv\ndescription: CSV\n---\n# CSV");
+    await writeFile(join(skillRoot, "scripts", "analyze.sh"), "echo csv\n");
+
+    const mocks = createContext(baseDir);
+    new WorkspacePlugin(mocks.ctx as never, {
+      cwd: "/home/workspace",
+      skillPaths: [join(baseDir, "skills")],
+      timeoutMs: 1000,
+      enableNetwork: false,
+    });
+    await mocks.ready[0]?.();
+
+    expect([...mocks.schemes.keys()].sort()).toEqual(["skill", "workspace"]);
+    const scope = { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" } satisfies ChannelScope;
+    const workspaceRoot = join(baseDir, "channels", "shared-onebot-room", "workspace");
+    await mkdir(workspaceRoot, { recursive: true });
+    await writeFile(join(workspaceRoot, "report.txt"), "live report");
+
+    const workspaceResult = await mocks.schemes.get("workspace")!.open(scope, "workspace:///report.txt", {
+      signal: AbortSignal.timeout(1000),
+      maxBytes: 1024,
+    });
+    expect(new TextDecoder().decode(workspaceResult.bytes)).toBe("live report");
+
+    const skillResult = await mocks.schemes.get("skill")!.open(scope, "skill://csv/scripts/analyze.sh", {
+      signal: AbortSignal.timeout(1000),
+      maxBytes: 1024,
+    });
+    expect(new TextDecoder().decode(skillResult.bytes)).toBe("echo csv\n");
+    await expect(
+      mocks.schemes.get("workspace")!.open(scope, "workspace://host/report.txt", {
+        signal: AbortSignal.timeout(1000),
+        maxBytes: 1024,
+      }),
+    ).rejects.toThrow();
+
+    const agentPlugin = mocks.factories[0]!({ scope });
+    const agentTools = await tools(agentPlugin);
+    const loaderName = ["load", "skill"].join("_");
+    expect(agentTools.map((tool) => tool.name)).not.toContain(loaderName);
+    const readFile = agentTools.find((tool) => tool.name === "readFile");
+    const writeFileTool = agentTools.find((tool) => tool.name === "writeFile");
+    await expect(readFile!.execute!({ path: "/skills/csv/scripts/analyze.sh" }, {} as never)).resolves.toEqual({
+      content: "echo csv\n",
+    });
+    await expect(
+      writeFileTool!.execute!({ path: "/skills/csv/scripts/analyze.sh", content: "changed" }, {} as never),
+    ).rejects.toThrow();
+  });
+
+  it("keeps a Skill opener catalog snapshot after Workspace stop", async () => {
+    baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-snapshot-"));
+    const skillRoot = join(baseDir, "skills", "csv");
+    await mkdir(skillRoot, { recursive: true });
+    await writeFile(join(skillRoot, "SKILL.md"), "---\nname: csv\ndescription: CSV\n---\n# CSV");
+    const mocks = createContext(baseDir);
+    new WorkspacePlugin(mocks.ctx as never, {
+      cwd: "/home/workspace",
+      skillPaths: [join(baseDir, "skills")],
+      timeoutMs: 1000,
+      enableNetwork: false,
+    });
+    await mocks.ready[0]?.();
+    const registration = mocks.schemes.get("skill");
+    if (!registration) throw new Error("Skill registration is unavailable");
+    await mocks.dispose[0]?.();
+
+    await expect(
+      registration.open(
+        { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" },
+        "skill://csv/SKILL.md",
+        { signal: AbortSignal.timeout(1000), maxBytes: 1024 },
+      ),
+    ).resolves.toMatchObject({ filename: "SKILL.md" });
+  });
+
+  it("rejects oversized Workspace and Skill files before reading their contents", async () => {
+    baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-bounds-"));
+    const skillRoot = join(baseDir, "skills", "csv");
+    await mkdir(skillRoot, { recursive: true });
+    await writeFile(join(skillRoot, "SKILL.md"), "---\nname: csv\ndescription: CSV\n---\n" + "x".repeat(2048));
+    const mocks = createContext(baseDir);
+    new WorkspacePlugin(mocks.ctx as never, {
+      cwd: "/home/workspace",
+      skillPaths: [join(baseDir, "skills")],
+      timeoutMs: 1000,
+      enableNetwork: false,
+    });
+    await mocks.ready[0]?.();
+    const scope = { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" } satisfies ChannelScope;
+    await expect(
+      mocks.schemes.get("skill")!.open(scope, "skill://csv/SKILL.md", {
+        signal: AbortSignal.timeout(1000),
+        maxBytes: 1,
+      }),
+    ).rejects.toThrow(/exceeds read limit/);
+  });
+
+  it("rejects user mounts that overlap the reserved Skill mount root", async () => {
+    baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
+    const mocks = createContext(baseDir);
+    new WorkspacePlugin(mocks.ctx as never, {
+      cwd: "/home/workspace",
+      readOnlyPaths: { "/skills": baseDir },
+      timeoutMs: 1000,
+      enableNetwork: false,
+    });
+    await expect(mocks.ready[0]?.()).rejects.toThrow(/reserved/);
   });
 });

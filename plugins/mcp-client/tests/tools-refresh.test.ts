@@ -58,6 +58,7 @@ function createContext() {
   );
   const factories: Array<() => AgentPlugin> = [];
   const disposers: Array<ReturnType<typeof vi.fn<() => void>>> = [];
+  const artifactWriter = { put: vi.fn(async () => "artifact://test-tool/019d3b7e-1bd0-7e4f-9c5d-5bf3fd41f1d4") };
   const ctx = {
     logger: rootLogger,
     on: vi.fn<() => void>(),
@@ -71,7 +72,7 @@ function createContext() {
     },
   };
 
-  return { ctx, disposers, factories };
+  return { ctx, disposers, factories, artifactWriter };
 }
 
 function createClient(toolBatches: string[][]) {
@@ -115,7 +116,6 @@ async function resolveToolNames(plugin: AgentPlugin): Promise<string[]> {
   const tools = typeof plugin.tools === "function" ? await plugin.tools({} as never) : plugin.tools;
   return tools?.map((tool) => tool.name) ?? [];
 }
-
 describe("mcp-client tool registry", () => {
   it("refreshes stable tools when a server reports tool list changes", async () => {
     const { client, emitToolListChanged } = createClient([["beta", "alpha"], ["gamma"]]);
@@ -133,14 +133,19 @@ describe("mcp-client tool registry", () => {
 
     await plugin.start();
 
+    const channelContext = {
+      scope: {},
+      bot: {},
+      artifacts: { forTool: vi.fn(() => ({ put: vi.fn() })) },
+    } as never;
     expect(client.setNotificationHandler).toHaveBeenCalledOnce();
-    expect(await resolveToolNames(factories[0]!())).toEqual(["docs-alpha", "docs-beta"]);
+    expect(await resolveToolNames(factories[0]!(channelContext))).toEqual(["docs-alpha", "docs-beta"]);
 
     await emitToolListChanged();
 
     expect(client.listTools).toHaveBeenCalledTimes(2);
     expect(disposers[0]).toHaveBeenCalledOnce();
     expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledTimes(2);
-    expect(await resolveToolNames(factories[1]!())).toEqual(["docs-gamma"]);
+    expect(await resolveToolNames(factories[1]!(channelContext))).toEqual(["docs-gamma"]);
   });
 });

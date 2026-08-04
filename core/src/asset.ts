@@ -2,15 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { h, type Element } from "koishi";
-
 import { ChannelScope, ChannelStorage } from "./runtime/storage.js";
 
 const COMPLETE_ID = /^[a-f0-9]{32}$/;
 const PREFIX_ID = /^[a-f0-9]{7,31}$/;
 
 export interface AssetStore {
-  put(data: Uint8Array): Promise<Element>;
+  put(data: Uint8Array): Promise<string>;
   get(idOrPrefix: string): Promise<Uint8Array>;
   clear(): Promise<void>;
 }
@@ -29,7 +27,7 @@ class ScopedAssetStore implements AssetStore {
     private readonly scope: ChannelScope,
   ) {}
 
-  public async put(data: Uint8Array): Promise<Element> {
+  public async put(data: Uint8Array): Promise<string> {
     if (!(data instanceof Uint8Array)) throw new Error("Asset data must be bytes");
     const copied = data.slice();
     const id = createHash("sha256").update(copied).digest("hex").slice(0, 32);
@@ -42,7 +40,7 @@ class ScopedAssetStore implements AssetStore {
     } finally {
       await rm(temporary, { force: true });
     }
-    return h("img", { id });
+    return id;
   }
 
   public async get(idOrPrefix: string): Promise<Uint8Array> {
