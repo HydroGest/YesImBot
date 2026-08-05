@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import type { Context } from "koishi";
+import type { Context, Field, Types } from "koishi";
 
 import { detectImageMediaType, sha256Hex } from "./files.js";
 import type { StickerStore } from "./store.js";
@@ -9,23 +9,37 @@ import type { MigrationResult, StickerSource } from "./types.js";
 
 const V3_STICKER_TABLE = "yesimbot.stickers";
 
-interface V3StickerRow {
-  id: string;
-  category: string;
-  filePath: string;
-  source: {
-    platform: string;
-    channelId: string;
-    userId: string;
-    messageId: string;
-  };
-  createdAt?: Date | string;
+interface V3StickerSource {
+  platform?: string;
+  channelId?: string;
+  userId?: string;
+  messageId?: string;
 }
+
+interface V3StickerRow {
+  id?: string;
+  category?: string;
+  filePath?: string;
+  source?: V3StickerSource | string | null;
+  createdAt?: Date | string | number;
+}
+
+const V3_STICKER_FIELDS = {
+  id: "string(64)",
+  category: "string(255)",
+  filePath: "string(255)",
+  source: "json",
+  createdAt: "timestamp",
+} satisfies Field.Extension<V3StickerRow, Types>;
 
 declare module "koishi" {
   interface Tables {
     [V3_STICKER_TABLE]: V3StickerRow;
   }
+}
+
+function registerV3StickerModel(model: Pick<Context["model"], "extend">): void {
+  model.extend(V3_STICKER_TABLE, V3_STICKER_FIELDS, { primary: "id" });
 }
 
 export interface MigrateV3Options {
@@ -54,16 +68,18 @@ export async function migrateV3(options: MigrateV3Options): Promise<MigrationRes
   const stats = emptyMigrationStats();
   let rows: V3StickerRow[];
   try {
+    registerV3StickerModel(options.ctx.model);
     rows = (await options.ctx.database.get(V3_STICKER_TABLE, {})) as unknown as V3StickerRow[];
   } catch (cause) {
     throw new Error(`无法读取 v3 表 ${V3_STICKER_TABLE}: ${messageOf(cause)}`);
   }
 
   const candidates = rows.filter((row) => {
-    if (!options.channelMatch || (options.includeUnsourced && !row.source.channelId)) return true;
+    const source = normalizeV3Source(row.source);
     if (!options.channelMatch) return true;
+    if (options.includeUnsourced && !source.channelId) return true;
     return (
-      row.source.platform === options.channelMatch.platform && row.source.channelId === options.channelMatch.channelId
+      source.platform === options.channelMatch.platform && source.channelId === options.channelMatch.channelId
     );
   });
   const selected = options.limit === undefined ? candidates : candidates.slice(0, options.limit);
@@ -71,7 +87,9 @@ export async function migrateV3(options: MigrateV3Options): Promise<MigrationRes
 
   for (const row of selected) {
     try {
-      const filePath = options.sourceDir ? join(options.sourceDir, basename(row.filePath)) : row.filePath;
+      const oldFilePath = row.filePath;
+      if (!oldFilePath) throw new Error("missing v3 filePath");
+      const filePath = options.sourceDir ? join(options.sourceDir, basename(oldFilePath)) : oldFilePath;
       const bytes = new Uint8Array(await readFile(filePath));
       const mediaType = detectImageMediaType(bytes);
       if (!mediaType) throw new Error("unsupported image");
@@ -89,7 +107,7 @@ export async function migrateV3(options: MigrateV3Options): Promise<MigrationRes
         scopeKey: options.scopeKey,
         bytes,
         mediaType,
-        category: row.category,
+        category: row.category ?? "",
         source: v3Source(row),
       });
       if (result.status === "created") stats.imported += 1;
@@ -146,14 +164,36 @@ export async function migrateScope(options: MigrateScopeOptions): Promise<Migrat
 }
 
 function v3Source(row: V3StickerRow): StickerSource {
+  const source = normalizeV3Source(row.source);
   return {
     kind: "v3",
-    platform: row.source.platform,
-    channelId: row.source.channelId,
-    userId: row.source.userId,
-    messageId: row.source.messageId,
+    platform: source.platform,
+    channelId: source.channelId,
+    userId: source.userId,
+    messageId: source.messageId,
     v3Id: row.id,
   };
+}
+
+function normalizeV3Source(source: V3StickerRow["source"]): V3StickerSource {
+  if (typeof source === "string") {
+    try {
+      return normalizeV3Source(JSON.parse(source));
+    } catch {
+      return {};
+    }
+  }
+  if (!source || typeof source !== "object") return {};
+  return {
+    platform: stringOf(source.platform),
+    channelId: stringOf(source.channelId),
+    userId: stringOf(source.userId),
+    messageId: stringOf(source.messageId),
+  };
+}
+
+function stringOf(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function emptyMigrationStats(): MigrationResult {

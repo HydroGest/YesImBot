@@ -112,6 +112,8 @@ yesimbot.sticker.migrate-v3
 
 迁移不会删除旧数据。
 
+注意：v3 的旧插件包名是 `yesimbot-extension-sticker-manager`，新插件包名是 `yesimbot-sticker-manager`。迁移完成后请从 `koishi.yml` 或 Koishi 控制台停用、移除旧插件条目，否则控制台仍会尝试加载旧插件配置并提示 `config failed to load`。
+
 ## 常见问题
 
 ### 切换了 `scope` 后表情包不见了

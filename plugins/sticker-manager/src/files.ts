@@ -39,7 +39,21 @@ export function detectImageMediaType(bytes: Uint8Array): string | undefined {
   ) {
     return "image/webp";
   }
+  if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) {
+    return "image/bmp";
+  }
+  if (startsWithAscii(bytes, "<?xml") || startsWithAscii(bytes, "<svg")) {
+    return "image/svg+xml";
+  }
   return undefined;
+}
+
+function startsWithAscii(bytes: Uint8Array, prefix: string): boolean {
+  if (bytes.length < prefix.length) return false;
+  for (let index = 0; index < prefix.length; index += 1) {
+    if (bytes[index] !== prefix.charCodeAt(index)) return false;
+  }
+  return true;
 }
 
 export function isSupportedImageFile(filename: string): boolean {
