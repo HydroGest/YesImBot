@@ -140,6 +140,7 @@ export async function migrateScope(options: MigrateScopeOptions): Promise<Migrat
         contentId: row.id,
         scopeKey: options.fromScopeKey,
         category: row.category,
+        tags: row.tags ?? [],
         mime: row.mime,
         size: row.size,
         source: row.source,

@@ -54,7 +54,7 @@ export default class StickerManagerPlugin {
               scope,
               config: this.config,
             }),
-          appendSystemPrompt: () => formatStickerPrompt(),
+          appendSystemPrompt: () => formatStickerPrompt(this.config),
         } satisfies AgentPlugin;
       });
       this.disposeCommands = registerStickerCommands({
@@ -80,13 +80,14 @@ export default class StickerManagerPlugin {
   }
 }
 
-function formatStickerPrompt(): string {
+function formatStickerPrompt(config: StickerConfig): string {
   return [
     "表情包能力由当前插件提供：",
     "- sticker_categories 查询分类和数量；",
     "- sticker_search 搜索可用表情包；",
     "- sticker_steal 收藏当前消息中的图片；",
     "- sticker_send 发送指定或随机表情包。",
+    ...(config.tagMode ? ["- sticker_tags 查询实验性标签；sticker_send 可传多个 tags 并按最匹配随机发送。"] : []),
     "需要发图时调用 sticker_send，不需要把返回的 id 当成可读内容发给用户。",
   ].join("\n");
 }

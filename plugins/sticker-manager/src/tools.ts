@@ -5,7 +5,13 @@ import type { StickerClassifier } from "./classifier.js";
 import { detectImageMediaType } from "./files.js";
 import type { StickerSender } from "./sender.js";
 import type { StickerStore } from "./store.js";
-import { normalizeCategory, scopeKeyFor, type StickerConfig, type StickerProjection } from "./types.js";
+import {
+  normalizeCategory,
+  normalizeTags,
+  scopeKeyFor,
+  type StickerConfig,
+  type StickerProjection,
+} from "./types.js";
 
 interface StealStickerInput {
   asset_id: string;
@@ -16,11 +22,13 @@ interface SendStickerInput {
   sticker_id?: string;
   category?: string;
   index?: number;
+  tags?: string[];
 }
 
 interface SearchStickerInput {
   category?: string;
   keyword?: string;
+  tags?: string[];
   limit?: number;
 }
 
@@ -45,6 +53,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
       "收藏当前消息中的一张表情包图片。",
       "asset_id 必须来自消息里的 [图片：asset://<id>]，只传 32 位十六进制 id，不要拼接或猜测。",
       "category 可选；不提供时会使用视觉模型自动分类，失败则归入“未分类”。",
+      ...(config.tagMode ? ["实验性 tag 模式开启时，收藏后会按分类自动打 tag。"] : []),
     ].join("\n"),
     inputSchema: jsonSchema<StealStickerInput>({
       type: "object",
@@ -82,6 +91,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
         bytes,
         mediaType,
         category: classified,
+        tags: config.tagMode ? normalizeTags([classified]) : undefined,
         source: {
           kind: "steal",
           platform: scope.platform,
@@ -93,6 +103,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
         status: saved.status,
         id: saved.sticker.id,
         category: saved.sticker.category,
+        tags: saved.sticker.tags,
         message:
           saved.status === "duplicate"
             ? `表情包已存在于分类：${saved.sticker.category}`
@@ -106,6 +117,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
     description: [
       "发送一个已收藏的表情包。",
       "可用 sticker_categories 和 sticker_search 查询；sticker_id 优先，也可按 category 随机或按 index 指定。",
+      ...(config.tagMode ? ["实验性 tag 模式开启时，可传 tags 选择多个标签，并从最匹配的表情包中随机发送。"] : []),
     ].join("\n"),
     inputSchema: jsonSchema<SendStickerInput>({
       type: "object",
@@ -113,10 +125,20 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
         sticker_id: { type: "string", description: "sticker_search 返回的 id" },
         category: { type: "string", description: "分类名" },
         index: { type: "integer", minimum: 1, description: "分类内 1-based 序号" },
+        ...(config.tagMode
+          ? {
+              tags: {
+                type: "array",
+                items: { type: "string" },
+                maxItems: 5,
+                description: "实验性标签列表，从同时匹配最多标签的表情包中随机发送",
+              },
+            }
+          : {}),
       },
       additionalProperties: false,
     }),
-    execute: async ({ sticker_id, category, index }) => {
+    execute: async ({ sticker_id, category, index, tags }) => {
       try {
         let sticker: StickerProjection;
         if (sticker_id) {
@@ -128,6 +150,10 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
           const selected = found[index - 1];
           if (!selected) return { ok: false, error: "sticker_index_out_of_range" };
           sticker = selected;
+        } else if (tags && tags.length > 0) {
+          const tagged = await pickBestTaggedSticker(store, scopeKey, tags, category);
+          if (!tagged) return { ok: false, error: "sticker_not_found" };
+          sticker = tagged;
         } else {
           const found = await store.random(scopeKey, category);
           if (!found) return { ok: false, error: "sticker_not_found" };
@@ -141,7 +167,10 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
           ok: true,
           id: sticker.id,
           category: sticker.category,
-          message: `已发送 ${sticker.category} 分类的表情包`,
+          tags: sticker.tags,
+          message: tags && tags.length > 0
+            ? `已按标签 ${tags.join("、")} 发送 ${sticker.category} 分类的表情包`
+            : `已发送 ${sticker.category} 分类的表情包`,
         };
       } catch (cause) {
         return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
@@ -162,14 +191,42 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
     },
   };
 
+  const tagsTool = config.tagMode
+    ? ({
+        name: "sticker_tags",
+        description: "实验性：列出当前可见表情包的标签和数量，用于 sticker_send 按标签发送。",
+        inputSchema: jsonSchema<Record<string, never>>({
+          type: "object",
+          additionalProperties: false,
+        }),
+        execute: async () => {
+          const tags = await store.listTags(scopeKey);
+          return { ok: true, tags, message: tags.length ? "已返回标签列表" : "暂无标签" };
+        },
+      } satisfies AgentTool<Record<string, never>, ToolResult>)
+    : null;
+
   const searchTool: AgentTool<SearchStickerInput, ToolResult> = {
     name: "sticker_search",
-    description: "搜索当前可见的表情包，返回紧凑 id 列表，供 sticker_send 使用。",
+    description: [
+      "搜索当前可见的表情包，返回紧凑 id 列表，供 sticker_send 使用。",
+      ...(config.tagMode ? ["实验性 tag 模式开启时，可按 tags 过滤。"] : []),
+    ].join("\n"),
     inputSchema: jsonSchema<SearchStickerInput>({
       type: "object",
       properties: {
         category: { type: "string", description: "按分类过滤" },
         keyword: { type: "string", description: "按分类名或 id 关键词过滤" },
+        ...(config.tagMode
+          ? {
+              tags: {
+                type: "array",
+                items: { type: "string" },
+                maxItems: 5,
+                description: "实验性标签列表，匹配任一标签即可",
+              },
+            }
+          : {}),
         limit: { type: "integer", minimum: 1, maximum: 50, description: "返回数量上限" },
       },
       additionalProperties: false,
@@ -181,6 +238,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
         stickers: stickers.map((sticker) => ({
           id: sticker.id,
           category: sticker.category,
+          tags: sticker.tags,
           mime: sticker.mime,
           size: sticker.size,
           usageCount: sticker.usageCount,
@@ -190,5 +248,22 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
     },
   };
 
-  return [stealTool, sendTool, categoriesTool, searchTool];
+  return [stealTool, sendTool, categoriesTool, searchTool, ...(tagsTool ? [tagsTool] : [])];
+}
+
+async function pickBestTaggedSticker(
+  store: StickerStore,
+  scopeKey: string,
+  tags: readonly string[],
+  category?: string,
+): Promise<StickerProjection | null> {
+  const normalized = normalizeTags(tags);
+  if (normalized.length === 0) return null;
+  const matches = await store.search(scopeKey, { category, tags: normalized, limit: 100 });
+  if (matches.length === 0) return null;
+  const score = (sticker: StickerProjection): number =>
+    normalized.reduce((count, tag) => count + ((sticker.tags ?? []).includes(tag) ? 1 : 0), 0);
+  const best = Math.max(...matches.map(score));
+  const candidates = matches.filter((sticker) => score(sticker) === best);
+  return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
 }

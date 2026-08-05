@@ -22,6 +22,7 @@ const config: StickerConfig = {
   classificationModel: "",
   classificationPrompt: "{{categories}}",
   maxImportFileBytes: 1024 * 1024,
+  tagMode: false,
 };
 
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
@@ -30,6 +31,7 @@ function projection(overrides: Partial<StickerProjection> = {}): StickerProjecti
   return {
     id: "a".repeat(64),
     category: "meme",
+    tags: [],
     mime: "image/png",
     size: pngBytes.byteLength,
     source: { kind: "steal" },
@@ -40,10 +42,15 @@ function projection(overrides: Partial<StickerProjection> = {}): StickerProjecti
   };
 }
 
-function createDeps() {
+function createDeps(overrides: Partial<StickerConfig> = {}) {
+  const effectiveConfig = { ...config, ...overrides };
   const store = {
     listCategories: vi.fn(async () => []),
-    save: vi.fn(async () => ({ status: "created", sticker: projection() })),
+    listTags: vi.fn(async () => []),
+    save: vi.fn(async (input: { tags?: readonly string[] }) => ({
+      status: "created",
+      sticker: projection({ tags: [...(input.tags ?? [])] }),
+    })),
     get: vi.fn(async () => projection()),
     search: vi.fn(async () => [projection()]),
     random: vi.fn(async () => projection()),
@@ -63,7 +70,7 @@ function createDeps() {
     sender,
     assets,
     scope,
-    config,
+    config: effectiveConfig,
   });
   return { store, classifier, sender, assets, tools };
 }
@@ -83,6 +90,14 @@ describe("sticker agent tools", () => {
     ]);
   });
 
+  it("exposes sticker_tags only in experimental tag mode", () => {
+    const disabled = createDeps();
+    expect(disabled.tools.some((tool) => tool.name === "sticker_tags")).toBe(false);
+
+    const enabled = createDeps({ tagMode: true });
+    expect(enabled.tools.some((tool) => tool.name === "sticker_tags")).toBe(true);
+  });
+
   it("sticker_steal reads the asset and saves with classified category", async () => {
     const deps = createDeps();
     const [tool] = deps.tools;
@@ -97,6 +112,32 @@ describe("sticker agent tools", () => {
       }),
     );
     expect(result).toMatchObject({ ok: true, status: "created", id: "a".repeat(64) });
+  });
+
+  it("sticker_steal auto-tags the classified category in tag mode", async () => {
+    const deps = createDeps({ tagMode: true });
+    const [tool] = deps.tools;
+    const result = await execute(tool, { asset_id: "a".repeat(32) });
+    expect(deps.store.save).toHaveBeenCalledWith(expect.objectContaining({ tags: ["meme"] }));
+    expect(result).toMatchObject({ ok: true, tags: ["meme"] });
+  });
+
+  it("sticker_send with tags picks from the best-matching stickers", async () => {
+    const deps = createDeps({ tagMode: true });
+    deps.store.search.mockResolvedValue([
+      projection({ id: "a".repeat(64), tags: ["a", "b"] }),
+      projection({ id: "b".repeat(64), tags: ["a"] }),
+    ]);
+    const [, sendTool] = deps.tools;
+    const result = await execute(sendTool, { tags: ["a", "b"] });
+    expect(deps.store.search).toHaveBeenCalledWith("global", {
+      category: undefined,
+      tags: ["a", "b"],
+      limit: 100,
+    });
+    expect(deps.sender.send).toHaveBeenCalledWith({ bytes: pngBytes, mediaType: "image/png" });
+    expect(deps.store.markUsed).toHaveBeenCalledWith("global", "a".repeat(64));
+    expect(result).toMatchObject({ ok: true, tags: ["a", "b"] });
   });
 
   it("sticker_send sends the selected sticker and records usage", async () => {
@@ -114,5 +155,13 @@ describe("sticker agent tools", () => {
     const [, , categoriesTool] = deps.tools;
     const result = await execute(categoriesTool, {});
     expect(result).toMatchObject({ ok: true, categories: [{ category: "meme", count: 2 }] });
+  });
+
+  it("sticker_tags returns tag summaries in tag mode", async () => {
+    const deps = createDeps({ tagMode: true });
+    deps.store.listTags.mockResolvedValue([{ tag: "猫猫", count: 2 }]);
+    const tagsTool = deps.tools.find((tool) => tool.name === "sticker_tags");
+    const result = await execute(tagsTool!, {});
+    expect(result).toMatchObject({ ok: true, tags: [{ tag: "猫猫", count: 2 }] });
   });
 });

@@ -89,6 +89,24 @@ yesimbot.sticker.cleanup
 
 其他设置保持默认即可。
 
+### 实验性 tag 模式（默认关闭）
+
+`tagMode` 默认关闭，属于实验性功能。开启后：
+
+- `sticker_steal` 收藏时会按分类自动打 tag。
+- 新增 `sticker_tags` 工具，用于查询当前标签和数量。
+- `sticker_send` 可传多个 `tags`，会从匹配最多标签的表情包中随机发送。
+- `sticker_search` 支持按 `tags` 过滤。
+
+开启方式：
+
+```yaml
+yesimbot-sticker-manager:
+  tagMode: true
+```
+
+tag 模式只新增 `tags` 字段，不改动现有 `category` 字段；关闭后原有分类功能不受影响。
+
 ## 从旧版迁移
 
 如果你之前用过 v3 的 `sticker-manager`，旧数据不会自动导入，需要手动迁移一次。

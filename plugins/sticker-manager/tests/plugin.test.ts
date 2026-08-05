@@ -21,6 +21,7 @@ vi.mock("koishi", () => {
       const: chain,
       dynamic: chain,
       string: chain,
+      boolean: chain,
       path: chain,
       number: chain,
     },
@@ -67,6 +68,7 @@ const config: StickerConfig = {
   classificationModel: "",
   classificationPrompt: "{{categories}}",
   maxImportFileBytes: 1024 * 1024,
+  tagMode: false,
 };
 
 describe("StickerManagerPlugin", () => {

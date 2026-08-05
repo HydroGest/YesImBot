@@ -3,6 +3,7 @@ import type { Context, Field, Types } from "koishi";
 import { sha256Hex, type StickerFileStore } from "./files.js";
 import {
   normalizeCategory,
+  normalizeTags,
   toProjection,
   type CategorySummary,
   type CleanupResult,
@@ -11,6 +12,7 @@ import {
   type StickerProjection,
   type StickerQuery,
   type StickerRow,
+  type TagSummary,
 } from "./types.js";
 
 export const STICKER_TABLE = "yesimbot_sticker";
@@ -20,6 +22,7 @@ const STICKER_FIELDS = {
   contentId: "string(64)",
   scopeKey: "string(512)",
   category: "string(128)",
+  tags: { type: "list", initial: [] },
   mime: "string(128)",
   size: "unsigned",
   source: "json",
@@ -62,16 +65,24 @@ export class StickerStore {
   public save(input: SaveStickerInput): Promise<SaveStickerResult> {
     return this.mutate(async () => {
       const contentId = sha256Hex(input.bytes);
+      const now = new Date().toISOString();
       const existing = await this.findRow(input.scopeKey, contentId);
-      if (existing) return { status: "duplicate", sticker: toProjection(existing) };
+      if (existing) {
+        const mergedTags = normalizeTags([...(existing.tags ?? []), ...(input.tags ?? [])]);
+        if (mergedTags.length > 0 && mergedTags.join("\u0000") !== (existing.tags ?? []).join("\u0000")) {
+          await this.model.set(STICKER_TABLE, { id: existing.id }, { tags: mergedTags, updatedAt: now });
+          return { status: "duplicate", sticker: toProjection({ ...existing, tags: mergedTags }) };
+        }
+        return { status: "duplicate", sticker: toProjection(existing) };
+      }
 
       const category = normalizeCategory(input.category) || "未分类";
-      const now = new Date().toISOString();
       const row: StickerRow = {
         id: `${input.scopeKey}:${contentId}`,
         contentId,
         scopeKey: input.scopeKey,
         category,
+        tags: normalizeTags(input.tags),
         mime: input.mediaType,
         size: input.bytes.byteLength,
         source: input.source,
@@ -115,16 +126,43 @@ export class StickerStore {
     });
   }
 
+  public listTags(scopeKey: string): Promise<TagSummary[]> {
+    return this.mutate(async () => {
+      const rows = await this.rows(scopeKey);
+      const counts = new Map<string, number>();
+      for (const row of rows) {
+        for (const tag of row.tags ?? []) {
+          counts.set(tag, (counts.get(tag) ?? 0) + 1);
+        }
+      }
+      return [...counts.entries()]
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((left, right) => left.tag.localeCompare(right.tag));
+    });
+  }
+
   public search(scopeKey: string, query: StickerQuery = {}): Promise<StickerProjection[]> {
     return this.mutate(async () => {
       let rows = await this.rows(scopeKey);
       if (query.category) {
         rows = rows.filter((row) => row.category === query.category);
       }
+      if (query.tags && query.tags.length > 0) {
+        const tags = normalizeTags(query.tags);
+        rows = rows.filter((row) => {
+          const rowTags = new Set(row.tags ?? []);
+          return query.matchAllTags
+            ? tags.every((tag) => rowTags.has(tag))
+            : tags.some((tag) => rowTags.has(tag));
+        });
+      }
       if (query.keyword) {
         const keyword = query.keyword.toLowerCase();
         rows = rows.filter(
-          (row) => row.category.toLowerCase().includes(keyword) || row.contentId.toLowerCase().includes(keyword),
+          (row) =>
+            row.category.toLowerCase().includes(keyword) ||
+            row.contentId.toLowerCase().includes(keyword) ||
+            (row.tags ?? []).some((tag) => tag.toLowerCase().includes(keyword)),
         );
       }
       rows.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -240,6 +278,7 @@ export class StickerStore {
       bytes,
       mediaType: row.mime,
       category: row.category,
+      tags: row.tags ?? [],
       source: {
         ...row.source,
         kind: "migrate",

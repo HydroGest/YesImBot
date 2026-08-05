@@ -8,6 +8,7 @@ export interface StickerConfig {
   classificationModel: string;
   classificationPrompt: string;
   maxImportFileBytes: number;
+  tagMode: boolean;
 }
 
 export type StickerSourceKind = "steal" | "import" | "v3" | "migrate";
@@ -26,6 +27,7 @@ export interface StickerRow {
   contentId: string;
   scopeKey: string;
   category: string;
+  tags: string[];
   mime: string;
   size: number;
   source: StickerSource;
@@ -38,6 +40,7 @@ export interface StickerRow {
 export interface StickerProjection {
   id: string;
   category: string;
+  tags: string[];
   mime: string;
   size: number;
   source: StickerSource;
@@ -51,9 +54,16 @@ export interface CategorySummary {
   count: number;
 }
 
+export interface TagSummary {
+  tag: string;
+  count: number;
+}
+
 export interface StickerQuery {
   category?: string;
   keyword?: string;
+  tags?: readonly string[];
+  matchAllTags?: boolean;
   limit?: number;
 }
 
@@ -62,6 +72,7 @@ export interface SaveStickerInput {
   bytes: Uint8Array;
   mediaType: string;
   category: string;
+  tags?: readonly string[];
   source: StickerSource;
 }
 
@@ -112,10 +123,21 @@ export function normalizeCategory(value: string): string {
   return cleaned.length > 64 ? cleaned.slice(0, 64).trim() : cleaned;
 }
 
+export function normalizeTags(value: readonly string[] | undefined): string[] {
+  const tags = new Set<string>();
+  for (const raw of value ?? []) {
+    const tag = normalizeCategory(raw).slice(0, 32).trim();
+    if (tag) tags.add(tag);
+    if (tags.size >= 8) break;
+  }
+  return [...tags];
+}
+
 export function toProjection(row: StickerRow): StickerProjection {
   return {
     id: row.contentId,
     category: row.category,
+    tags: row.tags ?? [],
     mime: row.mime,
     size: row.size,
     source: row.source,

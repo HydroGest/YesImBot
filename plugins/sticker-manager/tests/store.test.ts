@@ -61,6 +61,91 @@ describe("StickerStore", () => {
     expect(second.sticker.category).toBe("meme");
   });
 
+  it("stores normalized tags and exposes them in projections", async () => {
+    const { store } = await createStore();
+    const result = await store.save({
+      scopeKey: "global",
+      bytes: pngBytes,
+      mediaType: "image/png",
+      category: "meme",
+      tags: [" 猫猫 ", "猫猫", "开心"],
+      source: { kind: "steal" },
+    });
+    expect(result).toMatchObject({
+      status: "created",
+      sticker: { tags: ["猫猫", "开心"] },
+    });
+  });
+
+  it("merges tags into an existing sticker on duplicate saves", async () => {
+    const { store } = await createStore();
+    await store.save({
+      scopeKey: "global",
+      bytes: pngBytes,
+      mediaType: "image/png",
+      category: "meme",
+      source: { kind: "steal" },
+    });
+    const tagged = await store.save({
+      scopeKey: "global",
+      bytes: pngBytes,
+      mediaType: "image/png",
+      category: "meme",
+      tags: ["猫猫"],
+      source: { kind: "steal" },
+    });
+    const second = await store.save({
+      scopeKey: "global",
+      bytes: pngBytes,
+      mediaType: "image/png",
+      category: "meme",
+      tags: ["开心"],
+      source: { kind: "steal" },
+    });
+    expect(tagged).toMatchObject({ status: "duplicate", sticker: { tags: ["猫猫"] } });
+    expect(second).toMatchObject({ status: "duplicate", sticker: { tags: ["猫猫", "开心"] } });
+  });
+
+  it("searches and summarizes tags", async () => {
+    const { store } = await createStore();
+    const bytesA = new Uint8Array([...pngBytes, 1]);
+    const bytesB = new Uint8Array([...pngBytes, 2]);
+    const bytesC = new Uint8Array([...pngBytes, 3]);
+    await store.save({
+      scopeKey: "global",
+      bytes: bytesA,
+      mediaType: "image/png",
+      category: "a",
+      tags: ["猫猫", "开心"],
+      source: { kind: "steal" },
+    });
+    await store.save({
+      scopeKey: "global",
+      bytes: bytesB,
+      mediaType: "image/png",
+      category: "b",
+      tags: ["猫猫"],
+      source: { kind: "steal" },
+    });
+    await store.save({
+      scopeKey: "global",
+      bytes: bytesC,
+      mediaType: "image/png",
+      category: "c",
+      tags: ["工作"],
+      source: { kind: "steal" },
+    });
+
+    expect(await store.search("global", { tags: ["猫猫"], limit: 50 })).toHaveLength(2);
+    expect(await store.search("global", { tags: ["猫猫", "开心"], matchAllTags: true, limit: 50 })).toHaveLength(1);
+    expect(await store.search("global", { keyword: "开心", limit: 50 })).toHaveLength(1);
+    expect(await store.listTags("global")).toEqual([
+      { tag: "工作", count: 1 },
+      { tag: "开心", count: 1 },
+      { tag: "猫猫", count: 2 },
+    ]);
+  });
+
   it("keeps shared channel scope keys independent of selfId", () => {
     expect(scopeKeyFor(sharedScope, { scope: "channel" })).toBe("shared:test:room-1");
     expect(scopeKeyFor({ ...sharedScope, selfId: "bot-2" }, { scope: "channel" })).toBe("shared:test:room-1");
