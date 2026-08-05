@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define Session Gateway entry points, per-platform Resolver registration, Resolver-owned image persistence, and scoped asset ownership.
+Define Session Gateway entry points, per-platform Resolver registration, Resolver-owned image and text-file persistence, and scoped asset ownership.
 ## Requirements
 ### Requirement: Database-Backed Shared Channel Admission
 Core MUST declare Koishi Database as a required dependency and MUST use the Koishi Channel row as the only assignee authority for shared Sessions. Gateway MUST query that row exactly once for each shared external Session, before Resolver selection, Store creation, persistence, Runtime creation, or other Runtime work. A successful Gateway check establishes the event's assignee snapshot.
@@ -95,21 +95,34 @@ A resolved ordinary message MUST carry its content as Resolver Draft `elements` 
 - **THEN** Gateway MUST persist those elements as the sole structured message content
 - **AND** the persisted record MUST NOT contain a `text` field
 
-#### Scenario: Resolver owns image source handling
-- **WHEN** a Resolver returns an image element
+#### Scenario: Resolver owns resource source handling
+- **WHEN** a Resolver returns an image or file element
 - **THEN** Gateway MUST preserve that successful Resolver output
-- **AND** it MUST NOT replace source URLs, paths, data URIs, or already-persisted image IDs
+- **AND** it MUST NOT replace source URLs, paths, data URIs, or already-persisted resource IDs
 
-### Requirement: OneBot Resolver Image Persistence
-The OneBot Resolver MUST recursively persist `img` elements that it can load and return each successfully persisted image as `h("img", { id })`, where `id` is a complete 32-character lowercase hexadecimal ID. A successful persisted image MUST contain no source URL, path, or data URI. The Resolver MAY apply platform-specific download limits; Core MUST NOT impose an inbound image-download policy.
+### Requirement: OneBot Resolver Resource Persistence
+The OneBot Resolver MUST recursively persist `img` elements that it can load and return each successfully persisted image as `h("img", { id })`, where `id` is a complete 32-character lowercase hexadecimal ID. It MUST also persist `file` elements whose content is text, returning each as `h("file", { id, title })` where `title` is the observed filename. A successful persisted resource MUST contain no source URL, path, or data URI. The Resolver MAY apply platform-specific download limits; Core MUST NOT impose an inbound download policy.
+
+A `file` element MUST qualify as text only when its filename carries a recognized text extension and its downloaded bytes decode as strict UTF-8. The extension check MUST precede the download so that non-text content is never fetched. A `file` element that fails either check MUST be preserved unchanged.
+
 #### Scenario: OneBot persists an image
 - **WHEN** a OneBot message contains an image whose bytes the Resolver successfully persists
 - **THEN** the OneBot Resolver MUST write its bytes through the supplied Store
 - **AND** the returned Draft MUST contain an `img` with its complete persisted ID
 
-#### Scenario: OneBot preserves an image that cannot persist
-- **WHEN** one OneBot image load or Store write fails
-- **THEN** the OneBot Resolver MUST preserve that original image element
+#### Scenario: OneBot persists a text file
+- **WHEN** a OneBot message contains a `file` whose filename has a recognized text extension and whose bytes decode as strict UTF-8
+- **THEN** the OneBot Resolver MUST write its bytes through the supplied Store
+- **AND** the returned Draft MUST contain a `file` with its persisted ID and its observed filename as `title`
+
+#### Scenario: OneBot preserves a non-text file
+- **WHEN** a OneBot `file` element has no recognized text extension, or its downloaded bytes do not decode as strict UTF-8
+- **THEN** the OneBot Resolver MUST preserve that original file element
+- **AND** it MUST NOT download content whose extension is already disqualifying
+
+#### Scenario: OneBot preserves a resource that cannot persist
+- **WHEN** one OneBot image or file load or Store write fails
+- **THEN** the OneBot Resolver MUST preserve that original element
 - **AND** it MUST continue processing sibling elements
 
 #### Scenario: Resolver failure is authoritative
@@ -117,11 +130,11 @@ The OneBot Resolver MUST recursively persist `img` elements that it can load and
 - **THEN** Gateway MUST record a resolver diagnostic
 - **AND** it MUST NOT persist or route that Session
 
-### Requirement: OneBot Non-Image Element Preservation
-The OneBot Resolver MUST transform only `img` elements. It MUST preserve every non-image Element's original type, attributes, and children unchanged while recursively processing images within those children. Session quote data is not an Element input protocol and receives no quote-specific normalization.
+### Requirement: OneBot Unpersisted Element Preservation
+The OneBot Resolver MUST transform only `img` elements and qualifying text `file` elements. It MUST preserve every other Element's original type, attributes, and children unchanged while recursively processing persistable resources within those children. Session quote data is not an Element input protocol and receives no quote-specific normalization.
 
 #### Scenario: Forward or unknown element is accepted
-- **WHEN** an admitted OneBot message contains forward or any other non-image elements
+- **WHEN** an admitted OneBot message contains forward or any other element that is neither an image nor a qualifying text file
 - **THEN** the Resolver output MUST retain their original type, attributes, and children
 - **AND** it MUST NOT apply forward-specific normalization
 ### Requirement: Scoped Asset Service Ownership

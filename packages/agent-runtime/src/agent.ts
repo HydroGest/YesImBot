@@ -37,7 +37,7 @@ export interface AgentConfig {
     | SystemPromptAppend
     | ((runtime: AgentPluginRuntime) => Promise<SystemPromptAppend | void> | SystemPromptAppend | void);
   tools?: AgentToolSet;
-  terminalTool?: boolean | { name: string };
+  terminalTool?: boolean | { name: string; description?: string };
   storage?: AgentStorage<AgentEntry>;
   plugins?: AgentPlugin[];
   initialState?: AgentState;
@@ -123,6 +123,8 @@ export function createAgent(config: AgentConfig): Agent {
       ? config.terminalTool.name
       : "finalize"
     : undefined;
+  const terminalToolDescription =
+    config.terminalTool && typeof config.terminalTool === "object" ? config.terminalTool.description : undefined;
 
   let storageReady = Promise.resolve();
   const mutateStorage = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -244,6 +246,7 @@ export function createAgent(config: AgentConfig): Agent {
             {
               name: terminalToolName!,
               description:
+                terminalToolDescription ??
                 "Mark the current assistant response as final. Call this after final text and required tools.",
               inputSchema: jsonSchema({
                 type: "object",

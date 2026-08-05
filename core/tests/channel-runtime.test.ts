@@ -117,6 +117,7 @@ function createRuntime(
   basePath = "/tmp/yesimbot-channel-runtime",
   reply?: Partial<Config["reply"]>,
   registrations: ReadonlyMap<string, { prompt: string; open: ResourceSchemeOpenHandler }> = new Map(),
+  imageCapable = false,
 ) {
   const ctx = new Context();
   const assets = { clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() };
@@ -130,6 +131,7 @@ function createRuntime(
     artifacts: artifacts as never,
     registrations,
     model: {} as never,
+    imageCapable,
     imageBudget: null,
     agentPlugins: [],
     storage: createJsonlStorage("/tmp/yesimbot-channel-runtime/messages.jsonl"),
@@ -190,12 +192,23 @@ describe("ChannelRuntime", () => {
     const tools = state.options?.tools as AgentTool[] | undefined;
     const read = tools?.find((tool) => tool.name === "read");
     expect(read?.description).toContain("仅在确实需要内容时读取精确 URI");
-    expect(read?.description).toContain("读取不会创建另一个 artifact");
+    expect(read?.description).toContain("读取不会创建新的 artifact");
     expect(read?.description).toContain("URI 字符串永不传给 Bash");
-    expect(read?.description).toContain("仅在图像能力模型显式相关读取后投影图像字节");
     const description = read?.description ?? "";
     expect(description.indexOf("- alpha://")).toBeLessThan(description.indexOf("- zeta://"));
     expect(description.indexOf("- artifact://")).toBeLessThan(description.indexOf("- alpha://"));
+  });
+
+  it("describes image projection only for an image-capable model", () => {
+    createRuntime({ decide: async () => "wait" });
+    const withoutImages = (state.options?.tools as AgentTool[] | undefined)?.find((tool) => tool.name === "read");
+    expect(withoutImages?.description).toContain("当前模型无法查看图片内容");
+    expect(withoutImages?.description).not.toContain("图片本身会在这次读取之后单独提供给你");
+
+    createRuntime({ decide: async () => "wait" }, undefined, undefined, undefined, undefined, true);
+    const withImages = (state.options?.tools as AgentTool[] | undefined)?.find((tool) => tool.name === "read");
+    expect(withImages?.description).toContain("图片本身会在这次读取之后单独提供给你");
+    expect(withImages?.description).not.toContain("当前模型无法查看图片内容");
   });
 
   it("continues channel FIFO work after a rejected operation", async () => {

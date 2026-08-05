@@ -12,7 +12,7 @@ import { createOneBotTranslator } from "./gateway/onebot.js";
 import type { EventMap, EventRecord } from "./messages.js";
 import { ModelService } from "./model/index.js";
 import { RuntimeManager, type ChannelPluginFactory } from "./runtime/index.js";
-import { ensureDefaultPersona } from "./runtime/prompt.js";
+import { ensureAgentsFile, ensureDefaultPersona } from "./runtime/prompt.js";
 import type { ResourceSchemeOpenHandler } from "./runtime/read.js";
 import { ChannelScope, ChannelStorage } from "./runtime/storage.js";
 
@@ -105,7 +105,9 @@ export default class YesImBotService extends Service<Config> {
 
   public override async start(): Promise<void> {
     await this.storage.start();
-    await ensureDefaultPersona(resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir));
+    const promptBasePath = resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir);
+    await ensureDefaultPersona(promptBasePath);
+    await ensureAgentsFile(promptBasePath);
     const translators = [createOneBotTranslator];
     for (const createTranslator of translators) {
       const dispose = this.registerTranslator(createTranslator(this.ctx));

@@ -118,8 +118,12 @@ export class ChannelRuntime {
       : resolve(this.ctx.baseDir, opts.config.basePath);
     const sendMessageTool: AgentTool<SendMessageInput, SendMessageResult> = {
       name: "sendMessage",
-      description:
-        "使用当前 Bot 向指定频道发送一条消息。img/file 的 src 可使用 asset://、artifact:// 或 workspace:// 引用现有频道资源，Core 会在发送前解析。",
+      description: [
+        "向当前频道以外的频道发送一条消息。回复当前频道不要用它，直接输出文本即可；传入当前频道 ID 会被拒绝。",
+        "content 与直接输出使用同一套元素语法：<message/> 分隔消息、<text> 逐字交付、<inner_thought> 会被剥离。",
+        "只有 <img> 和 <file> 的 src 会被解析为频道资源，可用的 URI 方案见 read 工具；解析失败该元素会被整条丢掉。",
+        "返回 {ok:true, messageIds} 或 {ok:false, error:{name,message}}，必须检查 ok，失败不会有任何消息发出。",
+      ].join("\n"),
       inputSchema: jsonSchema<SendMessageInput>({
         type: "object",
         properties: {
@@ -133,6 +137,16 @@ export class ChannelRuntime {
         required: ["channelId", "content"],
       }),
       execute: async ({ channelId, content }, execution) => {
+        if (channelId === this.scope.channelId) {
+          this.logger.warn({ event: "send_message_rejected", channelId });
+          return {
+            ok: false,
+            error: {
+              name: "InvalidChannel",
+              message: "sendMessage 不能向当前频道发送。回复当前频道请直接输出文本。",
+            },
+          };
+        }
         this.logger.info({ event: "send_message", channelId, content });
         try {
           const segments = await prepareOutputSegments(parseReply(content), this.reader, {
@@ -162,7 +176,7 @@ export class ChannelRuntime {
     this.reader = reader;
     const readTool: AgentTool<{ uri: string }, object> = {
       name: "read",
-      description: buildReadDescription(opts.registrations),
+      description: buildReadDescription(opts.registrations, opts.imageCapable),
       inputSchema: jsonSchema<{ uri: string }>({
         type: "object",
         properties: {
@@ -199,7 +213,13 @@ export class ChannelRuntime {
         createReadProjectionPlugin(reader, opts.imageCapable, opts.imageBudget),
         ...opts.agentPlugins,
       ],
-      terminalTool: true,
+      terminalTool: {
+        name: "finalize",
+        description: [
+          "结束本轮回复。已经写完要发送的内容、或决定这次不发言时调用。",
+          "纯文本回复通常不需要调用它；它的用途是在不产生任何对外消息的情况下结束本轮。",
+        ].join("\n"),
+      },
     });
   }
 
@@ -504,28 +524,60 @@ function renderElements(elements: readonly Element[]): string {
 function hydrateElement(element: Element): Element {
   if (element.type === "img") {
     const id = element.attrs.id;
-    if (typeof id === "string" && /^[a-f0-9]{32}$/.test(id)) {
+    if (typeof id === "string" && ASSET_ID.test(id)) {
       return h("text", { content: `[图片：asset://${id}]` });
     }
     return h("text", { content: "[图片]" });
   }
+  if (element.type === "file") {
+    const id = element.attrs.id;
+    const name = fileDisplayName(element);
+    if (typeof id === "string" && ASSET_ID.test(id)) {
+      return h("text", { content: `[文件：${name ? `${name} ` : ""}asset://${id}]` });
+    }
+    return h("text", { content: name ? `[文件：${name}]` : "[文件]" });
+  }
   return h(element.type, element.attrs, element.children.map(hydrateElement));
 }
 
-function buildReadDescription(registrations: ReadonlyMap<string, { prompt: string }>): string {
+const ASSET_ID = /^[a-f0-9]{32}$/;
+
+/** Prefers the Satori `title` attribute, falling back to the raw OneBot `file` attribute. */
+function fileDisplayName(element: Element): string | undefined {
+  for (const key of ["title", "file"] as const) {
+    const value = element.attrs[key];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+function buildReadDescription(registrations: ReadonlyMap<string, { prompt: string }>, imageCapable: boolean): string {
   const lines = [
-    "读取资源内容。仅在确实需要内容时读取精确 URI。支持以下 URI 方案：",
-    "- asset://<id>: 平台输入的不可变图片资源",
-    "- artifact://<tool>/<uuid>: 工具输出的不可变工件",
-    "- workspace:///<path>: 工作区文件（可变）",
-    "- skill://<name>/<path>: 只读技能文件（仅在 Workspace 启用时）",
+    "读取资源内容。仅在确实需要内容时读取精确 URI，不要猜测或拼造 URI。",
+    "URI 形如 scheme://authority[/path]，不能包含 ?、#、%，也不能有 . 或 .. 路径段。",
+    "- asset://<32位十六进制id>：平台输入的不可变资源，包括图片与文本文件。消息里看到的 [图片：asset://xxx] 和 [文件：名字 asset://xxx] 就是它；路径部分必须为空。",
+    "- artifact://<tool>/<uuid>：工具输出的不可变工件，uuid 由工具返回，原样传入。",
   ];
   for (const [scheme, { prompt }] of [...registrations.entries()].sort(([left], [right]) =>
     left.localeCompare(right),
   )) {
-    lines.push(`- ${scheme}://: ${prompt}`);
+    lines.push(`- ${scheme}://：${prompt}`);
   }
-  lines.push("");
-  lines.push("URI 字符串永不传给 Bash。仅在图像能力模型显式相关读取后投影图像字节；读取不会创建另一个 artifact。");
+  lines.push(
+    "",
+    "返回 {uri, filename?, mediaType?, text?, error?}。",
+    "- 文本资源在 text 中直接给出内容，过长会被截断并以 [内容已截断] 结尾。",
+    imageCapable
+      ? "- 图片资源的 text 只是占位描述，图片本身会在这次读取之后单独提供给你；一次只读一张，连读多张可能超出预算而被丢弃。"
+      : "- 图片资源只给出占位描述，当前模型无法查看图片内容。",
+    "- 其他二进制只给出类型与大小，无法查看内容。",
+    "- error 存在时不会有 text：invalid_resource_uri 表示 URI 形状不合法，检查后重写而不是原样重试；resource_not_found 表示资源不存在，换来源；resource_unavailable 表示该方案当前未启用；resource_too_large 表示超出读取上限，无法读取；timeout 与 resource_read_aborted 可以重试一次；resource_read_failed 表示读取失败。",
+    "",
+    "例：",
+    '- 看到 [图片：asset://a1b2c3…] 想知道图里是什么 → read({uri:"asset://a1b2c3…"})',
+    '- 工具返回 artifact://web-fetch/0192abcd-… → read({uri:"artifact://web-fetch/0192abcd-…"})',
+    "",
+    "asset 与 artifact 不是沙箱里的文件，任何挂载路径下都找不到它们，URI 字符串永不传给 Bash。读取不会创建新的 artifact。",
+  );
   return lines.join("\n");
 }

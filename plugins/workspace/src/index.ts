@@ -288,7 +288,7 @@ const SKILL_SCHEME_PROMPT =
   "读取已注册技能文件：skill://<skill-name>/<relative-path>。执行技能脚本请使用 /skills/<skill-name>/... 虚拟路径。";
 
 const WORKSPACE_SCHEME_PROMPT =
-  "workspace:///relative/path 是频道工作区文件的外部引用；内部操作请使用 readFile/bash 的 /home/workspace/... 路径。";
+  'workspace:///relative/path 是频道工作区文件的对外引用，与沙箱内的 /home/workspace/relative/path 是同一个文件。沙箱内部操作用 readFile/bash 的 /home/workspace/... 路径，bash 不接受 workspace:// 形式。把工作区文件发出去时可用作 img/file 的 src，例如 <img src="workspace:///out/chart.png"/>。';
 
 function assertNoSkillMountOverlap(mounts: {
   persistPaths: Record<string, string>;
