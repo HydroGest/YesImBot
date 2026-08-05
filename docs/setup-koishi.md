@@ -13,7 +13,8 @@
 - Node.js 18 或更高版本
 - Git
 - Yarn 4（建议通过 Corepack 提供）
-- 首次运行需要联网，因为要拉取 yesimbot dev 分支和 npm 依赖
+- 默认使用当前本地 yesimbot 源码，不自动拉取；需要同步远端 dev 时加 `--pull`
+- 首次运行需要联网，因为要下载 create-koishi 和 npm 依赖
 
 ## 从零安装
 
@@ -26,7 +27,7 @@ node scripts/setup-koishi.mjs --create-app ../my-koishi
 脚本会完成以下步骤：
 
 1. 使用官方 `create-koishi@latest` 在 `../my-koishi` 创建新 Koishi 应用。
-2. 确保当前 yesimbot 仓库位于 `dev` 分支。
+2. 默认直接使用当前本地 yesimbot 源码；传入 `--pull` 时先同步到远端 `dev` 分支。
 3. 把 Koishi 应用路径写入 yesimbot 的本地状态文件 `.koishi-app-path`。
 4. 自动在 yesimbot 仓库内执行 `yarn install`，生成 `yarn.lock` 并安装依赖。
 5. 扫描 yesimbot 内的所有 Koishi 插件包。
@@ -129,6 +130,7 @@ node scripts/setup-koishi.mjs --app ../koishi-app
 | `--app <dir>` | 指定已有 Koishi 应用目录 |
 | `--create-app <dir>` | 自动创建新的 Koishi 应用 |
 | `--check` | 只检查当前配置，不修改文件 |
+| `--pull` | 先 fetch 并 fast-forward 到远端 `dev`；此时要求 yesimbot 仓库无未提交修改 |
 | `--start` | 完成配置和构建后执行 `yarn dev` |
 | `--repo <url>` | 指定 yesimbot git 地址；仅在没有 origin 时使用 |
 | `--help` | 显示帮助 |
@@ -143,6 +145,9 @@ node scripts/setup-koishi.mjs --check
 
 # 接入已有应用
 node scripts/setup-koishi.mjs --app ../koishi-app
+
+# 先同步远端 dev 再接入
+node scripts/setup-koishi.mjs --app ../koishi-app --pull
 
 # 创建新应用并直接启动
 node scripts/setup-koishi.mjs --create-app ../new-koishi --start
@@ -186,22 +191,22 @@ plugins:
 
 ## 安全行为
 
-- 如果 yesimbot 仓库有未提交的修改，脚本会停止，避免覆盖用户工作。
-- 分支更新只使用 `git merge --ff-only`，不会强制改写本地提交。
+- 默认不修改 yesimbot 仓库的 git 状态，因此本地有未提交修改也可以运行。
+- 使用 `--pull` 时才同步远端 `dev`，并且要求工作区干净；分支更新只使用 `git merge --ff-only`。
 - `--create-app` 目标目录如果已经存在，脚本会停止，避免覆盖已有项目。
 
 ## 常见问题
 
 ### 提示 yesimbot 有未提交修改
 
-先提交或暂存当前修改：
+只有使用 `--pull` 同步远端 `dev` 时才要求工作区干净。先提交或暂存当前修改：
 
 ```bash
 git -C external/yesimbot status
 git -C external/yesimbot stash
 ```
 
-再重新运行脚本。
+再重新运行 `--pull`。如果不想提交或暂存，直接运行不带 `--pull` 的 setup 即可。
 
 ### 提示找不到 Koishi 应用
 

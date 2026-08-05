@@ -25,6 +25,7 @@ function parseArgs() {
     createApp: null,
     repo: DEFAULT_REPO,
     check: false,
+    pull: false,
     start: false,
     help: false,
   };
@@ -33,6 +34,8 @@ function parseArgs() {
     const arg = args[index];
     if (arg === "--check") {
       options.check = true;
+    } else if (arg === "--pull") {
+      options.pull = true;
     } else if (arg === "--start") {
       options.start = true;
     } else if (arg === "--help") {
@@ -171,7 +174,7 @@ function createKoishiApp(directory) {
 function ensureDevBranch() {
   const dirty = run("git", ["-C", yesimbotRoot, "status", "--porcelain"], { quiet: true });
   if (dirty.errorMessage || dirty.stdout.trim()) {
-    fail(`${yesimbotRoot} has uncommitted changes; commit or stash them before running setup`);
+    fail(`${yesimbotRoot} has uncommitted changes; commit or stash them before using --pull`);
   }
 
   const remote = run("git", ["-C", yesimbotRoot, "remote", "get-url", "origin"], { quiet: true });
@@ -432,11 +435,18 @@ function main() {
         "  --app <dir>      target Koishi app directory (auto-detected when omitted)",
         "  --create-app <dir> create a new Koishi app before setup",
         "  --check          verify the current setup without changing files",
+        "  --pull           fetch and fast-forward yesimbot to origin/dev first",
         "  --start          run `yarn start` after setup",
         "  --repo <url>     git URL used when no origin remote exists",
       ].join("\n"),
     );
     return;
+  }
+
+  if (parsed.pull) {
+    ensureDevBranch();
+  } else {
+    log("using local yesimbot repository without updating");
   }
 
   if (parsed.check) {
@@ -445,7 +455,6 @@ function main() {
     return;
   }
 
-  ensureDevBranch();
   saveAppPath();
 
   log("installing yesimbot workspace dependencies");
