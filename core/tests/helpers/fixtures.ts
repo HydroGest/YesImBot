@@ -26,6 +26,7 @@ export function defaultConfig(overrides: Partial<Config> = {}): Config {
   return {
     basePath: "data/yesimbot",
     chatModel: "test:model",
+    visionModel: undefined,
     logLevel: 2,
     allowedChannels: [],
     imageInput: false,

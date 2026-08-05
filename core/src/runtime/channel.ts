@@ -27,15 +27,11 @@ import {
   type Message,
   type MessageRecord,
 } from "../messages.js";
+import { createDescribeImageTool } from "./describe-image.js";
 import { OutputQueue } from "./output-queue.js";
 import { prepareOutputSegments } from "./output.js";
 import { buildCoreSystemPrompt } from "./prompt.js";
-import {
-  createReadProjectionPlugin,
-  createResourceReader,
-  type ResourceReader,
-  type ResourceSchemeOpenHandler,
-} from "./read.js";
+import { createReadTool, createResourceReader, type ResourceReader, type ResourceSchemeOpenHandler } from "./read.js";
 import { parseReply } from "./reply.js";
 import { ChannelScope, scopeMapKey } from "./storage.js";
 import type { WillEngine } from "./will.js";
@@ -49,6 +45,7 @@ export interface ChannelRuntimeOptions {
   readonly artifacts: ArtifactStore;
   readonly registrations: ReadonlyMap<string, { prompt: string; open: ResourceSchemeOpenHandler }>;
   readonly model: LanguageModel;
+  readonly visionModel?: LanguageModel;
   readonly imageBudget: ImageBudget | null;
   readonly imageCapable: boolean;
   readonly agentPlugins: readonly AgentPlugin[];
@@ -174,25 +171,25 @@ export class ChannelRuntime {
       config: opts.config,
     });
     this.reader = reader;
-    const readTool: AgentTool<{ uri: string }, object> = {
-      name: "read",
-      description: buildReadDescription(opts.registrations, opts.imageCapable),
-      inputSchema: jsonSchema<{ uri: string }>({
-        type: "object",
-        properties: {
-          uri: {
-            type: "string",
-            description: "要读取的资源 URI",
-          },
-        },
-        required: ["uri"],
+    const tools: AgentToolSet = [
+      sendMessageTool,
+      createReadTool({
+        logger: this.logger,
+        reader,
+        imageCapable: opts.imageCapable,
+        imageBudget: opts.imageBudget,
+        describeImageAvailable: opts.visionModel !== undefined,
+        registrations: opts.registrations,
       }),
-      execute: async ({ uri }, execution) => {
-        this.logger.info({ event: "resource_read", uri });
-        return reader.read(uri, execution.abortSignal);
-      },
-    };
-    const tools: AgentToolSet = [sendMessageTool, readTool];
+    ];
+    if (opts.visionModel) {
+      tools.push(
+        createDescribeImageTool({
+          assets: opts.assets,
+          model: opts.visionModel,
+        }),
+      );
+    }
     this.agent = createAgent({
       id: scopeMapKey(this.scope),
       model: opts.model,
@@ -210,7 +207,6 @@ export class ChannelRuntime {
           imageBudget: opts.imageBudget,
           warn: (event, fields) => this.logger.warn({ event, ...fields }),
         }),
-        createReadProjectionPlugin(reader, opts.imageCapable, opts.imageBudget),
         ...opts.agentPlugins,
       ],
       terminalTool: {
@@ -549,35 +545,4 @@ function fileDisplayName(element: Element): string | undefined {
     if (typeof value === "string" && value.length > 0) return value;
   }
   return undefined;
-}
-
-function buildReadDescription(registrations: ReadonlyMap<string, { prompt: string }>, imageCapable: boolean): string {
-  const lines = [
-    "读取资源内容。仅在确实需要内容时读取精确 URI，不要猜测或拼造 URI。",
-    "URI 形如 scheme://authority[/path]，不能包含 ?、#、%，也不能有 . 或 .. 路径段。",
-    "- asset://<32位十六进制id>：平台输入的不可变资源，包括图片与文本文件。消息里看到的 [图片：asset://xxx] 和 [文件：名字 asset://xxx] 就是它；路径部分必须为空。",
-    "- artifact://<tool>/<uuid>：工具输出的不可变工件，uuid 由工具返回，原样传入。",
-  ];
-  for (const [scheme, { prompt }] of [...registrations.entries()].sort(([left], [right]) =>
-    left.localeCompare(right),
-  )) {
-    lines.push(`- ${scheme}://：${prompt}`);
-  }
-  lines.push(
-    "",
-    "返回 {uri, filename?, mediaType?, text?, error?}。",
-    "- 文本资源在 text 中直接给出内容，过长会被截断并以 [内容已截断] 结尾。",
-    imageCapable
-      ? "- 图片资源的 text 只是占位描述，图片本身会在这次读取之后单独提供给你；一次只读一张，连读多张可能超出预算而被丢弃。"
-      : "- 图片资源只给出占位描述，当前模型无法查看图片内容。",
-    "- 其他二进制只给出类型与大小，无法查看内容。",
-    "- error 存在时不会有 text：invalid_resource_uri 表示 URI 形状不合法，检查后重写而不是原样重试；resource_not_found 表示资源不存在，换来源；resource_unavailable 表示该方案当前未启用；resource_too_large 表示超出读取上限，无法读取；timeout 与 resource_read_aborted 可以重试一次；resource_read_failed 表示读取失败。",
-    "",
-    "例：",
-    '- 看到 [图片：asset://a1b2c3…] 想知道图里是什么 → read({uri:"asset://a1b2c3…"})',
-    '- 工具返回 artifact://web-fetch/0192abcd-… → read({uri:"artifact://web-fetch/0192abcd-…"})',
-    "",
-    "asset 与 artifact 不是沙箱里的文件，任何挂载路径下都找不到它们，URI 字符串永不传给 Bash。读取不会创建新的 artifact。",
-  );
-  return lines.join("\n");
 }

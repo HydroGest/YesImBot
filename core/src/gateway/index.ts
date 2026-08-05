@@ -4,7 +4,7 @@ import { deliverOutput } from "../delivery.js";
 import { ChannelScope } from "../index.js";
 import type { EventRecord, MessageRecord, RecordBase } from "../messages.js";
 import type { ChannelRuntimeResult } from "../runtime/index.js";
-import { defaultTranslator } from "./default.js";
+import { createDefaultTranslator } from "./default.js";
 import type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
 
 export class Gateway {
@@ -15,6 +15,7 @@ export class Gateway {
   private readonly opts: GatewayOptions;
 
   private translators = new Map<string, PlatformTranslator>();
+  private readonly fallback: PlatformTranslator;
   private sessions = new WeakSet<object>();
   private tasks = new Set<Promise<void>>();
   private disposers: Array<() => unknown> = [];
@@ -25,6 +26,7 @@ export class Gateway {
     this.config = config;
     this.logger = ctx.logger("yesimbot.gateway");
     this.logger.level = config.logLevel ?? 2;
+    this.fallback = createDefaultTranslator(ctx);
 
     this.opts = opts;
 
@@ -84,7 +86,7 @@ export class Gateway {
     try {
       await this.opts.ready();
       await assertAssignee(this.ctx, scope);
-      const translator = this.translators.get(session.platform) ?? this.translators.get("*") ?? defaultTranslator;
+      const translator = this.translators.get(session.platform) ?? this.translators.get("*") ?? this.fallback;
       const base = sessionBase(session, scope);
       const record = await translator.translate(base, session, this.opts.assets.createStore(scope));
       if (!record) return;
@@ -184,4 +186,4 @@ function isMessageSession(session: Session): boolean {
 }
 
 export type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
-export { defaultTranslator } from "./default.js";
+export { createDefaultTranslator } from "./default.js";

@@ -86,6 +86,7 @@ function createManager(
   const config: CoreConfig = {
     basePath,
     chatModel: "test:model",
+    visionModel: undefined,
     logLevel: 2,
     allowedChannels: [],
     imageInput: false,
@@ -346,6 +347,40 @@ describe("RuntimeManager", () => {
       maxBytesPerImage: 1024,
       maxTotalBytes: 2048,
     });
+  });
+
+  it("resolves a configured vision model that declares image input", async () => {
+    const { manager, config, model, resolveChatModel } = createManager();
+    config.visionModel = "vision:model";
+    resolveChatModel.mockReturnValue({ model, providerId: "vision", entry: { modalities: { input: ["image"] } } });
+
+    await manager.route(record("room"));
+
+    expect(runtimeOptions(state.runtimes[0]!).visionModel).toBe(model);
+  });
+
+  it("skips the vision model when it lacks image input", async () => {
+    const { manager, config, model, resolveChatModel } = createManager();
+    config.visionModel = "vision:model";
+    resolveChatModel.mockReturnValue({ model, providerId: "vision", entry: { modalities: { input: ["text"] } } });
+
+    await manager.route(record("room"));
+
+    expect(runtimeOptions(state.runtimes[0]!).visionModel).toBeUndefined();
+  });
+
+  it("skips the vision model when none is configured or resolution fails", async () => {
+    const { manager, config, resolveChatModel, model } = createManager();
+    await manager.route(record("room"));
+    expect(runtimeOptions(state.runtimes[0]!).visionModel).toBeUndefined();
+
+    config.visionModel = "vision:broken";
+    resolveChatModel.mockImplementation((id: string) => {
+      if (id === "vision:broken") throw new Error("unknown model");
+      return { model, providerId: "test", entry: {} };
+    });
+    await manager.route(record("room", { selfId: "other" }));
+    expect(runtimeOptions(state.runtimes[1]!).visionModel).toBeUndefined();
   });
 
   it("injects configured idle compaction with the main model fallback", async () => {

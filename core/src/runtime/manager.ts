@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { createJsonlStorage, type AgentEntry, type AgentPlugin, type AgentStorage } from "@yesimbot/agent-runtime";
+import type { LanguageModel } from "ai";
 import type { Awaitable, Bot, Context, Logger } from "koishi";
 import { Universal } from "koishi";
 
@@ -285,6 +286,7 @@ export class RuntimeManager {
     const compactModel = this.config.session.compact.model
       ? this.model.resolveChatModel(this.config.session.compact.model)
       : resolved;
+    const visionModel = resolveVisionModel(this.config.visionModel, this.model, this.logger, scope);
     const persona = await readPersona(basePath, this.logger);
     const summarize = (entries: readonly AgentEntry[]) => {
       const compact = findLastCompact(entries);
@@ -341,6 +343,7 @@ export class RuntimeManager {
       artifacts,
       registrations,
       model: resolved.model,
+      visionModel,
       imageBudget: this.config.imageInput ? ({ ...this.config.imageInput } as ImageBudget) : null,
       imageCapable: resolved.entry.modalities?.input?.includes("image") ?? false,
       idleTimeout: this.config.session.idle.timeout,
@@ -376,6 +379,28 @@ export class RuntimeManager {
 
   private assertOpen(): void {
     if (this.stopped) throw new Error("Runtime manager is stopped");
+  }
+}
+
+function resolveVisionModel(
+  configured: string | undefined,
+  model: ModelService,
+  logger: Logger,
+  scope: ChannelScope,
+): LanguageModel | undefined {
+  if (!configured) return undefined;
+  try {
+    const ref = model.resolveChatModel(configured);
+    if (ref.entry.modalities?.input?.includes("image")) return ref.model;
+    logger.warn("vision_model_without_image_input", { model: configured, scope });
+    return undefined;
+  } catch (cause) {
+    logger.warn("vision_model_unavailable", {
+      model: configured,
+      scope,
+      cause: cause instanceof Error ? cause.message : String(cause),
+    });
+    return undefined;
   }
 }
 

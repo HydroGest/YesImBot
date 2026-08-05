@@ -9,6 +9,7 @@ interface Config extends BaseProviderConfig {
 export const name = "yesimbot-provider-openai";
 export const usage = "OpenAI 提供商插件";
 export const inject = ["yesimbot"];
+export const reusable = true;
 
 export const Config: Schema<Config> = Schema.object({
   id: Schema.string().default("openai").description("提供商标识"),

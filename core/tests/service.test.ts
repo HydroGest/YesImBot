@@ -69,6 +69,7 @@ import YesImBotService from "../src/index.js";
 const config: Config = {
   basePath: "/tmp/yesimbot-service/data/yesimbot-service",
   chatModel: "mock:model",
+  visionModel: undefined,
   logLevel: 2,
   allowedChannels: [],
   imageInput: false,

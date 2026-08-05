@@ -1,7 +1,8 @@
-import type { AgentPlugin } from "@yesimbot/agent-runtime";
-import type { FilePart } from "ai";
+import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
+import type { JSONValue } from "ai";
+import type { Logger } from "koishi";
 
-import type { ArtifactStore, ArtifactOpenResult } from "../artifact.js";
+import type { ArtifactStore } from "../artifact.js";
 import type { AssetStore } from "../asset.js";
 import type { Config, ImageBudget } from "../config.js";
 import type { ChannelScope } from "./storage.js";
@@ -290,53 +291,69 @@ function parseUri(uri: string): { scheme: string; authority: string; path: strin
   return { scheme, authority, path: rawPath };
 }
 
-export function createReadProjectionPlugin(
-  reader: ResourceReader,
-  imageCapable: boolean,
-  imageBudget: ImageBudget | null,
-): AgentPlugin {
-  return {
-    name: "core.read-projection",
-    enforce: "post",
-    prepareStep: async (messages, context) => {
-      if (!imageCapable || !imageBudget) return messages;
-      const message = messages.at(-1);
-      if (!message || message.role !== "tool" || !Array.isArray(message.content)) return messages;
-      const part = message.content.at(-1);
-      if (!part || part.type !== "tool-result" || part.toolName !== "read") return messages;
-      const result = unwrapReadResult(part.output);
-      if (!result || result.error || !result.uri) return messages;
-
-      const opened = await reader.openBytes(result.uri, context.signal);
-      if (!opened) return messages;
-      const mediaType = detectMediaType(opened.bytes);
-      if (!mediaType) return messages;
-      if (
-        opened.bytes.byteLength > imageBudget.maxBytesPerImage ||
-        opened.bytes.byteLength > imageBudget.maxTotalBytes ||
-        imageBudget.maxCount < 1
-      ) {
-        return messages;
-      }
-      const file: FilePart = { type: "file", data: opened.bytes, mediaType };
-      return [...messages, { role: "user", content: [file] }];
-    },
-  };
+export interface ReadToolOptions {
+  readonly logger: Logger;
+  readonly reader: ResourceReader;
+  readonly imageCapable: boolean;
+  readonly imageBudget: ImageBudget | null;
+  readonly describeImageAvailable: boolean;
+  readonly registrations: ReadonlyMap<string, { prompt: string }>;
 }
 
-function unwrapReadResult(output: unknown): ResourceReadResult | undefined {
-  if (!output || typeof output !== "object") return undefined;
-  let value: unknown = output;
-  if ("type" in output && output.type === "json" && "value" in output) value = output.value;
-  if (!value || typeof value !== "object" || !("uri" in value)) return undefined;
-  const result = value as { uri?: unknown; filename?: unknown; mediaType?: unknown; text?: unknown; error?: unknown };
-  if (typeof result.uri !== "string") return undefined;
+export function createReadTool(options: ReadToolOptions): AgentTool<{ uri: string }, ResourceReadResult> {
+  const { logger, reader, imageCapable, imageBudget, describeImageAvailable, registrations } = options;
+  const passThrough = imageCapable && imageBudget !== null;
+  const pendingImages = new Map<string, { bytes: Uint8Array; mediaType: string }>();
+
   return {
-    uri: result.uri,
-    ...(typeof result.filename === "string" ? { filename: result.filename } : {}),
-    ...(typeof result.mediaType === "string" ? { mediaType: result.mediaType } : {}),
-    ...(typeof result.text === "string" ? { text: result.text } : {}),
-    ...(typeof result.error === "string" ? { error: result.error } : {}),
+    name: "read",
+    description: buildReadDescription(registrations, imageCapable, imageBudget !== null, describeImageAvailable),
+    inputSchema: jsonSchema<{ uri: string }>({
+      type: "object",
+      properties: {
+        uri: {
+          type: "string",
+          description: "要读取的资源 URI",
+        },
+      },
+      required: ["uri"],
+    }),
+    execute: async ({ uri }, execution) => {
+      logger.info({ event: "resource_read", uri });
+      const result = await reader.read(uri, execution.abortSignal);
+      if (passThrough && !result.error) {
+        const opened = await reader.openBytes(result.uri, execution.abortSignal);
+        if (opened) {
+          const mediaType = detectMediaType(opened.bytes);
+          if (mediaType) {
+            const budget = imageBudget!;
+            if (
+              opened.bytes.byteLength <= budget.maxBytesPerImage &&
+              opened.bytes.byteLength <= budget.maxTotalBytes &&
+              budget.maxCount >= 1
+            ) {
+              pendingImages.set(execution.toolCallId, { bytes: opened.bytes, mediaType });
+            }
+          }
+        }
+      }
+      return result;
+    },
+    toModelOutput: ({ toolCallId, output }) => {
+      const pending = pendingImages.get(toolCallId);
+      if (!pending) return { type: "json", value: output as unknown as JSONValue };
+      return {
+        type: "content",
+        value: [
+          ...(output.text === undefined ? [] : [{ type: "text" as const, text: output.text }]),
+          {
+            type: "image-data",
+            data: Buffer.from(pending.bytes).toString("base64"),
+            mediaType: pending.mediaType,
+          },
+        ],
+      };
+    },
   };
 }
 
@@ -372,4 +389,45 @@ export function detectMediaType(bytes: Uint8Array): string | undefined {
     return "image/webp";
   }
   return undefined;
+}
+
+function buildReadDescription(
+  registrations: ReadonlyMap<string, { prompt: string }>,
+  imageCapable: boolean,
+  imageEnabled: boolean,
+  describeImageAvailable: boolean,
+): string {
+  const lines = [
+    "读取资源内容。仅在确实需要内容时读取精确 URI，不要猜测或拼造 URI。",
+    "URI 形如 scheme://authority[/path]，不能包含 ?、#、%，也不能有 . 或 .. 路径段。",
+    "- asset://<32位十六进制id>：平台输入的不可变资源，包括图片与文本文件。消息里看到的 [图片：asset://xxx] 和 [文件：名字 asset://xxx] 就是它；路径部分必须为空。",
+    "- artifact://<tool>/<uuid>：工具输出的不可变工件，uuid 由工具返回，原样传入。",
+  ];
+  for (const [scheme, { prompt }] of [...registrations.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    lines.push(`- ${scheme}://：${prompt}`);
+  }
+  lines.push(
+    "",
+    "返回 {uri, filename?, mediaType?, text?, error?}。",
+    "- 文本资源在 text 中直接给出内容，过长会被截断并以 [内容已截断] 结尾。",
+    imageCapable && imageEnabled
+      ? "- 图片资源：读取后图片字节将随结果返回，你可以直接查看图片内容。查看图片必须使用本工具读取；一次只读一张，连读多张可能超出预算而被丢弃。"
+      : "- 图片资源只给出占位描述，不包含图片字节，当前无法查看图片内容。",
+  );
+  if (!imageCapable || !imageEnabled) {
+    if (describeImageAvailable) lines.push("- 需要图片内容时，使用 describe_image 工具获取图片描述。");
+  }
+  lines.push(
+    "- 其他二进制只给出类型与大小，无法查看内容。",
+    "- error 存在时不会有 text：invalid_resource_uri 表示 URI 形状不合法，检查后重写而不是原样重试；resource_not_found 表示资源不存在，换来源；resource_unavailable 表示该方案当前未启用；resource_too_large 表示超出读取上限，无法读取；timeout 与 resource_read_aborted 可以重试一次；resource_read_failed 表示读取失败。",
+    "",
+    "例：",
+    '- 看到 [图片：asset://a1b2c3…] 想知道图里有什么 → read({uri:"asset://a1b2c3…"})',
+    '- 工具返回 artifact://web-fetch/0192abcd-… → read({uri:"artifact://web-fetch/0192abcd-…"})',
+    "",
+    "asset 与 artifact 不是沙箱里的文件，任何挂载路径下都找不到它们，URI 字符串永不传给 Bash。读取不会创建新的 artifact。",
+  );
+  return lines.join("\n");
 }

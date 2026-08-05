@@ -58,6 +58,7 @@ function config(): Config {
   return {
     basePath: "/tmp/yesimbot-idle-timer",
     chatModel: "test:model",
+    visionModel: undefined,
     logLevel: 2,
     allowedChannels: [],
     imageInput: false,

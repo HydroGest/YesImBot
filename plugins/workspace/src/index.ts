@@ -3,7 +3,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
-import type { ChannelScope, ResourceSchemeOpenHandler } from "koishi-plugin-yesimbot";
+import type { ChannelScope } from "koishi-plugin-yesimbot";
 
 import { createBashToolSet } from "./bash-tool";
 import { assertValidMountConfig } from "./mounts";
@@ -45,8 +45,8 @@ export default class WorkspacePlugin {
      * Python and JavaScript execution are disabled due to wasm loader issues in the current environment.
      * https://github.com/vercel-labs/just-bash/issues/159
      */
-    // enablePython: Schema.boolean().default(false).description("启用 Python 执行"),
-    // enableJavascript: Schema.boolean().default(false).description("启用 JavaScript 执行"),
+    enablePython: Schema.boolean().default(false).description("启用 Python 执行"),
+    enableJavascript: Schema.boolean().default(false).description("启用 JavaScript 执行"),
   });
 
   public readonly ctx: Context;
@@ -221,8 +221,8 @@ export default class WorkspacePlugin {
         cwd: this.config.cwd,
         timeoutMs: this.config.timeoutMs,
         network: this.config.enableNetwork ? {} : undefined,
-        // python: this.config.enablePython,
-        // javascript: this.config.enableJavascript,
+        python: this.config.enablePython,
+        javascript: this.config.enableJavascript,
       },
     };
   }

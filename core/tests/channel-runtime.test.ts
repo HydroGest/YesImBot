@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { Context } from "@koishijs/core";
 import { createJsonlStorage, createMessageEntry, orderPlugins } from "@yesimbot/agent-runtime";
 import type { AgentPlugin, AgentTool, ModelMessageContext } from "@yesimbot/agent-runtime";
+import type { LanguageModel } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { ImageBudget } from "../src/config.js";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
@@ -68,6 +71,7 @@ function runtimeConfig(basePath: string, reply: Partial<Config["reply"]> = {}): 
   return {
     basePath,
     chatModel: "test:model",
+    visionModel: undefined,
     logLevel: 2,
     allowedChannels: [],
     imageInput: false,
@@ -118,6 +122,8 @@ function createRuntime(
   reply?: Partial<Config["reply"]>,
   registrations: ReadonlyMap<string, { prompt: string; open: ResourceSchemeOpenHandler }> = new Map(),
   imageCapable = false,
+  imageBudget: ImageBudget | null = null,
+  visionModel: LanguageModel | undefined = undefined,
 ) {
   const ctx = new Context();
   const assets = { clear: vi.fn(async () => undefined), get: vi.fn(), put: vi.fn() };
@@ -131,8 +137,9 @@ function createRuntime(
     artifacts: artifacts as never,
     registrations,
     model: {} as never,
+    visionModel,
     imageCapable,
-    imageBudget: null,
+    imageBudget,
     agentPlugins: [],
     storage: createJsonlStorage("/tmp/yesimbot-channel-runtime/messages.jsonl"),
   });
@@ -198,10 +205,34 @@ describe("ChannelRuntime", () => {
     createRuntime({ decide: async () => "wait" });
     const withoutImages = (state.options?.tools as AgentTool[] | undefined)?.find((tool) => tool.name === "read");
 
-    createRuntime({ decide: async () => "wait" }, undefined, undefined, undefined, undefined, true);
+    createRuntime({ decide: async () => "wait" }, undefined, undefined, undefined, undefined, true, {
+      maxCount: 4,
+      maxBytesPerImage: 5 * 1024 * 1024,
+      maxTotalBytes: 10 * 1024 * 1024,
+    });
     const withImages = (state.options?.tools as AgentTool[] | undefined)?.find((tool) => tool.name === "read");
 
     expect(withImages?.description).not.toBe(withoutImages?.description);
+  });
+
+  it("registers describe_image only when a vision model is available", () => {
+    createRuntime({ decide: async () => "wait" });
+    const withoutVision = (state.options?.tools as AgentTool[] | undefined)?.map((tool) => tool.name);
+
+    createRuntime(
+      { decide: async () => "wait" },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      null,
+      {} as LanguageModel,
+    );
+    const withVision = (state.options?.tools as AgentTool[] | undefined)?.map((tool) => tool.name);
+
+    expect(withoutVision).not.toContain("describe_image");
+    expect(withVision).toContain("describe_image");
   });
 
   it("continues channel FIFO work after a rejected operation", async () => {
@@ -701,11 +732,7 @@ describe("ChannelRuntime", () => {
       ),
     );
 
-    expect(ordered.map((plugin) => plugin.name)).toEqual([
-      "core.model-input",
-      "external.formatter",
-      "core.read-projection",
-    ]);
+    expect(ordered.map((plugin) => plugin.name)).toEqual(["core.model-input", "external.formatter"]);
     expect(ordered.find((plugin) => plugin.toModelMessages)?.name).toBe("core.model-input");
     expect(ordered.filter((plugin) => plugin.onTurnFinish).map((plugin) => plugin.name)).toEqual([
       "external.formatter",

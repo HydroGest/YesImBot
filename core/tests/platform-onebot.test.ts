@@ -45,6 +45,10 @@ function store(put: AssetStore["put"] = vi.fn(async () => ID)): AssetStore {
   return { put, get: vi.fn(), clear: vi.fn(async () => undefined) };
 }
 
+function headers(values: Record<string, string> = {}): { get(name: string): string | null } {
+  return { get: (name) => values[name.toLowerCase()] ?? null };
+}
+
 describe("translateOneBotEvent", () => {
   it.each([
     { post_type: "notice", notice_type: "group_increase" },
@@ -89,14 +93,17 @@ describe("translateOneBotEvent", () => {
 
 describe("OneBot translator", () => {
   it("passes an AbortSignal to streaming HTTP and persists a complete image ID", async () => {
-    const http = vi.fn(async () => ({
-      data: new ReadableStream({
-        start(controller) {
-          controller.enqueue(PNG);
-          controller.close();
-        },
-      }),
-    }));
+    const http = Object.assign(
+      vi.fn(async () => ({
+        data: new ReadableStream({
+          start(controller) {
+            controller.enqueue(PNG);
+            controller.close();
+          },
+        }),
+      })),
+      { head: vi.fn(async () => headers({ "content-type": "image/png", "content-length": "4" })) },
+    );
     const assets = store();
     const resolver = createOneBotTranslator({ http } as never);
 
@@ -112,6 +119,10 @@ describe("OneBot translator", () => {
         responseType: "stream",
         signal: expect.any(AbortSignal),
       }),
+    );
+    expect(http.head).toHaveBeenCalledWith(
+      "https://onebot.example/image",
+      expect.objectContaining({ timeout: 10_000 }),
     );
     expect(assets.put).toHaveBeenCalledWith(PNG);
     expect(result).toMatchObject({ elements: [h("img", { id: ID })], platform: "onebot" });
@@ -152,13 +163,16 @@ describe("OneBot translator", () => {
 
   it("keeps the original image when a remote stream exceeds the per-image limit", async () => {
     const original = h("img", { src: "https://onebot.example/oversized" });
-    const http = vi.fn(async () => ({
-      data: new ReadableStream({
-        start(controller) {
-          controller.enqueue(new Uint8Array(5 * 1024 * 1024 + 1));
-        },
-      }),
-    }));
+    const http = Object.assign(
+      vi.fn(async () => ({
+        data: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(5 * 1024 * 1024 + 1));
+          },
+        }),
+      })),
+      { head: vi.fn(async () => headers()) },
+    );
     const assets = store();
 
     const result = await createOneBotTranslator({ http } as never).translate(
@@ -264,17 +278,25 @@ describe("OneBot translator", () => {
   it("retains one failed image and continues processing sibling images", async () => {
     const failed = h("img", { src: "https://onebot.example/fail" });
     const savedId = ID;
-    const http = vi.fn(async (url: string) => {
-      if (url.includes("fail")) throw new Error("offline");
-      return {
-        data: new ReadableStream({
-          start(controller) {
-            controller.enqueue(PNG);
-            controller.close();
-          },
+    const http = Object.assign(
+      vi.fn(async (url: string) => {
+        if (url.includes("fail")) throw new Error("offline");
+        return {
+          data: new ReadableStream({
+            start(controller) {
+              controller.enqueue(PNG);
+              controller.close();
+            },
+          }),
+        };
+      }),
+      {
+        head: vi.fn(async (url: string) => {
+          if (url.includes("fail")) throw new Error("offline");
+          return headers({ "content-type": "image/png", "content-length": "4" });
         }),
-      };
-    });
+      },
+    );
     const assets = store(vi.fn(async () => savedId));
 
     const result = await createOneBotTranslator({ http } as never).translate(

@@ -42,6 +42,7 @@ export interface SessionConfig {
 export interface Config {
   basePath: string;
   chatModel: string;
+  visionModel: string | undefined;
   logLevel: number;
   allowedChannels: ChannelAllowRule[];
   imageInput: ImageInputConfig;
@@ -58,6 +59,9 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     basePath: Schema.path({ filters: ["directory"], allowCreate: true }).default("data/yesimbot"),
     chatModel: Schema.dynamic("registry.chatModels"),
+    visionModel: Schema.dynamic("registry.chatModels").description(
+      "describe_image 工具使用的识图模型（需在 models.json 中声明支持图片输入），留空则不启用该工具",
+    ),
     logLevel: Schema.union([
       Schema.const(0).description("None"),
       Schema.const(1).description("Error"),

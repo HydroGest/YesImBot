@@ -193,6 +193,7 @@ function createIntegratedGateway(basePath: string) {
   const config = {
     basePath,
     chatModel: "test:model",
+    visionModel: undefined,
     logLevel: 2,
     allowedChannels: [],
     imageInput: false,
