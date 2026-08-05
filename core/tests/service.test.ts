@@ -160,16 +160,16 @@ describe("YesImBotService facade", () => {
   it("registers the authority-gated session admin command group", () => {
     const { commands } = createService();
 
-    expect(commands.find((command) => command.name === "yesimbot session")).toMatchObject({
+    expect(commands.find((command) => command.name === "yesimbot.session")).toMatchObject({
       options: { authority: 4 },
     });
     expect(commands.map((command) => command.name)).toEqual(
       expect.arrayContaining([
-        "yesimbot session.compact",
-        "yesimbot session.archive",
-        "yesimbot session.clear",
-        "yesimbot session.status",
-        "yesimbot session.list",
+        "yesimbot.session.compact",
+        "yesimbot.session.archive",
+        "yesimbot.session.clear",
+        "yesimbot.session.status",
+        "yesimbot.session.list",
       ]),
     );
   });

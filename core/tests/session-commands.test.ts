@@ -44,7 +44,7 @@ const session = { platform: "test", selfId: "bot", channelId: "room", isDirect: 
 const scope = { platform: "test", selfId: "bot", channelId: "room", type: "shared" };
 
 function action(commands: Map<string, RegisteredCommand>, name: string): Action {
-  return commands.get(`yesimbot session.${name}`)!.action.mock.calls[0]![0];
+  return commands.get(`yesimbot.session.${name}`)!.action.mock.calls[0]![0];
 }
 
 describe("yesimbot session commands", () => {
@@ -58,7 +58,7 @@ describe("yesimbot session commands", () => {
     await expect(action(commands, "status")({ session })).resolves.toBe("状态");
     await expect(action(commands, "list")({ session })).resolves.toBe("列表");
 
-    expect(ctx.command).toHaveBeenCalledWith("yesimbot session", { authority: 4 });
+    expect(ctx.command).toHaveBeenCalledWith("yesimbot.session", "会话管理", { authority: 4 });
     expect(manager.compact).toHaveBeenCalledWith(scope);
     expect(manager.archive).toHaveBeenCalledWith(scope, { noSummary: true });
     expect(manager.status).toHaveBeenCalledWith(scope);
@@ -67,8 +67,8 @@ describe("yesimbot session commands", () => {
 
   it("clears only after a confirmation prompt", async () => {
     const { commands, manager } = setup();
-    const declined = { ...session, prompt: vi.fn(async () => "取消") };
-    const confirmed = { ...session, prompt: vi.fn(async () => "确认") };
+    const declined = { ...session, send: vi.fn(), prompt: vi.fn(async () => "取消") };
+    const confirmed = { ...session, send: vi.fn(), prompt: vi.fn(async () => "确认") };
 
     await expect(action(commands, "clear")({ session: declined })).resolves.toBe("操作已取消。");
     await expect(action(commands, "clear")({ session: confirmed })).resolves.toBe("已清空所有会话记录和资源文件。");

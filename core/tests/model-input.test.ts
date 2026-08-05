@@ -13,7 +13,7 @@ import {
   type Input,
   type MessageRecord,
 } from "../src/messages.js";
-import { createModelInputPlugin } from "../src/runtime/model-input.js";
+import { createModelInputPlugin } from "../src/runtime/channel.js";
 import type { ChannelScope } from "../src/runtime/storage.js";
 
 declare module "koishi-plugin-yesimbot" {
