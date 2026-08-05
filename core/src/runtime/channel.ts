@@ -150,7 +150,11 @@ export class ChannelRuntime {
             signal: execution.abortSignal,
             warn: (event, fields) => this.logger.warn({ event, ...fields }),
           });
-          const messageIds = await opts.bot.sendMessage(channelId, segments.flat());
+          const messageIds: string[] = [];
+          for (const segment of segments) {
+            const ids = await opts.bot.sendMessage(channelId, segment);
+            if (Array.isArray(ids)) messageIds.push(...ids);
+          }
           return { ok: true, messageIds };
         } catch (cause) {
           return {

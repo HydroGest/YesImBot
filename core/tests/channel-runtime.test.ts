@@ -503,7 +503,7 @@ describe("ChannelRuntime", () => {
     ]);
   });
 
-  it("keeps raw assistant output while removing only inner thought", async () => {
+  it("splits assistant output on message boundaries while removing only inner thought", async () => {
     state.stream = streamFrom([
       {
         type: "message.appended",
@@ -528,7 +528,7 @@ describe("ChannelRuntime", () => {
       {
         turnId: "turn-1",
         messageId: "assistant-1",
-        segments: [[h.text("first"), h("message"), h.text("second")]],
+        segments: [[h.text("first")], [h.text("second")]],
       },
     ]);
   });
@@ -591,6 +591,25 @@ describe("ChannelRuntime", () => {
       messageIds: ["sent-1"],
     });
     expect(sendMessage).toHaveBeenCalledWith("room-2", [h("text", { content: "hello" })]);
+  });
+
+  it("sends each message boundary as a separate active message", async () => {
+    const sendMessage = vi.fn(async () => ["sent-1"]);
+    const { runtime } = createRuntime({ decide: async () => "wait" }, sendMessage);
+    const tool = (state.options?.tools as Array<{ name: string; execute: Function }>).find(
+      (candidate) => candidate.name === "sendMessage",
+    );
+
+    await runtime.handle(record());
+
+    await expect(
+      tool?.execute({ channelId: "room-2", content: "<message>first</message><message>second</message>" }, {}),
+    ).resolves.toEqual({
+      ok: true,
+      messageIds: ["sent-1", "sent-1"],
+    });
+    expect(sendMessage).toHaveBeenNthCalledWith(1, "room-2", [h("text", { content: "first" })]);
+    expect(sendMessage).toHaveBeenNthCalledWith(2, "room-2", [h("text", { content: "second" })]);
   });
 
   it("always formats message events with their ID", async () => {

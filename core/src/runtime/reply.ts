@@ -3,6 +3,7 @@ import { Element, h } from "koishi";
 const TEXT_OPEN = "<text>";
 const TEXT_CLOSE = "</text>";
 const INNER_THOUGHT = "inner_thought";
+const MESSAGE = "message";
 const MARK = "\u0000";
 
 interface TextCapture {
@@ -15,7 +16,7 @@ export function parseReply(raw: string): Element[][] {
   const captured: TextCapture[] = [];
   const tree = h.parse(maskText(source, nonce, captured));
   const visible = tree.flatMap((element) => removeInnerThought(element));
-  return [restoreText(visible, nonce, captured)].filter((segment) => !isBlank(segment));
+  return splitMessageElements(restoreText(visible, nonce, captured)).filter((segment) => !isBlank(segment));
 }
 
 function maskText(source: string, nonce: string, captured: TextCapture[]): string {
@@ -62,6 +63,28 @@ function restoreText(elements: readonly Element[], nonce: string, captured: read
       cursor = end + 1;
     }
   });
+}
+
+function splitMessageElements(elements: readonly Element[]): Element[][] {
+  const segments: Element[][] = [];
+  let current: Element[] = [];
+  const flush = (): void => {
+    if (!isBlank(current)) segments.push(current);
+    current = [];
+  };
+
+  for (const element of elements) {
+    if (element.type === MESSAGE) {
+      flush();
+      if (element.children.length > 0) {
+        segments.push(...splitMessageElements(element.children));
+      }
+      continue;
+    }
+    current.push(element);
+  }
+  flush();
+  return segments;
 }
 
 function isBlank(segment: readonly Element[]): boolean {

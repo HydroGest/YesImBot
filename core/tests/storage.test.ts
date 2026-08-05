@@ -238,6 +238,6 @@ describe("ChannelStorage", () => {
       data: { type: "yesimbot.event", data: { eventType: "delivery.failed" } },
     });
     expect(entries[2]).toMatchObject({ type: "message", data: { content: reply } });
-    expect(parseReply(reply)).toEqual([[h.text("first"), h("message"), h.text("second")]]);
+    expect(parseReply(reply)).toEqual([[h.text("first")], [h.text("second")]]);
   });
 });

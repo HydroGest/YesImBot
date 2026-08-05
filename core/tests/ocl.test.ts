@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { Element } from "koishi";
+import { Element, h } from "koishi";
 
 import { parseReply } from "../src/runtime/reply.js";
 
@@ -19,24 +19,27 @@ describe("parseReply", () => {
     expect(text(segments[0])).toBe("hello world");
   });
 
-  it("keeps message elements for Koishi to split during delivery", () => {
+  it("splits message elements into separate delivery segments", () => {
     const segments = parseReply("one<message>two</message>three");
-    expect(segments).toHaveLength(1);
-    expect(segments[0].map((element) => element.type)).toEqual(["text", "message", "text"]);
-    expect(text(segments[0].find((element) => element.type === "message")?.children ?? [])).toBe("two");
+    expect(segments.map(text)).toEqual(["one", "two", "three"]);
   });
 
-  it("keeps nested message elements for Koishi to split during delivery", () => {
+  it("splits nested message elements into separate delivery segments", () => {
     const segments = parseReply("one<message>two<message>three</message></message>four");
-    expect(segments).toHaveLength(1);
-    const message = segments[0].find((element) => element.type === "message");
-    expect(message?.children.map((element) => element.type)).toEqual(["text", "message"]);
+    expect(segments.map(text)).toEqual(["one", "two", "three", "four"]);
   });
 
   it("preserves platform elements at the reply root", () => {
     const segments = parseReply('hello <at id="42"/> there');
     expect(segments).toHaveLength(1);
     expect(segments[0].find((element) => element.type === "at")?.attrs["id"]).toBe("42");
+  });
+
+  it("keeps at and quote elements inside the same message segment", () => {
+    const segments = parseReply('hello <at id="42"/> <quote>quoted</quote> world');
+    expect(segments).toHaveLength(1);
+    expect(segments[0].some((element) => element.type === "at")).toBe(true);
+    expect(segments[0].some((element) => element.type === "quote")).toBe(true);
   });
 
   it("preserves unrecognized Koishi elements without a Core allowlist", () => {
@@ -75,7 +78,11 @@ describe("parseReply", () => {
   it("fully removes inner thought nested in a message element", () => {
     const segments = parseReply("<message>visible<inner_thought>private</inner_thought></message>");
     expect(segments).toHaveLength(1);
-    expect(text(segments[0][0].children)).toBe("visible");
+    expect(text(segments[0])).toBe("visible");
+  });
+
+  it("does not create empty segments around message boundaries", () => {
+    expect(parseReply("one<message/>two")).toEqual([[h.text("one")], [h.text("two")]]);
   });
 
   it("does not trigger substitution for text resembling the nonce placeholder", () => {
