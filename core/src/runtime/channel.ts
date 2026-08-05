@@ -105,6 +105,7 @@ export class ChannelRuntime {
   constructor(ctx: Context, opts: ChannelRuntimeOptions) {
     this.ctx = ctx;
     this.logger = this.ctx.logger("yesimbot/channel-runtime");
+    this.logger.level = opts.config.logLevel ?? 2;
     this.opts = opts;
     this.idleTimeout = opts.idleTimeout ?? 0;
 
