@@ -1,42 +1,74 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-vi.mock("koishi", async () => import("@koishijs/core"));
-
+import "./helpers/setup.js";
 import { ArtifactService } from "../src/artifact.js";
-import { ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
+import { AssetService } from "../src/asset.js";
+import { scope, otherScope, PNG_BYTES, useTemporaryStorage } from "./helpers/index.js";
 
-const scope: ChannelScope = {
-  type: "shared",
-  platform: "onebot",
-  selfId: "bot-1",
-  channelId: "room-42",
-};
-const otherScope: ChannelScope = { ...scope, channelId: "room-43" };
-const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_ID = createHash("sha256").update(PNG_BYTES).digest("hex").slice(0, 32);
+
+describe("AssetService", () => {
+  const env = useTemporaryStorage("yesimbot-binary-store-");
+
+  it("stores copied bytes and returns the canonical content-id", async () => {
+    const store = new AssetService(env.storage).createStore(scope);
+    const source = PNG_BYTES.slice();
+    const id = await store.put(source);
+    source[0] = 0;
+
+    expect(id).toBe(PNG_ID);
+    await expect(store.get(PNG_ID)).resolves.toEqual(PNG_BYTES);
+    await expect(store.get(PNG_ID.slice(0, 7))).resolves.toEqual(PNG_BYTES);
+  });
+
+  it("deduplicates bytes and shares a shared-channel store across Bots", async () => {
+    const assets = new AssetService(env.storage);
+    const first = assets.createStore(scope);
+    const second = assets.createStore({ ...scope, selfId: "bot-2" });
+
+    expect(await first.put(PNG_BYTES)).toBe(PNG_ID);
+    expect(await second.put(PNG_BYTES)).toBe(PNG_ID);
+    await expect(second.get(PNG_ID)).resolves.toEqual(PNG_BYTES);
+  });
+
+  it("rejects invalid, absent, and ambiguous asset references", async () => {
+    const store = new AssetService(env.storage).createStore(scope);
+    const root = await env.storage.getStoragePath(scope);
+    const assets = join(root, "assets");
+    await mkdir(assets, { recursive: true });
+    await writeFile(join(assets, "abcdef01111111111111111111111111"), PNG_BYTES);
+    await writeFile(join(assets, "abcdef02222222222222222222222222"), PNG_BYTES);
+
+    await expect(store.get("abc123")).rejects.toThrow("Invalid asset id");
+    await expect(store.get("ABCDEF0")).rejects.toThrow("Invalid asset id");
+    await expect(store.get("asset_abcdef0")).rejects.toThrow("Invalid asset id");
+    await expect(store.get("1234567")).rejects.toThrow("Asset not found");
+    await expect(store.get("abcdef0")).rejects.toThrow("Asset prefix is ambiguous");
+  });
+
+  it("clears only the current channel assets", async () => {
+    const assets = new AssetService(env.storage);
+    const first = assets.createStore(scope);
+    const second = assets.createStore(otherScope);
+    await first.put(PNG_BYTES);
+    await second.put(PNG_BYTES);
+
+    await first.clear();
+
+    await expect(first.get(PNG_ID)).rejects.toThrow();
+    await expect(second.get(PNG_ID)).resolves.toEqual(PNG_BYTES);
+  });
+});
 
 describe("ArtifactService", () => {
-  let basePath: string;
-  let storage: ChannelStorage;
-
-  beforeEach(async () => {
-    basePath = await mkdtemp(join(tmpdir(), "yesimbot-artifacts-"));
-    const ctx = {
-      logger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
-    } as unknown as Context;
-    storage = new ChannelStorage(ctx, { basePath });
-  });
-
-  afterEach(async () => {
-    await rm(basePath, { recursive: true, force: true });
-  });
+  const env = useTemporaryStorage("yesimbot-binary-store-");
 
   it("creates tool-bound artifacts with UUID-v7 URIs", async () => {
-    const artifacts = new ArtifactService(storage).createStore(scope);
+    const artifacts = new ArtifactService(env.storage).createStore(scope);
     const uri = await artifacts.forTool("mcp_screenshot").put(PNG_BYTES, {
       filename: "screen.png",
       mediaType: "image/png",
@@ -51,8 +83,9 @@ describe("ArtifactService", () => {
       filename: "screen.png",
     });
   });
+
   it("rejects unsafe tool names before joining artifact paths", async () => {
-    const artifacts = new ArtifactService(storage).createStore(scope);
+    const artifacts = new ArtifactService(env.storage).createStore(scope);
     expect(() => artifacts.forTool("../escape")).toThrow("Invalid artifact tool name");
     expect(() => artifacts.forTool("tool/name")).toThrow("Invalid artifact tool name");
     expect(() => artifacts.forTool("tool\\name")).toThrow("Invalid artifact tool name");
@@ -62,7 +95,7 @@ describe("ArtifactService", () => {
     const now = 0x123456789ab;
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
     try {
-      const artifacts = new ArtifactService(storage).createStore(scope);
+      const artifacts = new ArtifactService(env.storage).createStore(scope);
       const uri = await artifacts.forTool("timestamped").put(PNG_BYTES, {});
       const uuid = uri.split("/").at(-1)!;
       expect(uuid.replaceAll("-", "").slice(0, 12)).toBe(now.toString(16).padStart(12, "0"));
@@ -73,7 +106,7 @@ describe("ArtifactService", () => {
   });
 
   it("rejects unsafe artifact metadata on write", async () => {
-    const artifacts = new ArtifactService(storage).createStore(scope);
+    const artifacts = new ArtifactService(env.storage).createStore(scope);
     await expect(artifacts.forTool("test_tool").put(PNG_BYTES, { filename: "../secret.txt" })).rejects.toThrow(
       "Invalid artifact filename",
     );
@@ -83,10 +116,10 @@ describe("ArtifactService", () => {
   });
 
   it("rejects corrupt artifact metadata fields on open", async () => {
-    const artifacts = new ArtifactService(storage).createStore(scope);
+    const artifacts = new ArtifactService(env.storage).createStore(scope);
     const uri = await artifacts.forTool("test_tool").put(PNG_BYTES, { filename: "test.png", mediaType: "image/png" });
     const uuid = uri.split("/").at(-1)!;
-    const directory = join(await storage.getStoragePath(scope), "artifacts", "test_tool", uuid);
+    const directory = join(await env.storage.getStoragePath(scope), "artifacts", "test_tool", uuid);
     await writeFile(
       join(directory, "metadata.json"),
       JSON.stringify({ filename: "../secret", byteLength: PNG_BYTES.length }),
@@ -98,7 +131,7 @@ describe("ArtifactService", () => {
   });
 
   it("preserves artifact identity across reads", async () => {
-    const artifacts = new ArtifactService(storage).createStore(scope);
+    const artifacts = new ArtifactService(env.storage).createStore(scope);
     const uri = await artifacts.forTool("test_tool").put(PNG_BYTES, {
       mediaType: "image/png",
     });
@@ -110,7 +143,7 @@ describe("ArtifactService", () => {
   });
 
   it("rejects foreign-tool paths", async () => {
-    const artifacts = new ArtifactService(storage).createStore(scope);
+    const artifacts = new ArtifactService(env.storage).createStore(scope);
     const uri = await artifacts.forTool("tool_a").put(PNG_BYTES, {});
 
     // Try to open with a different tool name
@@ -119,7 +152,7 @@ describe("ArtifactService", () => {
   });
 
   it("rejects malformed UUIDs", async () => {
-    const artifacts = new ArtifactService(storage).createStore(scope);
+    const artifacts = new ArtifactService(env.storage).createStore(scope);
     await expect(artifacts.open("artifact://tool/not-a-uuid")).rejects.toThrow("Invalid artifact URI");
     await expect(artifacts.open("artifact://tool/00000000-0000-0000-0000-000000000000")).rejects.toThrow(
       "Invalid artifact URI",
@@ -127,7 +160,7 @@ describe("ArtifactService", () => {
   });
 
   it("rejects metadata/data mismatch", async () => {
-    const artifacts = new ArtifactService(storage).createStore(scope);
+    const artifacts = new ArtifactService(env.storage).createStore(scope);
     const uri = await artifacts.forTool("test_tool").put(PNG_BYTES, {
       filename: "test.png",
       mediaType: "image/png",
@@ -135,7 +168,7 @@ describe("ArtifactService", () => {
 
     // Corrupt the metadata
     const parsed = uri.match(/artifact:\/\/test_tool\/(.+)/);
-    const storagePath = await storage.getStoragePath(scope);
+    const storagePath = await env.storage.getStoragePath(scope);
     const directory = join(storagePath, "artifacts", "test_tool", parsed![1]);
     await writeFile(join(directory, "metadata.json"), "invalid json");
 
@@ -143,7 +176,7 @@ describe("ArtifactService", () => {
   });
 
   it("clears only the current channel artifacts", async () => {
-    const artifacts = new ArtifactService(storage);
+    const artifacts = new ArtifactService(env.storage);
     const first = artifacts.createStore(scope);
     const second = artifacts.createStore(otherScope);
 
