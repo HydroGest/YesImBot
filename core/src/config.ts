@@ -92,23 +92,34 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     will: Schema.intersect([
       Schema.object({
-        engine: Schema.union([Schema.const("routing"), Schema.const("willingness")]).default("routing"),
-      }),
+        engine: Schema.union([
+          Schema.const("routing").description("按消息场景固定规则触发"),
+          Schema.const("willingness").description("按意愿值动态触发"),
+        ])
+          .default("routing")
+          .description("消息触发引擎：routing 按私聊/提及/群聊规则决定，willingness 使用意愿值动态决策"),
+      }).description("触发引擎"),
       Schema.union([
         Schema.object({
           engine: Schema.const("routing"),
-          direct: Schema.union(["wait", "trigger"]).default("trigger"),
-          mention: Schema.union(["wait", "trigger"]).default("trigger"),
-          group: Schema.union(["wait", "trigger"]).default("wait"),
-        }),
+          direct: Schema.union(["wait", "trigger"]).default("trigger").description("私聊消息是否触发回复"),
+          mention: Schema.union(["wait", "trigger"]).default("trigger").description("消息提及机器人时是否触发回复"),
+          group: Schema.union(["wait", "trigger"]).default("wait").description("群聊普通消息是否触发回复"),
+        }).description("routing 引擎配置"),
         Schema.object({
           engine: Schema.const("willingness"),
-          probabilityThreshold: Schema.number().default(55),
-          decayHalfLifeSeconds: Schema.number().default(600),
-          replyCost: Schema.number().default(35),
-        }),
+          probabilityThreshold: Schema.number()
+            .default(55)
+            .description("意愿值达到该阈值后才可能触发回复"),
+          decayHalfLifeSeconds: Schema.number()
+            .default(600)
+            .description("意愿值半衰期(秒)，间隔越久衰减越明显"),
+          replyCost: Schema.number()
+            .default(35)
+            .description("每次成功回复后扣除的意愿值"),
+        }).description("willingness 引擎配置"),
       ]),
-    ]),
+    ]).description("消息触发策略"),
   }).description("消息路由"),
   Schema.object({
     reply: Schema.object({
