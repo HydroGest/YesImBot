@@ -244,6 +244,40 @@ function toPosix(value) {
   return value.split(path.sep).join("/");
 }
 
+function isManagedPluginName(name) {
+  return (
+    name === "koishi-plugin-yesimbot" ||
+    name.startsWith("koishi-plugin-yesimbot-") ||
+    /^@yesimbot\/koishi-plugin-provider-/.test(name)
+  );
+}
+
+function configKeyToPackageName(key) {
+  if (key === "yesimbot") return "koishi-plugin-yesimbot";
+  if (key.startsWith("@yesimbot/provider-")) {
+    return `@yesimbot/koishi-plugin-provider-${key.slice("@yesimbot/provider-".length)}`;
+  }
+  if (key.startsWith("yesimbot-")) return `koishi-plugin-${key}`;
+  return null;
+}
+
+function belongsToYesImBotRoot(name) {
+  let resolved;
+  try {
+    resolved = requireApp.resolve(`${name}/package.json`);
+  } catch {
+    const relativePath = name.startsWith("@yesimbot/koishi-plugin-provider-")
+      ? `providers/${name.slice("@yesimbot/koishi-plugin-provider-".length)}`
+      : name.startsWith("koishi-plugin-")
+        ? `plugins/${name.slice("koishi-plugin-".length)}`
+        : null;
+    return !!relativePath && fs.existsSync(path.join(yesimbotRoot, relativePath));
+  }
+
+  const relative = path.relative(yesimbotRoot, resolved);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 function updateManifest(plugins) {
   const file = path.join(appRoot, "package.json");
   const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -266,6 +300,13 @@ function updateManifest(plugins) {
   }
 
   pkg.dependencies ||= {};
+  const currentNames = new Set(plugins.map((plugin) => plugin.name));
+  for (const name of Object.keys(pkg.dependencies)) {
+    if (isManagedPluginName(name) && !currentNames.has(name) && belongsToYesImBotRoot(name)) {
+      delete pkg.dependencies[name];
+      log(`removed stale dependency ${name}`);
+    }
+  }
   for (const plugin of plugins) {
     pkg.dependencies[plugin.name] = "workspace:^";
   }
@@ -324,6 +365,16 @@ function updateKoishi(plugins) {
     Object.keys(normalized).some((key) => {
       return key.replace(/^~/, "").split(":")[0] === base;
     });
+
+  const currentKeys = new Set(plugins.map((plugin) => configKey(plugin.name)));
+  for (const key of Object.keys(normalized)) {
+    const base = key.replace(/^~/, "").split(":")[0];
+    const packageName = configKeyToPackageName(base);
+    if (packageName && !currentKeys.has(base) && belongsToYesImBotRoot(packageName)) {
+      delete normalized[key];
+      log(`removed stale plugin config ${key}`);
+    }
+  }
 
   for (const plugin of plugins) {
     const key = configKey(plugin.name);
