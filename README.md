@@ -106,14 +106,14 @@ yesimbot.model.add-input-modality provider:model image
 
 YesImBot 的能力通过插件系统按需加载。
 
-| 插件        | 包名                                    | 能力                           |
-| ----------- | --------------------------------------- | ------------------------------ |
-| 工作区      | `koishi-plugin-yesimbot-workspace`      | 文件操作、命令执行与 Skill 目录访问       |
-| MCP 客户端  | `koishi-plugin-yesimbot-mcp-client`     | 通过 MCP 协议接入外部工具服务  |
-| MemOS       | `koishi-plugin-yesimbot-memos-client`   | 接入 MemOS Cloud 长期记忆      |
-| 搜索        | `koishi-plugin-yesimbot-search-service` | 网络搜索与信息检索             |
-| OneBot 工具 | `koishi-plugin-yesimbot-onebot-utils`   | OneBot 平台工具集成            |
-| 贴纸        | `koishi-plugin-yesimbot-sticker`        | 表情与贴纸处理                 |
+| 插件        | 包名                                    | 能力                                |
+| ----------- | --------------------------------------- | ----------------------------------- |
+| 工作区      | `koishi-plugin-yesimbot-workspace`      | 文件操作、命令执行与 Skill 目录访问 |
+| MCP 客户端  | `koishi-plugin-yesimbot-mcp-client`     | 通过 MCP 协议接入外部工具服务       |
+| MemOS       | `koishi-plugin-yesimbot-memos-client`   | 接入 MemOS Cloud 长期记忆           |
+| 搜索        | `koishi-plugin-yesimbot-search-service` | 网络搜索与信息检索                  |
+| OneBot 工具 | `koishi-plugin-yesimbot-onebot-utils`   | OneBot 平台工具集成                 |
+| 贴纸        | `koishi-plugin-yesimbot-sticker`        | 表情与贴纸处理                      |
 
 OneBot Translator 内置于 `koishi-plugin-yesimbot`，通过同一 PlatformTranslator 边界注册，不是可选的平台包。
 

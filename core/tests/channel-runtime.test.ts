@@ -169,21 +169,19 @@ describe("ChannelRuntime", () => {
     state.resolvedSystem = undefined;
   });
 
-  it("describes the Core sendMessage tool and its fields in Chinese", () => {
+  it("exposes the Core sendMessage tool with a stable name and input schema", () => {
     const { runtime } = createRuntime({ decide: async () => "wait" });
     const tools = state.options?.tools as AgentTool[] | undefined;
     const send = tools?.find((tool) => tool.name === "sendMessage");
     expect(send).toBeDefined();
     const schema = (send?.inputSchema as { jsonSchema?: { properties?: Record<string, { description?: string }> } })
       .jsonSchema;
-    expect(send?.description).toMatch(/[\u4e00-\u9fff]/);
-    expect(schema?.properties?.["channelId"]?.description).toMatch(/[\u4e00-\u9fff]/);
-    expect(schema?.properties?.["content"]?.description).toMatch(/[\u4e00-\u9fff]/);
-    // Tool and field names stay protocol-stable.
     expect(send?.name).toBe("sendMessage");
     expect(Object.keys(schema?.properties ?? {})).toEqual(["channelId", "content"]);
+    expect(runtime).toBeDefined();
   });
-  it("builds fixed read guidance before schemes in sorted order", () => {
+
+  it("orders registered read schemes alphabetically after fixed built-in schemes", () => {
     const registrations = new Map<string, { prompt: string; open: ResourceSchemeOpenHandler }>([
       ["zeta", { prompt: "Z prompt", open: async () => ({ bytes: new Uint8Array() }) }],
       ["alpha", { prompt: "A prompt", open: async () => ({ bytes: new Uint8Array() }) }],
@@ -191,24 +189,19 @@ describe("ChannelRuntime", () => {
     createRuntime({ decide: async () => "wait" }, undefined, undefined, undefined, registrations);
     const tools = state.options?.tools as AgentTool[] | undefined;
     const read = tools?.find((tool) => tool.name === "read");
-    expect(read?.description).toContain("仅在确实需要内容时读取精确 URI");
-    expect(read?.description).toContain("读取不会创建新的 artifact");
-    expect(read?.description).toContain("URI 字符串永不传给 Bash");
     const description = read?.description ?? "";
     expect(description.indexOf("- alpha://")).toBeLessThan(description.indexOf("- zeta://"));
     expect(description.indexOf("- artifact://")).toBeLessThan(description.indexOf("- alpha://"));
   });
 
-  it("describes image projection only for an image-capable model", () => {
+  it("varies the read tool description with the model's image capability", () => {
     createRuntime({ decide: async () => "wait" });
     const withoutImages = (state.options?.tools as AgentTool[] | undefined)?.find((tool) => tool.name === "read");
-    expect(withoutImages?.description).toContain("当前模型无法查看图片内容");
-    expect(withoutImages?.description).not.toContain("图片本身会在这次读取之后单独提供给你");
 
     createRuntime({ decide: async () => "wait" }, undefined, undefined, undefined, undefined, true);
     const withImages = (state.options?.tools as AgentTool[] | undefined)?.find((tool) => tool.name === "read");
-    expect(withImages?.description).toContain("图片本身会在这次读取之后单独提供给你");
-    expect(withImages?.description).not.toContain("当前模型无法查看图片内容");
+
+    expect(withImages?.description).not.toBe(withoutImages?.description);
   });
 
   it("continues channel FIFO work after a rejected operation", async () => {

@@ -1,9 +1,11 @@
 import type { AgentMessage, AgentPlugin, ModelMessageContext } from "@yesimbot/agent-runtime";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
+
+vi.mock("koishi", async () => import("@koishijs/core"));
+
 import { h, Universal } from "koishi";
 
 import "./helpers/setup.js";
-import { describe, expect, expectTypeOf, it, vi } from "vitest";
-
 import {
   assembleEvent,
   createEvent,
@@ -15,13 +17,11 @@ import {
   type EventBase,
   type EventMap,
   type EventRecord,
-  type Input,
   type Message,
   type MessageRecord,
   type RecordBase,
 } from "../src/messages.js";
 import { createModelInputPlugin } from "../src/runtime/channel.js";
-import type { ChannelScope } from "../src/runtime/storage.js";
 import { scope } from "./helpers/index.js";
 
 declare module "koishi-plugin-yesimbot" {

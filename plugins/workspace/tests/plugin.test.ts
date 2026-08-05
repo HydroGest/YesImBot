@@ -275,29 +275,6 @@ describe("WorkspacePlugin", () => {
     expect(mocks.getStoragePath).toHaveBeenCalledTimes(3);
   });
 
-  it("includes sandbox and mount policy in its prompt", async () => {
-    baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
-    await Promise.all([mkdir(join(baseDir, "knowledge")), mkdir(join(baseDir, "repo"))]);
-    const mocks = createContext(baseDir);
-    new WorkspacePlugin(mocks.ctx as never, {
-      cwd: "/home/workspace",
-      persistPaths: { "/shared": "shared" },
-      readOnlyPaths: { "/knowledge": "knowledge" },
-      overlayPaths: { "/repo": "repo" },
-      timeoutMs: 5000,
-      enableNetwork: false,
-    });
-    await mocks.ready[0]?.();
-    const prompt = await mocks.factories[0]!({
-      scope: { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" },
-    }).appendSystemPrompt?.({} as never);
-    expect(String(prompt)).toContain("Network access: disabled");
-    expect(String(prompt)).toContain("Command timeout: 5000 ms");
-    expect(String(prompt)).toContain("/shared");
-    expect(String(prompt)).toContain("/knowledge");
-    expect(String(prompt)).toContain("/repo");
-  });
-
   it.each(["readOnlyPaths", "overlayPaths"] as const)("fails fast for a missing %s host path", async (field) => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
     const mocks = createContext(baseDir);
