@@ -330,6 +330,7 @@ export function createAgent(config: AgentConfig): Agent {
                   turnId,
                   toolName,
                   toolCallId: options.toolCallId,
+                  args: nextInput,
                 });
 
                 try {
@@ -363,6 +364,7 @@ export function createAgent(config: AgentConfig): Agent {
                     turnId,
                     toolName,
                     toolCallId: options.toolCallId,
+                    result: result.result,
                   });
                   return result.result;
                 } catch (error) {
@@ -384,6 +386,7 @@ export function createAgent(config: AgentConfig): Agent {
                     toolName,
                     toolCallId: options.toolCallId,
                     error: diagnostic,
+                    args: nextInput,
                   });
                   throw error;
                 }

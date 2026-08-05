@@ -359,6 +359,31 @@ export class ChannelRuntime {
             output.push({ turnId: event.turnId, messageId: event.message.id, segments: prepared });
           }
         }
+        if (event.type === "tool.start") {
+          this.logger.debug("tool_call", {
+            turnId: event.turnId,
+            toolName: event.toolName,
+            toolCallId: event.toolCallId,
+            args: formatToolValue(event.args),
+          });
+        }
+        if (event.type === "tool.done") {
+          this.logger.debug("tool_result", {
+            turnId: event.turnId,
+            toolName: event.toolName,
+            toolCallId: event.toolCallId,
+            result: formatToolValue(event.result),
+          });
+        }
+        if (event.type === "tool.failed") {
+          this.logger.debug("tool_failed", {
+            turnId: event.turnId,
+            toolName: event.toolName,
+            toolCallId: event.toolCallId,
+            args: formatToolValue(event.args),
+            error: formatToolValue(event.error),
+          });
+        }
         if (event.type === "turn.failed") {
           controller.abort();
           throw new Error(event.error.message);
@@ -438,6 +463,15 @@ export class ChannelRuntime {
 
 export function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+function formatToolValue(value: unknown): string {
+  try {
+    const text = JSON.stringify(value);
+    return text === undefined ? String(value) : text.length > 2048 ? `${text.slice(0, 2048)}...` : text;
+  } catch {
+    return String(value);
+  }
 }
 
 export function isAssistantMessage(event: AgentInternalEvent): event is AgentInternalEvent & {

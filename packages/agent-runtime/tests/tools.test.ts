@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { createAgent } from "../src/agent.js";
 import { ToolConflictError } from "../src/errors.js";
+import type { AgentInternalEvent } from "../src/event.js";
 import { createUserMessage } from "../src/message.js";
 import { mergeTools, runAfterToolHooks, runBeforeToolHooks } from "../src/tools.js";
 
@@ -398,14 +399,22 @@ describe("tools", () => {
         } as never,
       ],
     });
-    const types: string[] = [];
+    const events: AgentInternalEvent[] = [];
 
     for await (const event of agent.run(createUserMessage("hello"))) {
-      types.push(event.type);
+      events.push(event);
     }
 
-    expect(types).toContain("tool.start");
-    expect(types).toContain("tool.done");
+    const start = events.find(
+      (event): event is Extract<AgentInternalEvent, { type: "tool.start" }> => event.type === "tool.start",
+    );
+    const done = events.find(
+      (event): event is Extract<AgentInternalEvent, { type: "tool.done" }> => event.type === "tool.done",
+    );
+    expect(start).toBeDefined();
+    expect(done).toBeDefined();
+    expect(start?.args).toEqual({});
+    expect(done?.result).toBe("ok");
   });
 
   it("short-circuits before hooks on block", async () => {

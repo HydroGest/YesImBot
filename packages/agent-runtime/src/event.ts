@@ -77,12 +77,14 @@ export interface ToolStartEvent extends TurnScoped {
   type: "tool.start";
   toolName: string;
   toolCallId?: string;
+  args?: unknown;
 }
 
 export interface ToolDoneEvent extends TurnScoped {
   type: "tool.done";
   toolName: string;
   toolCallId?: string;
+  result?: unknown;
 }
 
 export interface ToolFailedEvent extends TurnScoped {
@@ -90,6 +92,7 @@ export interface ToolFailedEvent extends TurnScoped {
   toolName: string;
   toolCallId?: string;
   error: AgentDiagnostic;
+  args?: unknown;
 }
 
 export interface ToolBlockedEvent extends TurnScoped {
