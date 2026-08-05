@@ -86,6 +86,7 @@ yesimbot.sticker.cleanup
 - `classificationModel`
   - 留空时使用机器人的默认聊天模型。
   - 如果默认模型不能看图，可以在这里指定一个支持图片的模型。
+  - GIF 表情包分类时只会把第一帧转成 PNG 送给模型，原始 GIF 仍会完整保存和发送。
 
 其他设置保持默认即可。
 

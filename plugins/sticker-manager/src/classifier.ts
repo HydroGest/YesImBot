@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import type { Context } from "koishi";
 
+import { firstFrameToPng } from "./frames.js";
 import { normalizeCategory, type StickerConfig } from "./types.js";
 
 export interface ClassifyInput {
@@ -41,6 +42,7 @@ export class ModelStickerClassifier implements StickerClassifier {
       "{{categories}}",
       input.categories.join(", ") || "暂无分类",
     );
+    const frame = input.mediaType === "image/gif" ? firstFrameToPng(input.bytes) : undefined;
 
     try {
       const { text } = await generateText({
@@ -52,7 +54,11 @@ export class ModelStickerClassifier implements StickerClassifier {
             role: "user",
             content: [
               { type: "text", text: prompt },
-              { type: "file", data: input.bytes, mediaType: input.mediaType },
+              {
+                type: "file",
+                data: frame?.bytes ?? input.bytes,
+                mediaType: frame?.mediaType ?? input.mediaType,
+              },
             ],
           },
         ],
