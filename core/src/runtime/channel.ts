@@ -147,6 +147,7 @@ export class ChannelRuntime {
         }
         this.logger.info({ event: "send_message", channelId, content });
         try {
+          this.logger.debug("send_message_start", { channelId, content });
           const segments = await prepareOutputSegments(parseReply(content), this.reader, {
             signal: execution.abortSignal,
             warn: (event, fields) => this.logger.warn({ event, ...fields }),
@@ -155,6 +156,7 @@ export class ChannelRuntime {
           for (const segment of segments) {
             const ids = await opts.bot.sendMessage(channelId, segment);
             if (Array.isArray(ids)) messageIds.push(...ids);
+            this.logger.debug("send_message_result", { channelId, messageIds: ids, segment: formatToolValue(segment) });
           }
           return { ok: true, messageIds };
         } catch (cause) {

@@ -1,4 +1,4 @@
-import { type Context, type Logger, type Session, Universal } from "koishi";
+import { type Context, type Element, type Logger, type Session, Universal } from "koishi";
 
 import { deliverOutput } from "../delivery.js";
 import { ChannelScope } from "../index.js";
@@ -106,7 +106,22 @@ export class Gateway {
       record,
       result,
       pacing: this.config.pacing,
-      send: (segment) => session.send(segment),
+      send: async (segment) => {
+        this.logger.debug("send", {
+          platform: record.platform,
+          selfId: record.selfId,
+          channelId: record.channel.id,
+          segment: formatDebugSegment(segment),
+        });
+        const sent = await session.send(segment);
+        this.logger.debug("send_result", {
+          platform: record.platform,
+          selfId: record.selfId,
+          channelId: record.channel.id,
+          result: formatDebugValue(sent),
+        });
+        return sent;
+      },
       warn: (cause) => this.warn("delivery.failed", cause, record.platform),
     });
   }
@@ -183,6 +198,28 @@ function scopeFromSession(session: Session): ChannelScope | null {
 
 function isMessageSession(session: Session): boolean {
   return session.type === "message-created";
+}
+
+function formatDebugSegment(segment: readonly Element[]): string {
+  const text = segment
+    .filter((element) => element.type === "text")
+    .map((element) => `${element.attrs["content"] ?? ""}`)
+    .join("");
+  const types = [...new Set(segment.map((element) => element.type))].join("+");
+  return text.length > 0 ? `${types}: ${truncate(text)}` : types;
+}
+
+function formatDebugValue(value: unknown): string {
+  try {
+    const text = JSON.stringify(value);
+    return text === undefined ? String(value) : truncate(text);
+  } catch {
+    return String(value);
+  }
+}
+
+function truncate(value: string): string {
+  return value.length > 2048 ? `${value.slice(0, 2048)}...` : value;
 }
 
 export type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
