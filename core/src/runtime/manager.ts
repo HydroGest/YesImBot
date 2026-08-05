@@ -71,6 +71,7 @@ export class RuntimeManager {
     this.config = config;
     this.model = model;
     this.logger = ctx.logger("runtime");
+    this.logger.level = config.logLevel ?? 2;
     this.assets = assets;
     this.artifacts = artifacts;
     this.storage = storage;

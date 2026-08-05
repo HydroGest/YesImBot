@@ -47,7 +47,7 @@ export default class YesImBotService extends Service<Config> {
       basePath: config.basePath,
       logLevel: config.logLevel,
     });
-    this.storage = new ChannelStorage(ctx, { basePath: config.basePath || ctx.baseDir });
+    this.storage = new ChannelStorage(ctx, { basePath: config.basePath || ctx.baseDir, logLevel: config.logLevel });
     this.assets = new AssetService(this.storage);
     const artifacts = new ArtifactService(this.storage);
     this.rt = new RuntimeManager(

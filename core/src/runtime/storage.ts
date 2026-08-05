@@ -23,6 +23,7 @@ interface DirectChannelScope {
 
 export interface ChannelStorageOptions {
   basePath: string;
+  logLevel?: number;
 }
 
 export class ChannelStorage {
@@ -35,6 +36,7 @@ export class ChannelStorage {
   constructor(ctx: Context, options: ChannelStorageOptions) {
     this.ctx = ctx;
     this.logger = ctx.logger("channel-storage");
+    this.logger.level = options.logLevel ?? 2;
     this.channelsPath = resolve(options.basePath, "channels");
   }
 
