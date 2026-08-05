@@ -78,27 +78,34 @@ allowedChannels:
     channelId: "*"
 ```
 
-模型图片能力只在 `models.json` 的模型覆盖项中声明，Provider 本身不声明
-模态能力。缺少或未知图片能力时，模型调用降级为纯文本。启用一个模型的
-图片输入：
+#### 模型图片能力（models.json）
+
+模型图片能力按模型声明，Provider 本身不声明模态能力。缺少或未知图片能力时，模型调用降级为纯文本。当前版本启用图片能力需要直接编辑 `models.json`。
+
+1. 确认模型完整 ID。格式为 `providerId:modelId`，例如 `openai:gpt-4o`。`providerId` 是 provider 插件配置里的 `id`；`modelId` 必须与 provider 插件的 `chatModels` 配置一致。
+2. 打开 `models.json`。默认路径是 Koishi 应用根目录下的 `data/yesimbot/models.json`；如果自定义了 `basePath`，则在该目录下。文件不存在时先创建为 `{}`。
+3. 在 `chat` 对象下添加该模型的覆盖项：
 
 ```json
 {
   "chat": {
-    "provider:model": {
+    "openai:gpt-4o": {
       "modalities": { "input": ["image"] }
     }
   }
 }
 ```
 
-也可以使用四级权限命令：
+4. 保存并重启 Koishi，或等对应 Runtime 被替换。活动 Runtime 在创建时快照模型能力，不会热更新。
+5. 检查启动日志。若模型 ID 未注册或拼写错误，该覆盖项会被忽略并记录 warning，此时仍按纯文本处理。
 
-```text
-yesimbot.model.add-input-modality provider:model image
-```
+`models.json` 控制“模型是否支持图片输入”，`imageInput` 控制模型调用时的全局开关和预算，两者同时生效：
 
-模型调用按 FIFO 投影历史与当前输入。模型声明图片输入能力且 `imageInput` 未关闭时，每次调用最多读取 4 张图片、单张 5 MiB、总计 10 MiB；图片选择不会改写 JSONL 历史。PlatformTranslator 自己决定入站图片下载与持久化。
+- 模型未声明 `image`：即使 `imageInput` 未关闭，也只发送文本。
+- 模型声明了 `image` 且 `imageInput` 未关闭：允许按 `imageInput` 配置的预算读取图片。
+- `imageInput: false`：无论模型是否声明，都禁用图片输入。
+
+模型调用不会自动扫描历史图片；图片只会在模型通过 `read` 工具读取资源后，按当前调用步骤的预算投影。PlatformTranslator 自己决定入站图片下载与持久化。
 
 活动 Runtime 会在创建时快照模型能力、`imageInput`、Will、提示词与插件。Core 不提供 `reload()`：配置、模型或插件变化会在 Runtime 因停止或 shared Bot 变更而替换后生效。
 
