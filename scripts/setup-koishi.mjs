@@ -266,16 +266,26 @@ function belongsToYesImBotRoot(name) {
   try {
     resolved = requireApp.resolve(`${name}/package.json`);
   } catch {
-    const relativePath = name.startsWith("@yesimbot/koishi-plugin-provider-")
-      ? `providers/${name.slice("@yesimbot/koishi-plugin-provider-".length)}`
-      : name.startsWith("koishi-plugin-")
-        ? `plugins/${name.slice("koishi-plugin-".length)}`
-        : null;
+    const relativePath = packagePathInYesImBot(name);
     return !!relativePath && fs.existsSync(path.join(yesimbotRoot, relativePath));
   }
 
   const relative = path.relative(yesimbotRoot, resolved);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function packagePathInYesImBot(name) {
+  if (name === "koishi-plugin-yesimbot") return "core";
+  if (name.startsWith("@yesimbot/koishi-plugin-provider-")) {
+    return `providers/${name.slice("@yesimbot/koishi-plugin-provider-".length)}`;
+  }
+  if (name.startsWith("koishi-plugin-yesimbot-")) {
+    return `plugins/${name.slice("koishi-plugin-yesimbot-".length)}`;
+  }
+  if (name.startsWith("koishi-plugin-")) {
+    return `plugins/${name.slice("koishi-plugin-".length)}`;
+  }
+  return null;
 }
 
 function updateManifest(plugins) {
