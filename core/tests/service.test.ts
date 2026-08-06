@@ -40,7 +40,7 @@ type RegisteredCommand = {
   readonly option: Mock;
 };
 
-vi.mock("../src/runtime/index.js", () => ({
+vi.mock("../src/runtime/manager.js", () => ({
   RuntimeManager: class {
     public reset = vi.fn(async () => undefined);
     public compact = vi.fn(async () => "");

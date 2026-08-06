@@ -11,12 +11,8 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { Config as CoreConfig } from "../src/config.js";
 import { createMessage, type EventRecord, type MessageRecord } from "../src/messages.js";
-import {
-  ChannelRuntime,
-  type ChannelRuntimeOptions,
-  RuntimeManager,
-  type ChannelPluginFactory,
-} from "../src/runtime/index.js";
+import { ChannelRuntime, type ChannelRuntimeOptions } from "../src/runtime/channel.js";
+import { RuntimeManager, type ChannelPluginFactory } from "../src/runtime/manager.js";
 import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
 import {
   RoutingWillEngine,

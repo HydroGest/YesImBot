@@ -78,9 +78,7 @@ export async function migrateV3(options: MigrateV3Options): Promise<MigrationRes
     const source = normalizeV3Source(row.source);
     if (!options.channelMatch) return true;
     if (options.includeUnsourced && !source.channelId) return true;
-    return (
-      source.platform === options.channelMatch.platform && source.channelId === options.channelMatch.channelId
-    );
+    return source.platform === options.channelMatch.platform && source.channelId === options.channelMatch.channelId;
   });
   const selected = options.limit === undefined ? candidates : candidates.slice(0, options.limit);
   stats.total = selected.length;

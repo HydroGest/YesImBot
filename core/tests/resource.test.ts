@@ -1,3 +1,4 @@
+import type { AgentTool } from "@yesimbot/agent-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "./helpers/setup.js";
@@ -5,10 +6,18 @@ import { ArtifactService } from "../src/artifact.js";
 import { AssetService } from "../src/asset.js";
 import type { Config } from "../src/config.js";
 import { prepareOutputSegments } from "../src/runtime/output.js";
-import { createResourceReader, type ResourceSchemeOpenHandler } from "../src/runtime/read.js";
+import {
+  createReadTool,
+  createResourceReader,
+  type ResourceReadResult,
+  type ResourceSchemeOpenHandler,
+} from "../src/runtime/read.js";
 import { scope, PNG_BYTES, defaultConfig, useTemporaryStorage } from "./helpers/index.js";
 
 const env = useTemporaryStorage("yesimbot-resource-");
+const BUDGET = { maxCount: 4, maxBytesPerImage: 5 * 1024 * 1024, maxTotalBytes: 10 * 1024 * 1024 };
+
+type ReadTool = AgentTool<{ uri: string }, ResourceReadResult>;
 
 describe("ResourceReader", () => {
   let config: Config;
@@ -389,5 +398,139 @@ describe("prepareOutputSegments", () => {
       reader,
     );
     expect(prepared[0]).toHaveLength(0);
+  });
+});
+
+describe("read tool model projection", () => {
+  let config: Config;
+  let artifacts: ArtifactService;
+  let assets: AssetService;
+
+  beforeEach(() => {
+    config = defaultConfig({ basePath: env.basePath });
+    artifacts = new ArtifactService(env.storage);
+    assets = new AssetService(env.storage);
+  });
+
+  function createTool(
+    overrides: { imageCapable?: boolean; imageBudget?: typeof BUDGET | null; describeImageAvailable?: boolean } = {},
+  ): ReadTool {
+    const reader = createResourceReader({
+      scope,
+      assets: assets.createStore(scope),
+      artifacts: artifacts.createStore(scope),
+      registrations: new Map(),
+      config,
+    });
+    return createReadTool({
+      logger: { info: vi.fn() } as never,
+      reader,
+      imageCapable: overrides.imageCapable ?? false,
+      imageBudget: overrides.imageBudget ?? null,
+      describeImageAvailable: overrides.describeImageAvailable ?? false,
+      registrations: new Map(),
+    });
+  }
+
+  async function readAndProject(tool: ReadTool, uri: string, toolCallId = "call-1") {
+    const result = await tool.execute({ uri }, { toolCallId, abortSignal: undefined } as never);
+    const output = await tool.toModelOutput!({ toolCallId, input: { uri }, output: result });
+    return { result, output };
+  }
+
+  it("returns image bytes with the read text for an image-capable budgeted read", async () => {
+    const id = await assets.createStore(scope).put(PNG_BYTES);
+    const { result, output } = await readAndProject(
+      createTool({ imageCapable: true, imageBudget: BUDGET }),
+      `asset://${id}`,
+    );
+
+    expect(result).toMatchObject({ uri: `asset://${id}`, mediaType: "image/png" });
+    if (output.type !== "content") throw new Error("expected multimodal output");
+    expect(output.value[0]).toMatchObject({ type: "text" });
+    const image = output.value[1];
+    if (!image || image.type !== "image-data") throw new Error("expected image-data part");
+    expect(image.mediaType).toBe("image/png");
+    expect(Buffer.from(image.data, "base64")).toEqual(Buffer.from(PNG_BYTES));
+  });
+
+  it("keeps a JSON result when image input is unavailable", async () => {
+    const id = await assets.createStore(scope).put(PNG_BYTES);
+
+    expect(
+      (await readAndProject(createTool({ imageCapable: false, imageBudget: BUDGET }), `asset://${id}`)).output.type,
+    ).toBe("json");
+    expect(
+      (await readAndProject(createTool({ imageCapable: true, imageBudget: null }), `asset://${id}`)).output.type,
+    ).toBe("json");
+  });
+
+  it("skips bytes for oversized images while keeping the read result", async () => {
+    const big = new Uint8Array(6 * 1024 * 1024);
+    big.set(PNG_BYTES);
+    const id = await assets.createStore(scope).put(big);
+    const { result, output } = await readAndProject(
+      createTool({ imageCapable: true, imageBudget: BUDGET }),
+      `asset://${id}`,
+    );
+
+    expect(result).toMatchObject({ uri: `asset://${id}` });
+    expect(output.type).toBe("json");
+  });
+
+  it("uses detected bytes instead of a supplied image MIME hint", async () => {
+    const reader = createResourceReader({
+      scope,
+      assets: assets.createStore(scope),
+      artifacts: artifacts.createStore(scope),
+      registrations: new Map(),
+      config,
+    });
+    reader.registerResourceScheme("fake", "fake", async () => ({
+      bytes: new Uint8Array([1, 2, 3]),
+      mediaType: "image/png",
+    }));
+    const tool = createReadTool({
+      logger: { info: vi.fn() } as never,
+      reader,
+      imageCapable: true,
+      imageBudget: BUDGET,
+      describeImageAvailable: false,
+      registrations: new Map(),
+    });
+
+    expect((await readAndProject(tool, "fake:///image")).output.type).toBe("json");
+  });
+
+  it("keeps a JSON result when the read fails", async () => {
+    const { result, output } = await readAndProject(
+      createTool({ imageCapable: true, imageBudget: BUDGET }),
+      `asset://${"a".repeat(32)}`,
+    );
+
+    expect(result).toMatchObject({ error: "resource_not_found" });
+    expect(output.type).toBe("json");
+  });
+
+  it("describes available image projection capabilities", () => {
+    const capable = createTool({ imageCapable: true, imageBudget: BUDGET });
+    expect(capable.description).toContain("图片字节将随结果返回");
+    expect(capable.description).not.toContain("describe_image");
+
+    const blind = createTool({ imageCapable: false, imageBudget: null, describeImageAvailable: true });
+    expect(blind.description).toContain("不包含图片字节");
+    expect(blind.description).toContain("describe_image");
+
+    const none = createTool({ imageCapable: false, imageBudget: null, describeImageAvailable: false });
+    expect(none.description).toContain("不包含图片字节");
+    expect(none.description).not.toContain("describe_image");
+  });
+
+  it("returns artifact image bytes through the same path", async () => {
+    const uri = await artifacts.createStore(scope).forTool("mcp_test").put(PNG_BYTES, { mediaType: "image/png" });
+
+    expect((await readAndProject(createTool({ imageCapable: true, imageBudget: BUDGET }), uri)).output.type).toBe(
+      "content",
+    );
   });
 });

@@ -52,7 +52,7 @@ import { h } from "koishi";
 import type { Config } from "../src/config.js";
 import type { MessageRecord } from "../src/messages.js";
 import { ChannelRuntime } from "../src/runtime/channel.js";
-import { createCompactPlugin } from "../src/runtime/compact/index.js";
+import { createCompactPlugin } from "../src/runtime/compact/plugin.js";
 
 function config(): Config {
   return {

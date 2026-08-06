@@ -15,7 +15,7 @@ import type { PacingConfig } from "../src/config.js";
 import { deliverOutput } from "../src/delivery.js";
 import { Gateway } from "../src/gateway/index.js";
 import type { MessageRecord } from "../src/messages.js";
-import { RuntimeManager } from "../src/runtime/index.js";
+import { RuntimeManager } from "../src/runtime/manager.js";
 import { ChannelStorage } from "../src/runtime/storage.js";
 import { deferred, defaultMessageRecord, delivery, outputs, session } from "./helpers/index.js";
 

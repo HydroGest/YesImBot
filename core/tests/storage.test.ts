@@ -1,18 +1,18 @@
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 
-import { createMessageEntry } from "@yesimbot/agent-runtime";
+import { createEntry, createJsonlStorage, createMessageEntry, createUserMessage } from "@yesimbot/agent-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { createJsonlStorage } from "@yesimbot/agent-runtime";
 import { h, Universal, type Context } from "koishi";
 
+import * as core from "../src/index.js";
 import { createEvent, createMessage } from "../src/messages.js";
 import { parseReply } from "../src/runtime/reply.js";
-import { ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
+import { channelDirectoryName, ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
 
 const shared = {
   type: "shared",
@@ -23,16 +23,52 @@ const shared = {
 
 const direct = { ...shared, type: "direct" } satisfies ChannelScope;
 
+function createStorageContext(): Context {
+  return {
+    logger: vi.fn().mockReturnValue({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
+  } as unknown as Context;
+}
+
+describe("ChannelScope storage coordinates", () => {
+  it("uses one readable shared directory regardless of the current Bot", () => {
+    expect(channelDirectoryName({ ...shared, selfId: "10000" })).toBe("shared-onebot-123456");
+    expect(channelDirectoryName({ ...shared, selfId: "20000" })).toBe("shared-onebot-123456");
+  });
+
+  it("uses distinct readable direct directories for distinct Bots", () => {
+    expect(channelDirectoryName({ ...direct, selfId: "10000" })).toBe("direct-onebot-123456-10000");
+    expect(channelDirectoryName({ ...direct, selfId: "20000" })).toBe("direct-onebot-123456-20000");
+  });
+
+  it("encodes delimiter-looking coordinates without escaping the channel root", () => {
+    expect(
+      channelDirectoryName({
+        type: "shared",
+        platform: "one/bot",
+        selfId: "bot/../one",
+        channelId: "room/../alpha",
+      }),
+    ).toBe("shared-one%2f%bot-room%2f%%2e%%2e%%2f%alpha");
+  });
+
+  it.each(["platform", "selfId", "channelId"] as const)("rejects empty %s", (field) => {
+    expect(() => channelDirectoryName({ ...direct, [field]: "" })).toThrow();
+  });
+
+  it("exports ChannelScope without a public channel identity", () => {
+    const exported = core as Record<string, unknown>;
+    expect(["channel", "Identity"].join("") in exported).toBe(false);
+    expect("channelKey" in exported).toBe(false);
+  });
+});
+
 describe("ChannelStorage", () => {
   let basePath: string;
   let storage: ChannelStorage;
 
   beforeEach(async () => {
     basePath = await mkdtemp(join(tmpdir(), "yesimbot-storage-"));
-    const ctx = {
-      logger: vi.fn().mockReturnValue({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
-    } as unknown as Context;
-    storage = new ChannelStorage(ctx, { basePath });
+    storage = new ChannelStorage(createStorageContext(), { basePath });
     await storage.start();
   });
 
@@ -239,5 +275,70 @@ describe("ChannelStorage", () => {
     });
     expect(entries[2]).toMatchObject({ type: "message", data: { content: reply } });
     expect(parseReply(reply)).toEqual([[h.text("first")], [h.text("second")]]);
+  });
+});
+
+describe("channel JSONL storage", () => {
+  let basePath: string;
+  let storage: ChannelStorage;
+
+  beforeEach(async () => {
+    basePath = await mkdtemp(join(tmpdir(), "yesimbot-jsonl-storage-"));
+    storage = new ChannelStorage(createStorageContext(), { basePath });
+  });
+
+  afterEach(async () => {
+    await rm(basePath, { recursive: true, force: true });
+  });
+
+  it("appends entries and reads them back across restarts", async () => {
+    const filePath = join(basePath, "session.jsonl");
+    const jsonl = createJsonlStorage(filePath);
+    const first = createEntry("message", createUserMessage("one"));
+    const second = createEntry("message", createUserMessage("two"));
+
+    await jsonl.append(first, second);
+
+    expect(await jsonl.read()).toEqual([first, second]);
+    expect(await createJsonlStorage(filePath).read()).toEqual([first, second]);
+  });
+
+  it("persists one JSON line per appended entry", async () => {
+    const filePath = join(basePath, "session.jsonl");
+    const jsonl = createJsonlStorage(filePath);
+
+    await jsonl.append(
+      createEntry("message", createUserMessage("one")),
+      createEntry("message", createUserMessage("two")),
+    );
+
+    expect((await readFile(filePath, "utf8")).trim().split("\n")).toHaveLength(2);
+  });
+
+  it("clears the backing file and reads an absent file as empty history", async () => {
+    const filePath = join(basePath, "session.jsonl");
+    const jsonl = createJsonlStorage(filePath);
+
+    await jsonl.append(createEntry("message", createUserMessage("one")));
+    await jsonl.clear();
+
+    await expect(stat(filePath)).rejects.toThrow();
+    await expect(jsonl.read()).resolves.toEqual([]);
+    await expect(createJsonlStorage(join(basePath, "missing.jsonl")).read()).resolves.toEqual([]);
+  });
+
+  it("does not load a legacy platform message entry", async () => {
+    const legacyPath = join(basePath, "channels", "ch_v1_2lgdyhmnfri2bdu7", "sessions", "messages.jsonl");
+    const eventPath = join(await storage.getStoragePath(shared), "sessions", "messages.jsonl");
+    const legacyEntry = {
+      type: "message",
+      data: { type: ["athena", "platform", "message"].join("."), role: "custom" },
+    };
+
+    expect(eventPath).toBe(join(basePath, "channels", "shared-onebot-123456", "sessions", "messages.jsonl"));
+    await mkdir(dirname(legacyPath), { recursive: true });
+    await writeFile(legacyPath, `${JSON.stringify(legacyEntry)}\n`, "utf8");
+
+    await expect(createJsonlStorage(eventPath).read()).resolves.toEqual([]);
   });
 });

@@ -108,15 +108,9 @@ export const Config: Schema<Config> = Schema.intersect([
         }).description("routing 引擎配置"),
         Schema.object({
           engine: Schema.const("willingness"),
-          probabilityThreshold: Schema.number()
-            .default(55)
-            .description("意愿值达到该阈值后才可能触发回复"),
-          decayHalfLifeSeconds: Schema.number()
-            .default(600)
-            .description("意愿值半衰期(秒)，间隔越久衰减越明显"),
-          replyCost: Schema.number()
-            .default(35)
-            .description("每次成功回复后扣除的意愿值"),
+          probabilityThreshold: Schema.number().default(55).description("意愿值达到该阈值后才可能触发回复"),
+          decayHalfLifeSeconds: Schema.number().default(600).description("意愿值半衰期(秒)，间隔越久衰减越明显"),
+          replyCost: Schema.number().default(35).description("每次成功回复后扣除的意愿值"),
         }).description("willingness 引擎配置"),
       ]),
     ]).description("消息触发策略"),

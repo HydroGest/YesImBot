@@ -6,12 +6,8 @@ import { h, type Session, Universal, Context } from "koishi";
 
 import type { AssetStore } from "../src/asset.js";
 import { Config } from "../src/config.js";
-import {
-  Gateway,
-  matchesAllowedChannel,
-  type ChannelAllowRule,
-  type PlatformTranslator,
-} from "../src/gateway/index.js";
+import { Gateway, matchesAllowedChannel } from "../src/gateway/index.js";
+import type { ChannelAllowRule, PlatformTranslator } from "../src/gateway/types.js";
 import { assembleEvent, type RecordBase, type EventRecord, type MessageRecord } from "../src/messages.js";
 import type { ChannelScope } from "../src/runtime/storage.js";
 
@@ -285,10 +281,7 @@ describe("Gateway", () => {
       type: "shared",
     });
     expect(translate).toHaveBeenCalledOnce();
-    expect(runtime.route).toHaveBeenCalledWith(
-      expect.objectContaining({ elements: [image] }),
-      expect.anything(),
-    );
+    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ elements: [image] }), expect.anything());
   });
 
   it("preserves a translator-provided channel name while keeping envelope fields host-owned", async () => {

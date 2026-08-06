@@ -3,7 +3,7 @@ import type { Awaitable, Session } from "koishi";
 import type { AssetService, AssetStore } from "../asset.js";
 import type { PacingConfig } from "../config.js";
 import type { EventRecord, MessageRecord, RecordBase } from "../messages.js";
-import type { RuntimeManager } from "../runtime/index.js";
+import type { RuntimeManager } from "../runtime/manager.js";
 
 export interface ChannelAllowRule {
   readonly platform: string;

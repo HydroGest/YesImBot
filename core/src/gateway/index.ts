@@ -1,9 +1,9 @@
 import { type Context, type Element, type Logger, type Session, Universal } from "koishi";
 
 import { deliverOutput } from "../delivery.js";
-import { ChannelScope } from "../index.js";
 import type { EventRecord, MessageRecord, RecordBase } from "../messages.js";
-import type { ChannelRuntimeResult } from "../runtime/index.js";
+import type { ChannelRuntimeResult } from "../runtime/channel.js";
+import type { ChannelScope } from "../runtime/storage.js";
 import { createDefaultTranslator } from "./default.js";
 import type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
 
@@ -221,6 +221,3 @@ function formatDebugValue(value: unknown): string {
 function truncate(value: string): string {
   return value.length > 2048 ? `${value.slice(0, 2048)}...` : value;
 }
-
-export type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
-export { createDefaultTranslator } from "./default.js";

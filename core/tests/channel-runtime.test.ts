@@ -64,7 +64,7 @@ import {
   type EventRecord,
   type MessageRecord,
 } from "../src/messages.js";
-import { ChannelRuntime } from "../src/runtime/index.js";
+import { ChannelRuntime } from "../src/runtime/channel.js";
 import type { ResourceSchemeOpenHandler } from "../src/runtime/read.js";
 
 function runtimeConfig(basePath: string, reply: Partial<Config["reply"]> = {}): Config {

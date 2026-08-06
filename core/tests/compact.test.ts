@@ -11,12 +11,10 @@ import type * as Ai from "ai";
 import type { LanguageModel } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createCompactPlugin,
-  executeCompact,
-  filterEntriesForCompression,
-  transformCompactEntries,
-} from "../src/runtime/compact/index.js";
+import { executeCompact } from "../src/runtime/compact/execute.js";
+import { filterEntriesForCompression } from "../src/runtime/compact/filter.js";
+import { createCompactPlugin } from "../src/runtime/compact/plugin.js";
+import { transformCompactEntries } from "../src/runtime/compact/transform.js";
 
 const mockGenerateText = vi.hoisted(() => vi.fn());
 // The mocked AI SDK only forwards the model identity.

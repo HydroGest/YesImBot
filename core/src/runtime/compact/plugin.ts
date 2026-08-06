@@ -15,30 +15,6 @@ import { filterEntriesForCompression } from "./filter.js";
 import { transformCompactEntries } from "./transform.js";
 import type { CompactPluginOptions } from "./types.js";
 
-function countMessagesSinceLastCompact(entries: readonly AgentEntry[]): number {
-  const lastCompactIndex = findLastCompactIndex(entries);
-  const start = lastCompactIndex === -1 ? 0 : lastCompactIndex + 1;
-  return entries.slice(start).filter((entry) => entry.type === "message").length;
-}
-
-function prepareCompactionInput(entries: readonly AgentEntry[]): {
-  previousSummary: string;
-  entriesToCompress: readonly AgentEntry[];
-  lastEntryId: string | null;
-} {
-  const lastCompactIndex = findLastCompactIndex(entries);
-  const previousSummary =
-    lastCompactIndex !== -1 ? (entries[lastCompactIndex] as AgentEntry<"compact">).data.summary : "";
-
-  const start = lastCompactIndex === -1 ? 0 : lastCompactIndex + 1;
-  const entriesToCompress = entries.slice(start);
-
-  const lastMessageEntry = [...entriesToCompress].reverse().find((e) => e.type === "message");
-  const lastEntryId = lastMessageEntry?.id ?? null;
-
-  return { previousSummary, entriesToCompress, lastEntryId };
-}
-
 export function createCompactPlugin(options: CompactPluginOptions): AgentPlugin {
   const threshold = options.threshold ?? DEFAULT_THRESHOLD;
   const charTokenRatio = options.charTokenRatio ?? DEFAULT_CHAR_TOKEN_RATIO;
@@ -102,7 +78,7 @@ export function createCompactPlugin(options: CompactPluginOptions): AgentPlugin 
 
       if (compactFailures >= maxFailures) {
         const entries = await activeStorage.read();
-        const lastEntry = [...entries].reverse().find((e) => e.type === "message");
+        const lastEntry = [...entries].reverse().find((entry) => entry.type === "message");
         if (lastEntry) {
           const hardTruncation = createEntry("compact", {
             summary: HARD_TRUNCATION_MESSAGE,
@@ -149,15 +125,30 @@ export function createCompactPlugin(options: CompactPluginOptions): AgentPlugin 
   };
 }
 
+function countMessagesSinceLastCompact(entries: readonly AgentEntry[]): number {
+  const lastCompactIndex = findLastCompactIndex(entries);
+  const start = lastCompactIndex === -1 ? 0 : lastCompactIndex + 1;
+  return entries.slice(start).filter((entry) => entry.type === "message").length;
+}
+
+function prepareCompactionInput(entries: readonly AgentEntry[]): {
+  previousSummary: string;
+  entriesToCompress: readonly AgentEntry[];
+  lastEntryId: string | null;
+} {
+  const lastCompactIndex = findLastCompactIndex(entries);
+  const previousSummary =
+    lastCompactIndex !== -1 ? (entries[lastCompactIndex] as AgentEntry<"compact">).data.summary : "";
+  const start = lastCompactIndex === -1 ? 0 : lastCompactIndex + 1;
+  const entriesToCompress = entries.slice(start);
+  const lastMessageEntry = [...entriesToCompress].reverse().find((entry) => entry.type === "message");
+
+  return { previousSummary, entriesToCompress, lastEntryId: lastMessageEntry?.id ?? null };
+}
+
 function findLastCompactIndex(entries: readonly AgentEntry[]): number {
   for (let index = entries.length - 1; index >= 0; index--) {
     if (entries[index].type === "compact") return index;
   }
   return -1;
 }
-
-export { executeCompact } from "./execute.js";
-export type { ExecuteCompactOptions } from "./execute.js";
-export { filterEntriesForCompression } from "./filter.js";
-export { transformCompactEntries } from "./transform.js";
-export type { CompactPluginOptions } from "./types.js";
