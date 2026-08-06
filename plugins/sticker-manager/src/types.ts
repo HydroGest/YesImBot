@@ -10,6 +10,7 @@ export interface StickerConfig {
   maxImportFileBytes: number;
   tagMode: boolean;
   fuzzyTagMatch: boolean;
+  stickerElement: boolean;
 }
 
 export type StickerSourceKind = "steal" | "import" | "v3" | "migrate";

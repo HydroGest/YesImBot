@@ -255,7 +255,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
   return [stealTool, sendTool, categoriesTool, searchTool, ...(tagsTool ? [tagsTool] : [])];
 }
 
-async function pickBestTaggedSticker(
+export async function pickBestTaggedSticker(
   store: StickerStore,
   scopeKey: string,
   tags: readonly string[],

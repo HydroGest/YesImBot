@@ -70,6 +70,7 @@ const config: StickerConfig = {
   maxImportFileBytes: 1024 * 1024,
   tagMode: false,
   fuzzyTagMatch: true,
+  stickerElement: true,
 };
 
 describe("StickerManagerPlugin", () => {
@@ -105,6 +106,7 @@ describe("StickerManagerPlugin", () => {
       model,
       command,
       yesimbot: {
+        registerResourceScheme: vi.fn(() => () => undefined),
         registerChannelPlugin: vi.fn((factory: Factory) => {
           factories.push(factory);
           disposeFactory = vi.fn();
