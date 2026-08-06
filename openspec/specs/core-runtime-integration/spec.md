@@ -7,7 +7,7 @@ Define how `koishi-plugin-yesimbot` integrates Koishi with `@yesimbot/agent-runt
 ## Requirements
 
 ### Requirement: Core Runtime Facade
-`YesImBotService` MUST expose model access, scoped assets, SessionResolver registration, Agent plugin registration, `getStoragePath(scope)`, channel reset, global stop, and `trigger(event: EventRecord)`. It MUST delegate Session handling and channel runtime lifecycle to internal modules. It MUST own the Bot transport used by `trigger()` and MUST NOT expose RuntimeManager, ChannelRuntime, an output iterable, runtime reload, Will, or WillEngine factory registration.
+`YesImBotService` MUST expose model access, scoped assets, SessionResolver registration, Agent plugin registration, Will config contributor and Will engine factory registration, `getStoragePath(scope)`, channel reset, global stop, and `trigger(event: EventRecord)`. It MUST delegate Session handling and channel runtime lifecycle to internal modules. It MUST own the Bot transport used by `trigger()` and MUST NOT expose RuntimeManager, ChannelRuntime, an output iterable, runtime reload, WillEngine instances, or runtime internals.
 
 #### Scenario: Platform plugin registers a resolver
 - **WHEN** a plugin calls `ctx.yesimbot.registerResolver()`
@@ -82,6 +82,25 @@ Core Will configuration MUST be a discriminated union selecting `routing` or `wi
 #### Scenario: Willingness engine is selected
 - **WHEN** configuration explicitly selects `willingness`
 - **THEN** future ChannelRuntimes MUST use willingness with the configured controls
+
+### Requirement: Optional Will Policy Extensions
+Core MUST allow optional plugins to register Will config contributors and Will engine factories through `ctx.yesimbot`. Contributors MUST receive the immutable `ChannelScope` and current `WillConfig` and may return a patch. Factories MUST receive the scope, the config after contributor patches, and a `createDefault()` factory; they may return a WillEngine or undefined. RuntimeManager MUST apply contributor patches in priority order and use the first factory that returns an engine; when no factory returns an engine, it MUST create the built-in engine from the final config. Without any extension, Core MUST preserve the default routing or willingness behavior.
+
+#### Scenario: No Will extension is registered
+- **WHEN** a ChannelRuntime is created with no Will contributors or factories
+- **THEN** Core MUST use the built-in routing or willingness engine from the base configuration
+
+#### Scenario: Config contributor patches a routing decision
+- **WHEN** a plugin contributor returns a routing patch for a matching scope
+- **THEN** RuntimeManager MUST clone and merge the patch before creating the WillEngine
+
+#### Scenario: Engine factory replaces the default engine
+- **WHEN** a registered factory returns a WillEngine for a ChannelRuntime
+- **THEN** Core MUST use that engine instead of the built-in engine
+
+#### Scenario: Engine factory wraps the default engine
+- **WHEN** a registered factory calls `createDefault()` and returns a wrapper
+- **THEN** Core MUST use the wrapper while the built-in engine remains available through the factory context
 
 ### Requirement: Channel Runtime Reset
 RuntimeManager MUST stop and remove a cached ChannelRuntime if present, then clear that channel's persisted JSONL history and scoped assets. Reset MUST NOT revalidate shared-channel assignment. The cleanup path MUST apply to cached and uncached channels. JSONL and asset cleanup MUST be independently attempted in that order; a cleanup error MUST be reported only after later mandatory cleanup and cache deletion complete. Reset MUST preserve the Manifest and every plugin-created child.

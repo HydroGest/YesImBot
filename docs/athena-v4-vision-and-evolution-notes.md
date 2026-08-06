@@ -37,7 +37,7 @@ Athena 最初看起来是一个 Koishi 聊天插件，但我想解决的从来�
 
 ### 3.2 不回复是一等行为
 
-当前 Core 把参与判断限制为每频道的 Will：默认 routing 根据 direct、mention 和 group 选择 `wait | trigger`；可选 willingness 只公开阈值、半衰期和回复成本三个旋钮。
+当前 Core 把参与判断限制为每频道的 Will：默认 routing 根据 direct、mention 和 group 选择 `wait | trigger`；可选 willingness 只公开阈值、半衰期和回复成本三个旋钮。Core 同时提供可选的 WillConfigContributor 与 WillEngineFactory 注册 seam，让插件按频道 scope 克隆配置、匹配 Koishi filter 或包装默认 engine；没有插件注册时，Core 保持内置默认行为。
 
 这不是 world state，也不是一套可无限扩展的行为状态机。未来若要引入学习型或评分型判断，必须先定义可解释输入、离线样本、评估方法和独立边界。
 

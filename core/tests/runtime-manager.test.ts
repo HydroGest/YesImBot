@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { Config as CoreConfig } from "../src/config.js";
-import type { EventRecord, MessageRecord } from "../src/messages.js";
+import { createMessage, type EventRecord, type MessageRecord } from "../src/messages.js";
 import {
   ChannelRuntime,
   type ChannelRuntimeOptions,
@@ -18,7 +18,12 @@ import {
   type ChannelPluginFactory,
 } from "../src/runtime/index.js";
 import { scopeMapKey, ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
-import { RoutingWillEngine, WillingnessWillEngine } from "../src/runtime/will.js";
+import {
+  RoutingWillEngine,
+  WillingnessWillEngine,
+  type WillConfigContributor,
+  type WillEngineFactory,
+} from "../src/runtime/will.js";
 
 function record(channelId: string, overrides: Partial<MessageRecord> = {}): MessageRecord {
   return {
@@ -63,6 +68,10 @@ function createManager(
     mention: "trigger",
     group: "wait",
   },
+  extensions: {
+    contributors?: readonly WillConfigContributor[];
+    factories?: readonly WillEngineFactory[];
+  } = {},
 ) {
   const ctx = new Context();
   const matchingBot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn() };
@@ -109,6 +118,8 @@ function createManager(
       storage,
       config,
       channelPlugins,
+      new Set(extensions.contributors ?? []),
+      new Set(extensions.factories ?? []),
       new Map(),
     ),
     assets,
@@ -277,6 +288,32 @@ describe("RuntimeManager", () => {
 
     expect(runtimeOptions(state.runtimes[0]!).will).toBeInstanceOf(RoutingWillEngine);
     expect(runtimeOptions(state.runtimes[1]!).will).toBeInstanceOf(WillingnessWillEngine);
+  });
+
+  it("applies registered will config contributors when creating a runtime", async () => {
+    const contributor: WillConfigContributor = {
+      contribute: async () => ({ group: "trigger" as const }),
+    };
+    const { manager } = createManager(undefined, undefined, { contributors: [contributor] });
+
+    await manager.route(record("room"));
+    const will = runtimeOptions(state.runtimes[0]!).will as RoutingWillEngine;
+
+    await expect(will.decide(createMessage(record("room")), { activeTurnId: null })).resolves.toBe("trigger");
+  });
+
+  it("uses a registered will engine factory when creating a runtime", async () => {
+    const factory: WillEngineFactory = {
+      create: async () => ({
+        decide: async () => "wait" as const,
+      }),
+    };
+    const { manager } = createManager(undefined, undefined, { factories: [factory] });
+
+    const result = await manager.route(record("room"));
+
+    expect(result.kind).toBe("wait");
+    expect(runtimeOptions(state.runtimes[0]!).will).toMatchObject({ decide: expect.any(Function) });
   });
 
   it("stops an unpublished runtime when initialization fails", async () => {

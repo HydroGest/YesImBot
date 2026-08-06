@@ -322,7 +322,7 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 | P-24 | `EventRecord` 是路由、持久化和 Will 判断的唯一事实 | 结构复用 Satori `Universal.Event`，不再维护 Platform 消息代数 |
 | P-25 | 每个平台最多注册一个 PlatformTranslator | 精确平台 > 显式通配 > 内置默认；选定 Translator 的 null 或抛错都不 fallback |
 | P-26 | Gateway 是 Session 和被动回复的唯一 owner | PlatformTranslator、AssetStore 和 `Session.send()` 都在活动 handler 内完成 |
-| P-27 | Will 是每频道的最小参与判断 seam | routing 为默认；willingness 仅公开阈值、半衰期和回复成本 |
+| P-27 | Will 是每频道的最小参与判断 seam | routing 为默认；willingness 仅公开阈值、半衰期和回复成本；插件可通过 WillConfigContributor / WillEngineFactory 扩展策略 |
 | P-28 | 出站能力保持内部拆分 | Gateway 处理被动回复与失败 Event；Agent tool 使用 current Bot 主动发送 |
 | P-29 | `ctx.yesimbot` 只公开已确认 facade | model、assets、PlatformTranslator/Agent plugin 注册、channel root、reset 和 stop |
 | P-30 | `ChannelScope` 保持原始字段 | 不公开或持久化 Channel Key、identity、tuple key 或 directory helper |

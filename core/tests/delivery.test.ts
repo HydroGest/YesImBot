@@ -215,6 +215,8 @@ function createIntegratedGateway(basePath: string) {
     storage,
     config,
     new Set(),
+    new Set(),
+    new Set(),
     new Map(),
   );
   const gateway = new Gateway(

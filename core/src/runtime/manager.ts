@@ -19,7 +19,7 @@ import { readPersona } from "./prompt.js";
 import type { ResourceSchemeOpenHandler } from "./read.js";
 import { createNewSession, listSessions, migrateOldSession, resolveActiveSession } from "./session-files.js";
 import { ChannelScope, ChannelStorage, scopeMapKey } from "./storage.js";
-import { createWillEngine } from "./will.js";
+import { resolveWillEngine, type WillConfigContributor, type WillEngineFactory } from "./will.js";
 
 export interface ChannelPluginContext {
   readonly scope: ChannelScope;
@@ -49,6 +49,8 @@ export class RuntimeManager {
   private readonly model: ModelService;
   private readonly logger: Logger;
   private readonly channelPlugins: ReadonlySet<ChannelPluginFactory>;
+  private readonly willConfigContributors: ReadonlySet<WillConfigContributor>;
+  private readonly willEngineFactories: ReadonlySet<WillEngineFactory>;
   private readonly assets: AssetService;
   private readonly artifacts: ArtifactService;
   private readonly storage: ChannelStorage;
@@ -65,6 +67,8 @@ export class RuntimeManager {
     storage: ChannelStorage,
     config: Config,
     channelPlugins: ReadonlySet<ChannelPluginFactory>,
+    willConfigContributors: ReadonlySet<WillConfigContributor>,
+    willEngineFactories: ReadonlySet<WillEngineFactory>,
     resourceSchemeRegistrations: ReadonlyMap<string, { prompt: string; open: ResourceSchemeOpenHandler }>,
   ) {
     this.ctx = ctx;
@@ -76,6 +80,8 @@ export class RuntimeManager {
     this.artifacts = artifacts;
     this.storage = storage;
     this.channelPlugins = channelPlugins;
+    this.willConfigContributors = willConfigContributors;
+    this.willEngineFactories = willEngineFactories;
     this.resourceSchemeRegistrations = resourceSchemeRegistrations;
   }
 
@@ -332,6 +338,11 @@ export class RuntimeManager {
     let activeSessionPath = await resolveActiveSession(sessionsDir);
     if (!activeSessionPath) activeSessionPath = await createNewSession(sessionsDir);
     const storage = createJsonlStorage(activeSessionPath);
+    const will = await resolveWillEngine(this.ctx, this.config.will, {
+      scope,
+      contributors: [...this.willConfigContributors],
+      factories: [...this.willEngineFactories],
+    });
     const options: ChannelRuntimeOptions = {
       config: {
         ...this.config,
@@ -339,7 +350,7 @@ export class RuntimeManager {
       },
       scope,
       bot,
-      will: createWillEngine(this.ctx, this.config.will),
+      will,
       assets: this.assets.createStore(scope),
       artifacts,
       registrations,

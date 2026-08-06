@@ -39,6 +39,21 @@ Willingness configuration MUST expose only `probabilityThreshold`, `decayHalfLif
 - **WHEN** willingness cannot calculate a decision
 - **THEN** it MUST emit a calculation diagnostic and return `wait`
 
+### Requirement: Optional Will Policy Extensions
+Core MUST apply registered Will config contributors before creating the per-runtime WillEngine. Contributors MUST be sorted by ascending priority and applied in that order, with later patches overriding earlier fields for the same key. Registered Will engine factories MUST be sorted by ascending priority and evaluated in that order; the first factory that returns an engine MUST win. A factory receives `createDefault()` so it can wrap the built-in engine. No extension is required for default behavior.
+
+#### Scenario: Contributor changes the final config
+- **WHEN** a contributor returns a patch for a ChannelRuntime's scope
+- **THEN** the engine MUST be created from the merged config, not the base config
+
+#### Scenario: Multiple factories compete
+- **WHEN** multiple factories are registered with different priorities
+- **THEN** the first factory by ascending priority that returns an engine MUST be used
+
+#### Scenario: Factory wraps the built-in engine
+- **WHEN** a factory returns a wrapper around `createDefault()`
+- **THEN** Core MUST invoke the wrapper for each Will decision
+
 ### Requirement: Committed Input Decision
 ChannelRuntime MUST evaluate Will after persisting and publishing every input accepted through the ordinary routed-input path. A decision MUST be either `wait` or `trigger`; `wait` MUST not start or join an Agent turn. This requirement MUST NOT apply to a trusted forced EventRecord.
 

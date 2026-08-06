@@ -15,6 +15,7 @@ import { RuntimeManager, type ChannelPluginFactory } from "./runtime/index.js";
 import { ensureAgentsFile, ensureDefaultPersona } from "./runtime/prompt.js";
 import type { ResourceSchemeOpenHandler } from "./runtime/read.js";
 import { ChannelScope, ChannelStorage } from "./runtime/storage.js";
+import type { WillConfigContributor, WillEngineFactory } from "./runtime/will.js";
 
 declare module "koishi" {
   interface Context {
@@ -34,6 +35,8 @@ export default class YesImBotService extends Service<Config> {
   private readonly rt: RuntimeManager;
   private readonly gate: Gateway;
   private readonly channelPlugins = new Set<ChannelPluginFactory>();
+  private readonly willConfigContributors = new Set<WillConfigContributor>();
+  private readonly willEngineFactories = new Set<WillEngineFactory>();
   private readonly commandDisposers = new Set<() => unknown>();
   private readonly resourceSchemeRegistrations = new Map<string, { prompt: string; open: ResourceSchemeOpenHandler }>();
   private triggerClosed = false;
@@ -58,6 +61,8 @@ export default class YesImBotService extends Service<Config> {
       this.storage,
       config,
       this.channelPlugins,
+      this.willConfigContributors,
+      this.willEngineFactories,
       this.resourceSchemeRegistrations,
     );
     this.gate = new Gateway(
@@ -84,6 +89,16 @@ export default class YesImBotService extends Service<Config> {
   public registerChannelPlugin(resolver: ChannelPluginFactory): () => void {
     this.channelPlugins.add(resolver);
     return () => this.channelPlugins.delete(resolver);
+  }
+
+  public registerWillConfigContributor(contributor: WillConfigContributor): () => void {
+    this.willConfigContributors.add(contributor);
+    return () => this.willConfigContributors.delete(contributor);
+  }
+
+  public registerWillEngineFactory(factory: WillEngineFactory): () => void {
+    this.willEngineFactories.add(factory);
+    return () => this.willEngineFactories.delete(factory);
   }
 
   public registerResourceScheme(scheme: string, prompt: string, open: ResourceSchemeOpenHandler): () => void {
@@ -202,3 +217,14 @@ export * from "./model/index.js";
 export type { ChannelPluginFactory, ChannelPluginContext } from "./runtime/index.js";
 export type { ResourceOpenResult, ResourceReadResult, ResourceSchemeOpenHandler } from "./runtime/read.js";
 export type { ChannelScope } from "./runtime/storage.js";
+export type {
+  RoutingConfig,
+  WillConfig,
+  WillConfigContributor,
+  WillConfigPatch,
+  WillEngine,
+  WillEngineFactory,
+  WillEngineFactoryContext,
+  ResolveWillEngineOptions,
+  WillingnessConfig,
+} from "./runtime/will.js";

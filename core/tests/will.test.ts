@@ -7,10 +7,14 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { Config } from "../src/config.js";
 import type { Config as ConfigType } from "../src/config.js";
 import { createEvent, createMessage, type Event, type Message } from "../src/messages.js";
+import type { ChannelScope } from "../src/runtime/storage.js";
 import {
   RoutingWillEngine,
   createWillEngine,
+  resolveWillEngine,
   WillingnessWillEngine,
+  type WillConfigContributor,
+  type WillEngineFactory,
   type WillingnessConfig,
   type WillEngine,
   type WillEngineObservation,
@@ -27,6 +31,13 @@ declare module "koishi-plugin-yesimbot" {
 
 const EMPTY_STATE: WillEngine.State = {
   activeTurnId: null,
+};
+
+const scope: ChannelScope = {
+  type: "shared",
+  platform: "test",
+  selfId: "bot-1",
+  channelId: "room-1",
 };
 
 function messageInput(options: {
@@ -158,6 +169,75 @@ describe("createWillEngine", () => {
     const will = createWillEngine(new Context(), willingness);
 
     expect(will).toBeInstanceOf(WillingnessWillEngine);
+  });
+});
+
+describe("resolveWillEngine", () => {
+  const routing = {
+    engine: "routing",
+    direct: "trigger",
+    mention: "trigger",
+    group: "wait",
+  } as const;
+
+  it("uses the built-in routing engine when no extensions are registered", async () => {
+    const will = await resolveWillEngine(new Context(), routing, { scope });
+
+    expect(will).toBeInstanceOf(RoutingWillEngine);
+  });
+
+  it("applies config contributors in priority order", async () => {
+    const contributors: WillConfigContributor[] = [
+      {
+        priority: 10,
+        contribute: async () => ({ group: "trigger" as const }),
+      },
+      {
+        priority: 20,
+        contribute: async () => ({ group: "wait" as const }),
+      },
+    ];
+    const will = await resolveWillEngine(new Context(), routing, { scope, contributors });
+
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
+  });
+
+  it("lets a contributor switch to the willingness engine", async () => {
+    const contributor: WillConfigContributor = {
+      contribute: async () => ({ engine: "willingness" as const, probabilityThreshold: 100 }),
+    };
+    const will = await resolveWillEngine(new Context(), routing, { scope, contributors: [contributor] });
+
+    expect(will).toBeInstanceOf(WillingnessWillEngine);
+  });
+
+  it("prefers the first registered engine factory", async () => {
+    const factory: WillEngineFactory = {
+      priority: 5,
+      create: async () => ({
+        decide: async () => "trigger" as const,
+      }),
+    };
+    const will = await resolveWillEngine(new Context(), routing, { scope, factories: [factory] });
+
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
+  });
+
+  it("lets a factory wrap the default engine", async () => {
+    const factory: WillEngineFactory = {
+      create: async ({ createDefault }) => {
+        const base = createDefault();
+        return {
+          decide: async (input, state) => {
+            const decision = await base.decide(input, state);
+            return decision === "wait" ? "trigger" : decision;
+          },
+        };
+      },
+    };
+    const will = await resolveWillEngine(new Context(), routing, { scope, factories: [factory] });
+
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
   });
 });
 

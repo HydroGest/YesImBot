@@ -1,6 +1,7 @@
 import type { Awaitable, Context, Element, Logger, Universal } from "koishi";
 
 import { isMessage, type Message, type Event } from "../messages.js";
+import type { ChannelScope } from "./storage.js";
 
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 const TEXT_GAIN = 12;
@@ -9,7 +10,7 @@ const DIRECT_GAIN = 40;
 const MAX_WILLINGNESS = 100;
 const PROBABILITY_AMPLIFIER = 0.04;
 
-interface RoutingConfig {
+export interface RoutingConfig {
   readonly direct: WillEngine.Decision;
   readonly mention: WillEngine.Decision;
   readonly group: WillEngine.Decision;
@@ -22,6 +23,31 @@ export interface WillingnessConfig {
 }
 
 export type WillConfig = (RoutingConfig & { engine: "routing" }) | (WillingnessConfig & { engine: "willingness" });
+
+export type WillConfigPatch = Partial<RoutingConfig> &
+  Partial<WillingnessConfig> & { engine?: "routing" | "willingness" };
+
+export interface WillConfigContributor {
+  readonly priority?: number;
+  contribute(scope: ChannelScope, config: WillConfig): Awaitable<WillConfigPatch | void>;
+}
+
+export interface WillEngineFactoryContext {
+  readonly scope: ChannelScope;
+  readonly config: WillConfig;
+  createDefault(): WillEngine;
+}
+
+export interface WillEngineFactory {
+  readonly priority?: number;
+  create(context: WillEngineFactoryContext): Awaitable<WillEngine | void>;
+}
+
+export interface ResolveWillEngineOptions {
+  readonly scope: ChannelScope;
+  readonly contributors?: readonly WillConfigContributor[];
+  readonly factories?: readonly WillEngineFactory[];
+}
 
 export interface WillEngine {
   decide(input: Message | Event, state: WillEngine.State): Awaitable<WillEngine.Decision>;
@@ -102,6 +128,24 @@ export function createWillEngine(ctx: Context, config: WillConfig): WillEngine {
   return new RoutingWillEngine(config);
 }
 
+export async function resolveWillEngine(
+  ctx: Context,
+  config: WillConfig,
+  options: ResolveWillEngineOptions,
+): Promise<WillEngine> {
+  const resolvedConfig = await applyWillConfigContributors(config, options.scope, options.contributors ?? []);
+  const createDefault = () => createWillEngine(ctx, resolvedConfig);
+  for (const factory of orderWillFactories(options.factories ?? [])) {
+    const engine = await factory.create({
+      scope: options.scope,
+      config: resolvedConfig,
+      createDefault,
+    });
+    if (engine) return engine;
+  }
+  return createDefault();
+}
+
 function decayScore(
   score: number,
   lastDecayAt: number,
@@ -167,3 +211,56 @@ function dynamicGainMultiplier(ratio: number): number {
 function isSelfMention(selfId: string, elements: readonly Element[] | undefined): boolean {
   return elements?.some((element) => element.type === "at" && String(element.attrs.id) === selfId) ?? false;
 }
+
+async function applyWillConfigContributors(
+  config: WillConfig,
+  scope: ChannelScope,
+  contributors: readonly WillConfigContributor[],
+): Promise<WillConfig> {
+  let current = config;
+  for (const contributor of [...contributors].sort(byPriority)) {
+    const patch = await contributor.contribute(scope, current);
+    if (patch) current = mergeWillConfig(current, patch);
+  }
+  return current;
+}
+
+function orderWillFactories(factories: readonly WillEngineFactory[]): WillEngineFactory[] {
+  return [...factories].sort(byPriority);
+}
+
+function byPriority<T extends { readonly priority?: number }>(left: T, right: T): number {
+  return (left.priority ?? 1000) - (right.priority ?? 1000);
+}
+
+function mergeWillConfig(config: WillConfig, patch: WillConfigPatch): WillConfig {
+  const engine = patch.engine ?? config.engine;
+  if (engine === "willingness") {
+    const base = config.engine === "willingness" ? config : DEFAULT_WILLINGNESS_CONFIG;
+    return {
+      engine,
+      probabilityThreshold: patch.probabilityThreshold ?? base.probabilityThreshold,
+      decayHalfLifeSeconds: patch.decayHalfLifeSeconds ?? base.decayHalfLifeSeconds,
+      replyCost: patch.replyCost ?? base.replyCost,
+    };
+  }
+  const base = config.engine === "routing" ? config : DEFAULT_ROUTING_CONFIG;
+  return {
+    engine,
+    direct: patch.direct ?? base.direct,
+    mention: patch.mention ?? base.mention,
+    group: patch.group ?? base.group,
+  };
+}
+
+const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
+  direct: "trigger",
+  mention: "trigger",
+  group: "wait",
+};
+
+const DEFAULT_WILLINGNESS_CONFIG: WillingnessConfig = {
+  probabilityThreshold: 55,
+  decayHalfLifeSeconds: 600,
+  replyCost: 35,
+};

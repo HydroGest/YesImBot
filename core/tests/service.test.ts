@@ -1,4 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -22,6 +25,8 @@ const state = vi.hoisted(() => ({
         stop: Mock;
         trigger: Mock;
         channelPlugins: ReadonlySet<ChannelPluginFactory>;
+        willConfigContributors: ReadonlySet<unknown>;
+        willEngineFactories: ReadonlySet<unknown>;
       }
     | undefined,
 }));
@@ -54,6 +59,8 @@ vi.mock("../src/runtime/index.js", () => ({
       _storage: unknown,
       _config: unknown,
       readonly channelPlugins: ReadonlySet<ChannelPluginFactory>,
+      readonly willConfigContributors: ReadonlySet<unknown>,
+      readonly willEngineFactories: ReadonlySet<unknown>,
       _resourceSchemeRegistrations: unknown,
     ) {
       state.runtime = this;
@@ -97,6 +104,10 @@ const event: EventRecord<"delivery.failed"> = {
 };
 
 function createService(serviceConfig: Config = config) {
+  const effectiveConfig = {
+    ...serviceConfig,
+    basePath: join(tmpdir(), `yesimbot-service-${randomUUID()}`),
+  };
   const ctx = new Context();
   ctx.baseDir = "/tmp/yesimbot-service";
   Object.assign(ctx, { "yesimbot.model": {} });
@@ -125,9 +136,9 @@ function createService(serviceConfig: Config = config) {
     commands.push(command);
     return command as never;
   });
-  const service = new YesImBotService(ctx as never, serviceConfig);
+  const service = new YesImBotService(ctx as never, effectiveConfig);
   Object.assign(ctx, { yesimbot: service });
-  return { ctx, service, database, commands };
+  return { ctx, service, database, commands, basePath: effectiveConfig.basePath };
 }
 
 describe("YesImBotService facade", () => {
@@ -141,6 +152,8 @@ describe("YesImBotService facade", () => {
     expect(ctx.yesimbot.model).toBeDefined();
     expect(ctx.yesimbot.registerTranslator).toEqual(expect.any(Function));
     expect(ctx.yesimbot.registerChannelPlugin).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.registerWillConfigContributor).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.registerWillEngineFactory).toEqual(expect.any(Function));
     expect(ctx.yesimbot.getStoragePath).toEqual(expect.any(Function));
     expect(ctx.yesimbot.trigger).toEqual(expect.any(Function));
     expect("channelKey" in ctx.yesimbot).toBe(false);
@@ -323,24 +336,21 @@ describe("YesImBotService facade", () => {
   });
 
   it("exposes Core channel storage methods", async () => {
-    const { service } = createService();
+    const { service, basePath } = createService();
     const scope = { platform: "onebot", selfId: "10000", channelId: "123456", type: "shared" };
 
     await service.start();
-    await expect(service.getStoragePath(scope)).resolves.toBe(
-      "/tmp/yesimbot-service/data/yesimbot-service/channels/shared-onebot-123456",
-    );
+    await expect(service.getStoragePath(scope)).resolves.toBe(join(basePath, "channels/shared-onebot-123456"));
   });
 
   it("creates the default PERSONA.md on first start without overwriting user files", async () => {
-    const { service } = createService();
-    await rm("/tmp/yesimbot-service/data/yesimbot-service/PERSONA.md", { force: true });
+    const { service, basePath } = createService();
+    const personaPath = join(basePath, "PERSONA.md");
+    await rm(personaPath, { force: true });
 
     await service.start();
 
-    await expect(readFile("/tmp/yesimbot-service/data/yesimbot-service/PERSONA.md", "utf8")).resolves.toBe(
-      DEFAULT_PERSONA,
-    );
+    await expect(readFile(personaPath, "utf8")).resolves.toBe(DEFAULT_PERSONA);
   });
 
   it("waits for storage readiness before resolving or routing a Session", async () => {
@@ -405,5 +415,23 @@ describe("YesImBotService facade", () => {
     const plugins = await Promise.all([...(state.runtime?.channelPlugins ?? [])].map((f) => f({ scope, bot })));
 
     expect(plugins).toEqual([{ name: "plugin" }]);
+  });
+
+  it("registers and disposes Will config contributors and engine factories", () => {
+    const { service } = createService();
+    const contributor = { priority: 1, contribute: vi.fn() };
+    const factory = { priority: 1, create: vi.fn() };
+
+    const disposeContributor = service.registerWillConfigContributor(contributor);
+    const disposeFactory = service.registerWillEngineFactory(factory);
+
+    expect(state.runtime?.willConfigContributors.has(contributor)).toBe(true);
+    expect(state.runtime?.willEngineFactories.has(factory)).toBe(true);
+
+    disposeContributor();
+    disposeFactory();
+
+    expect(state.runtime?.willConfigContributors.has(contributor)).toBe(false);
+    expect(state.runtime?.willEngineFactories.has(factory)).toBe(false);
   });
 });
