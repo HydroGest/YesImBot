@@ -1,6 +1,5 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger } from "koishi";
-import type { ChannelScope, ResourceOpenResult } from "koishi-plugin-yesimbot";
 
 import { ModelStickerClassifier } from "./classifier.js";
 import { registerStickerCommands } from "./commands.js";
@@ -24,7 +23,6 @@ export default class StickerManagerPlugin {
   public readonly store: StickerStore;
 
   private disposeAgentPlugin?: () => void;
-  private disposeStickerScheme?: () => void;
   private disposeCommands?: () => void;
   private started = false;
 
@@ -45,12 +43,7 @@ export default class StickerManagerPlugin {
     try {
       await this.store.ensure();
       const classifier = new ModelStickerClassifier(this.ctx, this.config);
-      this.disposeStickerScheme = this.ctx.yesimbot.registerResourceScheme(
-        "sticker",
-        "读取已收藏表情包图片，URI 形如 sticker:///<contentId>",
-        (scope, uri, options) => this.openSticker(scope, uri, options),
-      );
-      this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope, bot }) => {
+      this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope, bot, artifacts }) => {
         const assets = this.ctx.yesimbot.assets.createStore(scope);
         return {
           name: "sticker-manager",
@@ -66,6 +59,7 @@ export default class StickerManagerPlugin {
           onAppend: (entries) =>
             projectStickerElements(entries, {
               store: this.store,
+              artifacts,
               scopeKey: scopeKeyFor(scope, this.config),
               config: this.config,
             }),
@@ -90,25 +84,9 @@ export default class StickerManagerPlugin {
     this.started = false;
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
-    this.disposeStickerScheme?.();
-    this.disposeStickerScheme = undefined;
     this.disposeCommands?.();
     this.disposeCommands = undefined;
     this.logger.info("Sticker manager plugin stopped");
-  }
-
-  private async openSticker(
-    scope: ChannelScope,
-    uri: string,
-    options: { signal: AbortSignal; maxBytes: number },
-  ): Promise<ResourceOpenResult> {
-    const contentId = parseStickerUri(uri);
-    if (!contentId) throw new Error("Invalid sticker URI");
-    const sticker = await this.store.get(scopeKeyFor(scope, this.config), contentId);
-    if (!sticker) throw new Error("Sticker not found");
-    const bytes = await this.store.readBytes(sticker);
-    if (bytes.byteLength > options.maxBytes) throw new Error("Sticker exceeds read limit");
-    return { bytes, mediaType: sticker.mime };
   }
 }
 
@@ -128,9 +106,4 @@ function formatStickerPrompt(config: StickerConfig): string {
     config.stickerElement ? "需要发图时可直接输出 <sticker/>，或调用 sticker_send。" : "需要发图时调用 sticker_send。",
     "不需要把返回的 id 当成可读内容发给用户。",
   ].join("\n");
-}
-
-function parseStickerUri(uri: string): string | undefined {
-  const match = /^sticker:\/\/(?:\/)?([a-f0-9]{64})$/i.exec(uri);
-  return match?.[1]?.toLowerCase();
 }

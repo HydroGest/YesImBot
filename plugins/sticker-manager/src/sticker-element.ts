@@ -1,5 +1,6 @@
 import type { AgentEntry } from "@yesimbot/agent-runtime";
 import { h, type Element } from "koishi";
+import type { ArtifactStore } from "koishi-plugin-yesimbot";
 
 import type { StickerStore } from "./store.js";
 import { pickBestTaggedSticker } from "./tools.js";
@@ -7,6 +8,7 @@ import type { StickerConfig, StickerProjection } from "./types.js";
 
 interface StickerElementOptions {
   readonly store: StickerStore;
+  readonly artifacts: ArtifactStore;
   readonly scopeKey: string;
   readonly config: StickerConfig;
 }
@@ -73,8 +75,12 @@ async function replaceElement(element: Element, options: StickerElementOptions):
     try {
       const sticker = await resolveSticker(element.attrs, options);
       if (!sticker) return undefined;
+      const bytes = await options.store.readBytes(sticker);
+      const uri = await options.artifacts
+        .forTool("sticker")
+        .put(bytes, { mediaType: sticker.mime, filename: `${sticker.id}.${extensionOf(sticker.mime)}` });
       await options.store.markUsed(options.scopeKey, sticker.id);
-      return h("img", { src: `sticker:///${sticker.id}` });
+      return h("img", { src: uri });
     } catch {
       return undefined;
     }
@@ -113,4 +119,9 @@ function parseTags(value: unknown): string[] {
 
 function stringAttr(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function extensionOf(mediaType: string): string {
+  const match = /^image\/([a-z0-9.+-]+)$/.exec(mediaType);
+  return match?.[1] ?? "bin";
 }

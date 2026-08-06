@@ -275,25 +275,6 @@ describe("prepareOutputSegments", () => {
     expect(img.attrs.src).not.toContain("artifact://");
   });
 
-  it("resolves a registered sticker image source through the same reader path", async () => {
-    const open = vi.fn(async () => ({ bytes: PNG_BYTES, mediaType: "image/png" }));
-    const reader = readerWith(async () => undefined);
-    reader.registerResourceScheme("sticker", "sticker 图片", open);
-
-    const prepared = await prepareOutputSegments(
-      [[{ type: "img", attrs: { src: `sticker:///${"a".repeat(64)}` }, children: [] }]],
-      reader,
-    );
-
-    const img = prepared[0]![0] as { type: string; attrs: { src: string } };
-    expect(open).toHaveBeenCalledWith(
-      scope,
-      `sticker:///${"a".repeat(64)}`,
-      expect.objectContaining({ maxBytes: expect.any(Number) }),
-    );
-    expect(img.attrs.src.startsWith("data:image/png;base64,")).toBe(true);
-  });
-
   it("omits an unavailable resource and preserves sibling content", async () => {
     const reader = readerWith(async () => undefined);
 

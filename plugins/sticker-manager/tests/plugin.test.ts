@@ -106,7 +106,6 @@ describe("StickerManagerPlugin", () => {
       model,
       command,
       yesimbot: {
-        registerResourceScheme: vi.fn(() => () => undefined),
         registerChannelPlugin: vi.fn((factory: Factory) => {
           factories.push(factory);
           disposeFactory = vi.fn();

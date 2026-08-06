@@ -1,5 +1,6 @@
 import type { AgentEntry } from "@yesimbot/agent-runtime";
 import { createAssistantMessage, createMessageEntry } from "@yesimbot/agent-runtime";
+import type { ArtifactStore } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -50,6 +51,15 @@ function createStore(overrides: Partial<StickerStore> = {}): StickerStore {
   } as unknown as StickerStore;
 }
 
+function createArtifacts(): ArtifactStore {
+  const put = vi.fn(async () => `artifact://sticker/${"a".repeat(8)}-0000-7000-8000-${"b".repeat(12)}`);
+  return {
+    forTool: vi.fn(() => ({ put })),
+    open: vi.fn(),
+    clear: vi.fn(),
+  } as unknown as ArtifactStore;
+}
+
 function assistantEntry(content: string): AgentEntry {
   return createMessageEntry(createAssistantMessage(content));
 }
@@ -59,12 +69,13 @@ describe("sticker output element", () => {
     const store = createStore();
     const [projected] = await projectStickerElements([assistantEntry('<sticker tags="猫"/>')], {
       store,
+      artifacts: createArtifacts(),
       scopeKey: "global",
       config: config(),
     });
     const message = projected.data as { content: string };
 
-    expect(message.content).toContain(`<img src="sticker:///${"a".repeat(64)}"/>`);
+    expect(message.content).toContain('<img src="artifact://sticker/');
     expect(store.markUsed).toHaveBeenCalledWith("global", "a".repeat(64));
   });
 
@@ -74,13 +85,14 @@ describe("sticker output element", () => {
     });
     const [projected] = await projectStickerElements([assistantEntry(`<sticker id="${"b".repeat(64)}"/>`)], {
       store,
+      artifacts: createArtifacts(),
       scopeKey: "global",
       config: config(),
     });
     const message = projected.data as { content: string };
 
     expect(store.get).toHaveBeenCalledWith("global", "b".repeat(64));
-    expect(message.content).toContain(`<img src="sticker:///${"b".repeat(64)}"/>`);
+    expect(message.content).toContain('<img src="artifact://sticker/');
   });
 
   it("leaves sticker elements untouched when disabled", async () => {
@@ -88,6 +100,7 @@ describe("sticker output element", () => {
     const raw = '<sticker tags="猫"/>';
     const [projected] = await projectStickerElements([assistantEntry(raw)], {
       store,
+      artifacts: createArtifacts(),
       scopeKey: "global",
       config: config({ stickerElement: false }),
     });

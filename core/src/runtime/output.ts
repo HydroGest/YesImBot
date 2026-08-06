@@ -2,7 +2,7 @@ import { h, type Element } from "koishi";
 
 import { detectMediaType, type ResourceReader } from "./read.js";
 
-const RESOURCE_SOURCE = /^(asset|artifact|workspace|sticker):\/\//;
+const RESOURCE_SOURCE = /^(asset|artifact|workspace):\/\//;
 const RESOURCE_ELEMENT_TYPES = new Set(["img", "file"]);
 const GENERIC_FILE_MEDIA_TYPE = "application/octet-stream";
 
