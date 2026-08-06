@@ -99,6 +99,7 @@ npx vitest run plugins/memos-client/tests/tools.test.ts
 | `plugins/workspace/`      | `koishi-plugin-yesimbot-workspace`           |
 | `plugins/mcp-client/`     | `koishi-plugin-yesimbot-mcp-client`          |
 | `plugins/memos-client/`   | `koishi-plugin-yesimbot-memos-client`        |
+| `plugins/global-brain/`   | `koishi-plugin-yesimbot-global-brain`        |
 | `plugins/onebot-utils/`   | `koishi-plugin-yesimbot-onebot-utils`        |
 | `plugins/search-service/` | `koishi-plugin-yesimbot-search-service`      |
 | `plugins/sticker/`        | `koishi-plugin-yesimbot-sticker`             |
