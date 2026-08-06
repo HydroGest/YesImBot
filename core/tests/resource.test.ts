@@ -345,7 +345,26 @@ describe("prepareOutputSegments", () => {
       [[{ type: "img", attrs: { src: `asset://${id.slice(0, 7)}` }, children: [] }]],
       reader,
     );
-    expect(prefix[0]).toHaveLength(0);
+    expect(prefix).toHaveLength(0);
+  });
+
+  it("drops a segment that becomes empty after resource omission", async () => {
+    const reader = readerWith(async () => undefined);
+
+    const prepared = await prepareOutputSegments(
+      [
+        [
+          {
+            type: "img",
+            attrs: { src: "artifact://missing/019d3b7e-1bd0-7e4f-9c5d-5bf3fd41f1d4" },
+            children: [],
+          },
+        ],
+      ],
+      reader,
+    );
+
+    expect(prepared).toHaveLength(0);
   });
 
   it("materializes ordinary files with a generic MIME fallback", async () => {
@@ -397,7 +416,7 @@ describe("prepareOutputSegments", () => {
       [[{ type: "img", attrs: { src: "workspace:///fake.png" }, children: [] }]],
       reader,
     );
-    expect(prepared[0]).toHaveLength(0);
+    expect(prepared).toHaveLength(0);
   });
 });
 

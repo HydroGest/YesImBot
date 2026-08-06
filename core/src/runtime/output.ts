@@ -20,7 +20,7 @@ export async function prepareOutputSegments(
   for (const segment of segments) {
     prepared.push(await prepareElements(segment, reader, options));
   }
-  return prepared;
+  return prepared.filter((segment) => segment.length > 0);
 }
 
 async function prepareElements(
