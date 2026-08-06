@@ -85,6 +85,18 @@ describe("default translator resource persistence", () => {
     expect(result).toMatchObject({ platform: "test", elements: [h("img", { id: ID })] });
   });
 
+  it("preserves image subtype and summary attrs after persistence", async () => {
+    const translator = createDefaultTranslator({ http: remoteMock() } as never);
+
+    const result = await translator.translate(
+      base(),
+      makeSession({ elements: [h("img", { src: "https://example.test/a.gif", subType: 1, summary: "大笑" })] }),
+      store(),
+    );
+
+    expect(result).toMatchObject({ elements: [h("img", { id: ID, subType: 1, summary: "大笑" })] });
+  });
+
   it("decodes data URLs and local files without network access", async () => {
     const http = vi.fn();
     const translator = createDefaultTranslator({ http } as never);

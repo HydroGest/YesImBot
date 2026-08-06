@@ -1,5 +1,7 @@
 import type { OneBot } from "koishi-plugin-adapter-onebot";
 
+import { formatAnimatedImageLabel, isAnimatedImage } from "./animated-image.js";
+
 const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
   year: "numeric",
@@ -30,6 +32,7 @@ interface ForwardFailure {
 interface ForwardReaderConfig {
   parseImages: boolean;
   maxForwardPageChars: number;
+  attachImageSummary: boolean;
 }
 
 interface OneBotForwardNode {
@@ -52,6 +55,8 @@ interface OneBotImageSegment {
     summary: string;
     file: string;
     file_size?: string;
+    sub_type?: unknown;
+    subType?: unknown;
   };
 }
 
@@ -164,13 +169,23 @@ function normalizeSegments(
         break;
       }
       case "image": {
-        const data = segment.data as { summary?: unknown; file?: unknown; file_size?: unknown } | undefined;
+        const data = segment.data as
+          | { summary?: unknown; file?: unknown; file_size?: unknown; sub_type?: unknown; subType?: unknown }
+          | undefined;
         if (typeof data?.summary !== "string" || typeof data.file !== "string") {
           appendString(parts, "[未知消息段]");
         } else if (config.parseImages) {
           parts.push({ image: [data.summary, data.file, formatFileSize(data.file_size)] });
         } else {
-          appendString(parts, "[图片]");
+          appendString(
+            parts,
+            isAnimatedImage(data)
+              ? formatAnimatedImageLabel({
+                  attachImageSummary: config.attachImageSummary,
+                  summary: data.summary,
+                })
+              : "[图片]",
+          );
         }
         break;
       }

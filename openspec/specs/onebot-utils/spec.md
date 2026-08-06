@@ -27,7 +27,7 @@ The OneBot utils plugin MUST register optional OneBot-specific runtime tools thr
 
 ### Requirement: OneBot Utils Forward Configuration
 
-The plugin MUST expose `parseImages`, defaulting to `false`, and a positive `maxForwardPageChars`, defaulting to `6000`. It MUST NOT expose a forward expansion-depth, cache-capacity, or cache-expiration setting.
+The plugin MUST expose `parseImages`, defaulting to `false`, `attachImageSummary`, defaulting to `true`, and a positive `maxForwardPageChars`, defaulting to `6000`. It MUST NOT expose a forward expansion-depth, cache-capacity, or cache-expiration setting.
 
 #### Scenario: Default forward configuration
 
@@ -100,7 +100,7 @@ type ForwardResult = ForwardPage | { error: string }
 
 Forward content normalization MUST retain `text` segment text exactly and preserve source order. It MUST represent `record`, `video`, and `file` segments with `[语音]`, `[视频]`, and `[文件]` text placeholders. It MUST represent an unknown or malformed segment with `[未知消息段]`. Adjacent text and placeholder strings MUST be merged.
 
-With `parseImages: false`, an image segment MUST become `[图片]`. With `parseImages: true`, it MUST become `{ image: [summary, file, size] }` without an image URL or subtype. `file_size` MUST become a decimal human-readable literal: bytes below 1,000 use integer `B`; larger values use `KB`, `MB`, or `GB` with one decimal place, an ASCII space before the unit, and a base of 1,000. An invalid source or one that is not a non-negative safe integer MUST produce `null` for `size`.
+With `parseImages: false`, an image segment MUST become `[图片]`, unless its subtype is one (`sub_type: 1` or `subType: 1`), in which case it MUST become `[动画表情]`, or `[动画表情: <summary>]` when `attachImageSummary` is enabled and the segment has a non-empty summary. With `parseImages: true`, it MUST become `{ image: [summary, file, size] }` without an image URL or subtype. `file_size` MUST become a decimal human-readable literal: bytes below 1,000 use integer `B`; larger values use `KB`, `MB`, or `GB` with one decimal place, an ASCII space before the unit, and a base of 1,000. An invalid source or one that is not a non-negative safe integer MUST produce `null` for `size`.
 
 A nested `forward` segment MUST become `{ forward: id }`. The tool MUST NOT inline its nested content, but when that content is already included in the same forward response, it MUST normalize and cache the content by that nested `forwardId` for a later call to the same tool. Normal text URLs MUST remain intact. The tool MUST NOT download media, write channel assets, return media bytes, or stringify raw OneBot objects.
 
@@ -108,6 +108,8 @@ A nested `forward` segment MUST become `{ forward: id }`. The tool MUST NOT inli
 
 - **WHEN** a forward contains an image and `parseImages` is false
 - **THEN** the corresponding content part MUST be the string `[图片]`
+- **AND** it MUST be the string `[动画表情]` when the image subtype is one
+- **AND** it MUST be the string `[动画表情: <summary>]` when the image subtype is one and summary attachment is enabled
 
 #### Scenario: Image parsing is enabled
 
@@ -132,6 +134,21 @@ A nested `forward` segment MUST become `{ forward: id }`. The tool MUST NOT inli
 
 - **WHEN** a forward contains a segment outside the supported shapes
 - **THEN** the corresponding content part MUST be `[未知消息段]`
+
+### Requirement: OneBot Utils Animated Image Projection
+
+The plugin MUST project OneBot image elements whose subtype is one (`sub_type: 1` or `subType: 1`) as animated emoji before Core renders the main channel message for the model. Persisted images MUST become `[动画表情: asset://<id>]`, or `[动画表情: <summary> asset://<id>]` when `attachImageSummary` is enabled and the image has a non-empty summary. Unpersisted images MUST become `[动画表情]`, or `[动画表情: <summary>]` with summary attachment enabled. Images without subtype one MUST remain unchanged so Core can render its normal `[图片]` projection.
+
+#### Scenario: Main message contains an animated image
+
+- **WHEN** an OneBot message entry contains a persisted image element with subtype one
+- **THEN** the plugin MUST replace that image element with the text element `[动画表情: asset://<id>]` before Core's model-input projection
+- **AND** it MUST include the image summary when summary attachment is enabled
+
+#### Scenario: Main message contains an ordinary image
+
+- **WHEN** an OneBot message entry contains a persisted image element without subtype one
+- **THEN** the plugin MUST leave that image element unchanged
 
 ### Requirement: Runtime-Scoped Forward Cache
 

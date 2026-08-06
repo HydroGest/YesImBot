@@ -1,6 +1,8 @@
 import type { OneBot } from "koishi-plugin-adapter-onebot";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("koishi", async () => import("@koishijs/core"));
+
 import { createForwardReader } from "../src/forward.js";
 
 function node(message: unknown[], overrides: Record<string, unknown> = {}) {
@@ -13,7 +15,10 @@ function node(message: unknown[], overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createReader(records: readonly unknown[], config = { parseImages: false, maxForwardPageChars: 6000 }) {
+function createReader(
+  records: readonly unknown[],
+  config = { parseImages: false, maxForwardPageChars: 6000, attachImageSummary: true },
+) {
   const getForwardMsg = vi.fn(async () => records);
   const reader = createForwardReader({ getForwardMsg } as OneBot.Internal, config);
   return { getForwardMsg, reader };
@@ -44,6 +49,24 @@ describe("createForwardReader", () => {
     });
   });
 
+  it("uses an animated emoji placeholder when image subtype is one", async () => {
+    const { reader } = createReader([node([{ type: "image", data: { summary: "", file: "face.gif", sub_type: 1 } }])]);
+
+    await expect(reader({ forwardId: "forward" })).resolves.toEqual({
+      messages: [["Alice (10001)", expect.any(String), ["[动画表情]"]]],
+    });
+  });
+
+  it("attaches image summary to animated emoji placeholders when enabled", async () => {
+    const { reader } = createReader([
+      node([{ type: "image", data: { summary: "大笑", file: "face.gif", sub_type: 1 } }]),
+    ]);
+
+    await expect(reader({ forwardId: "forward" })).resolves.toEqual({
+      messages: [["Alice (10001)", expect.any(String), ["[动画表情: 大笑]"]]],
+    });
+  });
+
   it("projects enabled image metadata without URLs or subtypes", async () => {
     const { reader } = createReader(
       [
@@ -70,7 +93,7 @@ describe("createForwardReader", () => {
           },
         ]),
       ],
-      { parseImages: true, maxForwardPageChars: 6000 },
+      { parseImages: true, maxForwardPageChars: 6000, attachImageSummary: true },
     );
 
     const result = await reader({ forwardId: "forward" });
@@ -113,6 +136,7 @@ describe("createForwardReader", () => {
     const reader = createForwardReader({ getForwardMsg: vi.fn(async () => undefined) } as OneBot.Internal, {
       parseImages: false,
       maxForwardPageChars: 6000,
+      attachImageSummary: true,
     });
 
     await expect(reader({ forwardId: "missing" })).resolves.toEqual({
@@ -177,6 +201,7 @@ describe("createForwardReader", () => {
     const reader = createForwardReader({ getForwardMsg } as OneBot.Internal, {
       parseImages: false,
       maxForwardPageChars: 6000,
+      attachImageSummary: true,
     });
 
     await expect(reader({ forwardId: "first" })).rejects.toThrow("temporary");

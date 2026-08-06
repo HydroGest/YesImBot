@@ -139,7 +139,12 @@ async function storeImage(ctx: Context, element: Element, store: AssetStore, bud
     );
     if (budget.bytes + data.byteLength > MAX_TOTAL_BYTES) return element;
     budget.bytes += data.byteLength;
-    return h("img", { id: await store.put(data) });
+    return h("img", {
+      id: await store.put(data),
+      ...(element.attrs.subType === undefined ? {} : { subType: element.attrs.subType }),
+      ...(element.attrs.sub_type === undefined ? {} : { sub_type: element.attrs.sub_type }),
+      ...(element.attrs.summary === undefined ? {} : { summary: element.attrs.summary }),
+    });
   } catch {
     return element;
   }

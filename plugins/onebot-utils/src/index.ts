@@ -3,6 +3,7 @@ import { Context, Logger, Schema, type Bot } from "koishi";
 import type { OneBot, OneBotBot } from "koishi-plugin-adapter-onebot";
 import type { ChannelPluginContext, ChannelPluginFactory, ChannelScope } from "koishi-plugin-yesimbot";
 
+import { projectAnimatedImages } from "./animated-image.js";
 import { createForwardReader, type ForwardResult, type ForwardToolInput } from "./forward.js";
 
 const ONEBOT_INTERNAL_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 协议内部接口";
@@ -23,6 +24,7 @@ const TOOL_SCHEMA = Object.entries(TOOLS).map(([key, value]) => Schema.const(val
 export interface OnebotUtilsConfig {
   enabledTools: (typeof TOOLS)[keyof typeof TOOLS][];
   parseImages: boolean;
+  attachImageSummary: boolean;
   maxForwardPageChars: number;
 }
 
@@ -52,6 +54,7 @@ export default class OnebotUtilsPlugin {
   public static Config: Schema<OnebotUtilsConfig> = Schema.object({
     enabledTools: Schema.array(Schema.union(TOOL_SCHEMA)).default([]).role("checkbox").description("启用的工具列表"),
     parseImages: Schema.boolean().default(false).description("解析转发消息中的图片元数据"),
+    attachImageSummary: Schema.boolean().default(true).description("动画表情占位符附带图片 summary"),
     maxForwardPageChars: Schema.number().min(1).default(6000).description("合并转发消息每页的最大文本字符数"),
   });
 
@@ -352,6 +355,8 @@ function createOneBotPluginFactory(config: OnebotUtilsConfig): ChannelPluginFact
     return {
       name: "onebot-utils",
       tools: createOneBotTools(bot, config, scope),
+      onAppend: (entries) => projectAnimatedImages(entries, { attachImageSummary: config.attachImageSummary }),
+      transformEntries: (entries) => projectAnimatedImages(entries, { attachImageSummary: config.attachImageSummary }),
     };
   };
 }

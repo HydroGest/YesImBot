@@ -32,6 +32,11 @@ vi.mock("koishi", () => {
     Context: class Context {},
     Logger: class Logger {},
     Schema: mocks.schema,
+    h: vi.fn((type: string, attrs: Record<string, unknown> = {}, children: unknown[] = []) => ({
+      type,
+      attrs,
+      children,
+    })),
   };
 });
 
@@ -124,11 +129,11 @@ describe("onebot-utils plugin", () => {
   it("declares the enabled-tool configuration fields", () => {
     const fields = mocks.schema.object.mock.calls[0]?.[0] as Record<string, unknown>;
 
-    expect(Object.keys(fields)).toEqual(["enabledTools", "parseImages", "maxForwardPageChars"]);
+    expect(Object.keys(fields)).toEqual(["enabledTools", "parseImages", "attachImageSummary", "maxForwardPageChars"]);
     expect(mocks.schema.array).toHaveBeenCalledOnce();
     expect(mocks.schema.union).toHaveBeenCalledOnce();
     expect(mocks.schema.const).toHaveBeenCalledTimes(9);
-    expect(mocks.schema.boolean).toHaveBeenCalledOnce();
+    expect(mocks.schema.boolean).toHaveBeenCalledTimes(2);
     expect(mocks.schema.number).toHaveBeenCalledOnce();
   });
 
