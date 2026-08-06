@@ -51,7 +51,7 @@ export class ModelStickerClassifier implements StickerClassifier {
       ? [
           basePrompt,
           '同时返回一个 JSON 对象：{"category":"分类名","tags":["标签1","标签2"]}',
-          "category 只返回一个分类；tags 返回 1-8 个简短标签，可以包含 category。不要输出其他内容。",
+          "category 只返回一个分类；tags 返回 1-16 个简短标签，可以包含 category。不要输出其他内容。",
         ].join("\n")
       : basePrompt;
     const frame = input.mediaType === "image/gif" ? firstFrameToPng(input.bytes) : undefined;

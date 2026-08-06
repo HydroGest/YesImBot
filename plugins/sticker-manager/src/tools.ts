@@ -114,7 +114,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
       "可用 sticker_categories 和 sticker_search 查询；sticker_id 优先，也可按 category 随机或按 index 指定。",
       ...(config.tagMode
         ? [
-            `实验性 tag 模式开启时，可传 tags 选择多个标签，并从最匹配的表情包中随机发送。${
+            `也可仅传 tags 选择多个标签，并从最匹配的表情包中随机发送。${
               config.fuzzyTagMatch ? "tag 默认支持模糊匹配。" : ""
             }`,
           ]
