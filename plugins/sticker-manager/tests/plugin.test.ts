@@ -130,6 +130,7 @@ describe("StickerManagerPlugin", () => {
 
     expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledOnce();
     expect(commands.length).toBeGreaterThan(0);
+    expect(commands.map((record) => record.name)).toContain("yesimbot.sticker.reclassify");
 
     const agentPlugin = factories[0]!({
       scope: { type: "shared", platform: "test", selfId: "bot", channelId: "room" },

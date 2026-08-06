@@ -151,9 +151,7 @@ export class StickerStore {
         const tags = normalizeTags(query.tags);
         rows = rows.filter((row) => {
           const rowTags = new Set(row.tags ?? []);
-          return query.matchAllTags
-            ? tags.every((tag) => rowTags.has(tag))
-            : tags.some((tag) => rowTags.has(tag));
+          return query.matchAllTags ? tags.every((tag) => rowTags.has(tag)) : tags.some((tag) => rowTags.has(tag));
         });
       }
       if (query.keyword) {
@@ -226,6 +224,28 @@ export class StickerStore {
       );
       if (result.matched === 0) throw new Error("未找到该表情包");
       return result.matched ?? 0;
+    });
+  }
+
+  public updateClassification(
+    scopeKey: string,
+    contentId: string,
+    category: string,
+    tags?: readonly string[],
+  ): Promise<void> {
+    return this.mutate(async () => {
+      const row = await this.findRow(scopeKey, contentId);
+      if (!row) throw new Error("未找到该表情包");
+      const target = normalizeCategory(category) || "未分类";
+      await this.model.set(
+        STICKER_TABLE,
+        { scopeKey, contentId },
+        {
+          category: target,
+          tags: normalizeTags(tags),
+          updatedAt: new Date().toISOString(),
+        },
+      );
     });
   }
 

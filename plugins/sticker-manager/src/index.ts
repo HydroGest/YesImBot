@@ -41,6 +41,7 @@ export default class StickerManagerPlugin {
     this.started = true;
     try {
       await this.store.ensure();
+      const classifier = new ModelStickerClassifier(this.ctx, this.config);
       this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope, bot }) => {
         const assets = this.ctx.yesimbot.assets.createStore(scope);
         return {
@@ -48,7 +49,7 @@ export default class StickerManagerPlugin {
           tools: () =>
             createStickerTools({
               store: this.store,
-              classifier: new ModelStickerClassifier(this.ctx, this.config),
+              classifier,
               sender: new BotStickerSender(bot, scope),
               assets,
               scope,
@@ -60,6 +61,7 @@ export default class StickerManagerPlugin {
       this.disposeCommands = registerStickerCommands({
         ctx: this.ctx,
         store: this.store,
+        classifier,
         config: this.config,
       });
       this.logger.success("Sticker manager plugin started");

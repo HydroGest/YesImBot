@@ -1,6 +1,7 @@
 import { h, type Command, type Context, type Session } from "koishi";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 
+import type { StickerClassifier } from "./classifier.js";
 import { importDirectory, importEmojiHubTxt, importImageFile } from "./importers.js";
 import { migrateScope, migrateV3 } from "./migrate.js";
 import type { StickerStore } from "./store.js";
@@ -15,11 +16,12 @@ import {
 export interface StickerCommandDeps {
   ctx: Context;
   store: StickerStore;
+  classifier: StickerClassifier;
   config: StickerConfig;
 }
 
 export function registerStickerCommands(deps: StickerCommandDeps): () => void {
-  const { ctx, store, config } = deps;
+  const { ctx, store, classifier, config } = deps;
   const disposers = new Set<() => unknown>();
   const track = (command: Command): void => {
     if (typeof command.dispose === "function") disposers.add(() => command.dispose());
@@ -199,6 +201,70 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
         } catch (cause) {
           return `移动失败: ${messageOf(cause)}`;
         }
+      }),
+  );
+
+  track(
+    ctx
+      .command("yesimbot.sticker.reclassify", "重新分类所有表情包", { authority: 4 })
+      .option("clear", "--clear 重分类前清除已有分类和 tag")
+      .option("limit", "<limit> 最多重分类数量")
+      .action(async ({ session, options }) => {
+        const scope = scopeOf(session);
+        if (!scope) return "无法获取当前频道信息";
+        const scopeKey = scopeKeyFor(scope, config);
+        const stickers = await store.listByScopeKey(scopeKey);
+        if (stickers.length === 0) return "暂无表情包";
+
+        const limit = numberOption(options, "limit");
+        const targets = limit ? stickers.slice(0, Math.max(1, Math.trunc(limit))) : stickers;
+        const clear = options?.clear === true;
+        const categories = clear ? [] : (await store.listCategories(scopeKey)).map((item) => item.category);
+        let updated = 0;
+        let failed = 0;
+
+        for (const sticker of targets) {
+          try {
+            const bytes = await store.readBytes(sticker);
+            const result = await classifier.classify({
+              bytes,
+              mediaType: sticker.mime,
+              categories,
+              signal: undefined,
+            });
+            const classified = result?.category;
+            if (!classified) {
+              if (clear) {
+                await store.updateClassification(scopeKey, sticker.id, "未分类", config.tagMode ? ["未分类"] : []);
+                updated += 1;
+              } else {
+                failed += 1;
+              }
+              continue;
+            }
+
+            const tags = config.tagMode
+              ? clear
+                ? [classified, ...(result.tags ?? [])]
+                : [...(sticker.tags ?? []), classified, ...(result.tags ?? [])]
+              : clear
+                ? []
+                : (sticker.tags ?? []);
+            await store.updateClassification(scopeKey, sticker.id, classified, tags);
+            updated += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+
+        const lines = [`重分类完成`, `总数: ${targets.length}`, `更新: ${updated}`, `失败: ${failed}`];
+        if (clear) {
+          lines.push("已清除旧分类和 tag");
+        } else {
+          lines.push("保留旧 tag 并合并新分类结果");
+        }
+        if (targets.length < stickers.length) lines.push(`未处理: ${stickers.length - targets.length}`);
+        return lines.join("\n");
       }),
   );
 

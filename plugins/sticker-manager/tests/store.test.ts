@@ -106,6 +106,23 @@ describe("StickerStore", () => {
     expect(second).toMatchObject({ status: "duplicate", sticker: { tags: ["猫猫", "开心"] } });
   });
 
+  it("updates classification and tags for a sticker", async () => {
+    const { store } = await createStore();
+    const result = await store.save({
+      scopeKey: "global",
+      bytes: pngBytes,
+      mediaType: "image/png",
+      category: "meme",
+      tags: ["旧"],
+      source: { kind: "steal" },
+    });
+
+    await store.updateClassification("global", result.sticker.id, "有趣", ["新", "旧"]);
+    const [sticker] = await store.listByScopeKey("global");
+
+    expect(sticker).toMatchObject({ category: "有趣", tags: ["新", "旧"] });
+  });
+
   it("searches and summarizes tags", async () => {
     const { store } = await createStore();
     const bytesA = new Uint8Array([...pngBytes, 1]);
