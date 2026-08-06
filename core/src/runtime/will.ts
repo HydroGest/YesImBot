@@ -1,4 +1,4 @@
-import type { Awaitable, Context, Element, Logger, Universal } from "koishi";
+import type { Awaitable, Context, Element, Logger, Session, Universal } from "koishi";
 
 import { isMessage, type Message, type Event } from "../messages.js";
 import type { ChannelScope } from "./storage.js";
@@ -35,6 +35,7 @@ export interface WillConfigContributor {
 export interface WillEngineFactoryContext {
   readonly scope: ChannelScope;
   readonly config: WillConfig;
+  readonly session: Session | undefined;
   createDefault(): WillEngine;
 }
 
@@ -45,6 +46,7 @@ export interface WillEngineFactory {
 
 export interface ResolveWillEngineOptions {
   readonly scope: ChannelScope;
+  readonly session?: Session;
   readonly contributors?: readonly WillConfigContributor[];
   readonly factories?: readonly WillEngineFactory[];
 }
@@ -139,6 +141,7 @@ export async function resolveWillEngine(
     const engine = await factory.create({
       scope: options.scope,
       config: resolvedConfig,
+      session: options.session,
       createDefault,
     });
     if (engine) return engine;

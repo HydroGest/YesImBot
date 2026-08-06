@@ -90,7 +90,7 @@ export class Gateway {
       const base = sessionBase(session, scope);
       const record = await translator.translate(base, session, this.opts.assets.createStore(scope));
       if (!record) return;
-      const result = await this.opts.runtime.route(record);
+      const result = await this.opts.runtime.route(record, session);
       if (result.kind === "run") await this.deliver(session, record, result);
     } catch (cause) {
       this.warn("gateway.route_failed", cause, session.platform);

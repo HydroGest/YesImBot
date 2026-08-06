@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 
 import { createJsonlStorage, type AgentEntry, type AgentPlugin, type AgentStorage } from "@yesimbot/agent-runtime";
 import type { LanguageModel } from "ai";
-import type { Awaitable, Bot, Context, Logger } from "koishi";
+import type { Awaitable, Bot, Context, Logger, Session } from "koishi";
 import { Universal } from "koishi";
 
 import type { ArtifactService, ArtifactStore } from "../artifact.js";
@@ -85,9 +85,9 @@ export class RuntimeManager {
     this.resourceSchemeRegistrations = resourceSchemeRegistrations;
   }
 
-  public async route(record: MessageRecord | EventRecord): Promise<ChannelRuntimeResult> {
+  public async route(record: MessageRecord | EventRecord, session?: Session): Promise<ChannelRuntimeResult> {
     this.assertOpen();
-    const runtime = await this.runtimeFor(record);
+    const runtime = await this.runtimeFor(record, session);
     this.assertOpen();
     return runtime.handle(record);
   }
@@ -99,7 +99,7 @@ export class RuntimeManager {
     return runtime.trigger(record);
   }
 
-  private async runtimeFor(record: MessageRecord | EventRecord): Promise<ChannelRuntime> {
+  private async runtimeFor(record: MessageRecord | EventRecord, session?: Session): Promise<ChannelRuntime> {
     const scope: ChannelScope | null = record.channel?.id
       ? {
           type: record.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared",
@@ -109,7 +109,7 @@ export class RuntimeManager {
         }
       : null;
     if (!scope) throw new Error("Accepted event requires a channel");
-    return this.getOrCreate(scope);
+    return this.getOrCreate(scope, session);
   }
 
   public async compact(scope: ChannelScope): Promise<string> {
@@ -243,7 +243,7 @@ export class RuntimeManager {
     return this.stopTask;
   }
 
-  private async getOrCreate(scope: ChannelScope): Promise<ChannelRuntime> {
+  private async getOrCreate(scope: ChannelScope, session?: Session): Promise<ChannelRuntime> {
     const key = scopeMapKey(scope);
     for (;;) {
       const runtime = this.runtimes.get(key);
@@ -255,7 +255,7 @@ export class RuntimeManager {
         continue;
       }
 
-      const creating = this.replaceRuntime(scope, runtime);
+      const creating = this.replaceRuntime(scope, runtime, session);
       this.creating.set(key, creating);
       try {
         return await creating;
@@ -265,13 +265,17 @@ export class RuntimeManager {
     }
   }
 
-  private async replaceRuntime(scope: ChannelScope, current: ChannelRuntime | undefined): Promise<ChannelRuntime> {
+  private async replaceRuntime(
+    scope: ChannelScope,
+    current: ChannelRuntime | undefined,
+    session?: Session,
+  ): Promise<ChannelRuntime> {
     const key = scopeMapKey(scope);
     if (current && current.selfId !== scope.selfId) {
       await this.stopRuntime(key, current);
       if (this.runtimes.get(key) === current) this.runtimes.delete(key);
     }
-    const runtime = await this.createRuntime(scope);
+    const runtime = await this.createRuntime(scope, session);
     try {
       this.assertOpen();
     } catch (cause) {
@@ -282,7 +286,7 @@ export class RuntimeManager {
     return runtime;
   }
 
-  private async createRuntime(scope: ChannelScope): Promise<ChannelRuntime> {
+  private async createRuntime(scope: ChannelScope, session?: Session): Promise<ChannelRuntime> {
     this.assertOpen();
     const bot = this.ctx.bots.find(
       (candidate) => candidate.platform === scope.platform && candidate.selfId === scope.selfId,
@@ -340,6 +344,7 @@ export class RuntimeManager {
     const storage = createJsonlStorage(activeSessionPath);
     const will = await resolveWillEngine(this.ctx, this.config.will, {
       scope,
+      session,
       contributors: [...this.willConfigContributors],
       factories: [...this.willEngineFactories],
     });

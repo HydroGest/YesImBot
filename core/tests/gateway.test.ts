@@ -183,6 +183,7 @@ describe("Gateway", () => {
         channel: expect.objectContaining({ id: "room-1", type: Universal.Channel.Type.TEXT }),
         user: { id: "user-1", name: "User" },
       }),
+      expect.anything(),
     );
   });
 
@@ -261,6 +262,7 @@ describe("Gateway", () => {
       expect.objectContaining({
         channel: { id: "room-1", type: Universal.Channel.Type.DIRECT, name: "Direct room" },
       }),
+      expect.anything(),
     );
   });
 
@@ -283,7 +285,10 @@ describe("Gateway", () => {
       type: "shared",
     });
     expect(translate).toHaveBeenCalledOnce();
-    expect(runtime.route).toHaveBeenCalledWith(expect.objectContaining({ elements: [image] }));
+    expect(runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({ elements: [image] }),
+      expect.anything(),
+    );
   });
 
   it("preserves a translator-provided channel name while keeping envelope fields host-owned", async () => {
@@ -301,6 +306,7 @@ describe("Gateway", () => {
         selfId: "bot-1",
         channel: expect.objectContaining({ id: "room-1", name: "Room" }),
       }),
+      expect.anything(),
     );
   });
 
@@ -379,6 +385,7 @@ describe("Gateway", () => {
         channel: { id: "room-1", type: Universal.Channel.Type.DIRECT, name: "Direct channel" },
         user: { id: "user-1", name: "Event user" },
       }),
+      expect.anything(),
     );
   });
 
@@ -388,6 +395,7 @@ describe("Gateway", () => {
     await missing.gateway.handle(session({ platform: "missing", elements: [image] }));
     expect(missing.runtime.route).toHaveBeenCalledWith(
       expect.objectContaining({ platform: "missing", messageId: "message-1", elements: [image] }),
+      expect.anything(),
     );
     expect(missing.store.put).not.toHaveBeenCalled();
 
@@ -423,7 +431,10 @@ describe("Gateway", () => {
       expect.anything(),
       expect.anything(),
     );
-    expect(exact.runtime.route).toHaveBeenCalledWith(expect.objectContaining({ elements: [h.text("exact")] }));
+    expect(exact.runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({ elements: [h.text("exact")] }),
+      expect.anything(),
+    );
 
     const wildcard = createGateway();
     wildcard.gateway.registerTranslator({
@@ -431,7 +442,10 @@ describe("Gateway", () => {
       translate: async (base) => messageRecord(base, { elements: [h.text("wildcard")] }),
     });
     await wildcard.gateway.handle(session({ platform: "other" }));
-    expect(wildcard.runtime.route).toHaveBeenCalledWith(expect.objectContaining({ elements: [h.text("wildcard")] }));
+    expect(wildcard.runtime.route).toHaveBeenCalledWith(
+      expect.objectContaining({ elements: [h.text("wildcard")] }),
+      expect.anything(),
+    );
   });
 
   it("does not fall back after selected translator null or throw", async () => {
@@ -490,5 +504,6 @@ describe("Gateway", () => {
     await gateway.handle(input);
 
     expect(containsReference(runtime.route.mock.calls[0]?.[0], input)).toBe(false);
+    expect(runtime.route.mock.calls[0]?.[1]).toBe(input);
   });
 });

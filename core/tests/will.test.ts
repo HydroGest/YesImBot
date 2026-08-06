@@ -223,6 +223,29 @@ describe("resolveWillEngine", () => {
     await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("trigger");
   });
 
+  it("passes the session and continues to the next factory when one declines", async () => {
+    const session = { guildId: "room-1", resolve: () => true } as never;
+    const seen: unknown[] = [];
+    const factories: WillEngineFactory[] = [
+      {
+        priority: 5,
+        create: async ({ session: current }) => {
+          seen.push(current);
+        },
+      },
+      {
+        priority: 10,
+        create: async () => ({
+          decide: async () => "wait" as const,
+        }),
+      },
+    ];
+    const will = await resolveWillEngine(new Context(), routing, { scope, session, factories });
+
+    expect(seen).toEqual([session]);
+    await expect(will.decide(ordinaryGroupMessageInput(), EMPTY_STATE)).resolves.toBe("wait");
+  });
+
   it("lets a factory wrap the default engine", async () => {
     const factory: WillEngineFactory = {
       create: async ({ createDefault }) => {

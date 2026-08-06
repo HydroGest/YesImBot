@@ -1,10 +1,18 @@
-import { Context, Logger, Schema } from "koishi";
-import type { WillEngineFactory } from "koishi-plugin-yesimbot";
+import { randomUUID } from "node:crypto";
+
+import { Context, Logger, Schema, type Command } from "koishi";
+import type { WillEngineFactory, WillEngineFactoryContext } from "koishi-plugin-yesimbot";
 
 import { resolvePolicy } from "./policy.js";
 import { PolicyRoutingEngine } from "./routing.js";
 import type { WillPolicyConfig } from "./types.js";
 import { PolicyWillingnessEngine } from "./willingness.js";
+
+const DEBUG_COMMAND_NAME = "yesimbot.will-policy";
+const DEBUG_PROBES = new WeakMap<Context, Set<WillPolicyPlugin>>();
+const DEBUG_COMMANDS = new WeakMap<Context, Command>();
+const DEBUG_ACTION: unique symbol = Symbol("yesimbot.will-policy.debug-action");
+type DebugCommand = Command & { [DEBUG_ACTION]?: boolean };
 
 export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.object({
   engine: Schema.union([
@@ -60,6 +68,7 @@ export default class WillPolicyPlugin {
   public readonly ctx: Context;
   public readonly config: WillPolicyConfig;
   public readonly logger: Logger;
+  private readonly instanceId = randomUUID();
 
   private disposeFactory?: () => void;
 
@@ -74,7 +83,8 @@ export default class WillPolicyPlugin {
   public async start(): Promise<void> {
     const factory: WillEngineFactory = {
       priority: this.config.factoryPriority,
-      create: () => {
+      create: ({ session }: WillEngineFactoryContext) => {
+        if (session && !this.ctx.filter(session)) return;
         const resolved = resolvePolicy(this.config);
         this.logger.debug("resolve_will_policy", {
           engine: resolved.engine,
@@ -87,12 +97,51 @@ export default class WillPolicyPlugin {
       },
     };
     this.disposeFactory = this.ctx.yesimbot.registerWillEngineFactory(factory);
-    this.logger.success("Will policy plugin started");
+    this.registerDebugProbe();
+    this.logger.success("Will policy plugin started", { instanceId: this.instanceId });
   }
 
   public async stop(): Promise<void> {
+    const root = this.ctx.root;
+    const probes = DEBUG_PROBES.get(root);
+    probes?.delete(this);
+    if (probes?.size === 0) {
+      DEBUG_COMMANDS.get(root)?.dispose();
+      DEBUG_COMMANDS.delete(root);
+      DEBUG_PROBES.delete(root);
+    }
     this.disposeFactory?.();
     this.disposeFactory = undefined;
+  }
+
+  private registerDebugProbe(): void {
+    const root = this.ctx.root;
+    const probes = DEBUG_PROBES.get(root) ?? new Set<WillPolicyPlugin>();
+    probes.add(this);
+    DEBUG_PROBES.set(root, probes);
+
+    let command = DEBUG_COMMANDS.get(root);
+    if (!command) {
+      command = root.command(DEBUG_COMMAND_NAME, "检查当前 Will 策略实例", { authority: 4 });
+      DEBUG_COMMANDS.set(root, command);
+    }
+    const debugCommand = command as DebugCommand;
+    if (debugCommand[DEBUG_ACTION]) return;
+    Object.defineProperty(debugCommand, DEBUG_ACTION, { value: true });
+    debugCommand.action(async ({ session }) => {
+      if (!session) return;
+      const matches = [...probes].filter((probe) => probe.ctx.filter(session));
+      if (matches.length === 0) return;
+      return matches.map((probe) => probe.instanceDescription()).join("\n");
+    });
+  }
+
+  private instanceDescription(): string {
+    return [
+      `WillPolicy[${this.instanceId.slice(0, 8)}]`,
+      `engine=${this.config.engine}`,
+      `priority=${this.config.factoryPriority ?? 1000}`,
+    ].join(" ");
   }
 }
 
