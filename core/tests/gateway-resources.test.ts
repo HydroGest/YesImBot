@@ -65,7 +65,7 @@ function remoteMock(body: Uint8Array = PNG, type = "image/png") {
   );
 }
 
-describe("default translator resource persistence", () => {
+describe("Gateway default translator resource persistence", () => {
   it("persists remote images through the shared pipeline", async () => {
     const http = remoteMock();
     const assets = store();
