@@ -9,6 +9,7 @@ export interface StickerConfig {
   classificationPrompt: string;
   maxImportFileBytes: number;
   tagMode: boolean;
+  fuzzyTagMatch: boolean;
 }
 
 export type StickerSourceKind = "steal" | "import" | "v3" | "migrate";

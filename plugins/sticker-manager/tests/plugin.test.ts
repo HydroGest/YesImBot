@@ -69,6 +69,7 @@ const config: StickerConfig = {
   classificationPrompt: "{{categories}}",
   maxImportFileBytes: 1024 * 1024,
   tagMode: false,
+  fuzzyTagMatch: true,
 };
 
 describe("StickerManagerPlugin", () => {

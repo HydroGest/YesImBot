@@ -23,6 +23,7 @@ const config: StickerConfig = {
   classificationPrompt: "{{categories}}",
   maxImportFileBytes: 1024 * 1024,
   tagMode: false,
+  fuzzyTagMatch: true,
 };
 
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
@@ -53,6 +54,7 @@ function createDeps(overrides: Partial<StickerConfig> = {}) {
     })),
     get: vi.fn(async () => projection()),
     search: vi.fn(async () => [projection()]),
+    listByScopeKey: vi.fn(async () => [projection()]),
     random: vi.fn(async () => projection()),
     readBytes: vi.fn(async () => pngBytes),
     markUsed: vi.fn(async () => projection({ usageCount: 1 })),
@@ -124,22 +126,45 @@ describe("sticker agent tools", () => {
     expect(result).toMatchObject({ ok: true, tags: ["meme", "搞笑"] });
   });
 
-  it("sticker_send with tags picks from the best-matching stickers", async () => {
+  it("sticker_send with fuzzy tags scores multiple tag matches on one sticker", async () => {
     const deps = createDeps({ tagMode: true });
-    deps.store.search.mockResolvedValue([
-      projection({ id: "a".repeat(64), tags: ["a", "b"] }),
-      projection({ id: "b".repeat(64), tags: ["a"] }),
+    deps.store.listByScopeKey.mockResolvedValue([
+      projection({ id: "a".repeat(64), tags: ["可爱猫猫", "工作"] }),
+      projection({ id: "b".repeat(64), tags: ["猫"] }),
     ]);
     const [, sendTool] = deps.tools;
-    const result = await execute(sendTool, { tags: ["a", "b"] });
-    expect(deps.store.search).toHaveBeenCalledWith("global", {
-      category: undefined,
-      tags: ["a", "b"],
-      limit: 100,
-    });
+    const result = await execute(sendTool, { tags: ["猫", "可爱"] });
+    expect(deps.store.listByScopeKey).toHaveBeenCalledWith("global");
     expect(deps.sender.send).toHaveBeenCalledWith({ bytes: pngBytes, mediaType: "image/png" });
     expect(deps.store.markUsed).toHaveBeenCalledWith("global", "a".repeat(64));
-    expect(result).toMatchObject({ ok: true, tags: ["a", "b"] });
+    expect(result).toMatchObject({ ok: true, tags: ["可爱猫猫", "工作"] });
+  });
+
+  it("sticker_send with one fuzzy tag can match multiple stickers", async () => {
+    const deps = createDeps({ tagMode: true });
+    const first = projection({ id: "a".repeat(64), tags: ["猫猫"] });
+    const second = projection({ id: "b".repeat(64), tags: ["猫"] });
+    deps.store.listByScopeKey.mockResolvedValue([first, second]);
+    const [, sendTool] = deps.tools;
+
+    await execute(sendTool, { tags: ["猫"] });
+
+    expect(deps.sender.send).toHaveBeenCalledOnce();
+    expect(deps.store.markUsed).toHaveBeenCalledWith("global", expect.stringMatching(/^(a{64}|b{64})$/));
+  });
+
+  it("sticker_send keeps exact tag matching when fuzzy matching is disabled", async () => {
+    const deps = createDeps({ tagMode: true, fuzzyTagMatch: false });
+    deps.store.listByScopeKey.mockResolvedValue([
+      projection({ id: "a".repeat(64), tags: ["猫猫"] }),
+      projection({ id: "b".repeat(64), tags: ["猫"] }),
+    ]);
+    const [, sendTool] = deps.tools;
+
+    const result = await execute(sendTool, { tags: ["猫"] });
+
+    expect(deps.store.markUsed).toHaveBeenCalledWith("global", "b".repeat(64));
+    expect(result).toMatchObject({ ok: true, tags: ["猫"] });
   });
 
   it("sticker_send sends the selected sticker and records usage", async () => {

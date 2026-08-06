@@ -112,7 +112,13 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
     description: [
       "发送一个已收藏的表情包。",
       "可用 sticker_categories 和 sticker_search 查询；sticker_id 优先，也可按 category 随机或按 index 指定。",
-      ...(config.tagMode ? ["实验性 tag 模式开启时，可传 tags 选择多个标签，并从最匹配的表情包中随机发送。"] : []),
+      ...(config.tagMode
+        ? [
+            `实验性 tag 模式开启时，可传 tags 选择多个标签，并从最匹配的表情包中随机发送。${
+              config.fuzzyTagMatch ? "tag 默认支持模糊匹配。" : ""
+            }`,
+          ]
+        : []),
     ].join("\n"),
     inputSchema: jsonSchema<SendStickerInput>({
       type: "object",
@@ -126,7 +132,9 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
                 type: "array",
                 items: { type: "string" },
                 maxItems: 5,
-                description: "实验性标签列表，从同时匹配最多标签的表情包中随机发送",
+                description: config.fuzzyTagMatch
+                  ? "实验性标签列表，支持模糊匹配；从同时匹配最多标签的表情包中随机发送"
+                  : "实验性标签列表，从同时匹配最多标签的表情包中随机发送",
               },
             }
           : {}),
@@ -146,7 +154,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
           if (!selected) return { ok: false, error: "sticker_index_out_of_range" };
           sticker = selected;
         } else if (tags && tags.length > 0) {
-          const tagged = await pickBestTaggedSticker(store, scopeKey, tags, category);
+          const tagged = await pickBestTaggedSticker(store, scopeKey, tags, category, config.fuzzyTagMatch);
           if (!tagged) return { ok: false, error: "sticker_not_found" };
           sticker = tagged;
         } else {
@@ -252,14 +260,29 @@ async function pickBestTaggedSticker(
   scopeKey: string,
   tags: readonly string[],
   category?: string,
+  fuzzyTagMatch = true,
 ): Promise<StickerProjection | null> {
   const normalized = normalizeTags(tags);
   if (normalized.length === 0) return null;
-  const matches = await store.search(scopeKey, { category, tags: normalized, limit: 100 });
+  const rows = await store.listByScopeKey(scopeKey);
+  const scoped = category ? rows.filter((sticker) => sticker.category === category) : rows;
+  const matches = scoped.filter((sticker) =>
+    normalized.some((tag) => stickerMatches(sticker.tags, tag, fuzzyTagMatch)),
+  );
   if (matches.length === 0) return null;
   const score = (sticker: StickerProjection): number =>
-    normalized.reduce((count, tag) => count + ((sticker.tags ?? []).includes(tag) ? 1 : 0), 0);
+    normalized.reduce((count, tag) => count + (stickerMatches(sticker.tags, tag, fuzzyTagMatch) ? 1 : 0), 0);
   const best = Math.max(...matches.map(score));
   const candidates = matches.filter((sticker) => score(sticker) === best);
   return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
+}
+
+function stickerMatches(tags: readonly string[], requested: string, fuzzyTagMatch: boolean): boolean {
+  return tags.some((tag) => (fuzzyTagMatch ? fuzzyTagEquals(requested, tag) : tag === requested));
+}
+
+function fuzzyTagEquals(requested: string, stored: string): boolean {
+  const left = requested.toLowerCase();
+  const right = stored.toLowerCase();
+  return left.length > 0 && (right.includes(left) || left.includes(right));
 }
