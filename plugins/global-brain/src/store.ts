@@ -64,6 +64,7 @@ export interface GlobalBrainStore {
   read(threadId: string, readerScope?: ChannelScope): Promise<BrainThreadView | undefined>;
   resolve(threadId: string, callerScope: ChannelScope): Promise<BrainThread>;
   status(sourceScope: ChannelScope): Promise<BrainThreadStatus[]>;
+  participantScopes(): Promise<ChannelScope[]>;
   digest(scope: ChannelScope): Promise<BrainDigest>;
 }
 
@@ -309,6 +310,22 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
             thread: { ...thread, tags: [...thread.tags] },
             replyCount: readReplies(thread.id).length,
           }));
+      });
+    },
+
+    async participantScopes() {
+      await this.init();
+      return serialize(async () => {
+        const scopes = new Map<string, ChannelScope>();
+        for (const thread of threads.values()) {
+          scopes.set(scopeKey(thread.sourceScope), { ...thread.sourceScope });
+        }
+        for (const list of replies.values()) {
+          for (const reply of list) {
+            scopes.set(scopeKey(reply.sourceScope), { ...reply.sourceScope });
+          }
+        }
+        return [...scopes.values()];
       });
     },
 

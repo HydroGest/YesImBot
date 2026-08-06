@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   schema: {
     string: vi.fn<() => unknown>(),
     number: vi.fn<() => unknown>(),
+    boolean: vi.fn<() => unknown>(),
     object: vi.fn<() => unknown>(),
   },
 }));
@@ -68,6 +69,7 @@ function createContext(baseDir: string) {
   type ChannelPluginFactoryMock = (context: unknown) => AgentPlugin;
   const factories: ChannelPluginFactoryMock[] = [];
   const dispose = vi.fn<() => void>();
+  const trigger = vi.fn<(event: unknown) => Promise<void>>(async () => undefined);
   const ctx = {
     baseDir,
     logger: rootLogger,
@@ -80,10 +82,11 @@ function createContext(baseDir: string) {
         factories.push(factory);
         return dispose;
       }),
+      trigger,
     },
   };
 
-  return { ctx, dispose, factories, scopedLogger };
+  return { ctx, dispose, factories, scopedLogger, trigger };
 }
 
 function channelContext(channelId: string) {
@@ -187,6 +190,44 @@ describe("GlobalBrainPlugin", () => {
 
       await plugin.stop();
       expect(dispose).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("triggers immediate requests in other registered sessions", async () => {
+    await withTempDir(async (baseDir) => {
+      const { ctx, factories, trigger } = createContext(baseDir);
+      const plugin = new GlobalBrainPlugin(ctx as never, {
+        storageDir: baseDir,
+        maxDigestThreads: 5,
+        maxDigestReplies: 5,
+        maxDigestContentLength: 80,
+        maxBlobBytes: 5 * 1024 * 1024,
+      });
+
+      await plugin.start();
+
+      const pluginA = factories[0]!(channelContext("group-a") as never);
+      factories[0]!(channelContext("group-b") as never);
+      const tools = await getTools(pluginA);
+      const deposit = tools.find((tool) => tool.name === "brain_deposit")!;
+      const created = (await deposit.execute?.(
+        { kind: "share", content: "urgent", shareImmediately: true },
+        {} as never,
+      )) as { thread: { id: string } };
+
+      await Promise.resolve();
+      expect(trigger).toHaveBeenCalledTimes(1);
+      const event = trigger.mock.calls[0]?.[0] as {
+        eventType: string;
+        channel: { id: string };
+        thread: { id: string; content: string };
+      };
+      expect(event.eventType).toBe("global-brain.immediate");
+      expect(event.channel.id).toBe("group-b");
+      expect(event.thread.id).toBe(created.thread.id);
+      expect(event.thread.content).toBe("urgent");
+
+      await plugin.stop();
     });
   });
 });

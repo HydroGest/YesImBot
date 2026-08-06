@@ -110,6 +110,31 @@ describe("GlobalBrainStore", () => {
     });
   });
 
+  it("lists participant scopes from threads and replies", async () => {
+    await withTempDir(async (dir) => {
+      const store = await makeStore(dir);
+      const thread = await store.deposit({
+        kind: "share",
+        sourceScope: scopeA as never,
+        content: "shared item",
+        tags: [],
+      });
+      await store.reply({
+        threadId: thread.id,
+        sourceScope: scopeB as never,
+        content: "answer",
+      });
+
+      const scopes = await store.participantScopes();
+      expect(scopes).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ channelId: "group-a" }),
+          expect.objectContaining({ channelId: "group-b" }),
+        ]),
+      );
+    });
+  });
+
   it("stores and reads content blobs", async () => {
     await withTempDir(async (dir) => {
       const store = await makeStore(dir);

@@ -3,17 +3,20 @@ import type { ArtifactStore, AssetStore, ChannelScope } from "koishi-plugin-yesi
 
 import type { GlobalBrainStore } from "./store.js";
 import { BrainStoreError } from "./store.js";
-import type { BrainContent, BrainReplySource, BrainThreadStatus, BrainThreadView } from "./types.js";
+import type { BrainContent, BrainReplySource, BrainThread, BrainThreadStatus, BrainThreadView } from "./types.js";
 
 export interface BrainToolOptions {
   readonly store: GlobalBrainStore;
   readonly scope: ChannelScope;
   readonly assets: AssetStore;
   readonly artifacts: ArtifactStore;
+  readonly defaultShareImmediately?: boolean;
+  readonly onImmediateShare?: (thread: BrainThread) => Promise<void> | void;
 }
 
 interface BrainDepositToolInput {
   readonly kind: "share" | "question" | "insight";
+  readonly shareImmediately?: boolean;
   readonly content?: string;
   readonly tags?: string[];
   readonly assetId?: string;
@@ -44,6 +47,10 @@ function createBrainDepositTool(options: BrainToolOptions): AgentTool {
     inputSchema: jsonSchema<BrainDepositToolInput>({
       type: "object",
       properties: {
+        shareImmediately: {
+          type: "boolean",
+          description: "为 true 时立即向其他已知 session 唤起一次请求；默认关闭，除非插件配置开启。",
+        },
         kind: {
           type: "string",
           enum: ["share", "question", "insight"],
@@ -96,6 +103,9 @@ function createBrainDepositTool(options: BrainToolOptions): AgentTool {
           payload: resolved.payload,
           tags: input.tags,
         });
+        if (input.shareImmediately ?? options.defaultShareImmediately ?? false) {
+          await options.onImmediateShare?.(thread);
+        }
         return { outcome: "created", thread };
       } catch (cause) {
         return fail(cause);

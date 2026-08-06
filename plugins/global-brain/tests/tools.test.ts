@@ -100,6 +100,7 @@ describe("GlobalBrain tools", () => {
       expect(schema).toContain("assetId");
       expect(schema).toContain("artifactUri");
       expect(schema).toContain("forward");
+      expect(schema).toContain("shareImmediately");
       for (const forbidden of ["sourceScope", "storageDir", "filePath", "store"]) {
         expect(schema).not.toContain(forbidden);
       }
@@ -234,6 +235,44 @@ describe("GlobalBrain tools", () => {
       )) as { outcome: "created"; thread: { payload: { kind: string; forwardId: string } } };
       expect(forward.outcome).toBe("created");
       expect(forward.thread.payload).toMatchObject({ kind: "forward", forwardId: "forward-1" });
+    });
+  });
+
+  it("dispatches immediate shares through the optional callback", async () => {
+    await withTempDir(async (dir) => {
+      const store = createGlobalBrainStore({
+        filePath: join(dir, "brain.jsonl"),
+        maxDigestThreads: 5,
+        maxDigestReplies: 5,
+      });
+      await store.init();
+      const onImmediateShare = vi.fn<(thread: unknown) => Promise<void>>(async () => undefined);
+      const tools = createBrainTools({
+        store,
+        scope: scopeA as never,
+        assets: createMemoryAssets(),
+        artifacts: createMemoryArtifacts(),
+        defaultShareImmediately: true,
+        onImmediateShare,
+      });
+      const context = toolContext();
+
+      const created = (await tools[0]?.execute?.(
+        { kind: "share", content: "urgent", shareImmediately: true },
+        context,
+      )) as { outcome: "created"; thread: { id: string } };
+      expect(created.outcome).toBe("created");
+      expect(onImmediateShare).toHaveBeenCalledTimes(1);
+      expect(onImmediateShare).toHaveBeenCalledWith(
+        expect.objectContaining({ id: created.thread.id, kind: "share", content: "urgent" }),
+      );
+
+      onImmediateShare.mockClear();
+      await tools[0]?.execute?.({ kind: "share", content: "waiting", shareImmediately: false }, context);
+      expect(onImmediateShare).not.toHaveBeenCalled();
+
+      await tools[0]?.execute?.({ kind: "share", content: "default immediate" }, context);
+      expect(onImmediateShare).toHaveBeenCalledTimes(1);
     });
   });
 

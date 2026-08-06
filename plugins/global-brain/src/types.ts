@@ -1,4 +1,8 @@
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { Universal } from "koishi";
+import type { ChannelScope, EventRecord } from "koishi-plugin-yesimbot";
+
+const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
+const TEXT_CHANNEL_TYPE = 0 satisfies Universal.Channel.Type;
 
 export type BrainPostKind = "share" | "question" | "insight";
 
@@ -43,6 +47,13 @@ export interface BrainThreadView {
   readonly localAssetUri?: string;
 }
 
+export interface BrainImmediateShare {
+  readonly id: string;
+  readonly kind: BrainPostKind;
+  readonly content: string;
+  readonly tags: readonly string[];
+}
+
 export interface BrainDigest {
   readonly threads: readonly BrainThread[];
   readonly replies: readonly BrainThreadView[];
@@ -56,10 +67,43 @@ export interface BrainThreadStatus {
 export interface GlobalBrainConfig {
   readonly storageDir?: string;
   readonly brainPrompt?: string;
+  readonly shareImmediately?: boolean;
   readonly maxDigestThreads: number;
   readonly maxDigestReplies: number;
   readonly maxDigestContentLength: number;
   readonly maxBlobBytes: number;
+}
+
+declare module "koishi-plugin-yesimbot" {
+  interface EventMap {
+    "global-brain.immediate": {
+      thread: BrainImmediateShare;
+    };
+  }
+}
+
+export function buildImmediateShareEvent(
+  scope: ChannelScope,
+  thread: BrainThread,
+): EventRecord<"global-brain.immediate"> {
+  const summary = thread.content.length > 160 ? `${thread.content.slice(0, 160)}...` : thread.content;
+  return {
+    eventType: "global-brain.immediate",
+    platform: scope.platform,
+    selfId: scope.selfId,
+    timestamp: Date.now(),
+    channel: {
+      id: scope.channelId,
+      type: scope.type === "direct" ? DIRECT_CHANNEL_TYPE : TEXT_CHANNEL_TYPE,
+    },
+    text: `Global brain immediate share [${thread.kind}] ${thread.id}: ${summary}`,
+    thread: {
+      id: thread.id,
+      kind: thread.kind,
+      content: thread.content,
+      tags: [...thread.tags],
+    },
+  };
 }
 
 export function scopeKey(scope: ChannelScope): string {

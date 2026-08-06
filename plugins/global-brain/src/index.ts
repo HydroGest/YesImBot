@@ -8,7 +8,7 @@ import { formatBrainDigest } from "./digest.js";
 import { formatBrainPrompt } from "./prompt.js";
 import { createGlobalBrainStore, type GlobalBrainStore } from "./store.js";
 import { createBrainTools } from "./tools.js";
-import type { GlobalBrainConfig } from "./types.js";
+import { buildImmediateShareEvent, type BrainThread, type GlobalBrainConfig, scopeKey } from "./types.js";
 
 export default class GlobalBrainPlugin {
   public static readonly name = "yesimbot-global-brain";
@@ -16,6 +16,9 @@ export default class GlobalBrainPlugin {
     " 全局脑插件：让同一个 Bot 在多个群聊和私聊之间共享值得保留的知识、问题与经验。某个会话写入的内容会持久化到全局脑，其他会话按需读取，并自行判断是否回复、转发或吸收。";
   public static readonly inject = ["yesimbot"];
   public static readonly Config: Schema<GlobalBrainConfig> = Schema.object({
+    shareImmediately: Schema.boolean()
+      .default(false)
+      .description("允许 brain_deposit 在请求时立即向其他 session 唤起一次请求"),
     storageDir: Schema.string().default("").description("全局脑存储目录；留空时使用 <baseDir>/global-brain"),
     brainPrompt: Schema.string()
       .role("textarea")
@@ -38,6 +41,7 @@ export default class GlobalBrainPlugin {
   public readonly config: GlobalBrainConfig;
   public readonly logger: Logger;
 
+  private readonly scopes = new Map<string, ChannelScope>();
   private store: GlobalBrainStore | undefined;
   private dispose: (() => unknown) | undefined;
 
@@ -64,14 +68,20 @@ export default class GlobalBrainPlugin {
     });
     await store.init();
     this.store = store;
-    this.dispose = this.ctx.yesimbot.registerChannelPlugin(({ scope, artifacts }) =>
-      this.createAgentPlugin(scope, artifacts),
-    );
+    this.scopes.clear();
+    for (const scope of await store.participantScopes()) {
+      this.scopes.set(scopeKey(scope), scope);
+    }
+    this.dispose = this.ctx.yesimbot.registerChannelPlugin(({ scope, artifacts }) => {
+      this.scopes.set(scopeKey(scope), scope);
+      return this.createAgentPlugin(scope, artifacts);
+    });
   }
 
   public async stop(): Promise<void> {
     this.dispose?.();
     this.dispose = undefined;
+    this.scopes.clear();
     this.store = undefined;
   }
 
@@ -82,7 +92,14 @@ export default class GlobalBrainPlugin {
     let injectedTurn: string | undefined;
     return {
       name: "global-brain",
-      tools: createBrainTools({ store, scope, assets, artifacts }),
+      tools: createBrainTools({
+        store,
+        scope,
+        assets,
+        artifacts,
+        defaultShareImmediately: this.config.shareImmediately,
+        onImmediateShare: (thread) => this.enqueueImmediateShare(thread, scope),
+      }),
       appendSystemPrompt: () =>
         this.config.brainPrompt && this.config.brainPrompt.trim().length > 0
           ? this.config.brainPrompt
@@ -96,6 +113,26 @@ export default class GlobalBrainPlugin {
       },
     } satisfies AgentPlugin;
   }
+
+  private enqueueImmediateShare(thread: BrainThread, sourceScope: ChannelScope): void {
+    const sourceKey = scopeKey(sourceScope);
+    for (const targetScope of this.scopes.values()) {
+      if (scopeKey(targetScope) === sourceKey) continue;
+      void this.runImmediateShare(thread, targetScope);
+    }
+  }
+
+  private async runImmediateShare(thread: BrainThread, targetScope: ChannelScope): Promise<void> {
+    try {
+      await this.ctx.yesimbot.trigger(buildImmediateShareEvent(targetScope, thread));
+    } catch (cause) {
+      this.logger.warn("global_brain.immediate_trigger_failed", {
+        threadId: thread.id,
+        targetScope,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      });
+    }
+  }
 }
 
 export type { GlobalBrainStore } from "./store.js";
@@ -103,8 +140,10 @@ export { BrainStoreError, createGlobalBrainStore } from "./store.js";
 export { formatBrainDigest } from "./digest.js";
 export { formatBrainPrompt } from "./prompt.js";
 export { createBrainTools } from "./tools.js";
+export { buildImmediateShareEvent } from "./types.js";
 export type {
   BrainDigest,
+  BrainImmediateShare,
   BrainPostKind,
   BrainReply,
   BrainReplySource,

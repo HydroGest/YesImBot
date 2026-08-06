@@ -94,3 +94,7 @@ AGENTS.md
 | `maxDigestReplies`       | 每次自然行动最多提示几条新回复       | `5`     |
 | `maxDigestContentLength` | 摘要里每条内容最多显示多少字符       | `80`    |
 | `maxBlobBytes`           | 图片/文件物化到全局脑的最大字节数    | `5 MiB` |
+
+## shareImmediately
+
+`brain_deposit` 支持 `shareImmediately: true`，会通过 Core 的 trusted event trigger 立即向其他已知 session 唤起一次请求。这是调用级可选行为；插件配置 `shareImmediately`（默认 `false`）作为模型未传该字段时的默认值，单次传 `false` 仍会关闭。触发失败只记日志，不影响写入。
