@@ -52,6 +52,7 @@ export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.object({
 
 export default class WillPolicyPlugin {
   public static readonly name = "yesimbot-will-policy";
+  public static readonly reusable = true;
   public static readonly inject = ["yesimbot"];
   public static readonly usage = "提供可克隆、可筛选、可组合的 Will 与 routing 策略";
   public static readonly Config: Schema<WillPolicyConfig> = WillPolicyConfigSchema;
