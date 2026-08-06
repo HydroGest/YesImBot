@@ -37,7 +37,7 @@ function getMessageData(message: AgentMessage): { elements: readonly Element[] }
 }
 
 function projectElement(element: Element, attachImageSummary: boolean): Element {
-  if (element.type === "img" && isAnimatedImage(element.attrs)) {
+  if (element.type === "img" && isAnimatedImageElement(element.attrs)) {
     return h("text", {
       content: formatAnimatedImageLabel({
         attachImageSummary,
@@ -54,6 +54,10 @@ function projectElement(element: Element, attachImageSummary: boolean): Element 
 
 export function isAnimatedImage(data: { sub_type?: unknown; subType?: unknown }): boolean {
   return data.sub_type === 1 || data.sub_type === "1" || data.subType === 1 || data.subType === "1";
+}
+
+function isAnimatedImageElement(attrs: { summary?: unknown; sub_type?: unknown; subType?: unknown }): boolean {
+  return isAnimatedImage(attrs) || (typeof attrs.summary === "string" && attrs.summary.trim().length > 0);
 }
 
 export function formatAnimatedImageLabel(options: {

@@ -137,17 +137,17 @@ A nested `forward` segment MUST become `{ forward: id }`. The tool MUST NOT inli
 
 ### Requirement: OneBot Utils Animated Image Projection
 
-The plugin MUST project OneBot image elements whose subtype is one (`sub_type: 1` or `subType: 1`) as animated emoji before Core renders the main channel message for the model. Persisted images MUST become `[动画表情: asset://<id>]`, or `[动画表情: <summary> asset://<id>]` when `attachImageSummary` is enabled and the image has a non-empty summary. Unpersisted images MUST become `[动画表情]`, or `[动画表情: <summary>]` with summary attachment enabled. Images without subtype one MUST remain unchanged so Core can render its normal `[图片]` projection.
+The plugin MUST project OneBot image elements whose subtype is one (`sub_type: 1` or `subType: 1`) or whose summary is a non-empty string as animated emoji before Core renders the main channel message for the model. Persisted images MUST become `[动画表情: asset://<id>]`, or `[动画表情: <summary> asset://<id>]` when `attachImageSummary` is enabled and the image has a non-empty summary. Unpersisted images MUST become `[动画表情]`, or `[动画表情: <summary>]` with summary attachment enabled. Images without subtype one and with an empty or missing summary MUST remain unchanged so Core can render its normal `[图片]` projection.
 
 #### Scenario: Main message contains an animated image
 
-- **WHEN** an OneBot message entry contains a persisted image element with subtype one
+- **WHEN** an OneBot message entry contains a persisted image element with subtype one or a non-empty summary
 - **THEN** the plugin MUST replace that image element with the text element `[动画表情: asset://<id>]` before Core's model-input projection
 - **AND** it MUST include the image summary when summary attachment is enabled
 
 #### Scenario: Main message contains an ordinary image
 
-- **WHEN** an OneBot message entry contains a persisted image element without subtype one
+- **WHEN** an OneBot message entry contains a persisted image element without subtype one and without a non-empty summary
 - **THEN** the plugin MUST leave that image element unchanged
 
 ### Requirement: Runtime-Scoped Forward Cache

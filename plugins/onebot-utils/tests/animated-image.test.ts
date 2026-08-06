@@ -64,6 +64,13 @@ describe("animated image projection", () => {
     expect(message.data.elements).toEqual([textElement(`[动画表情: asset://${ID}]`)]);
   });
 
+  it("treats images with non-empty summary as animated without subtype metadata", () => {
+    const [projected] = projectAnimatedImages([messageEntry(undefined, ID, "大笑")]);
+    const message = projected.data as { data: { elements: readonly Element[] } };
+
+    expect(message.data.elements).toEqual([textElement(`[动画表情: 大笑 asset://${ID}]`)]);
+  });
+
   it("keeps ordinary images unchanged for Core projection", () => {
     const [projected] = projectAnimatedImages([messageEntry(undefined)]);
     const message = projected.data as { data: { elements: readonly Element[] } };
