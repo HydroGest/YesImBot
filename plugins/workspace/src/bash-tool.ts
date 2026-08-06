@@ -1,8 +1,18 @@
 import type { AgentTool, AgentToolSet } from "@yesimbot/agent-runtime";
 import type { Tool } from "ai";
-import { createBashTool, type Sandbox } from "bash-tool";
+import type { CommandResult, Sandbox } from "bash-tool";
 
-import type { Workspace } from "./workspace";
+export interface WorkspaceBashBackend {
+  executeCommand(command: string, options?: { cwd?: string; signal?: AbortSignal }): Promise<unknown>;
+  readFile(path: string): Promise<string>;
+  writeFiles(files: readonly { path: string; content: string }[]): Promise<void>;
+}
+
+export interface CreateBashToolSetInput {
+  backend: WorkspaceBashBackend;
+  destination: string;
+  environment: "sandbox" | "host";
+}
 
 type AbortSignalScope = {
   getSignal(): AbortSignal | undefined;
@@ -29,58 +39,6 @@ function createAbortSignalScope(): AbortSignalScope {
   };
 }
 
-async function executeWorkspaceCommand(
-  workspace: Workspace,
-  command: string,
-  signal?: AbortSignal,
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  try {
-    const timeoutSignal = AbortSignal.timeout(workspace.defaultTimeoutMs);
-    const result = await workspace.bash.exec(command, {
-      signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
-    });
-
-    return {
-      stdout: result.stdout,
-      stderr: result.stderr,
-      exitCode: result.exitCode,
-    };
-  } catch (error) {
-    if (error instanceof Error && error.name === "TimeoutError") {
-      return {
-        stdout: "",
-        stderr: `Command timed out after ${workspace.defaultTimeoutMs}ms`,
-        exitCode: 124,
-      };
-    }
-
-    return {
-      stdout: "",
-      stderr: error instanceof Error ? error.message : String(error),
-      exitCode: 1,
-    };
-  }
-}
-
-function createWorkspaceSandbox(workspace: Workspace, abortSignals: AbortSignalScope): Sandbox {
-  return {
-    async executeCommand(command) {
-      return await executeWorkspaceCommand(workspace, command, abortSignals.getSignal());
-    },
-
-    async readFile(path) {
-      return workspace.fs.readFile(path, "utf8");
-    },
-
-    async writeFiles(files) {
-      for (const file of files) {
-        const content = typeof file.content === "string" ? file.content : file.content.toString("utf-8");
-        await workspace.fs.writeFile(file.path, content, "utf8");
-      }
-    },
-  };
-}
-
 function withName(name: string, tool: Tool, abortSignals?: AbortSignalScope): AgentTool {
   const agentTool = {
     ...tool,
@@ -102,11 +60,61 @@ function withName(name: string, tool: Tool, abortSignals?: AbortSignalScope): Ag
   };
 }
 
-export async function createBashToolSet(workspace: Workspace): Promise<AgentToolSet> {
+type BackendSandbox = Sandbox & { setPendingCommand(command: string): void };
+
+function createBackendSandbox(input: CreateBashToolSetInput, abortSignals: AbortSignalScope): BackendSandbox {
+  let pendingCommand: string | undefined;
+
+  return {
+    async executeCommand(command) {
+      // createBashTool performs tool discovery before it installs its bash-call
+      // callback. During an actual call, onBeforeBashCall records the original
+      // command so the backend receives structured cwd/signal data instead of
+      // having to parse bash-tool's generated `cd` prefix.
+      const originalCommand = pendingCommand;
+      pendingCommand = undefined;
+      return (await input.backend.executeCommand(originalCommand ?? command, {
+        cwd: input.destination,
+        signal: abortSignals.getSignal(),
+      })) as CommandResult;
+    },
+
+    async readFile(path) {
+      return input.backend.readFile(path);
+    },
+
+    async writeFiles(files) {
+      await input.backend.writeFiles(
+        files.map((file) => ({
+          path: file.path,
+          content: typeof file.content === "string" ? file.content : file.content.toString("utf8"),
+        })),
+      );
+    },
+
+    setPendingCommand(command) {
+      pendingCommand = command;
+    },
+  };
+}
+
+export async function createBashToolSet(input: CreateBashToolSetInput): Promise<AgentToolSet> {
+  // bash-tool 是 ESM-only 包（exports 无 require 条件）；动态 import 让 Node
+  // 运行时直接加载其 ESM build，避免 pkgroll 内联转译进 CJS bundle。
+  const { createBashTool } = await import("bash-tool");
   const abortSignals = createAbortSignalScope();
+  const sandbox = createBackendSandbox(input, abortSignals);
   const toolkit = await createBashTool({
-    sandbox: createWorkspaceSandbox(workspace, abortSignals),
-    destination: workspace.config.bash.cwd,
+    sandbox,
+    destination: input.destination,
+    extraInstructions:
+      input.environment === "host"
+        ? "Commands execute in the approved Host environment."
+        : "Commands execute in the Sandbox virtual filesystem.",
+    onBeforeBashCall({ command }) {
+      sandbox.setPendingCommand(command);
+      return undefined;
+    },
   });
 
   return [

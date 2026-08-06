@@ -1,5 +1,30 @@
 import type { Workspace } from "./workspace";
 
+export interface HostWorkspacePromptOptions {
+  workspaceDir: string;
+  timeoutMs: number;
+  hostRoots: readonly { readonly path: string; readonly mode: "ro" | "rw" }[];
+}
+
+/**
+ * Host-mode system prompt: real cwd, configured roots, risk classification, and approval behavior.
+ * Unlike the sandbox prompt, it does not describe virtual mounts or a fake filesystem.
+ */
+export function formatHostWorkspacePrompt(options: HostWorkspacePromptOptions): string {
+  return [
+    "## 工作区（host 模式）",
+    `当前处于宿主机 Host 模式：bash 在真实宿主机环境中执行，真实 cwd 为 ${options.workspaceDir}。这不是 just-bash 沙箱。`,
+    `文件工具受隐含的可写频道工作区与配置的 Host roots 限制：${options.hostRoots.length > 0 ? options.hostRoots.map((root) => `${root.mode}:${root.path}`).join(", ") : "没有额外 roots"}。不要假设工作区之外的路径可读写，也不要尝试绕过 canonical path、symlink 或大小限制。`,
+    "每次请求都生成一个完整的单次 tool call；不要把 secrets 放入命令或参数，不要使用宽泛路径、无界变更或绕过尝试。",
+    "普通、有界、只读命令可以直接执行；写入、删除、覆盖、网络、解释器、脚本、后台任务、复杂结构或动态展开会在执行前暂停并请求管理员审批。",
+    "审批通知只发送脱敏摘要与风险标签；只有 authority-5 管理员可以使用 yesimbot.workspace.approvals、yesimbot.workspace.approve <requestId>、yesimbot.workspace.reject <requestId>。",
+    "审批被拒绝、过期、取消或插件停止后，原始调用会被阻断，不会被改写，也不会自动重试；请停止并向用户说明下一步。",
+    `频道工作区目录（持久化，按频道隔离）：${options.workspaceDir}`,
+    `workspace:///relative/path 与 ${options.workspaceDir}/relative/path 是同一个文件，可用于对外引用；bash 只能使用真实路径。`,
+    `命令超时：${options.timeoutMs} ms；stdout/stderr 各最多 30KB，超出静默截断。`,
+  ].join("\n");
+}
+
 function formatMountLabel(kind: Workspace["mounts"][number]["kind"]): string {
   if (kind === "read-only") {
     return "只读（写入会失败）";

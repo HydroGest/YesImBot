@@ -9,11 +9,48 @@ import { Workspace } from "../src/workspace";
 
 async function createWorkspace(): Promise<Workspace> {
   const root = await mkdtemp(join(tmpdir(), "yesimbot-bash-tool-"));
-  return new Workspace({
+  return Workspace.create({
     root,
     filesystem: {},
     bash: { cwd: "/home/workspace", timeoutMs: 1000 },
   });
+}
+type BackendCall = {
+  command: string;
+  options?: { cwd?: string; signal?: AbortSignal };
+};
+
+function createFakeBackend(output = { stdout: "out", stderr: "err", exitCode: 7 }) {
+  const calls: BackendCall[] = [];
+  const reads: string[] = [];
+  const writes: Array<readonly { path: string; content: string }[]> = [];
+  const files = new Map<string, string>();
+
+  return {
+    calls,
+    reads,
+    writes,
+    backend: {
+      async executeCommand(command: string, options?: BackendCall["options"]) {
+        calls.push({ command, options });
+        return output;
+      },
+      async readFile(path: string) {
+        reads.push(path);
+        return files.get(path) ?? "";
+      },
+      async writeFiles(nextFiles: readonly { path: string; content: string }[]) {
+        writes.push(nextFiles);
+        for (const file of nextFiles) files.set(file.path, file.content);
+      },
+    },
+  };
+}
+
+function toolByName(tools: Awaited<ReturnType<typeof createBashToolSet>>, name: string) {
+  const tool = tools.find((candidate) => candidate.name === name);
+  expect(tool).toBeDefined();
+  return tool!;
 }
 
 describe("bash-tool adapter", () => {
@@ -63,5 +100,98 @@ describe("bash-tool adapter", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(signal?.aborted).toBe(true);
+  });
+  it("keeps one tool contract for Sandbox and Host backends", async () => {
+    const sandbox = createFakeBackend();
+    const host = createFakeBackend();
+    const sandboxTools = await createBashToolSet({
+      backend: sandbox.backend,
+      destination: "/sandbox/workspace",
+      environment: "sandbox",
+    });
+    const hostTools = await createBashToolSet({
+      backend: host.backend,
+      destination: "/host/workspace",
+      environment: "host",
+    });
+
+    expect(sandboxTools.map((tool) => tool.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
+    expect(hostTools.map((tool) => tool.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
+    for (const name of ["bash", "readFile", "writeFile"]) {
+      expect(toolByName(hostTools, name).inputSchema).toBe(toolByName(sandboxTools, name).inputSchema);
+    }
+    expect(toolByName(sandboxTools, "bash").description).toContain("Sandbox virtual filesystem");
+    expect(toolByName(hostTools, "bash").description).toContain("approved Host environment");
+
+    const sandboxResult = await toolByName(sandboxTools, "bash").execute!({ command: "echo sandbox" }, {} as never);
+    const hostResult = await toolByName(hostTools, "bash").execute!({ command: "echo host" }, {} as never);
+    expect(sandboxResult).toEqual({ stdout: "out", stderr: "err", exitCode: 7 });
+    expect(hostResult).toEqual({ stdout: "out", stderr: "err", exitCode: 7 });
+
+    const sandboxWrite = await toolByName(sandboxTools, "writeFile").execute!(
+      { path: "note.txt", content: "sandbox" },
+      {} as never,
+    );
+    const hostWrite = await toolByName(hostTools, "writeFile").execute!(
+      { path: "note.txt", content: "host" },
+      {} as never,
+    );
+    expect(sandboxWrite).toEqual({ success: true });
+    expect(hostWrite).toEqual({ success: true });
+    await expect(toolByName(sandboxTools, "readFile").execute!({ path: "note.txt" }, {} as never)).resolves.toEqual({
+      content: "sandbox",
+    });
+    await expect(toolByName(hostTools, "readFile").execute!({ path: "note.txt" }, {} as never)).resolves.toEqual({
+      content: "host",
+    });
+  });
+
+  it("passes structured cwd and abort data while preserving truncation", async () => {
+    const output = {
+      stdout: "o".repeat(30_001),
+      stderr: "e".repeat(30_001),
+      exitCode: 0,
+    };
+    const sandbox = createFakeBackend(output);
+    const host = createFakeBackend(output);
+    const sandboxTools = await createBashToolSet({
+      backend: sandbox.backend,
+      destination: "/sandbox/workspace",
+      environment: "sandbox",
+    });
+    const hostTools = await createBashToolSet({
+      backend: host.backend,
+      destination: "/host/workspace",
+      environment: "host",
+    });
+    sandbox.calls.length = 0;
+    host.calls.length = 0;
+    const sandboxAbort = new AbortController();
+    const hostAbort = new AbortController();
+
+    const sandboxResult = await toolByName(sandboxTools, "bash").execute!({ command: "printf sandbox" }, {
+      abortSignal: sandboxAbort.signal,
+    } as never);
+    const hostResult = await toolByName(hostTools, "bash").execute!({ command: "printf host" }, {
+      abortSignal: hostAbort.signal,
+    } as never);
+
+    expect(sandboxResult).toEqual(hostResult);
+    expect(sandboxResult).toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringContaining("[stdout truncated: 1 characters removed]"),
+      stderr: expect.stringContaining("[stderr truncated: 1 characters removed]"),
+    });
+    expect(sandbox.calls).toEqual([
+      { command: "printf sandbox", options: { cwd: "/sandbox/workspace", signal: sandboxAbort.signal } },
+    ]);
+    expect(host.calls).toEqual([
+      { command: "printf host", options: { cwd: "/host/workspace", signal: hostAbort.signal } },
+    ]);
+
+    sandboxAbort.abort();
+    hostAbort.abort();
+    expect(sandbox.calls[0]?.options?.signal?.aborted).toBe(true);
+    expect(host.calls[0]?.options?.signal?.aborted).toBe(true);
   });
 });
