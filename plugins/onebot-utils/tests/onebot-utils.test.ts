@@ -1,5 +1,5 @@
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
-import type { ChannelPluginFactory, ChannelPluginContext } from "koishi-plugin-yesimbot";
+import type { ChannelPluginFactory } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -51,6 +51,14 @@ function createLogger() {
   };
 }
 
+function createMemoryAssets() {
+  return {
+    put: vi.fn<(bytes: Uint8Array) => Promise<string>>(async () => "asset-local"),
+    get: vi.fn<(id: string) => Promise<Uint8Array>>(async () => new Uint8Array()),
+    clear: vi.fn<() => Promise<void>>(async () => undefined),
+  };
+}
+
 function createContext() {
   const scopedLogger = createLogger();
   const rootLogger = Object.assign(
@@ -63,6 +71,9 @@ function createContext() {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
+      assets: {
+        createStore: vi.fn<() => ReturnType<typeof createMemoryAssets>>(() => createMemoryAssets()),
+      },
       registerChannelPlugin: vi.fn((factory: ChannelPluginFactory) => {
         factories.push(factory);
         return dispose;

@@ -1,10 +1,16 @@
 import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
-import { Context, Logger, Schema, type Bot } from "koishi";
+import { Context, h, Logger, Schema, type Bot, type Element } from "koishi";
 import type { OneBot, OneBotBot } from "koishi-plugin-adapter-onebot";
-import type { ChannelPluginContext, ChannelPluginFactory, ChannelScope } from "koishi-plugin-yesimbot";
+import {
+  persistElements,
+  type AssetStore,
+  type ChannelPluginContext,
+  type ChannelPluginFactory,
+  type ChannelScope,
+} from "koishi-plugin-yesimbot";
 
 import { projectAnimatedImages } from "./animated-image.js";
-import { createForwardReader, type ForwardResult, type ForwardToolInput } from "./forward.js";
+import { createForwardReader, type ForwardImageRequest, type ForwardResult, type ForwardToolInput } from "./forward.js";
 
 const ONEBOT_INTERNAL_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 协议内部接口";
 const ONEBOT_REQUEST_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 请求接口";
@@ -73,7 +79,7 @@ export default class OnebotUtilsPlugin {
   }
 
   public async start(): Promise<void> {
-    this.dispose = this.ctx.yesimbot.registerChannelPlugin(createOneBotPluginFactory(this.config));
+    this.dispose = this.ctx.yesimbot.registerChannelPlugin(createOneBotPluginFactory(this.ctx, this.config));
   }
 
   public async stop(): Promise<void> {
@@ -87,7 +93,50 @@ function getOneBotInternal(bot: Bot): OneBot.Internal {
   return internal;
 }
 
-function createOneBotTools(bot: Bot, config: Readonly<OnebotUtilsConfig>, scope: ChannelScope): AgentTool[] {
+async function persistForwardImages(
+  ctx: Context,
+  internal: OneBot.Internal,
+  assets: AssetStore,
+  images: readonly ForwardImageRequest[],
+): Promise<ReadonlyMap<string, string>> {
+  const resolved = await Promise.all(
+    images.map(async ({ file, url }) => {
+      try {
+        const imageUrl = url ?? (await internal.getImage(file))?.url;
+        return imageUrl ? { file, url: imageUrl } : undefined;
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  const elements = resolved
+    .filter((item): item is { file: string; url: string } => item !== undefined)
+    .map(({ url }) => h("img", { src: url }));
+  if (elements.length === 0) return new Map();
+  let persisted: Element[];
+  try {
+    persisted = await persistElements(ctx, elements, assets);
+  } catch {
+    return new Map();
+  }
+  const assetIds = new Map<string, string>();
+  let index = 0;
+  for (const item of resolved) {
+    if (!item) continue;
+    const element = persisted[index++];
+    const id = element?.attrs.id;
+    if (typeof id === "string") assetIds.set(item.file, id);
+  }
+  return assetIds;
+}
+
+function createOneBotTools(
+  ctx: Context,
+  bot: Bot,
+  config: Readonly<OnebotUtilsConfig>,
+  scope: ChannelScope,
+  assets: AssetStore,
+): AgentTool[] {
   let forwardReader: ReturnType<typeof createForwardReader> | undefined;
 
   const isGroupScope = scope.type === "shared";
@@ -119,7 +168,11 @@ function createOneBotTools(bot: Bot, config: Readonly<OnebotUtilsConfig>, scope:
       additionalProperties: false,
     }),
     execute: async (input) => {
-      forwardReader ??= createForwardReader(getOneBotInternal(bot), config);
+      const internal = getOneBotInternal(bot);
+      forwardReader ??= createForwardReader(internal, {
+        ...config,
+        persistImages: (images) => persistForwardImages(ctx, internal, assets, images),
+      });
       return forwardReader(input);
     },
   };
@@ -349,12 +402,12 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-function createOneBotPluginFactory(config: OnebotUtilsConfig): ChannelPluginFactory {
+function createOneBotPluginFactory(ctx: Context, config: OnebotUtilsConfig): ChannelPluginFactory {
   return async ({ scope, bot }: ChannelPluginContext) => {
     if (scope.platform !== "onebot") return null;
     return {
       name: "onebot-utils",
-      tools: createOneBotTools(bot, config, scope),
+      tools: createOneBotTools(ctx, bot, config, scope, ctx.yesimbot.assets.createStore(scope)),
       onAppend: (entries) => projectAnimatedImages(entries, { attachImageSummary: config.attachImageSummary }),
       transformEntries: (entries) => projectAnimatedImages(entries, { attachImageSummary: config.attachImageSummary }),
     };

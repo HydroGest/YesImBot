@@ -160,6 +160,7 @@ describe("GlobalBrainPlugin", () => {
 
       const prompt = await pluginA.appendSystemPrompt?.({} as never);
       expect(String(prompt)).toContain("Global Brain");
+      expect(String(prompt)).toContain("unread");
       expect(String(prompt)).not.toContain("askLocal");
 
       const deposit = tools.find((tool) => tool.name === "brain_deposit")!;

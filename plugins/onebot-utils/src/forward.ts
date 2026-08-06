@@ -29,10 +29,17 @@ interface ForwardFailure {
   error: string;
 }
 
-interface ForwardReaderConfig {
+export interface ForwardImageRequest {
+  readonly file: string;
+  readonly summary: string;
+  readonly url?: string;
+}
+
+export interface ForwardReaderConfig {
   parseImages: boolean;
   maxForwardPageChars: number;
   attachImageSummary: boolean;
+  persistImages?: (images: readonly ForwardImageRequest[]) => Promise<ReadonlyMap<string, string>>;
 }
 
 interface OneBotForwardNode {
@@ -55,6 +62,8 @@ interface OneBotImageSegment {
     summary: string;
     file: string;
     file_size?: string;
+    src?: string;
+    url?: string;
     sub_type?: unknown;
     subType?: unknown;
   };
@@ -121,7 +130,25 @@ export function createForwardReader(
 
     const nodes = response as unknown as readonly OneBotForwardNode[];
     const nestedForwards = new Map<string, readonly ForwardMessage[]>();
-    const records = nodes.map((node) => normalizeNode(node, config, nestedForwards));
+    const imageUrls = new Map<string, string>();
+    const records = nodes.map((node) => normalizeNode(node, config, nestedForwards, imageUrls));
+
+    const imageRequests = collectImageRequests([records, ...nestedForwards.values()], imageUrls);
+    if (config.persistImages && imageRequests.length > 0) {
+      const assetIds = await config.persistImages(imageRequests);
+      const render = (items: readonly ForwardMessage[]): ForwardMessage[] =>
+        items.map((record) => [
+          record[0],
+          record[1],
+          coalesceParts(record[2].map((part) => renderImagePart(part, assetIds))),
+        ]);
+      const renderedRecords = render(records);
+      cache.set(forwardId, renderedRecords);
+      for (const [nestedForwardId, nestedRecords] of nestedForwards) {
+        cache.set(nestedForwardId, render(nestedRecords));
+      }
+      return renderedRecords;
+    }
 
     cache.set(forwardId, records);
     for (const [nestedForwardId, nestedRecords] of nestedForwards) {
@@ -135,8 +162,13 @@ function normalizeNode(
   node: OneBotForwardNode,
   config: Readonly<ForwardReaderConfig>,
   nestedForwards: Map<string, readonly ForwardMessage[]>,
+  imageUrls: Map<string, string>,
 ): ForwardMessage {
-  return [formatSender(node.sender), formatTime(node.time), normalizeSegments(node.message, config, nestedForwards)];
+  return [
+    formatSender(node.sender),
+    formatTime(node.time),
+    normalizeSegments(node.message, config, nestedForwards, imageUrls),
+  ];
 }
 
 function formatSender(sender: OneBot.SenderInfo): string {
@@ -157,6 +189,7 @@ function normalizeSegments(
   segments: readonly OneBotForwardSegment[],
   config: Readonly<ForwardReaderConfig>,
   nestedForwards: Map<string, readonly ForwardMessage[]>,
+  imageUrls: Map<string, string>,
 ): readonly ForwardPart[] {
   const parts: ForwardPart[] = [];
 
@@ -170,11 +203,21 @@ function normalizeSegments(
       }
       case "image": {
         const data = segment.data as
-          | { summary?: unknown; file?: unknown; file_size?: unknown; sub_type?: unknown; subType?: unknown }
+          | {
+              summary?: unknown;
+              file?: unknown;
+              file_size?: unknown;
+              src?: unknown;
+              url?: unknown;
+              sub_type?: unknown;
+              subType?: unknown;
+            }
           | undefined;
         if (typeof data?.summary !== "string" || typeof data.file !== "string") {
           appendString(parts, "[未知消息段]");
         } else if (config.parseImages) {
+          if (typeof data.src === "string" && data.src.length > 0) imageUrls.set(data.file, data.src);
+          else if (typeof data.url === "string" && data.url.length > 0) imageUrls.set(data.file, data.url);
           parts.push({ image: [data.summary, data.file, formatFileSize(data.file_size)] });
         } else {
           appendString(
@@ -198,7 +241,7 @@ function normalizeSegments(
         if (Array.isArray(data.content) && !nestedForwards.has(data.id)) {
           nestedForwards.set(
             data.id,
-            data.content.map((node) => normalizeNode(node, config, nestedForwards)),
+            data.content.map((node) => normalizeNode(node, config, nestedForwards, imageUrls)),
           );
         }
         parts.push({ forward: data.id });
@@ -240,6 +283,49 @@ function formatFileSize(value: unknown): string | null {
   const unit: readonly [number, string] =
     bytes < 1_000_000 ? [1000, "KB"] : bytes < 1_000_000_000 ? [1_000_000, "MB"] : [1_000_000_000, "GB"];
   return `${(bytes / unit[0]).toFixed(1)} ${unit[1]}`;
+}
+
+function collectImageRequests(
+  records: readonly (readonly ForwardMessage[])[],
+  imageUrls: ReadonlyMap<string, string>,
+): ForwardImageRequest[] {
+  const requests = new Map<string, ForwardImageRequest>();
+  for (const recordList of records) {
+    for (const record of recordList) {
+      for (const part of record[2]) {
+        if (typeof part === "string" || !("image" in part)) continue;
+        const [summary, file] = part.image;
+        if (!requests.has(file)) {
+          const url = imageUrls.get(file);
+          requests.set(file, {
+            file,
+            summary,
+            ...(url === undefined ? {} : { url }),
+          });
+        }
+      }
+    }
+  }
+  return [...requests.values()];
+}
+
+function renderImagePart(part: ForwardPart, assetIds: ReadonlyMap<string, string>): ForwardPart {
+  if (typeof part === "string" || !("image" in part)) return part;
+  const assetId = assetIds.get(part.image[1]);
+  return assetId ? `[图片：asset://${assetId}]` : part;
+}
+
+function coalesceParts(parts: readonly ForwardPart[]): ForwardPart[] {
+  const result: ForwardPart[] = [];
+  for (const part of parts) {
+    const previous = result.at(-1);
+    if (typeof previous === "string" && typeof part === "string") {
+      result[result.length - 1] = previous + part;
+    } else {
+      result.push(part);
+    }
+  }
+  return result;
 }
 
 function clampOffset(value: number | undefined): number {

@@ -212,6 +212,7 @@ export default class YesImBotService extends Service<Config> {
 export type { ArtifactStore, ArtifactWriter } from "./artifact.js";
 export type { AssetService, AssetStore } from "./asset.js";
 export type { PlatformTranslator } from "./gateway/types.js";
+export { persistElements } from "./gateway/resources.js";
 export * from "./messages.js";
 export * from "./model/index.js";
 export type { ChannelPluginFactory, ChannelPluginContext } from "./runtime/index.js";

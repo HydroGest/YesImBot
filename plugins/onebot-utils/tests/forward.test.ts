@@ -110,6 +110,40 @@ describe("createForwardReader", () => {
     expect(JSON.stringify(result)).not.toContain("sub_type");
   });
 
+  it("renders persisted forward images as local asset URIs", async () => {
+    const getForwardMsg = vi.fn(async () => [
+      node([
+        {
+          type: "image",
+          data: {
+            summary: "cover",
+            file: "cover.jpg",
+            file_size: "1000",
+            src: "https://private.test/cover.jpg",
+          },
+        },
+      ]),
+    ]);
+    const persistImages = vi.fn(
+      async (images) => new Map(images.map((image, index) => [image.file, `asset-${index}`])),
+    );
+    const reader = createForwardReader({ getForwardMsg } as OneBot.Internal, {
+      parseImages: true,
+      maxForwardPageChars: 6000,
+      attachImageSummary: true,
+      persistImages,
+    });
+
+    const result = await reader({ forwardId: "forward" });
+    expect(result).toEqual({
+      messages: [["Alice (10001)", expect.any(String), ["[图片：asset://asset-0]"]]],
+    });
+    expect(persistImages).toHaveBeenCalledWith([
+      { file: "cover.jpg", summary: "cover", url: "https://private.test/cover.jpg" },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("private.test");
+  });
+
   it("caches expanded nested forwards under their forward ID", async () => {
     const { reader, getForwardMsg } = createReader([
       node([
