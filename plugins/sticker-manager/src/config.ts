@@ -29,7 +29,7 @@ export const StickerConfigSchema: Schema<StickerConfig> = Schema.object({
     .description("单张导入图片的最大字节数"),
   tagMode: Schema.boolean()
     .default(false)
-    .description("实验性 tag 模式，默认关闭：steal 自动打标签，提供 sticker_tags 工具并支持多 tag 发送"),
+    .description("实验性 tag 模式，默认关闭：steal 自动分类并生成多个 tags，提供 sticker_tags 工具并支持多 tag 发送"),
 });
 
 export type { StickerConfig };

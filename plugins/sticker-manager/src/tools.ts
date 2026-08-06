@@ -5,13 +5,7 @@ import type { StickerClassifier } from "./classifier.js";
 import { detectImageMediaType } from "./files.js";
 import type { StickerSender } from "./sender.js";
 import type { StickerStore } from "./store.js";
-import {
-  normalizeCategory,
-  normalizeTags,
-  scopeKeyFor,
-  type StickerConfig,
-  type StickerProjection,
-} from "./types.js";
+import { normalizeCategory, normalizeTags, scopeKeyFor, type StickerConfig, type StickerProjection } from "./types.js";
 
 interface StealStickerInput {
   asset_id: string;
@@ -77,21 +71,22 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
       if (!mediaType) return { ok: false, error: "unsupported_image" };
 
       const categories = (await store.listCategories(scopeKey)).map((item) => item.category);
-      const classified = category
-        ? normalizeCategory(category)
-        : ((await classifier.classify({
+      const autoClassified = category
+        ? undefined
+        : await classifier.classify({
             bytes,
             mediaType,
             categories,
             signal: execution.abortSignal,
-          })) ?? "未分类");
+          });
+      const classified = category ? normalizeCategory(category) : (autoClassified?.category ?? "未分类");
 
       const saved = await store.save({
         scopeKey,
         bytes,
         mediaType,
         category: classified,
-        tags: config.tagMode ? normalizeTags([classified]) : undefined,
+        tags: config.tagMode ? normalizeTags([classified, ...(autoClassified?.tags ?? [])]) : undefined,
         source: {
           kind: "steal",
           platform: scope.platform,
@@ -168,9 +163,10 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
           id: sticker.id,
           category: sticker.category,
           tags: sticker.tags,
-          message: tags && tags.length > 0
-            ? `已按标签 ${tags.join("、")} 发送 ${sticker.category} 分类的表情包`
-            : `已发送 ${sticker.category} 分类的表情包`,
+          message:
+            tags && tags.length > 0
+              ? `已按标签 ${tags.join("、")} 发送 ${sticker.category} 分类的表情包`
+              : `已发送 ${sticker.category} 分类的表情包`,
         };
       } catch (cause) {
         return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };

@@ -11,8 +11,13 @@ export interface ClassifyInput {
   signal?: AbortSignal;
 }
 
+export interface ClassifyResult {
+  category?: string;
+  tags?: string[];
+}
+
 export interface StickerClassifier {
-  classify(input: ClassifyInput): Promise<string | undefined>;
+  classify(input: ClassifyInput): Promise<ClassifyResult | undefined>;
 }
 
 export class ModelStickerClassifier implements StickerClassifier {
@@ -21,7 +26,7 @@ export class ModelStickerClassifier implements StickerClassifier {
     private readonly config: StickerConfig,
   ) {}
 
-  public async classify(input: ClassifyInput): Promise<string | undefined> {
+  public async classify(input: ClassifyInput): Promise<ClassifyResult | undefined> {
     const modelId = this.config.classificationModel || this.ctx.yesimbot.model.getDefaultChatModelId();
     if (!modelId) return undefined;
 
@@ -38,10 +43,17 @@ export class ModelStickerClassifier implements StickerClassifier {
 
     if (!ref.entry.modalities?.input?.includes("image")) return undefined;
 
-    const prompt = this.config.classificationPrompt.replaceAll(
+    const basePrompt = this.config.classificationPrompt.replaceAll(
       "{{categories}}",
       input.categories.join(", ") || "暂无分类",
     );
+    const prompt = this.config.tagMode
+      ? [
+          basePrompt,
+          '同时返回一个 JSON 对象：{"category":"分类名","tags":["标签1","标签2"]}',
+          "category 只返回一个分类；tags 返回 1-8 个简短标签，可以包含 category。不要输出其他内容。",
+        ].join("\n")
+      : basePrompt;
     const frame = input.mediaType === "image/gif" ? firstFrameToPng(input.bytes) : undefined;
 
     try {
@@ -63,12 +75,36 @@ export class ModelStickerClassifier implements StickerClassifier {
           },
         ],
       });
-      return normalizeCategory(text) || undefined;
+      return parseClassification(text, this.config.tagMode);
     } catch (cause) {
       this.ctx.logger("yesimbot.sticker-manager").warn("classification_call_failed", {
         cause: cause instanceof Error ? cause.message : String(cause),
       });
       return undefined;
     }
+  }
+}
+
+function parseClassification(text: string, tagMode: boolean): ClassifyResult {
+  const fallbackCategory = normalizeCategory(text) || undefined;
+  if (!tagMode) return { category: fallbackCategory, tags: [] };
+
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  try {
+    const parsed = JSON.parse(cleaned) as { category?: unknown; tags?: unknown };
+    const category = typeof parsed.category === "string" ? normalizeCategory(parsed.category) : undefined;
+    const tags = Array.isArray(parsed.tags)
+      ? parsed.tags
+          .filter((tag): tag is string => typeof tag === "string")
+          .map(normalizeCategory)
+          .filter((tag) => tag.length > 0)
+      : [];
+    return { category, tags };
+  } catch {
+    return { category: fallbackCategory, tags: [] };
   }
 }

@@ -57,7 +57,9 @@ function createDeps(overrides: Partial<StickerConfig> = {}) {
     readBytes: vi.fn(async () => pngBytes),
     markUsed: vi.fn(async () => projection({ usageCount: 1 })),
   };
-  const classifier: StickerClassifier = { classify: vi.fn(async () => "meme") };
+  const classifier: StickerClassifier = {
+    classify: vi.fn(async () => ({ category: "meme", tags: ["搞笑"] })),
+  };
   const sender: StickerSender = { send: vi.fn(async () => undefined) };
   const assets: AssetStore = {
     put: vi.fn(async () => "a".repeat(32)),
@@ -118,8 +120,8 @@ describe("sticker agent tools", () => {
     const deps = createDeps({ tagMode: true });
     const [tool] = deps.tools;
     const result = await execute(tool, { asset_id: "a".repeat(32) });
-    expect(deps.store.save).toHaveBeenCalledWith(expect.objectContaining({ tags: ["meme"] }));
-    expect(result).toMatchObject({ ok: true, tags: ["meme"] });
+    expect(deps.store.save).toHaveBeenCalledWith(expect.objectContaining({ tags: ["meme", "搞笑"] }));
+    expect(result).toMatchObject({ ok: true, tags: ["meme", "搞笑"] });
   });
 
   it("sticker_send with tags picks from the best-matching stickers", async () => {
