@@ -2,7 +2,8 @@ import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
 import type { AssetStore, ChannelScope } from "koishi-plugin-yesimbot";
 
 import type { StickerClassifier } from "./classifier.js";
-import { detectImageMediaType } from "./files.js";
+import { detectImageMediaType, sha256Hex } from "./files.js";
+import { prepareStaticGif } from "./frames.js";
 import type { StickerSender } from "./sender.js";
 import type { StickerStore } from "./store.js";
 import { normalizeCategory, normalizeTags, scopeKeyFor, type StickerConfig, type StickerProjection } from "./types.js";
@@ -69,6 +70,18 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
       }
       const mediaType = detectImageMediaType(bytes);
       if (!mediaType) return { ok: false, error: "unsupported_image" };
+      const contentId = sha256Hex(bytes);
+      const existing = await store.get(scopeKey, contentId);
+      if (existing) {
+        return {
+          ok: true,
+          status: "duplicate",
+          id: existing.id,
+          category: existing.category,
+          tags: existing.tags,
+          message: `表情包已存在于分类：${existing.category}`,
+        };
+      }
 
       const categories = (await store.listCategories(scopeKey)).map((item) => item.category);
       const autoClassified = category
@@ -112,9 +125,10 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
     description: [
       "发送一个已收藏的表情包。",
       "可用 sticker_categories 和 sticker_search 查询；sticker_id 优先，也可按 category 随机或按 index 指定。",
+      ...(config.sendStaticAsGif ? ["静态图片会自动转成单帧 GIF 后发送。"] : []),
       ...(config.tagMode
         ? [
-            `也可仅传 tags 选择多个标签，并从最匹配的表情包中随机发送。${
+            `也可仅传 tags 选择多个标签，并从匹配分范围内的表情包中随机发送。${
               config.fuzzyTagMatch ? "tag 默认支持模糊匹配。" : ""
             }`,
           ]
@@ -133,8 +147,8 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
                 items: { type: "string" },
                 maxItems: 5,
                 description: config.fuzzyTagMatch
-                  ? "实验性标签列表，支持模糊匹配；从同时匹配最多标签的表情包中随机发送"
-                  : "实验性标签列表，从同时匹配最多标签的表情包中随机发送",
+                  ? "实验性标签列表，支持模糊匹配；从匹配分范围内的表情包中随机发送"
+                  : "实验性标签列表，从匹配分范围内的表情包中随机发送",
               },
             }
           : {}),
@@ -154,7 +168,14 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
           if (!selected) return { ok: false, error: "sticker_index_out_of_range" };
           sticker = selected;
         } else if (tags && tags.length > 0) {
-          const tagged = await pickBestTaggedSticker(store, scopeKey, tags, category, config.fuzzyTagMatch);
+          const tagged = await pickBestTaggedSticker(
+            store,
+            scopeKey,
+            tags,
+            category,
+            config.fuzzyTagMatch,
+            config.tagRandomRange,
+          );
           if (!tagged) return { ok: false, error: "sticker_not_found" };
           sticker = tagged;
         } else {
@@ -164,7 +185,8 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
         }
 
         const bytes = await store.readBytes(sticker);
-        await sender.send({ bytes, mediaType: sticker.mime });
+        const prepared = prepareStaticGif(bytes, sticker.mime, config.sendStaticAsGif);
+        await sender.send({ bytes: prepared.bytes, mediaType: prepared.mediaType });
         await store.markUsed(scopeKey, sticker.id);
         return {
           ok: true,
@@ -214,6 +236,8 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
     name: "sticker_search",
     description: [
       "搜索当前可见的表情包，返回紧凑 id 列表，供 sticker_send 使用。",
+      'sticker_search 只用于查询；确定目标后调用 sticker_send，或在启用 sticker 元素时输出 <sticker id="..."/>。',
+      "绝不能把返回的 id 拼成 artifact:// 等资源 URI。",
       ...(config.tagMode ? ["实验性 tag 模式开启时，可按 tags 过滤。"] : []),
     ].join("\n"),
     inputSchema: jsonSchema<SearchStickerInput>({
@@ -261,6 +285,7 @@ export async function pickBestTaggedSticker(
   tags: readonly string[],
   category?: string,
   fuzzyTagMatch = true,
+  randomRange = 0,
 ): Promise<StickerProjection | null> {
   const normalized = normalizeTags(tags);
   if (normalized.length === 0) return null;
@@ -273,7 +298,8 @@ export async function pickBestTaggedSticker(
   const score = (sticker: StickerProjection): number =>
     normalized.reduce((count, tag) => count + (stickerMatches(sticker.tags, tag, fuzzyTagMatch) ? 1 : 0), 0);
   const best = Math.max(...matches.map(score));
-  const candidates = matches.filter((sticker) => score(sticker) === best);
+  const threshold = Math.min(best, Math.max(0, randomRange));
+  const candidates = matches.filter((sticker) => score(sticker) >= best - threshold);
   return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
 }
 

@@ -31,6 +31,13 @@ export const StickerConfigSchema: Schema<StickerConfig> = Schema.object({
     .default(false)
     .description("实验性 tag 模式，默认关闭：steal 自动分类并生成多个 tags，提供 sticker_tags 工具并支持多 tag 发送"),
   fuzzyTagMatch: Schema.boolean().default(true).description("sticker_send 的 tag 使用模糊匹配，默认开启"),
+  tagRandomRange: Schema.number()
+    .min(0)
+    .default(1)
+    .description("tag 发送随机范围：0 只选最高匹配分，每增加 1 可随机放宽到下一档匹配分"),
+  sendStaticAsGif: Schema.boolean()
+    .default(true)
+    .description("发送静态图片表情包时转为单帧 GIF，默认开启；GIF 原样发送"),
   stickerElement: Schema.boolean().default(true).description("允许 bot 直接输出 <sticker/> 发送表情，默认开启"),
 });
 

@@ -10,6 +10,8 @@ export interface StickerConfig {
   maxImportFileBytes: number;
   tagMode: boolean;
   fuzzyTagMatch: boolean;
+  tagRandomRange: number;
+  sendStaticAsGif: boolean;
   stickerElement: boolean;
 }
 

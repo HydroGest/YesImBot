@@ -70,6 +70,8 @@ const config: StickerConfig = {
   maxImportFileBytes: 1024 * 1024,
   tagMode: false,
   fuzzyTagMatch: true,
+  tagRandomRange: 1,
+  sendStaticAsGif: true,
   stickerElement: true,
 };
 

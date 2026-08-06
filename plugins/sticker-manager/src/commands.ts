@@ -2,6 +2,7 @@ import { h, type Command, type Context, type Session } from "koishi";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 
 import type { StickerClassifier } from "./classifier.js";
+import { prepareStaticGif } from "./frames.js";
 import { importDirectory, importEmojiHubTxt, importImageFile } from "./importers.js";
 import { migrateScope, migrateV3 } from "./migrate.js";
 import type { StickerStore } from "./store.js";
@@ -56,7 +57,7 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
         if (options?.all) {
           const delay = options.delay ?? 500;
           for (const sticker of stickers) {
-            await sendSticker(session, scopeKey, store, sticker);
+            await sendSticker(session, scopeKey, store, sticker, config.sendStaticAsGif);
             await sleep(delay);
           }
           return `已发送分类 "${category}" 下所有 ${stickers.length} 个表情包`;
@@ -64,7 +65,7 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
 
         const sticker = index ? stickers[index - 1] : stickers[Math.floor(Math.random() * stickers.length)];
         if (!sticker) return `无效序号，该分类共有 ${stickers.length} 个表情包`;
-        await sendSticker(session, scopeKey, store, sticker);
+        await sendSticker(session, scopeKey, store, sticker, config.sendStaticAsGif);
         return `ID: ${sticker.id}\n分类: ${sticker.category}`;
       }),
   );
@@ -378,9 +379,11 @@ async function sendSticker(
   scopeKey: string,
   store: StickerStore,
   sticker: StickerProjection,
+  sendStaticAsGif: boolean,
 ): Promise<void> {
   const bytes = await store.readBytes(sticker);
-  const dataUrl = `data:${sticker.mime};base64,${Buffer.from(bytes).toString("base64")}`;
+  const prepared = prepareStaticGif(bytes, sticker.mime, sendStaticAsGif);
+  const dataUrl = `data:${prepared.mediaType};base64,${Buffer.from(prepared.bytes).toString("base64")}`;
   await session.send([h.image(dataUrl)]);
   await store.markUsed(scopeKey, sticker.id);
 }

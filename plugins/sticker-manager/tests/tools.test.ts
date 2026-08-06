@@ -1,6 +1,7 @@
 /* eslint-disable vitest/require-mock-type-parameters */
 import type { AgentTool } from "@yesimbot/agent-runtime";
 import type { AssetStore, ChannelScope } from "koishi-plugin-yesimbot";
+import { PNG } from "pngjs";
 import { describe, expect, it, vi } from "vitest";
 
 import type { StickerClassifier } from "../src/classifier.js";
@@ -24,6 +25,8 @@ const config: StickerConfig = {
   maxImportFileBytes: 1024 * 1024,
   tagMode: false,
   fuzzyTagMatch: true,
+  tagRandomRange: 1,
+  sendStaticAsGif: true,
   stickerElement: true,
 };
 
@@ -53,7 +56,7 @@ function createDeps(overrides: Partial<StickerConfig> = {}) {
       status: "created",
       sticker: projection({ tags: [...(input.tags ?? [])] }),
     })),
-    get: vi.fn(async () => projection()),
+    get: vi.fn(async () => null),
     search: vi.fn(async () => [projection()]),
     listByScopeKey: vi.fn(async () => [projection()]),
     random: vi.fn(async () => projection()),
@@ -127,8 +130,20 @@ describe("sticker agent tools", () => {
     expect(result).toMatchObject({ ok: true, tags: ["meme", "搞笑"] });
   });
 
-  it("sticker_send with fuzzy tags scores multiple tag matches on one sticker", async () => {
+  it("sticker_steal skips classifier and save for an existing sticker", async () => {
     const deps = createDeps({ tagMode: true });
+    deps.store.get.mockResolvedValue(projection({ id: "a".repeat(64), category: "meme", tags: ["meme"] }));
+    const [tool] = deps.tools;
+
+    const result = await execute(tool, { asset_id: "a".repeat(32) });
+
+    expect(deps.classifier.classify).not.toHaveBeenCalled();
+    expect(deps.store.save).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: true, status: "duplicate", id: "a".repeat(64) });
+  });
+
+  it("sticker_send with fuzzy tags scores multiple tag matches on one sticker", async () => {
+    const deps = createDeps({ tagMode: true, tagRandomRange: 0 });
     deps.store.listByScopeKey.mockResolvedValue([
       projection({ id: "a".repeat(64), tags: ["可爱猫猫", "工作"] }),
       projection({ id: "b".repeat(64), tags: ["猫"] }),
@@ -139,6 +154,24 @@ describe("sticker agent tools", () => {
     expect(deps.sender.send).toHaveBeenCalledWith({ bytes: pngBytes, mediaType: "image/png" });
     expect(deps.store.markUsed).toHaveBeenCalledWith("global", "a".repeat(64));
     expect(result).toMatchObject({ ok: true, tags: ["可爱猫猫", "工作"] });
+  });
+
+  it("sticker_send tag random range can include lower-scoring matches", async () => {
+    const deps = createDeps({ tagMode: true, tagRandomRange: 1 });
+    deps.store.listByScopeKey.mockResolvedValue([
+      projection({ id: "a".repeat(64), tags: ["可爱猫猫", "工作"] }),
+      projection({ id: "b".repeat(64), tags: ["可爱"] }),
+    ]);
+    const [, sendTool] = deps.tools;
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.99);
+
+    try {
+      await execute(sendTool, { tags: ["猫", "可爱"] });
+    } finally {
+      random.mockRestore();
+    }
+
+    expect(deps.store.markUsed).toHaveBeenCalledWith("global", "b".repeat(64));
   });
 
   it("sticker_send with one fuzzy tag can match multiple stickers", async () => {
@@ -170,11 +203,28 @@ describe("sticker agent tools", () => {
 
   it("sticker_send sends the selected sticker and records usage", async () => {
     const deps = createDeps();
+    deps.store.get.mockResolvedValue(projection());
     const [, sendTool] = deps.tools;
     const result = await execute(sendTool, { sticker_id: "a".repeat(64) });
     expect(deps.sender.send).toHaveBeenCalledWith({ bytes: pngBytes, mediaType: "image/png" });
     expect(deps.store.markUsed).toHaveBeenCalledWith("global", "a".repeat(64));
     expect(result).toMatchObject({ ok: true, category: "meme" });
+  });
+
+  it("sticker_send converts a static PNG to a single-frame GIF", async () => {
+    const deps = createDeps({ sendStaticAsGif: true });
+    deps.store.get.mockResolvedValue(projection({ id: "a".repeat(64), mime: "image/png" }));
+    const png = new PNG({ width: 1, height: 1 });
+    png.data.set([255, 0, 0, 255]);
+    deps.store.readBytes.mockResolvedValue(new Uint8Array(PNG.sync.write(png)));
+    const [, sendTool] = deps.tools;
+
+    await execute(sendTool, { sticker_id: "a".repeat(64) });
+
+    expect(deps.sender.send).toHaveBeenCalledWith({
+      bytes: expect.any(Uint8Array),
+      mediaType: "image/gif",
+    });
   });
 
   it("sticker_categories returns category summaries", async () => {
