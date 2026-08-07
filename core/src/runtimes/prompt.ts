@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { SystemModelMessage } from "ai";
 import type { Logger } from "koishi";
 
-import { ChannelScope } from "./storage.js";
+import type { ChannelScope } from "../channels/index.js";
 
 export const DEFAULT_PERSONA = `# Athena
 你的名字是 Athena。你有自己的注意力、偏好、感受和判断。你不以满足每个人为目标，也不把每次交谈都变成任务。
@@ -97,6 +97,7 @@ ${
 export interface CoreSystemPromptOptions {
   readonly basePath: string;
   readonly channel: ChannelScope;
+  readonly selfId: string;
   readonly customInnerThought: boolean;
   readonly logger?: Logger;
 }
@@ -139,13 +140,13 @@ function wrap(tag: "agents" | "persona", content: string): SystemModelMessage {
   };
 }
 
-function formatRuntimeContext(channel: ChannelScope): SystemModelMessage {
+function formatRuntimeContext(channel: ChannelScope, selfId: string): SystemModelMessage {
   return {
     role: "system",
     content: [
       "<runtime_context>",
       `  <platform>${escapeXml(channel.platform)}</platform>`,
-      `  <selfId>${escapeXml(channel.selfId)}</selfId>`,
+      `  <selfId>${escapeXml(selfId)}</selfId>`,
       `  <channelId>${escapeXml(channel.channelId)}</channelId>`,
       `  <type>${channel.type}</type>`,
       "</runtime_context>",
@@ -163,7 +164,7 @@ export async function buildCoreSystemPrompt(options: CoreSystemPromptOptions): P
     { role: "system", content: coreConstitution(options.customInnerThought) },
     wrap("persona", persona),
     ...(agents ? [wrap("agents", agents)] : []),
-    formatRuntimeContext(options.channel),
+    formatRuntimeContext(options.channel, options.selfId),
   ];
 }
 

@@ -9,9 +9,14 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h, Universal, type Context } from "koishi";
 
+import {
+  Channels,
+  channelDirectoryName as channelRootName,
+  type ChannelScope as DomainChannelScope,
+} from "../src/channels/index.js";
 import * as core from "../src/index.js";
-import { createEvent, createMessage } from "../src/messages.js";
-import { parseReply } from "../src/runtime/reply.js";
+import { createEvent, createMessage } from "../src/messages/index.js";
+import { parseReply } from "../src/runtimes/output.js";
 import { channelDirectoryName, ChannelStorage, type ChannelScope } from "../src/runtime/storage.js";
 
 const shared = {
@@ -59,6 +64,86 @@ describe("ChannelScope storage coordinates", () => {
     const exported = core as Record<string, unknown>;
     expect(["channel", "Identity"].join("") in exported).toBe(false);
     expect("channelKey" in exported).toBe(false);
+  });
+});
+
+describe("Channels", () => {
+  let basePath: string;
+
+  beforeEach(async () => {
+    basePath = await mkdtemp(join(tmpdir(), "yesimbot-channels-"));
+  });
+
+  afterEach(async () => {
+    await rm(basePath, { recursive: true, force: true });
+  });
+
+  it("keeps one ChannelResources owner per shared scope", async () => {
+    const ctx = createStorageContext();
+    const channels = new Channels(ctx, { basePath });
+    const scope = { type: "shared", platform: "onebot", channelId: "123456" } satisfies DomainChannelScope;
+
+    const [first, second, resources] = await Promise.all([
+      channels.resolve(scope),
+      channels.resolve(scope),
+      channels.get(scope),
+    ]);
+
+    expect(first).toBe(second);
+    expect(resources).toBe(first.resources);
+    expect(first.root).toBe(join(basePath, "channels", channelRootName(scope)));
+  });
+
+  it("keeps shared identity bot-free, separates direct identities, and owns no runtime state", async () => {
+    const channels = new Channels(createStorageContext(), { basePath });
+    const sharedScope = { type: "shared", platform: "onebot", channelId: "room" } satisfies DomainChannelScope;
+    const directOne = {
+      type: "direct",
+      platform: "onebot",
+      selfId: "bot-1",
+      channelId: "room",
+    } satisfies DomainChannelScope;
+    const directTwo = { ...directOne, selfId: "bot-2" } satisfies DomainChannelScope;
+
+    expect(channels.start()).toBe(channels.start());
+    expect(sharedScope).not.toHaveProperty("selfId");
+
+    const [sharedChannel, directChannelOne, directChannelTwo] = await Promise.all([
+      channels.resolve(sharedScope),
+      channels.resolve(directOne),
+      channels.resolve(directTwo),
+    ]);
+
+    expect(directChannelOne).not.toBe(directChannelTwo);
+    expect(directChannelOne.root).not.toBe(directChannelTwo.root);
+    expect(sharedChannel).not.toHaveProperty("bot");
+    expect(sharedChannel).not.toHaveProperty("runtime");
+    expect(sharedChannel).not.toHaveProperty("agent");
+    expect(sharedChannel).not.toHaveProperty("will");
+    expect(sharedChannel).not.toHaveProperty("messenger");
+    expect(sharedChannel).not.toHaveProperty("session");
+    expect(sharedChannel.conversation.storage).toBe(sharedChannel.conversation.storage);
+    expect(sharedChannel.conversation).not.toHaveProperty("append");
+  });
+
+  it("disposes a registered reader from existing ChannelResources", async () => {
+    const channels = new Channels(createStorageContext(), { basePath });
+    const channel = await channels.resolve({
+      type: "shared",
+      platform: "onebot",
+      channelId: "room",
+    });
+    const reader = {
+      scheme: "test",
+      prompt: "test reader",
+      init: async () => ({ bytes: new Uint8Array() }),
+    } satisfies ResourceReader;
+
+    const dispose = channels.use(reader);
+    expect(channel.resources.listReaders()).toContain(reader);
+
+    dispose();
+    expect(channel.resources.listReaders()).not.toContain(reader);
   });
 });
 

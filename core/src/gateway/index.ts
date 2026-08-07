@@ -1,9 +1,8 @@
 import { type Context, type Element, type Logger, type Session, Universal } from "koishi";
 
-import { deliverOutput } from "../delivery.js";
-import type { EventRecord, MessageRecord, RecordBase } from "../messages.js";
-import type { ChannelRuntimeResult } from "../runtime/channel.js";
-import type { ChannelScope } from "../runtime/storage.js";
+import type { EventRecord, MessageRecord, RecordBase } from "../messages/index.js";
+import type { RuntimeResult } from "../runtimes/index.js";
+import type { ChannelScope } from "../channels/index.js";
 import { createDefaultTranslator } from "./default.js";
 import type { ChannelAllowRule, GatewayConfig, GatewayOptions, PlatformTranslator } from "./types.js";
 
@@ -85,13 +84,16 @@ export class Gateway {
     if (!scope || !matchesAllowedChannel(scope, this.config.allowedChannels)) return;
     try {
       await this.opts.ready();
-      await assertAssignee(this.ctx, scope);
+      await assertAssignee(this.ctx, scope, session.selfId);
       const translator = this.translators.get(session.platform) ?? this.translators.get("*") ?? this.fallback;
       const base = sessionBase(session, scope);
-      const record = await translator.translate(base, session, this.opts.assets.createStore(scope));
+      const record = await translator.translate(base, session, this.opts.assets.createStore({ ...scope, selfId: session.selfId }));
       if (!record) return;
-      const result = await this.opts.runtime.route(record, session);
-      if (result.kind === "run") await this.deliver(session, record, result);
+      const bot = this.ctx.bots.find((candidate) => candidate.platform === record.platform && candidate.selfId === record.selfId);
+      if (!bot) throw new Error(`No Bot is available for ${record.platform}:${record.selfId}`);
+      const runtime = await this.opts.runtime.get(await this.opts.channels.resolve(scope), bot, session);
+      const result = await runtime.handle(record);
+      if (result.kind === "run") await this.deliver(session, record, runtime, result);
     } catch (cause) {
       this.warn("gateway.route_failed", cause, session.platform);
     }
@@ -100,30 +102,20 @@ export class Gateway {
   private async deliver(
     session: Session,
     record: MessageRecord | EventRecord,
-    result: Extract<ChannelRuntimeResult, { readonly kind: "run" }>,
+    runtime: import("../runtimes/index.js").ChannelRuntime,
+    result: Extract<RuntimeResult, { readonly kind: "run" }>,
   ): Promise<void> {
-    await deliverOutput({
-      record,
-      result,
-      pacing: this.config.pacing,
-      send: async (segment) => {
-        this.logger.debug("send", {
-          platform: record.platform,
-          selfId: record.selfId,
-          channelId: record.channel.id,
-          segment: formatDebugSegment(segment),
-        });
-        const sent = await session.send(segment);
-        this.logger.debug("send_result", {
-          platform: record.platform,
-          selfId: record.selfId,
-          channelId: record.channel.id,
-          result: formatDebugValue(sent),
-        });
-        return sent;
-      },
-      warn: (cause) => this.warn("delivery.failed", cause, record.platform),
-    });
+    try {
+      for await (const output of result.output) {
+        for (const segment of output.segments) {
+          if (result.signal.aborted) return;
+          await session.send(segment);
+        }
+      }
+    } catch (cause) {
+      await runtime.fail(result.eventId, cause);
+      this.warn("delivery.failed", cause, record.platform);
+    }
   }
 
   private warn(code: string, cause: unknown, platform: string): void {
@@ -157,18 +149,18 @@ export function matchesAllowedChannel(scope: ChannelScope, rules: readonly Chann
   );
 }
 
-async function assertAssignee(ctx: Context, scope: ChannelScope): Promise<void> {
+async function assertAssignee(ctx: Context, scope: ChannelScope, selfId: string): Promise<void> {
   if (scope.type === "direct") return;
   const [channel] = await ctx.database.get("channel", { platform: scope.platform, id: scope.channelId }, ["assignee"]);
   if (!channel) throw new AssigneeAdmissionError("missing", scope);
   if (!channel.assignee) throw new AssigneeAdmissionError("empty", scope);
-  if (channel.assignee !== scope.selfId) throw new AssigneeAdmissionError("mismatch", scope);
+  if (channel.assignee !== selfId) throw new AssigneeAdmissionError("mismatch", scope);
 }
 
 function sessionBase(session: Session, scope: ChannelScope): RecordBase {
   return {
     platform: scope.platform,
-    selfId: scope.selfId,
+    selfId: session.selfId,
     timestamp: session.timestamp,
     channel: {
       id: scope.channelId,
@@ -188,36 +180,11 @@ function sessionBase(session: Session, scope: ChannelScope): RecordBase {
 
 function scopeFromSession(session: Session): ChannelScope | null {
   if (!session.platform || !session.selfId || !session.channelId) return null;
-  return {
-    type: session.isDirect ? "direct" : "shared",
-    platform: session.platform,
-    selfId: session.selfId,
-    channelId: session.channelId,
-  };
+  return session.isDirect
+    ? { type: "direct", platform: session.platform, selfId: session.selfId, channelId: session.channelId }
+    : { type: "shared", platform: session.platform, channelId: session.channelId };
 }
 
 function isMessageSession(session: Session): boolean {
   return session.type === "message-created";
-}
-
-function formatDebugSegment(segment: readonly Element[]): string {
-  const text = segment
-    .filter((element) => element.type === "text")
-    .map((element) => `${element.attrs["content"] ?? ""}`)
-    .join("");
-  const types = [...new Set(segment.map((element) => element.type))].join("+");
-  return text.length > 0 ? `${types}: ${truncate(text)}` : types;
-}
-
-function formatDebugValue(value: unknown): string {
-  try {
-    const text = JSON.stringify(value);
-    return text === undefined ? String(value) : truncate(text);
-  } catch {
-    return String(value);
-  }
-}
-
-function truncate(value: string): string {
-  return value.length > 2048 ? `${value.slice(0, 2048)}...` : value;
 }

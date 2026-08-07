@@ -7,9 +7,41 @@ import { describe, expect, it, vi } from "vitest";
 import "./helpers/setup.js";
 import { ArtifactService } from "../src/artifact.js";
 import { AssetService } from "../src/asset.js";
+import { ChannelArtifactStore } from "../src/resources/artifact.js";
+import { ChannelAssetStore } from "../src/resources/asset.js";
 import { scope, otherScope, PNG_BYTES, useTemporaryStorage } from "./helpers/index.js";
 
 const PNG_ID = createHash("sha256").update(PNG_BYTES).digest("hex").slice(0, 32);
+
+describe("ChannelResources binary stores", () => {
+  const env = useTemporaryStorage("yesimbot-channel-resources-");
+
+  it("keeps asset IDs and artifact URIs, metadata, and clear lifecycles distinct", async () => {
+    const root = await env.storage.getStoragePath(scope);
+    const assets = new ChannelAssetStore(root);
+    const artifacts = new ChannelArtifactStore(root);
+    const source = PNG_BYTES.slice();
+    const assetId = await assets.put(source);
+    source[0] = 0;
+    const artifactUri = await artifacts.forTool("capture").put(PNG_BYTES, {
+      filename: "capture.png",
+      mediaType: "image/png",
+    });
+
+    expect(assetId).toBe(PNG_ID);
+    await expect(assets.get(assetId)).resolves.toEqual(PNG_BYTES);
+    await expect(artifacts.open(artifactUri)).resolves.toEqual({
+      bytes: PNG_BYTES,
+      filename: "capture.png",
+      mediaType: "image/png",
+    });
+    expect(() => artifacts.forTool("../capture")).toThrow("Invalid artifact tool name");
+
+    await assets.clear();
+    await expect(assets.get(assetId)).rejects.toThrow();
+    await expect(artifacts.open(artifactUri)).resolves.toEqual(expect.objectContaining({ bytes: PNG_BYTES }));
+  });
+});
 
 describe("AssetService", () => {
   const env = useTemporaryStorage("yesimbot-binary-store-");

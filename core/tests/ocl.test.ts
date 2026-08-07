@@ -4,7 +4,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { Element, h } from "koishi";
 
-import { parseReply } from "../src/runtime/reply.js";
+import { parseReply } from "../src/runtimes/output.js";
 
 function text(segment: readonly Element[]): string {
   return segment

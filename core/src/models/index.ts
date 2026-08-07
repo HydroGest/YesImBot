@@ -1,18 +1,21 @@
-import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { EmbeddingModel, LanguageModel } from "ai";
 import { Context, Logger, Schema } from "koishi";
+import { readModelsConfig } from "./config.js";
 
-import {
-  type ChatModelConfig,
-  type ChatModelRef,
-  type EmbeddingModelConfig,
-  formatModelId,
-  isChatModelModality,
-  type ModelId,
-  parseModelId,
-} from "./provider.js";
+export const CHAT_MODEL_MODALITIES = ["text", "audio", "image", "video", "pdf"] as const;
+
+export type ModelId = `${string}:${string}`;
+export type ChatModelModality = (typeof CHAT_MODEL_MODALITIES)[number];
+export interface ChatModelConfig { id: string; name?: string; hidden?: boolean; toolCall?: boolean; reasoning?: boolean; limit?: { context: number; output: number }; modalities?: { input?: ChatModelModality[]; output?: ChatModelModality[] }; variants?: Record<string, unknown>; }
+export interface EmbeddingModelConfig { id: string; name?: string; hidden?: boolean; dimension?: number; }
+export interface ChatModelRef { fullId: ModelId; providerId: string; modelId: string; entry: ChatModelConfig; model: LanguageModel; }
+export interface BaseProviderConfig { id: string; apiKey: string; baseURL?: string; chatModels: ChatModelConfig[]; embeddingModels?: EmbeddingModelConfig[]; }
+
+function isChatModelModality(value: string): value is ChatModelModality { return CHAT_MODEL_MODALITIES.some((modality) => modality === value); }
+function parseModelId(fullId: string): { provider: string; model: string } | null { const idx = fullId.indexOf(":"); return idx <= 0 ? null : { provider: fullId.slice(0, idx), model: fullId.slice(idx + 1) }; }
+function formatModelId(providerId: string, modelId: string): ModelId { return `${providerId}:${modelId}`; }
 
 export interface ModelServiceConfig {
   basePath: string;
@@ -469,7 +472,7 @@ async function loadModelsConfig(filePath?: string): Promise<ModelsConfigLoadResu
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await readFile(filePath, "utf8"));
+    parsed = await readModelsConfig(filePath);
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { config: empty, warnings: [] };
     return {
@@ -541,3 +544,5 @@ function createEmptyModelsConfig(): ModelsConfigData {
     embedding: {},
   };
 }
+
+

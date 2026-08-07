@@ -24,9 +24,7 @@ const state = vi.hoisted(() => ({
         list: Mock;
         stop: Mock;
         trigger: Mock;
-        channelPlugins: ReadonlySet<ChannelPluginFactory>;
-        willConfigContributors: ReadonlySet<unknown>;
-        willEngineFactories: ReadonlySet<unknown>;
+        agent: unknown;
       }
     | undefined,
 }));
@@ -58,19 +56,16 @@ vi.mock("../src/runtime/manager.js", () => ({
       _artifacts: unknown,
       _storage: unknown,
       _config: unknown,
-      readonly channelPlugins: ReadonlySet<ChannelPluginFactory>,
-      readonly willConfigContributors: ReadonlySet<unknown>,
-      readonly willEngineFactories: ReadonlySet<unknown>,
-      _resourceSchemeRegistrations: unknown,
+      readonly agent: unknown,
     ) {
       state.runtime = this;
     }
   },
 }));
 
+import { ChannelPlugin, WillPlugin } from "../src/agents/index.js";
 import type { Config } from "../src/config.js";
 import { Gateway } from "../src/gateway/index.js";
-import type { ChannelPluginFactory } from "../src/index.js";
 import YesImBotService from "../src/index.js";
 
 const config: Config = {
@@ -80,7 +75,6 @@ const config: Config = {
   logLevel: 2,
   allowedChannels: [],
   imageInput: false,
-  will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
   reply: {
     pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
     customInnerThought: false,
@@ -151,9 +145,10 @@ describe("YesImBotService facade", () => {
 
     expect(ctx.yesimbot.model).toBeDefined();
     expect(ctx.yesimbot.registerTranslator).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.registerChannelPlugin).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.registerWillConfigContributor).toEqual(expect.any(Function));
-    expect(ctx.yesimbot.registerWillEngineFactory).toEqual(expect.any(Function));
+    expect(ctx.yesimbot.agent).toBeDefined();
+    expect(ctx.yesimbot.registerChannelPlugin).toBeUndefined();
+    expect(ctx.yesimbot.registerWillConfigContributor).toBeUndefined();
+    expect(ctx.yesimbot.registerWillEngineFactory).toBeUndefined();
     expect(ctx.yesimbot.getStoragePath).toEqual(expect.any(Function));
     expect(ctx.yesimbot.trigger).toEqual(expect.any(Function));
     expect("channelKey" in ctx.yesimbot).toBe(false);
@@ -195,13 +190,14 @@ describe("YesImBotService facade", () => {
     expect(service["gate"]["config"].allowedChannels).toEqual(allowedChannels);
   });
 
-  it("accepts the public ChannelPluginFactory parameters", () => {
-    const factory: ChannelPluginFactory = async ({ scope, bot }) => ({
-      name: `plugin-${scope.platform}`,
-      tools: bot ? [] : [],
-    });
+  it("accepts a class-based ChannelPlugin", () => {
+    const plugin = new (class extends ChannelPlugin {
+      public init() {
+        return { name: "plugin" };
+      }
+    })();
 
-    expect(factory).toBeTypeOf("function");
+    expect(plugin).toBeInstanceOf(ChannelPlugin);
   });
 
   it("triggers a forced event through the runtime and sends via the matching Bot", async () => {
@@ -402,36 +398,50 @@ describe("YesImBotService facade", () => {
     expect(runtime.route).toHaveBeenCalledOnce();
   });
 
-  it("keeps a later registration of the same channel plugin factory live", async () => {
+  it("registers and disposes class-based agent plugins", async () => {
     const { service } = createService();
-    const firstFactory = vi.fn(async () => ({ name: "plugin" }));
-    const secondFactory = vi.fn(async () => ({ name: "plugin" }));
-    const disposeFirst = service.registerChannelPlugin(firstFactory);
-    service.registerChannelPlugin(secondFactory);
+    const first = { name: "first" };
+    const second = { name: "second" };
+    const disposeFirst = service.agent.use(
+      new (class extends ChannelPlugin {
+        public init() {
+          return first;
+        }
+      })(),
+    );
+    service.agent.use(
+      new (class extends ChannelPlugin {
+        public init() {
+          return second;
+        }
+      })(),
+    );
 
     disposeFirst();
-    const scope = { platform: "test", selfId: "bot-1", channelId: "room", type: "shared" } as const;
-    const bot = {} as never;
-    const plugins = await Promise.all([...(state.runtime?.channelPlugins ?? [])].map((f) => f({ scope, bot })));
-
-    expect(plugins).toEqual([{ name: "plugin" }]);
+    await expect(
+      service.agent.init({ platform: "test", selfId: "bot-1", channelId: "room", type: "shared" }, {} as never),
+    ).resolves.toEqual([second]);
   });
 
-  it("registers and disposes Will config contributors and engine factories", () => {
+  it("registers and disposes class-based Will plugins", async () => {
     const { service } = createService();
-    const contributor = { priority: 1, contribute: vi.fn() };
-    const factory = { priority: 1, create: vi.fn() };
+    const will = { decide: async () => "wait" as const };
+    const plugin = new (class extends WillPlugin {
+      public readonly priority = 1;
 
-    const disposeContributor = service.registerWillConfigContributor(contributor);
-    const disposeFactory = service.registerWillEngineFactory(factory);
+      public match(): boolean {
+        return true;
+      }
 
-    expect(state.runtime?.willConfigContributors.has(contributor)).toBe(true);
-    expect(state.runtime?.willEngineFactories.has(factory)).toBe(true);
+      public init() {
+        return will;
+      }
+    })();
 
-    disposeContributor();
-    disposeFactory();
-
-    expect(state.runtime?.willConfigContributors.has(contributor)).toBe(false);
-    expect(state.runtime?.willEngineFactories.has(factory)).toBe(false);
+    const dispose = service.agent.will(plugin);
+    await expect(
+      service.agent.initWill({ platform: "test", selfId: "bot-1", channelId: "room", type: "shared" }, {} as never),
+    ).resolves.toBe(will);
+    dispose();
   });
 });

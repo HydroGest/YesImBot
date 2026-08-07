@@ -7,18 +7,21 @@ export interface McpStdioServer {
   command: string;
   args?: string[];
   env?: Record<string, string> | string;
+  enable?: boolean;
 }
 
 export interface McpHttpServer {
   type: "http";
   url: string;
   headers?: Record<string, string> | string;
+  enable?: boolean;
 }
 
 export interface McpSseServer {
   type: "sse";
   url: string;
   headers?: Record<string, string> | string;
+  enable?: boolean;
 }
 
 export type McpServer = McpStdioServer | McpHttpServer | McpSseServer;

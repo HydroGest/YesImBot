@@ -40,6 +40,7 @@ export default class McpClientPlugin {
     mcpServers: Schema.dict(
       Schema.intersect([
         Schema.object({
+          enable: Schema.boolean().default(true).description("是否启用"),
           type: Schema.union(["stdio", "http", "sse"]),
         }),
         Schema.union([
@@ -91,6 +92,10 @@ export default class McpClientPlugin {
   public async start(): Promise<void> {
     this.ctx.logger.info("初始化 MCP 客户端...");
     for (const [name, server] of Object.entries(this.config.mcpServers)) {
+      if (server.enable === false) {
+        this.ctx.logger.info(`MCP 服务器 ${name} 已禁用，跳过连接`);
+        continue;
+      }
       try {
         const { client, transport } = await connectMcpServer(this.ctx, name, server);
         this.transports.set(name, transport);
@@ -153,6 +158,7 @@ export default class McpClientPlugin {
 
     this.ctx.logger.info("注册 MCP 客户端工具...");
     for (const [name, client] of this.clients.entries()) {
+      
       client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
         try {
           await refreshServerTools(name, client);

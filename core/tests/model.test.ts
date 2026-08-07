@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import * as model from "../src/model/index.js";
-import { ModelService } from "../src/model/index.js";
+import * as model from "../src/models/index.js";
+import { ModelService } from "../src/models/index.js";
 
 type ModelProvider = Parameters<ModelService["register"]>[0];
 

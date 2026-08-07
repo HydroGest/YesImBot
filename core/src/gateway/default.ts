@@ -1,6 +1,6 @@
 import { type Context, type Session } from "koishi";
 
-import { MessageRecord } from "../messages.js";
+import { MessageRecord } from "../messages/index.js";
 import { persistElements } from "./resources.js";
 import type { PlatformTranslator } from "./types.js";
 

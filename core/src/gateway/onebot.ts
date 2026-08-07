@@ -1,7 +1,7 @@
 import { type Context, type Session } from "koishi";
 
 import type { AssetStore } from "../asset.js";
-import { assembleEvent, type EventRecord, type MessageRecord, type RecordBase } from "../messages.js";
+import { assembleEvent, type EventRecord, type MessageRecord, type RecordBase } from "../messages/index.js";
 import { persistElements } from "./resources.js";
 import type { PlatformTranslator } from "./types.js";
 
@@ -19,7 +19,7 @@ export interface MessageReactionsUpdated {
 
 type OneBotEventType = "notice.poke";
 
-declare module "../messages.js" {
+declare module "../messages/index.js" {
   interface EventMap {
     "notice.poke": {
       targetId: string;

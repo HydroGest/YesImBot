@@ -1,9 +1,10 @@
 import type { Awaitable, Session } from "koishi";
 
 import type { AssetService, AssetStore } from "../asset.js";
+import type { Channels } from "../channels/index.js";
 import type { PacingConfig } from "../config.js";
-import type { EventRecord, MessageRecord, RecordBase } from "../messages.js";
-import type { RuntimeManager } from "../runtime/manager.js";
+import type { EventRecord, MessageRecord, RecordBase } from "../messages/index.js";
+import type { Runtimes } from "../runtimes/index.js";
 
 export interface ChannelAllowRule {
   readonly platform: string;
@@ -17,7 +18,8 @@ export interface PlatformTranslator {
 }
 
 export interface GatewayOptions {
-  readonly runtime: RuntimeManager;
+  readonly runtime: Runtimes;
+  readonly channels: Channels;
   readonly assets: AssetService;
   readonly ready: () => Promise<void>;
 }

@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 
 import { Bot, Context, Service } from "koishi";
 
+import { Agents } from "./agents/index.js";
 import { ArtifactService } from "./artifact.js";
 import { AssetService } from "./asset.js";
 import { registerSessionCommands } from "./commands/session.js";
@@ -10,13 +11,13 @@ import { deliverOutput } from "./delivery.js";
 import { Gateway } from "./gateway/index.js";
 import { createOneBotTranslator } from "./gateway/onebot.js";
 import type { PlatformTranslator } from "./gateway/types.js";
-import type { EventMap, EventRecord } from "./messages.js";
-import { ModelService } from "./model/index.js";
-import { RuntimeManager, type ChannelPluginFactory } from "./runtime/manager.js";
-import { ensureAgentsFile, ensureDefaultPersona } from "./runtime/prompt.js";
-import type { ResourceSchemeOpenHandler } from "./runtime/read.js";
-import { ChannelScope, ChannelStorage } from "./runtime/storage.js";
-import type { WillConfigContributor, WillEngineFactory } from "./runtime/will.js";
+import type { EventMap, EventRecord } from "./messages/index.js";
+import { ModelService } from "./models/index.js";
+import { ensureAgentsFile, ensureDefaultPersona } from "./runtimes/prompt.js";
+import { Runtimes } from "./runtimes/index.js";
+import { Channels, type ChannelScope } from "./channels/index.js";
+import type { ResourceReader } from "./resources/index.js";
+import { ChannelStorage } from "./runtime/storage.js";
 
 declare module "koishi" {
   interface Context {
@@ -33,13 +34,12 @@ export default class YesImBotService extends Service<Config> {
   public readonly model: ModelService;
   public readonly assets: AssetService;
   private readonly storage: ChannelStorage;
-  private readonly rt: RuntimeManager;
+  private readonly channels: Channels;
+  private readonly rt: Runtimes;
   private readonly gate: Gateway;
-  private readonly channelPlugins = new Set<ChannelPluginFactory>();
-  private readonly willConfigContributors = new Set<WillConfigContributor>();
-  private readonly willEngineFactories = new Set<WillEngineFactory>();
+  public readonly agent: Agents;
   private readonly commandDisposers = new Set<() => unknown>();
-  private readonly resourceSchemeRegistrations = new Map<string, { prompt: string; open: ResourceSchemeOpenHandler }>();
+  private readonly resourceSchemeRegistrations = new Map<string, ResourceReader>();
   private triggerClosed = false;
   private readonly triggerTasks = new Set<Promise<void>>();
 
@@ -52,20 +52,10 @@ export default class YesImBotService extends Service<Config> {
       logLevel: config.logLevel,
     });
     this.storage = new ChannelStorage(ctx, { basePath: config.basePath || ctx.baseDir, logLevel: config.logLevel });
+    this.channels = new Channels(ctx, { basePath: config.basePath || ctx.baseDir, logLevel: config.logLevel });
     this.assets = new AssetService(this.storage);
-    const artifacts = new ArtifactService(this.storage);
-    this.rt = new RuntimeManager(
-      ctx,
-      this.model,
-      this.assets,
-      artifacts,
-      this.storage,
-      config,
-      this.channelPlugins,
-      this.willConfigContributors,
-      this.willEngineFactories,
-      this.resourceSchemeRegistrations,
-    );
+    this.agent = new Agents();
+    this.rt = new Runtimes(ctx, this.channels, this.model, config, this.agent);
     this.gate = new Gateway(
       ctx,
       {
@@ -74,9 +64,10 @@ export default class YesImBotService extends Service<Config> {
         logLevel: config.logLevel ?? 2,
       },
       {
+        channels: this.channels,
         assets: this.assets,
         runtime: this.rt,
-        ready: () => this.storage.start(),
+        ready: () => this.channels.start(),
       },
     );
 
@@ -87,40 +78,15 @@ export default class YesImBotService extends Service<Config> {
     return this.gate.registerTranslator(translator);
   }
 
-  public registerChannelPlugin(resolver: ChannelPluginFactory): () => void {
-    this.channelPlugins.add(resolver);
-    return () => this.channelPlugins.delete(resolver);
+  public registerResourceScheme(reader: ResourceReader): () => void {
+    return this.channels.use(reader);
   }
-
-  public registerWillConfigContributor(contributor: WillConfigContributor): () => void {
-    this.willConfigContributors.add(contributor);
-    return () => this.willConfigContributors.delete(contributor);
-  }
-
-  public registerWillEngineFactory(factory: WillEngineFactory): () => void {
-    this.willEngineFactories.add(factory);
-    return () => this.willEngineFactories.delete(factory);
-  }
-
-  public registerResourceScheme(scheme: string, prompt: string, open: ResourceSchemeOpenHandler): () => void {
-    if (scheme === "asset" || scheme === "artifact") {
-      throw new Error(`Scheme "${scheme}" is reserved`);
-    }
-    if (this.resourceSchemeRegistrations.has(scheme)) {
-      throw new Error(`Scheme "${scheme}" is already registered`);
-    }
-    this.resourceSchemeRegistrations.set(scheme, { prompt, open });
-    return () => {
-      this.resourceSchemeRegistrations.delete(scheme);
-    };
-  }
-
-  public getStoragePath(scope: ChannelScope): Promise<string> {
-    return this.storage.getStoragePath(scope);
+  public async getStoragePath(scope: ChannelScope): Promise<string> {
+    return (await this.channels.resolve(scope)).root;
   }
 
   public override async start(): Promise<void> {
-    await this.storage.start();
+    await this.channels.start();
     const promptBasePath = resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir);
     await ensureDefaultPersona(promptBasePath);
     await ensureAgentsFile(promptBasePath);
@@ -152,15 +118,19 @@ export default class YesImBotService extends Service<Config> {
   }
 
   private async runTrigger<K extends keyof EventMap>(event: EventRecord<K>, bot: Bot): Promise<void> {
-    const result = await this.rt.trigger(event);
+    const result = await this.rt.post(event, bot);
     if (result.kind !== "run") return;
-    await deliverOutput({
-      record: event,
-      result,
-      pacing: this.config.reply.pacing,
-      send: (segment) => bot.sendMessage(event.channel.id, segment),
-      warn: (cause) => this.logError("warn", "delivery.failed", cause),
-    });
+    try {
+      for await (const output of result.output) {
+        for (const segment of output.segments) await bot.sendMessage(event.channel.id, segment);
+      }
+    } catch (cause) {
+      const channel = await this.channels.resolve(event.channel.type === 1
+        ? { type: "direct", platform: event.platform, selfId: event.selfId, channelId: event.channel.id }
+        : { type: "shared", platform: event.platform, channelId: event.channel.id });
+      await (await this.rt.get(channel, bot)).fail(result.eventId, cause);
+      this.logError("warn", "delivery.failed", cause);
+    }
   }
 
   public override async stop() {
@@ -214,19 +184,6 @@ export type { ArtifactStore, ArtifactWriter } from "./artifact.js";
 export type { AssetService, AssetStore } from "./asset.js";
 export type { PlatformTranslator } from "./gateway/types.js";
 export { persistElements } from "./gateway/resources.js";
-export * from "./messages.js";
-export * from "./model/index.js";
-export type { ChannelPluginFactory, ChannelPluginContext } from "./runtime/manager.js";
-export type { ResourceOpenResult, ResourceReadResult, ResourceSchemeOpenHandler } from "./runtime/read.js";
-export type { ChannelScope } from "./runtime/storage.js";
-export type {
-  RoutingConfig,
-  WillConfig,
-  WillConfigContributor,
-  WillConfigPatch,
-  WillEngine,
-  WillEngineFactory,
-  WillEngineFactoryContext,
-  ResolveWillEngineOptions,
-  WillingnessConfig,
-} from "./runtime/will.js";
+export * from "./messages/index.js";
+export * from "./models/index.js";
+export { ChannelPlugin, type Will, WillPlugin } from "./agents/index.js";

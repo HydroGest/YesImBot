@@ -1,11 +1,11 @@
 import type { Context, Session } from "koishi";
 
-import type { RuntimeManager } from "../runtime/manager.js";
-import type { ChannelScope } from "../runtime/storage.js";
+import type { Runtimes } from "../runtimes/index.js";
+import type { ChannelScope } from "../channels/index.js";
 
 export function registerSessionCommands(
   ctx: Context,
-  manager: RuntimeManager,
+  manager: Runtimes,
   config: { authority: number },
 ): () => void {
   const command = ctx.command("yesimbot.session", "会话管理", { authority: config.authority });
@@ -20,7 +20,7 @@ export function registerSessionCommands(
     .option("noSummary", "--no-summary")
     .action(async ({ session, options }) => {
       const scope = scopeFromSession(session);
-      return scope ? manager.archive(scope, { noSummary: options?.noSummary }) : undefined;
+      return scope ? manager.archive(scope) : undefined;
     });
 
   command.subcommand(".clear", "清空会话").action(async ({ session }) => {
@@ -48,10 +48,7 @@ export function registerSessionCommands(
 
 function scopeFromSession(session: Session | undefined): ChannelScope | undefined {
   if (!session?.platform || !session.selfId || !session.channelId) return;
-  return {
-    platform: session.platform,
-    selfId: session.selfId,
-    channelId: session.channelId,
-    type: session.isDirect ? "direct" : "shared",
-  };
+  return session.isDirect
+    ? { platform: session.platform, selfId: session.selfId, channelId: session.channelId, type: "direct" }
+    : { platform: session.platform, channelId: session.channelId, type: "shared" };
 }
