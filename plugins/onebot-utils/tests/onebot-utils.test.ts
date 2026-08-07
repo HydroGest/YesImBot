@@ -41,6 +41,7 @@ vi.mock("koishi", () => {
 });
 
 import OnebotUtilsPlugin from "../src/index";
+import type { OneBotInternal } from "../src/onebot.js";
 
 function createLogger() {
   return {
@@ -52,8 +53,9 @@ function createLogger() {
 }
 
 function createMemoryAssets() {
+  let next = 0;
   return {
-    put: vi.fn<(bytes: Uint8Array) => Promise<string>>(async () => "asset-local"),
+    put: vi.fn<(bytes: Uint8Array) => Promise<string>>(async () => `asset-${++next}`),
     get: vi.fn<(id: string) => Promise<Uint8Array>>(async () => new Uint8Array()),
     clear: vi.fn<() => Promise<void>>(async () => undefined),
   };
@@ -143,7 +145,7 @@ describe("onebot-utils plugin", () => {
     expect(Object.keys(fields)).toEqual(["enabledTools", "parseImages", "attachImageSummary", "maxForwardPageChars"]);
     expect(mocks.schema.array).toHaveBeenCalledOnce();
     expect(mocks.schema.union).toHaveBeenCalledOnce();
-    expect(mocks.schema.const).toHaveBeenCalledTimes(9);
+    expect(mocks.schema.const).toHaveBeenCalledTimes(10);
     expect(mocks.schema.boolean).toHaveBeenCalledTimes(2);
     expect(mocks.schema.number).toHaveBeenCalledOnce();
   });
@@ -165,6 +167,7 @@ describe("onebot-utils plugin", () => {
       {
         enabledTools: [
           "onebot_get_forward_message",
+          "onebot_send_forward_message",
           "onebot_create_reaction",
           "onebot_set_essence",
           "onebot_ban_user",
@@ -183,10 +186,11 @@ describe("onebot-utils plugin", () => {
 
     const names = tools.map((tool) => tool.name);
 
-    expect(names).toHaveLength(9);
+    expect(names).toHaveLength(10);
     expect(names).toEqual(
       expect.arrayContaining([
         "onebot_get_forward_message",
+        "onebot_send_forward_message",
         "onebot_create_reaction",
         "onebot_set_essence",
         "onebot_ban_user",
@@ -226,6 +230,17 @@ describe("onebot-utils plugin", () => {
     expect(tool.description).not.toContain("messageId");
   });
 
+  it("accepts a napcat-style bot through the shared internal contract", async () => {
+    const getForwardMsg = vi.fn<OneBotInternal["getForwardMsg"]>(async () => [
+      message([{ type: "text", data: { text: "napcat" } }]),
+    ]);
+    const runtime = await createRuntime({ platform: "onebot", isNapCat: true, internal: { getForwardMsg } });
+
+    await expect(runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({
+      messages: [["Alice (1)", expect.any(String), ["napcat"]]],
+    });
+  });
+
   it("changes only image parts when image parsing is enabled", async () => {
     const getForwardMsg = vi.fn(async () => [
       message([
@@ -240,8 +255,84 @@ describe("onebot-utils plugin", () => {
     );
 
     await expect(runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({
-      messages: [["Alice (1)", expect.any(String), ["before", { image: ["cover", "cover.jpg", "1.0 KB"] }, "after"]]],
+      messages: [["Alice (1)", expect.any(String), ["before[图片]after"]]],
     });
+  });
+
+  it("persists more than four forward images across bounded batches", async () => {
+    const dataUrl = `data:image/png;base64,${Buffer.from([1, 2, 3, 4]).toString("base64")}`;
+    const getForwardMsg = vi.fn(async () => [
+      message(
+        Array.from({ length: 5 }, (_, index) => ({
+          type: "image",
+          data: { summary: `img-${index}`, file: `${index}.png`, url: dataUrl },
+        })),
+      ),
+    ]);
+    const runtime = await createRuntime(
+      { internal: { getForwardMsg } },
+      { parseImages: true, maxForwardPageChars: 6000 },
+    );
+    const imagesJoined = Array.from({ length: 5 }, (_, index) => `[图片：asset://asset-${index + 1}]`).join("");
+
+    await expect(runtime.getForwardTool().execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({
+      messages: [["Alice (1)", expect.any(String), [imagesJoined]]],
+    });
+  });
+
+  it("sends a merged forward with its original node elements", async () => {
+    const getForwardMsg = vi.fn(async () => [
+      message(
+        [
+          { type: "text", data: { text: "hello" } },
+          {
+            type: "image",
+            data: { summary: "cover", file: "cover.jpg", url: "https://cdn.test/cover.jpg", file_size: "1000" },
+          },
+        ],
+        { time: 123 },
+      ),
+    ]);
+    const sendGroupForwardMsg = vi.fn(async () => 42);
+    const runtime = await createRuntime(
+      { internal: { getForwardMsg, sendGroupForwardMsg } },
+      { enabledTools: ["onebot_send_forward_message"] },
+    );
+    const tool = (await runtime.getTools()).find((item) => item.name === "onebot_send_forward_message")!;
+
+    await expect(tool.execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({
+      ok: true,
+      messageId: "42",
+    });
+    expect(sendGroupForwardMsg).toHaveBeenCalledWith("group", [
+      {
+        type: "node",
+        data: {
+          name: "Alice",
+          uin: "1",
+          time: "123",
+          content: [
+            { type: "text", data: { text: "hello" } },
+            { type: "image", data: { file: "https://cdn.test/cover.jpg" } },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("returns a structured failure when a forward cannot be sent", async () => {
+    const sendGroupForwardMsg = vi.fn(async () => 42);
+    const runtime = await createRuntime(
+      { internal: { getForwardMsg: vi.fn(async () => undefined), sendGroupForwardMsg } },
+      { enabledTools: ["onebot_send_forward_message"] },
+    );
+    const tool = (await runtime.getTools()).find((item) => item.name === "onebot_send_forward_message")!;
+
+    await expect(tool.execute?.({ forwardId: "missing" }, {} as never)).resolves.toEqual({
+      ok: false,
+      error: { name: "ForwardNotFound", message: "未找到合并转发消息: missing" },
+    });
+    expect(sendGroupForwardMsg).not.toHaveBeenCalled();
   });
 
   it("returns nested forward IDs without inlining child messages", async () => {

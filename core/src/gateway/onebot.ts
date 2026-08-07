@@ -1,5 +1,4 @@
 import { type Context, type Session } from "koishi";
-import type {} from "koishi-plugin-adapter-onebot";
 
 import type { AssetStore } from "../asset.js";
 import { assembleEvent, type EventRecord, type MessageRecord, type RecordBase } from "../messages.js";

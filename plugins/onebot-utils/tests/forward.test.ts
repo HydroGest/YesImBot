@@ -1,9 +1,9 @@
-import type { OneBot } from "koishi-plugin-adapter-onebot";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { createForwardReader } from "../src/forward.js";
+import type { OneBotInternal } from "../src/onebot.js";
 
 function node(message: unknown[], overrides: Record<string, unknown> = {}) {
   return {
@@ -20,7 +20,7 @@ function createReader(
   config = { parseImages: false, maxForwardPageChars: 6000, attachImageSummary: true },
 ) {
   const getForwardMsg = vi.fn(async () => records);
-  const reader = createForwardReader({ getForwardMsg } as OneBot.Internal, config);
+  const reader = createForwardReader({ getForwardMsg } as OneBotInternal, config);
   return { getForwardMsg, reader };
 }
 
@@ -127,7 +127,7 @@ describe("createForwardReader", () => {
     const persistImages = vi.fn(
       async (images) => new Map(images.map((image, index) => [image.file, `asset-${index}`])),
     );
-    const reader = createForwardReader({ getForwardMsg } as OneBot.Internal, {
+    const reader = createForwardReader({ getForwardMsg } as OneBotInternal, {
       parseImages: true,
       maxForwardPageChars: 6000,
       attachImageSummary: true,
@@ -142,6 +142,43 @@ describe("createForwardReader", () => {
       { file: "cover.jpg", summary: "cover", url: "https://private.test/cover.jpg" },
     ]);
     expect(JSON.stringify(result)).not.toContain("private.test");
+  });
+
+  it("renders unpersisted forward images as text placeholders", async () => {
+    const getForwardMsg = vi.fn(async () => [
+      node([
+        {
+          type: "image",
+          data: {
+            summary: "cover",
+            file: "cover.jpg",
+            file_size: "1000",
+            url: "https://private.test/cover.jpg",
+          },
+        },
+        {
+          type: "image",
+          data: {
+            summary: "second",
+            file: "second.jpg",
+            file_size: "2000",
+            url: "https://private.test/second.jpg",
+          },
+        },
+      ]),
+    ]);
+    const persistImages = vi.fn(async () => new Map([["cover.jpg", "asset-0"]]));
+    const reader = createForwardReader({ getForwardMsg } as OneBotInternal, {
+      parseImages: true,
+      maxForwardPageChars: 6000,
+      attachImageSummary: true,
+      persistImages,
+    });
+
+    const result = await reader({ forwardId: "forward" });
+    expect(result).toEqual({
+      messages: [["Alice (10001)", expect.any(String), ["[图片：asset://asset-0][图片]"]]],
+    });
   });
 
   it("caches expanded nested forwards under their forward ID", async () => {
@@ -167,7 +204,7 @@ describe("createForwardReader", () => {
   });
 
   it("returns a clear error result when neither cache nor OneBot has a forward", async () => {
-    const reader = createForwardReader({ getForwardMsg: vi.fn(async () => undefined) } as OneBot.Internal, {
+    const reader = createForwardReader({ getForwardMsg: vi.fn(async () => undefined) } as OneBotInternal, {
       parseImages: false,
       maxForwardPageChars: 6000,
       attachImageSummary: true,
@@ -228,11 +265,11 @@ describe("createForwardReader", () => {
 
   it("retries failed loads and keeps cache entries independent by forward ID", async () => {
     const getForwardMsg = vi
-      .fn<OneBot.Internal["getForwardMsg"]>()
+      .fn<OneBotInternal["getForwardMsg"]>()
       .mockRejectedValueOnce(new Error("temporary"))
       .mockResolvedValueOnce([node([{ type: "text", data: { text: "first" } }])])
       .mockResolvedValueOnce([node([{ type: "text", data: { text: "second" } }])]);
-    const reader = createForwardReader({ getForwardMsg } as OneBot.Internal, {
+    const reader = createForwardReader({ getForwardMsg } as OneBotInternal, {
       parseImages: false,
       maxForwardPageChars: 6000,
       attachImageSummary: true,

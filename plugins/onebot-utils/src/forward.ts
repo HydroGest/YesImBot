@@ -1,6 +1,5 @@
-import type { OneBot } from "koishi-plugin-adapter-onebot";
-
 import { formatAnimatedImageLabel, isAnimatedImage } from "./animated-image.js";
+import type { OneBotInternal, OneBotSenderInfo } from "./onebot.js";
 
 const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -43,10 +42,10 @@ export interface ForwardReaderConfig {
 }
 
 interface OneBotForwardNode {
-  sender: OneBot.SenderInfo;
-  time: OneBot.Message["time"];
+  sender: OneBotSenderInfo;
+  time: number;
   message: readonly OneBotForwardSegment[];
-  raw_message?: OneBot.Payload["raw_message"];
+  raw_message?: unknown;
 }
 
 interface OneBotTextSegment {
@@ -110,7 +109,7 @@ type OneBotForwardSegment =
   | OneBotFileSegment;
 
 export function createForwardReader(
-  internal: OneBot.Internal,
+  internal: OneBotInternal,
   config: Readonly<ForwardReaderConfig>,
 ): (input: ForwardToolInput) => Promise<ForwardResult> {
   const cache = new Map<string, readonly ForwardMessage[]>();
@@ -171,7 +170,7 @@ function normalizeNode(
   ];
 }
 
-function formatSender(sender: OneBot.SenderInfo): string {
+function formatSender(sender: OneBotSenderInfo): string {
   const userId = String(sender.user_id);
   const displayName = sender.card || sender.nickname;
 
@@ -312,7 +311,7 @@ function collectImageRequests(
 function renderImagePart(part: ForwardPart, assetIds: ReadonlyMap<string, string>): ForwardPart {
   if (typeof part === "string" || !("image" in part)) return part;
   const assetId = assetIds.get(part.image[1]);
-  return assetId ? `[图片：asset://${assetId}]` : part;
+  return assetId ? `[图片：asset://${assetId}]` : "[图片]";
 }
 
 function coalesceParts(parts: readonly ForwardPart[]): ForwardPart[] {

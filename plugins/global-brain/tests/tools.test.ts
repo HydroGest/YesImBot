@@ -235,6 +235,35 @@ describe("GlobalBrain tools", () => {
       )) as { outcome: "created"; thread: { payload: { kind: string; forwardId: string } } };
       expect(forward.outcome).toBe("created");
       expect(forward.thread.payload).toMatchObject({ kind: "forward", forwardId: "forward-1" });
+
+      const targetTools = createBrainTools({
+        store,
+        scope: scopeB as never,
+        assets: createMemoryAssets(),
+        artifacts: createMemoryArtifacts(),
+      });
+      const read = (await targetTools[1]?.execute?.({ threadId: forward.thread.id }, toolContext())) as {
+        outcome: string;
+        localForward?: unknown;
+      };
+      expect(read.outcome).toBe("ok");
+      expect(read.localForward).toEqual({
+        forwardId: "forward-1",
+        sendTool: "onebot_send_forward_message",
+      });
+
+      const discordTools = createBrainTools({
+        store,
+        scope: { ...scopeB, platform: "discord" } as never,
+        assets: createMemoryAssets(),
+        artifacts: createMemoryArtifacts(),
+      });
+      const crossRead = (await discordTools[1]?.execute?.({ threadId: forward.thread.id }, toolContext())) as {
+        outcome: string;
+        localForward?: unknown;
+      };
+      expect(crossRead.outcome).toBe("ok");
+      expect(crossRead.localForward).toBeUndefined();
     });
   });
 

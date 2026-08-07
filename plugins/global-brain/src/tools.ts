@@ -119,7 +119,7 @@ function createBrainReadTool(options: BrainToolOptions): AgentTool {
   return {
     name: "brain_read",
     description:
-      "读取全局脑 thread 的完整内容、回复和可发送资源；asset/artifact 会物化到当前 session 并返回 localAssetUri。读取后该 thread 对当前 session 不再重复出现在摘要中。",
+      "读取全局脑 thread 的完整内容、回复和可发送资源；asset/artifact 会物化到当前 session 并返回 localAssetUri，同平台 forward 会返回 localForward。读取后该 thread 对当前 session 不再重复出现在摘要中。",
     inputSchema: jsonSchema<{ threadId: string }>({
       type: "object",
       properties: {
@@ -132,7 +132,7 @@ function createBrainReadTool(options: BrainToolOptions): AgentTool {
       try {
         const view = await store.read(input.threadId, scope);
         if (!view) return { outcome: "failed", error: { code: "thread_not_found", message: "Thread does not exist" } };
-        const localized = await materializeView(view, store, assets);
+        const localized = await materializeView(view, store, assets, scope);
         return { outcome: "ok", ...localized };
       } catch (cause) {
         return fail(cause);
@@ -281,16 +281,29 @@ async function materializeView(
   view: BrainThreadView,
   store: GlobalBrainStore,
   assets: AssetStore,
+  scope: ChannelScope,
 ): Promise<BrainThreadView> {
   const payload = view.thread.payload;
-  if (payload?.kind !== "asset" && payload?.kind !== "artifact") return view;
-  try {
-    const bytes = await store.getBlob(payload.blobId);
-    const id = await assets.put(bytes);
-    return { ...view, localAssetUri: `asset://${id}` };
-  } catch {
-    return view;
+  if (payload?.kind === "forward") {
+    if (payload.platform !== scope.platform) return view;
+    return {
+      ...view,
+      localForward: {
+        forwardId: payload.forwardId,
+        sendTool: "onebot_send_forward_message",
+      },
+    };
   }
+  if (payload?.kind === "asset" || payload?.kind === "artifact") {
+    try {
+      const bytes = await store.getBlob(payload.blobId);
+      const id = await assets.put(bytes);
+      return { ...view, localAssetUri: `asset://${id}` };
+    } catch {
+      return view;
+    }
+  }
+  return view;
 }
 
 function fail(cause: unknown): { outcome: "failed"; error: { code: string; message: string } } {

@@ -28,14 +28,12 @@
   "devDependencies": {
     "@yesimbot/agent-runtime": "workspace:^",
     "koishi": "^4.18.10",
-    "koishi-plugin-adapter-onebot": "^6.9.4",
     "koishi-plugin-yesimbot": "workspace:^",
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "@yesimbot/agent-runtime": "workspace:^",
     "koishi": "^4.18.10",
-    "koishi-plugin-adapter-onebot": "^6.9.4",
     "koishi-plugin-yesimbot": "workspace:^"
   },
   "koishi": {

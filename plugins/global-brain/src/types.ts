@@ -45,6 +45,10 @@ export interface BrainThreadView {
   readonly thread: BrainThread;
   readonly replies: readonly BrainReply[];
   readonly localAssetUri?: string;
+  readonly localForward?: {
+    readonly forwardId: string;
+    readonly sendTool: string;
+  };
 }
 
 export interface BrainImmediateShare {
