@@ -7,6 +7,41 @@ export interface GenerateReflectionOptions {
   readonly maxMessages?: number;
 }
 
+export async function reflectOnSentMessage(
+  model: LanguageModel,
+  styleBlock: string,
+  sentText: string,
+): Promise<string | undefined> {
+  const text = sanitizeForDisplay(sentText).trim();
+  if (text.length === 0 || styleBlock.trim().length === 0) return undefined;
+  const prompt = [
+    "## 群聊风格 few-shot",
+    styleBlock,
+    "## bot 最终发送的发言",
+    text,
+  ].join("\n\n");
+  const system = [
+    "你是一个发言风格反思器。",
+    "根据群聊风格 few-shot，评价 bot 刚刚最终发送的这条发言是否像群友。",
+    "只输出 2-3 句具体、可执行的改进建议。",
+    "不要复述消息内容、人名、日期或事实。",
+    "不要输出标签、JSON 或无关内容。",
+  ].join("\n");
+
+  try {
+    const { text: generated } = await generateText({
+      model,
+      system,
+      prompt,
+      temperature: 0.2,
+    });
+    const reflection = generated.trim().replace(/\s+/g, " ").slice(0, 600);
+    return reflection.length > 0 ? reflection : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function generateReflection(
   model: LanguageModel,
   styleBlock: string,

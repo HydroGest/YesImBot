@@ -49,6 +49,15 @@ export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase
   K extends K ? Omit<EventRecord<K>, "timestamp"> : never
 >;
 
+export interface DeliveredPayload {
+  readonly platform: string;
+  readonly selfId: string;
+  readonly channel: Universal.Channel;
+  readonly turnId: string;
+  readonly messageId: string;
+  readonly text: string;
+}
+
 declare module "@yesimbot/agent-runtime" {
   interface AgentCustomMessages {
     "yesimbot.event": Event;
@@ -60,6 +69,7 @@ declare module "koishi" {
   interface Events {
     "yesimbot/event": (input: Event) => void;
     "yesimbot/message": (input: Message) => void;
+    "yesimbot/delivered": (input: DeliveredPayload) => void;
   }
 }
 

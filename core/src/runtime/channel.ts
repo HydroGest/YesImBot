@@ -11,7 +11,7 @@ import {
   type AgentToolSet,
 } from "@yesimbot/agent-runtime";
 import type { AssistantContent, LanguageModel, UserModelMessage } from "ai";
-import { h, type Bot, type Context, type Element, type Logger } from "koishi";
+import { h, Universal, type Bot, type Context, type Element, type Logger } from "koishi";
 
 import type { ArtifactStore } from "../artifact.js";
 import type { AssetStore } from "../asset.js";
@@ -70,7 +70,7 @@ export type ChannelRuntimeResult =
       readonly output: AsyncIterable<ChannelOutput>;
       readonly delivery: {
         readonly signal: AbortSignal;
-        onDelivered(): Promise<void>;
+        onDelivered(output?: ChannelOutput): Promise<void>;
         fail(record: EventRecord<"delivery.failed">): Promise<void>;
       };
     };
@@ -328,12 +328,24 @@ export class ChannelRuntime {
       output: this.withDelivery(output, controller),
       delivery: {
         signal: controller.signal,
-        onDelivered: async () => {
+        onDelivered: async (output) => {
           try {
             await this.opts.will.onReply?.();
           } catch (cause) {
             this.logger.warn("will_reply_failed", { cause });
           }
+          const text = output ? output.segments.map((segment) => segment.map(String).join("")).join("\n") : "";
+          this.ctx.emit("yesimbot/delivered", {
+            platform: this.scope.platform,
+            selfId: this.selfId,
+            channel: {
+              id: this.scope.channelId,
+              type: this.scope.type === "direct" ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT,
+            },
+            turnId: output?.turnId ?? "",
+            messageId: output?.messageId ?? "",
+            text,
+          });
         },
         fail: async (record) => {
           if (this.stopped) throw new Error("Channel runtime is stopped");
@@ -507,7 +519,7 @@ export interface ModelInputPluginOptions {
   readonly warn: (event: string, fields: Record<string, unknown>) => void;
 }
 
-export function createModelInputPlugin(options: ModelInputPluginOptions): AgentPlugin {
+export function createModelInputPlugin(_options: ModelInputPluginOptions): AgentPlugin {
   return {
     name: "core.model-input",
     enforce: "pre",

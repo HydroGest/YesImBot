@@ -27,8 +27,6 @@
 | `maxModelThreads`           | `3`     | 每次模型标注最多使用几条完整对话线程                                        |
 | `maxModelThreadMessages`    | `30`    | 每条线程最多送入模型的消息数                                                |
 | `reflectionModel`           | 留空    | 可选独立模型；用于评价 bot 最近发言并生成风格反思，留空则关闭                 |
-| `maxReflectionMessages`     | `5`     | 每次反思最多取 bot 最近几条发言                                             |
-| `reflectionIntervalMinutes` | `30`    | 反思生成的最小间隔分钟数                                                    |
 
 `summaryModel` 使用与 Core `chatModel` 相同的 `registry.chatModels` schema，可以直接填 `provider:model`；没有可用模型时不生成 `local_patterns`。
 
@@ -52,7 +50,7 @@
 
 模型标注时会把完整对话线程交给模型，由模型结合上下文逐条标注 role/intent，而不是单独标注单条消息；线程数、消息总数和字符数都有上限，避免无限消耗额度。
 
-配置 `reflectionModel` 后，插件会用该模型基于同一份群聊 few-shot 评价 bot 最近几次发言，生成 2-3 句可执行反思，并追加到下一次提示词末尾；留空则不调用，也不会产生额外额度消耗。
+配置 `reflectionModel` 后，插件会在 bot 的最终发言成功发送后，用该模型基于同一份群聊 few-shot 即时生成 2-3 句可执行反思，并追加到下一次提示词末尾；留空则不调用，也不会产生额外额度消耗。
 
 启用 `observeAllChannels` 后，插件会在未开启 yesimbot 的频道采集真实消息，写入全局历史，并按频道聚合到 `chat-learning-global.json`。原始全局历史会在聚合成功后清空，避免无限增长。
 
@@ -72,15 +70,18 @@ yesimbot.chat-learning.sync
 yesimbot.chat-learning.reset
 yesimbot.chat-learning.link <from> <to> <kind> [--confidence 0-1]
 yesimbot.chat-learning.unlink <from> <to> [kind]
+yesimbot.chat-learning.reflect <score> [note]
 ```
 
 `kind` 支持 `quote`、`reply`、`at`、`adjacent`、`entity` 和 `*`。`unlink` 不传 kind 时默认移除两消息之间的全部关系。
+
+`reflect` 用于人工标注 bot 的最终发言：先引用 bot 的一条已发送消息，再运行 `yesimbot.chat-learning.reflect 1 保持` 或 `-1 太长太正式`；`score` 支持 `-1|0|1`。人工反思会持久化到 `chat-learning-reflections.jsonl`，并优先于自动反思注入。
 
 `global` 查看跨群全局规则库，包含高频短语和跨群回复链结构；`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<message_links>`、`<local_patterns>`、`<global_patterns>`、`<global_chains>` 等 prompt 块，配置 `reflectionModel` 时还会在末尾显示 `<reflection>`。预览头部会显示 `globalPatterns=选中数/全局库总数`，方便区分“没有全局数据”和“未达到 `minGlobalChannels`”。`<active_chain>` 和 `<group_examples>` 会标注 `chain` 路径，便于审计样本来自哪条回复链。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
 
 `status` 和 `preview` 的长回复在 OneBot 适配器支持时使用合并转发发送，避免长文本直接刷屏；适配器不支持时回退为普通文本。
 
-`reset` 只清空当前频道的 `chat-learning.json`、`chat-learning-history.jsonl` 和 `chat-learning-feedback.jsonl`，不会归档或清空 Core session。
+`reset` 只清空当前频道的 `chat-learning.json`、`chat-learning-history.jsonl`、`chat-learning-feedback.jsonl` 和 `chat-learning-reflections.jsonl`，不会归档或清空 Core session。
 
 `sync` 会忽略 `refreshIntervalMinutes` 和 `globalSyncIntervalMinutes`，立即重建本地学习、触发模型规律提炼，并同步全局历史、全局规则库与全局图链。
 

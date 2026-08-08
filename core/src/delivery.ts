@@ -31,7 +31,7 @@ export async function deliverOutput({ record, result, pacing, send, warn }: Deli
         await send(segment);
         if (!acknowledged) {
           acknowledged = true;
-          await result.delivery.onDelivered();
+          await result.delivery.onDelivered(output);
         }
       } catch (cause) {
         await reportDeliveryFailure({

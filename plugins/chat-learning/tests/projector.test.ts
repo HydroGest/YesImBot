@@ -32,8 +32,6 @@ const config: ChatLearningConfig = {
   maxModelThreads: 3,
   maxModelThreadMessages: 30,
   reflectionModel: undefined,
-  maxReflectionMessages: 5,
-  reflectionIntervalMinutes: 30,
 };
 
 function turn(id: string, messageId: string, timestamp: number, text: string): MessageTurn {

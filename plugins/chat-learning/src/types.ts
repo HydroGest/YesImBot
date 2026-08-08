@@ -128,8 +128,6 @@ export interface ChatLearningConfig {
   readonly maxModelThreads: number;
   readonly maxModelThreadMessages: number;
   readonly reflectionModel: string | undefined;
-  readonly maxReflectionMessages: number;
-  readonly reflectionIntervalMinutes: number;
 }
 
 export type ProactiveEventKind = "global-brain" | "schedule" | "chat-learning";

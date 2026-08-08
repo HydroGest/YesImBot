@@ -10,7 +10,7 @@ vi.mock("ai", () => ({
   generateText: mocks.generateText,
 }));
 
-import { generateReflection } from "../src/reflection.js";
+import { generateReflection, reflectOnSentMessage } from "../src/reflection.js";
 
 function assistantEntry(id: string, text: string): AgentEntry {
   const message = createAssistantMessage(text, { id: `${id}-message`, timestamp: 1000 });
@@ -52,5 +52,20 @@ describe("generateReflection", () => {
 
     expect(result).toBeUndefined();
     expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+});
+
+describe("reflectOnSentMessage", () => {
+  it("reflects on the final sent text", async () => {
+    mocks.generateText.mockResolvedValue({ text: "太长太正式，改短一点。" });
+
+    const result = await reflectOnSentMessage({} as never, "<group_examples>example</group_examples>", "最终发送内容");
+
+    expect(result).toBe("太长太正式，改短一点。");
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("最终发送内容"),
+      }),
+    );
   });
 });
