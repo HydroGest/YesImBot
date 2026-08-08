@@ -23,6 +23,7 @@ export interface ReflectionStore {
   append(input: Omit<ReflectionRecord, "id" | "createdAt">): Promise<ReflectionRecord>;
   latestHuman(): ReflectionRecord | undefined;
   latestAuto(): ReflectionRecord | undefined;
+  recent(limit: number): readonly ReflectionRecord[];
   clear(): Promise<void>;
 }
 
@@ -78,6 +79,9 @@ export function createReflectionStore(filePath: string): ReflectionStore {
     },
     latestAuto() {
       return [...records].reverse().find((record) => record.source === "auto");
+    },
+    recent(limit) {
+      return [...records].reverse().slice(0, Math.max(1, limit));
     },
     clear() {
       return serialize(async () => {

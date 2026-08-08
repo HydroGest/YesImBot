@@ -32,7 +32,12 @@ import { classifyPatternsWithModel } from "./patterns.js";
 import { detectProactiveEvent } from "./proactive.js";
 import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.js";
 import { reflectOnSentMessage } from "./reflection.js";
-import { createReflectionStore, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
+import {
+  createReflectionStore,
+  type ReflectionRecord,
+  type ReflectionScore,
+  type ReflectionStore,
+} from "./reflection-store.js";
 import { createChatLearningStore } from "./store.js";
 import type {
   ChatLearningConfig,
@@ -90,6 +95,11 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
   reflectionModel: Schema.dynamic("registry.chatModels")
     .default("")
     .description("可选：用独立模型评价 bot 最近发言并生成风格反思；留空则关闭"),
+  maxInjectedReflections: Schema.number()
+    .min(1)
+    .max(10)
+    .default(3)
+    .description("每次注入提示词末尾的最近反思条数"),
 });
 
 export default class ChatLearningPlugin {
@@ -111,7 +121,6 @@ export default class ChatLearningPlugin {
   private readonly syncHooks = new Map<string, () => Promise<void>>();
   private readonly reflectHooks = new Map<string, (payload: DeliveredPayload) => Promise<void>>();
   private readonly reflectionStores = new Map<string, ReflectionStore>();
-  private readonly reflectionOverrides = new Map<string, string>();
   private readonly reflectionQueues = new Map<string, Promise<void>>();
   private readonly reflectionPending = new Map<string, DeliveredPayload>();
   private readonly reflectionLatestMessage = new Map<string, string>();
@@ -194,7 +203,6 @@ export default class ChatLearningPlugin {
     this.syncHooks.clear();
     this.reflectHooks.clear();
     this.reflectionStores.clear();
-    this.reflectionOverrides.clear();
     this.reflectionQueues.clear();
     this.reflectionPending.clear();
     this.reflectionLatestMessage.clear();
@@ -228,7 +236,6 @@ export default class ChatLearningPlugin {
     let injectedTurn: string | undefined;
     let currentEvent: ProactiveEventKind | undefined;
     let lastModelEnrichAt = state?.builtAt ?? 0;
-    let reflection: string | undefined;
 
     logger.debug("chat_learning.channel_plugin_created", {
       scope,
@@ -397,7 +404,6 @@ export default class ChatLearningPlugin {
                 messageId: current.messageId,
                 turnId: current.turnId,
               });
-              reflection = next;
               logger.debug("chat_learning.reflection_saved", {
                 scope,
                 model: modelId,
@@ -430,7 +436,6 @@ export default class ChatLearningPlugin {
           config.maxHistoryAgeDays * 24 * 60 * 60 * 1000,
           config.maxScanMessages,
         );
-        reflection = reflectionStore.latestHuman()?.reflection ?? reflectionStore.latestAuto()?.reflection;
         await rebuild(false);
         logger.debug("chat_learning.runtime_init", {
           scope,
@@ -485,7 +490,7 @@ export default class ChatLearningPlugin {
         const prepared: ModelMessage[] = block
           ? [{ role: "system", content: block }, ...messages]
           : [...messages];
-        const reflectionBlock = this.reflectionOverrides.get(key) ?? reflection;
+        const reflectionBlock = buildReflectionHistory(reflectionStore, config.maxInjectedReflections);
         if (reflectionBlock) {
           const reflectionMessage: ModelMessage = { role: "system", content: reflectionBlock };
           return [...prepared, reflectionMessage];
@@ -740,7 +745,6 @@ export default class ChatLearningPlugin {
             await feedback.clear();
             const reflections = await this.reflectionStoreFor(scope);
             await reflections.clear();
-            this.reflectionOverrides.delete(scopeKey(scope));
             const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
             await stateStore.init();
             await stateStore.clear();
@@ -818,7 +822,6 @@ export default class ChatLearningPlugin {
             messageId: session?.quote?.id ?? session?.quote?.messageId,
             turnId: undefined,
           });
-          this.reflectionOverrides.set(scopeKey(scope), record.reflection);
           this.logger.debug("chat_learning.reflection_annotated", {
             scope,
             id: record.id,
@@ -876,7 +879,7 @@ export default class ChatLearningPlugin {
     _styleBlock: string | undefined,
   ): Promise<string | undefined> {
     const store = await this.reflectionStoreFor(scope);
-    return store.latestHuman()?.reflection ?? store.latestAuto()?.reflection;
+    return buildReflectionHistory(store, this.config.maxInjectedReflections);
   }
 
   private async globalStoreFor(_storagePath: string): Promise<{ store: GlobalRuleStore; path: string }> {
@@ -1140,6 +1143,21 @@ function formatGlobalPattern(pattern: GlobalPattern): string {
 function formatGlobalChain(chain: GlobalChainPattern): string {
   const total = chain.channels.reduce((sum, channel) => sum + channel.frequency, 0);
   return `- ${chain.chain.join(" -> ")} channels=${chain.channels.length} total=${total}`;
+}
+
+function buildReflectionHistory(store: ReflectionStore, limit: number): string | undefined {
+  const all = store.read();
+  const human = all.filter((record) => record.source === "human").slice(-limit);
+  const auto = all
+    .filter((record) => record.source === "auto")
+    .slice(-(limit - human.length));
+  const records: readonly ReflectionRecord[] = [...human, ...auto];
+  if (records.length === 0) return undefined;
+  const lines = records.map((record) => {
+    const score = record.score === undefined ? "" : ` score="${record.score}"`;
+    return `<reflection source="${record.source}"${score}>${escapePromptText(record.reflection)}</reflection>`;
+  });
+  return `<reflection_history>\n${lines.join("\n")}\n</reflection_history>`;
 }
 
 function quoteText(quote: Session["quote"] | undefined): string {

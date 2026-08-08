@@ -27,6 +27,7 @@
 | `maxModelThreads`           | `3`     | 每次模型标注最多使用几条完整对话线程                                        |
 | `maxModelThreadMessages`    | `30`    | 每条线程最多送入模型的消息数                                                |
 | `reflectionModel`           | 留空    | 可选独立模型；用于评价 bot 最近发言并生成风格反思，留空则关闭                 |
+| `maxInjectedReflections`    | `3`     | 每次注入提示词末尾的最近反思条数                                             |
 
 `summaryModel` 使用与 Core `chatModel` 相同的 `registry.chatModels` schema，可以直接填 `provider:model`；没有可用模型时不生成 `local_patterns`。
 
@@ -50,7 +51,7 @@
 
 模型标注时会把完整对话线程交给模型，由模型结合上下文逐条标注 role/intent，而不是单独标注单条消息；线程数、消息总数和字符数都有上限，避免无限消耗额度。
 
-配置 `reflectionModel` 后，插件会在 bot 的最终发言成功发送后，用该模型基于同一份群聊 few-shot 即时生成 2-3 句可执行反思，并追加到下一次提示词末尾。反思按频道串行异步生成，不阻塞下一次发言；连续发送时只会保留最新消息的反思结果。留空则不调用，也不会产生额外额度消耗。
+配置 `reflectionModel` 后，插件会在 bot 的最终发言成功发送后，用该模型基于同一份群聊 few-shot 即时生成 2-3 句可执行反思，并在下一次提示词末尾注入最近 `maxInjectedReflections` 条反思历史，人工标注优先显示。反思按频道串行异步生成，不阻塞下一次发言；连续发送时只会保留最新消息的反思结果。留空则不调用，也不会产生额外额度消耗。
 
 启用 `observeAllChannels` 后，插件会在未开启 yesimbot 的频道采集真实消息，写入全局历史，并按频道聚合到 `chat-learning-global.json`。原始全局历史会在聚合成功后清空，避免无限增长。
 
