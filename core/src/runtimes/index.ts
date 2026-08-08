@@ -28,7 +28,10 @@ export class Runtimes {
     await this.serialize(key, async () => {
       this.assertOpen();
       const current = this.runtimes.get(key);
-      if (current && (channel.scope.type === "direct" || current.selfId === bot.selfId)) { value = current; return; }
+      if (current && (channel.scope.type === "direct" || current.selfId === bot.selfId)) {
+        value = current;
+        return;
+      }
       if (current) await current.stop();
       const chat = this.model.resolveChatModel(this.config.chatModel);
       const vision = this.resolveVision();
@@ -43,21 +46,16 @@ export class Runtimes {
         plugins: await this.agents.init(channel.scope, bot),
         idleTimeout: this.config.session.idle.timeout,
       });
-      try { await runtime.init(); } catch (cause) { await runtime.stop().catch(() => undefined); throw cause; }
+      try {
+        await runtime.init();
+      } catch (cause) {
+        await runtime.stop().catch(() => undefined);
+        throw cause;
+      }
       this.runtimes.set(key, runtime);
       value = runtime;
     });
     return value;
-  }
-
-  public async route(record: MessageRecord | EventRecord, bot: Bot, session?: Session): Promise<RuntimeResult> {
-    const channel = await this.channels.resolve(scopeFromRecord(record));
-    return (await this.get(channel, bot, session)).handle(record);
-  }
-
-  public async post(event: EventRecord, bot: Bot): Promise<RuntimeResult> {
-    const channel = await this.channels.resolve(scopeFromRecord(event));
-    return (await this.get(channel, bot)).post(event);
   }
 
   public async reset(scope: ChannelScope): Promise<void> {
@@ -83,7 +81,7 @@ export class Runtimes {
   public async compact(scope: ChannelScope): Promise<string> {
     const runtime = this.runtimes.get(runtimeKey(scope));
     if (!runtime) throw new Error("No active Runtime is available to compact this conversation");
-    const result = await runtime.compact("manual") as { compacted: boolean };
+    const result = (await runtime.compact("manual")) as { compacted: boolean };
     return result.compacted ? "已压缩当前会话。" : "消息不足，未压缩。";
   }
 
@@ -123,7 +121,10 @@ export class Runtimes {
   private async serialize(key: string, task: () => Promise<void>): Promise<void> {
     const previous = this.tails.get(key) ?? Promise.resolve();
     const next = previous.then(task, task);
-    const settled = next.then(() => undefined, () => undefined);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
     this.tails.set(key, settled);
     try {
       await next;
@@ -132,17 +133,15 @@ export class Runtimes {
     }
   }
 
-  private assertOpen(): void { if (this.stopped) throw new Error("Runtimes are stopped"); }
-}
-
-function scopeFromRecord(record: MessageRecord | EventRecord): ChannelScope {
-  return record.channel.type === Universal.Channel.Type.DIRECT
-    ? { type: "direct", platform: record.platform, selfId: record.selfId, channelId: record.channel.id }
-    : { type: "shared", platform: record.platform, channelId: record.channel.id };
+  private assertOpen(): void {
+    if (this.stopped) throw new Error("Runtimes are stopped");
+  }
 }
 
 function runtimeKey(scope: ChannelScope): string {
-  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
+  return scope.type === "direct"
+    ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`
+    : `shared:${scope.platform}:${scope.channelId}`;
 }
 
 export { type RuntimeResult, type PostOptions, type ChannelOutput, ChannelRuntime } from "./channel.js";

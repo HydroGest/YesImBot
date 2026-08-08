@@ -1,13 +1,9 @@
 import type { Context, Session } from "koishi";
 
-import type { Runtimes } from "../runtimes/index.js";
 import type { ChannelScope } from "../channels/index.js";
+import type { Runtimes } from "../runtimes/index.js";
 
-export function registerSessionCommands(
-  ctx: Context,
-  manager: Runtimes,
-  config: { authority: number },
-): () => void {
+export function registerSessionCommands(ctx: Context, manager: Runtimes, config: { authority: number }): () => void {
   const command = ctx.command("yesimbot.session", "会话管理", { authority: config.authority });
 
   command.subcommand(".compact", "压缩会话").action(async ({ session }) => {

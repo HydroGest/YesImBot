@@ -1,5 +1,6 @@
 import { URL } from "node:url";
 
+import type { ChannelScope } from "../channels/index.js";
 import type { ImageBudget } from "../config.js";
 import { ChannelArtifactStore, type ArtifactStore } from "./artifact.js";
 import { ChannelAssetStore, type AssetStore } from "./asset.js";
@@ -34,6 +35,11 @@ export interface ResourceReader {
   readonly scheme: string;
   readonly prompt: string;
   init(resources: ChannelResources, uri: URL, options: ResourceOpenOptions): Promise<ResourceOpenResult>;
+}
+
+export interface Resources {
+  get(scope: ChannelScope): Promise<ChannelResources>;
+  use(reader: ResourceReader): Disposer;
 }
 
 export class ResourceReadError extends Error {
@@ -73,7 +79,8 @@ export class ChannelResources {
 
     try {
       if (parsed.protocol === "asset:") {
-        if (!COMPLETE_ASSET_ID.test(parsed.hostname) || parsed.pathname !== "") throw new ResourceReadError("invalid_resource_uri");
+        if (!COMPLETE_ASSET_ID.test(parsed.hostname) || parsed.pathname !== "")
+          throw new ResourceReadError("invalid_resource_uri");
         try {
           return normalize({ bytes: await this.assets.get(parsed.hostname) });
         } catch {
@@ -105,8 +112,10 @@ export class ChannelResources {
   }
 
   public use(reader: ResourceReader): Disposer {
-    if (reader.scheme === "asset" || reader.scheme === "artifact") throw new Error(`Scheme "${reader.scheme}" is reserved`);
-    if (this.readers.has(reader.scheme)) throw new Error(`Resource reader for scheme "${reader.scheme}" is already registered`);
+    if (reader.scheme === "asset" || reader.scheme === "artifact")
+      throw new Error(`Scheme "${reader.scheme}" is reserved`);
+    if (this.readers.has(reader.scheme))
+      throw new Error(`Resource reader for scheme "${reader.scheme}" is already registered`);
     this.readers.set(reader.scheme, reader);
     return () => {
       if (this.readers.get(reader.scheme) === reader) this.readers.delete(reader.scheme);
@@ -178,8 +187,10 @@ function normalize(value: unknown): ResourceOpenResult {
   const result = value as Partial<ResourceOpenResult>;
   if (!(result.bytes instanceof Uint8Array)) throw new Error("Invalid resource bytes");
   if (result.bytes.byteLength > READ_MAX_BYTES) throw new ResourceReadError("resource_too_large");
-  if (result.mediaType !== undefined && !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(result.mediaType)) throw new Error("Invalid resource media type");
-  if (result.filename !== undefined && (result.filename.length === 0 || /[\\/\0]/.test(result.filename))) throw new Error("Invalid resource filename");
+  if (result.mediaType !== undefined && !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(result.mediaType))
+    throw new Error("Invalid resource media type");
+  if (result.filename !== undefined && (result.filename.length === 0 || /[\\/\0]/.test(result.filename)))
+    throw new Error("Invalid resource filename");
   return result as ResourceOpenResult;
 }
 

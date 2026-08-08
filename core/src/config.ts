@@ -1,6 +1,9 @@
 import { Schema } from "koishi";
-
-import type { ChannelAllowRule } from "./gateway/types.js";
+export interface ChannelAllowRule {
+  readonly platform: string;
+  readonly channelId: string;
+  readonly isDirect?: boolean;
+}
 
 export interface ImageBudget {
   readonly maxCount: number;

@@ -9,4 +9,3 @@ export {
   defaultMessageRecord,
 } from "./fixtures.js";
 export { session, deferred, outputs, delivery } from "./factories.js";
-export { useTemporaryStorage } from "./storage.js";

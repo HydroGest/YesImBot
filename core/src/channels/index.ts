@@ -5,16 +5,11 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Context, Logger } from "koishi";
 
 import { Conversation } from "../conversations/index.js";
-import { ChannelResources, type Disposer, type ResourceReader } from "../resources/index.js";
+import { ChannelResources, type Disposer, type ResourceReader, type Resources } from "../resources/index.js";
 
 export type ChannelScope =
   | { readonly type: "shared"; readonly platform: string; readonly channelId: string }
   | { readonly type: "direct"; readonly platform: string; readonly selfId: string; readonly channelId: string };
-
-export interface Resources {
-  get(scope: ChannelScope): Promise<ChannelResources>;
-  use(reader: ResourceReader): Disposer;
-}
 
 export interface ChannelsOptions {
   readonly basePath: string;

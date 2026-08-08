@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { h, type Context, type Element } from "koishi";
 
-import type { AssetStore } from "../asset.js";
+import type { AssetStore } from "./asset.js";
+import type { ChannelResources } from "./index.js";
 
 const DATA_URL = /^data:([^;,]+)(;base64)?,([\s\S]*)$/;
 const MAX_IMAGES = 4;
@@ -98,17 +99,14 @@ interface ResourceProbe {
   type: string | null;
 }
 
-/**
- * Persists image and restricted text-file elements into the channel AssetStore,
- * shared by every platform translator. Failures keep the original element.
- */
+/** Persists inbound image and restricted text-file elements while the Session is live. */
 export async function persistElements(
   ctx: Context,
   elements: readonly Element[],
-  store: AssetStore,
+  resources: ChannelResources,
 ): Promise<Element[]> {
   const budget: ResourceBudget = { images: 0, files: 0, bytes: 0 };
-  return Promise.all(elements.map((element) => persistElement(ctx, element, store, budget)));
+  return Promise.all(elements.map((element) => persistElement(ctx, element, resources.assets, budget)));
 }
 
 async function persistElement(
