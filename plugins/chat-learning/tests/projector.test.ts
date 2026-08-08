@@ -52,14 +52,24 @@ function turn(id: string, messageId: string, timestamp: number, text: string): M
 }
 
 function state(): ChatLearningState {
-  const turns = [turn("t1", "m1", 1000, "这个方案靠谱吗"), turn("t2", "m2", 2000, "确实")];
-  const links: MessageLink[] = [{ from: "t2", to: "t1", kind: "reply", confidence: 1, evidence: ["quote"] }];
+  const historical = [turn("h1", "h1", 100, "历史消息"), turn("h2", "h2", 200, "历史回应")];
+  const turns = [...historical, turn("t1", "m1", 1000, "这个方案靠谱吗"), turn("t2", "m2", 2000, "确实")];
+  const links: MessageLink[] = [
+    { from: "h2", to: "h1", kind: "reply", confidence: 1, evidence: ["quote"] },
+    { from: "t2", to: "t1", kind: "reply", confidence: 1, evidence: ["quote"] },
+  ];
   return {
     lastEntryId: "t2",
     builtAt: 3000,
     turns,
     links,
     segments: [
+      {
+        id: "s0",
+        startTime: 100,
+        endTime: 200,
+        turns: historical,
+      },
       {
         id: "s1",
         startTime: 1000,
@@ -77,20 +87,21 @@ describe("buildPromptBlock", () => {
     const block = buildPromptBlock(state(), undefined, config);
 
     expect(block).toBeDefined();
-    expect(block).toContain("<message_links>");
+    expect(block).not.toContain("<message_links>");
+    expect(block).not.toContain("<active_chain>");
     expect(block).toContain("<chat_learning_guide>");
-    expect(block).toContain("few-shot 风格样本");
+    expect(block).toContain("风格样本");
     expect(block).toContain("模仿样本中的表达节奏");
     expect(block).toContain("<local_patterns>");
-    expect(block).toContain("<group_examples>");
-    expect(block).toContain('chain="t1 -&gt; t2"');
+    expect(block).toContain('<style_examples historical="true">');
+    expect(block).toContain('chain="h1 -&gt; h2"');
     expect(estimateTokens(block!)).toBeLessThanOrEqual(config.maxPromptTokens);
   });
 
   it("injects initiation patterns for proactive events", () => {
     const block = buildPromptBlock(state(), "global-brain", config);
 
-    expect(block).toContain("<event_context>");
+    expect(block).not.toContain("<event_context>");
     expect(block).toContain('kind="initiation"');
   });
 

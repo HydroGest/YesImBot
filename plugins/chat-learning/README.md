@@ -43,7 +43,7 @@
 - quote/reply/@/相邻/实体关系的置信度图；
 - 本地回应规律和话题发起规律；
 - 模型驱动的响应/发起意图分类，并按真实样本频率聚合规律；
-- 有界 `<message_links>`、`<active_chain>`、`<local_patterns>`、`<global_patterns>`、`<global_chains>`、`<group_examples>` 注入。
+- 有界 `<local_patterns>`、`<global_patterns>`、`<global_chains>`、`<style_examples>` 注入。
 
 响应规律只从图中有明确边或处于同一回复链的消息对提取；仅时间相邻但没有关系边的消息不会进入 response pattern。
 
@@ -55,9 +55,7 @@
 
 启用 `observeAllChannels` 后，插件会在未开启 yesimbot 的频道采集真实消息，写入全局历史，并按频道聚合到 `chat-learning-global.json`。原始全局历史会在聚合成功后清空，避免无限增长。
 
-当 turn 来自 `global-brain` 或 `schedule` 时，会额外注入 `<event_context>` 和 `initiation` 规律，让主动发起发言也沿用本群表达方式。
-
-注入块前面会固定附带 `<chat_learning_guide>`，明确告诉模型 `<group_examples>` 和 `<local_patterns>` 是本群真实消息组成的 few-shot 风格样本，要求模仿表达节奏，不复制内容，也不把这些标签写进对外回复。
+注入块前面会固定附带 `<chat_learning_guide>`，明确告诉模型 `<style_examples>` 和 `<local_patterns>` 是本群历史消息组成的风格样本，不是当前对话，要求模仿表达节奏，不复制内容，也不把这些标签写进对外回复。
 
 ## 人工纠错
 
@@ -78,7 +76,7 @@ yesimbot.chat-learning.reflect [note] --score -1|0|1
 
 `reflect` 用于人工标注 bot 的最终发言：先引用 bot 的一条已发送消息，再运行 `yesimbot.chat-learning.reflect 保持 --score=1` 或 `yesimbot.chat-learning.reflect 太长太正式 --score=-1`；`score` 支持 `-1|0|1`。人工反思会持久化到 `chat-learning-reflections.jsonl`，并优先于自动反思注入。
 
-`global` 查看跨群全局规则库，包含高频短语和跨群回复链结构；`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<message_links>`、`<local_patterns>`、`<global_patterns>`、`<global_chains>` 等 prompt 块，配置 `reflectionModel` 时还会在末尾显示 `<reflection>`。预览头部会显示 `globalPatterns=选中数/全局库总数`，方便区分“没有全局数据”和“未达到 `minGlobalChannels`”。`<active_chain>` 和 `<group_examples>` 会标注 `chain` 路径，便于审计样本来自哪条回复链。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
+`global` 查看跨群全局规则库，包含高频短语和跨群回复链结构；`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<local_patterns>`、`<global_patterns>`、`<global_chains>`、`<style_examples>` 等 prompt 块，配置 `reflectionModel` 时还会在末尾显示反思历史。预览头部会显示 `globalPatterns=选中数/全局库总数`，方便区分“没有全局数据”和“未达到 `minGlobalChannels`”。`<style_examples>` 会标注 `chain` 路径，便于审计样本来自哪条历史回复链。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
 
 `status` 和 `preview` 的长回复在 OneBot 适配器支持时使用合并转发发送，避免长文本直接刷屏；适配器不支持时回退为普通文本。
 
