@@ -33,10 +33,7 @@ export interface AgentPlugin {
   transformEntries?(entries: readonly AgentEntry[]): Awaitable<AgentEntry[] | void>;
   /** @deprecated Define an explicit cache lifecycle before adding historical projection behavior. */
   transformMessages?(messages: AgentMessage[], context: MessageTransformContext): Awaitable<AgentMessage[]>;
-  toModelMessages?(
-    message: AgentMessage,
-    context: ModelMessageContext,
-  ): Awaitable<ModelMessage[] | ModelMessage | void>;
+  toModelMessages?(message: AgentMessage, context: ModelMessageContext): Awaitable<ModelMessage[] | ModelMessage | void>;
   extendSystemPrompt?(prompt: string, context: PromptContext): Awaitable<string | void>;
   appendSystemPrompt?(context: PromptContext): Awaitable<SystemPromptAppend | void>;
   /** @deprecated Declare stable tools through `AgentPlugin.tools`. */
@@ -44,10 +41,7 @@ export interface AgentPlugin {
   beforeToolCall?(call: ToolCallContext, context: ToolHookContext): Awaitable<ToolDecision | void>;
   afterToolCall?(result: ToolResultContext, context: ToolHookContext): Awaitable<Partial<ToolResultContext> | void>;
   onTurnFinish?(result: TurnResult, context: TurnFinishContext): Awaitable<void>;
-  prepareStep?(
-    messages: readonly ModelMessage[],
-    context: PrepareStepContext,
-  ): Awaitable<readonly ModelMessage[] | void>;
+  prepareStep?(messages: readonly ModelMessage[], context: PrepareStepContext): Awaitable<readonly ModelMessage[] | void>;
 }
 
 export interface HookContextBase {
@@ -184,9 +178,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
   };
 
   const rollbackPlugins = async (currentPlugin?: AgentPlugin) => {
-    const pluginsToStop = currentPlugin
-      ? [currentPlugin, ...[...activePlugins].reverse()]
-      : [...activePlugins].reverse();
+    const pluginsToStop = currentPlugin ? [currentPlugin, ...[...activePlugins].reverse()] : [...activePlugins].reverse();
 
     for (const plugin of pluginsToStop) {
       await stopPlugin(plugin);
@@ -398,13 +390,10 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
           const candidateBlocks = appended === undefined ? [] : normalizeSystemPromptAppend(appended);
 
           if (candidateLegacy !== undefined && plugin.extendSystemPrompt) {
-            candidateLegacy =
-              (await plugin.extendSystemPrompt(candidateLegacy, initializationContext)) ?? candidateLegacy;
+            candidateLegacy = (await plugin.extendSystemPrompt(candidateLegacy, initializationContext)) ?? candidateLegacy;
           }
           if (plugin.extendTools) {
-            candidateTools = mergeTools([
-              (await plugin.extendTools([...candidateTools], initializationContext)) ?? candidateTools,
-            ]);
+            candidateTools = mergeTools([(await plugin.extendTools([...candidateTools], initializationContext)) ?? candidateTools]);
           }
 
           activePlugins.push(plugin);
@@ -453,11 +442,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
   };
 }
 
-export async function runHookPipeline<T>(
-  items: readonly AgentPlugin[],
-  runner: (plugin: AgentPlugin) => Awaitable<T | undefined>,
-  fallback: T,
-): Promise<T> {
+export async function runHookPipeline<T>(items: readonly AgentPlugin[], runner: (plugin: AgentPlugin) => Awaitable<T | undefined>, fallback: T): Promise<T> {
   let current = fallback;
 
   for (const plugin of items) {

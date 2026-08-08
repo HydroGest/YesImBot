@@ -20,12 +20,7 @@ function createRuntime() {
 
 describe("plugin host", () => {
   it("orders plugins by pre, normal, then post", () => {
-    const plugins: AgentPlugin[] = [
-      { name: "normal-1" },
-      { name: "post", enforce: "post" },
-      { name: "pre", enforce: "pre" },
-      { name: "normal-2" },
-    ];
+    const plugins: AgentPlugin[] = [{ name: "normal-1" }, { name: "post", enforce: "post" }, { name: "pre", enforce: "pre" }, { name: "normal-2" }];
 
     const host = createPluginHost({ plugins, runtime: createRuntime() });
 
@@ -87,13 +82,7 @@ describe("plugin host", () => {
         providerOptions: { mock: { cache: true } },
       },
     ]);
-    expect(host.stableTools.map((tool) => tool.name)).toEqual([
-      "base",
-      "pre_tool",
-      "normal_tool",
-      "legacy_tool",
-      "finalize_response",
-    ]);
+    expect(host.stableTools.map((tool) => tool.name)).toEqual(["base", "pre_tool", "normal_tool", "legacy_tool", "finalize_response"]);
   });
 
   it("fails initialization when a required stable resource throws", async () => {
@@ -152,14 +141,7 @@ describe("plugin host", () => {
     });
 
     await expect(host.init()).rejects.toBe(primaryError);
-    expect(calls).toEqual([
-      "init:first",
-      "init:intermediate",
-      "init:broken",
-      "stop:broken",
-      "stop:intermediate",
-      "stop:first",
-    ]);
+    expect(calls).toEqual(["init:first", "init:intermediate", "init:broken", "stop:broken", "stop:intermediate", "stop:first"]);
     expect(host.activePlugins).toEqual([]);
   });
 

@@ -153,13 +153,7 @@ describe("GlobalBrainPlugin", () => {
       expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledOnce();
       const pluginA = factories[0]!(channelContext("group-a") as never);
       const tools = await getTools(pluginA);
-      expect(tools.map((tool) => tool.name)).toEqual([
-        "brain_deposit",
-        "brain_read",
-        "brain_reply",
-        "brain_resolve",
-        "brain_status",
-      ]);
+      expect(tools.map((tool) => tool.name)).toEqual(["brain_deposit", "brain_read", "brain_reply", "brain_resolve", "brain_status"]);
 
       const prompt = await pluginA.appendSystemPrompt?.({} as never);
       expect(String(prompt)).toContain("Global Brain");
@@ -167,10 +161,10 @@ describe("GlobalBrainPlugin", () => {
       expect(String(prompt)).not.toContain("askLocal");
 
       const deposit = tools.find((tool) => tool.name === "brain_deposit")!;
-      const created = (await deposit.execute?.(
-        { kind: "question", content: "谁有 XX 的资料？", tags: ["search"] },
-        {} as never,
-      )) as { outcome: "created"; thread: { id: string } };
+      const created = (await deposit.execute?.({ kind: "question", content: "谁有 XX 的资料？", tags: ["search"] }, {} as never)) as {
+        outcome: "created";
+        thread: { id: string };
+      };
       expect(created.outcome).toBe("created");
 
       const pluginB = factories[0]!(channelContext("group-b") as never);
@@ -210,10 +204,7 @@ describe("GlobalBrainPlugin", () => {
       factories[0]!(channelContext("group-b") as never);
       const tools = await getTools(pluginA);
       const deposit = tools.find((tool) => tool.name === "brain_deposit")!;
-      const created = (await deposit.execute?.(
-        { kind: "share", content: "urgent", shareImmediately: true },
-        {} as never,
-      )) as { thread: { id: string } };
+      const created = (await deposit.execute?.({ kind: "share", content: "urgent", shareImmediately: true }, {} as never)) as { thread: { id: string } };
 
       await Promise.resolve();
       expect(trigger).toHaveBeenCalledTimes(1);

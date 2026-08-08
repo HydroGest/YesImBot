@@ -1,15 +1,28 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "ignorePatterns": [".planning", "dist", "docs", "openspec", "references"],
-  "experimentalSortImports": {
-    "order": "asc"
+  "sortImports": {
+    "sortImports": {
+      "groups": [
+        "type-import",
+        ["value-builtin", "value-external"],
+        "type-internal",
+        "value-internal",
+        ["type-parent", "type-sibling", "type-index"],
+        ["value-parent", "value-sibling", "value-index"],
+        "unknown"
+      ]
+    }
   },
-  "experimentalSortPackageJson": {
+  "sortPackageJson": {
+    "sortDependencies": true,
+    "sortDevDependencies": true,
+    "sortPeerDependencies": true,
     "sortScripts": true
   },
   "endOfLine": "lf",
   "semi": true,
-  "printWidth": 120,
+  "printWidth": 160,
   "singleQuote": false,
   "insertFinalNewline": true,
   "trailingComma": "all"

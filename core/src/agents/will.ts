@@ -25,10 +25,6 @@ export class DefaultWill implements Will {
   public decide(input: Message | Event, _state: WillState): "wait" | "trigger" {
     if (!isMessage(input)) return "wait";
     if (input.data.channel.type === (1 satisfies Universal.Channel.Type)) return "trigger";
-    return input.data.elements.some(
-      (element) => element.type === "at" && String(element.attrs.id) === input.data.selfId,
-    )
-      ? "trigger"
-      : "wait";
+    return input.data.elements.some((element) => element.type === "at" && String(element.attrs.id) === input.data.selfId) ? "trigger" : "wait";
   }
 }

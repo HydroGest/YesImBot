@@ -1,10 +1,4 @@
-import {
-  defaultRoutingConfig,
-  defaultWillingnessConfig,
-  type PolicyRoutingConfig,
-  type PolicyWillingnessConfig,
-  type WillPolicyConfig,
-} from "./types.js";
+import { defaultRoutingConfig, defaultWillingnessConfig, type PolicyRoutingConfig, type PolicyWillingnessConfig, type WillPolicyConfig } from "./types.js";
 
 export interface ResolvedPolicy {
   readonly engine: "routing" | "willingness";

@@ -86,10 +86,7 @@ declare module "koishi-plugin-yesimbot" {
   }
 }
 
-export function buildImmediateShareEvent(
-  scope: ChannelScope,
-  thread: BrainThread,
-): EventRecord<"global-brain.immediate"> {
+export function buildImmediateShareEvent(scope: ChannelScope, thread: BrainThread): EventRecord<"global-brain.immediate"> {
   const summary = thread.content.length > 160 ? `${thread.content.slice(0, 160)}...` : thread.content;
   return {
     eventType: "global-brain.immediate",

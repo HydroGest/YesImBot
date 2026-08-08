@@ -39,16 +39,11 @@ export type EventBase = Readonly<{
   readonly text: string;
 }>;
 
-export type EventRecord<K extends keyof EventMap = keyof EventMap> = K extends K
-  ? Readonly<EventBase & { readonly eventType: K } & EventMap[K]>
-  : never;
+export type EventRecord<K extends keyof EventMap = keyof EventMap> = K extends K ? Readonly<EventBase & { readonly eventType: K } & EventMap[K]> : never;
 
 export type Message = CustomMessageBase<"yesimbot.message", Omit<MessageRecord, "timestamp">>;
 
-export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<
-  "yesimbot.event",
-  K extends K ? Omit<EventRecord<K>, "timestamp"> : never
->;
+export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<"yesimbot.event", K extends K ? Omit<EventRecord<K>, "timestamp"> : never>;
 
 declare module "@yesimbot/agent-runtime" {
   interface AgentCustomMessages {
@@ -81,9 +76,7 @@ export function isMessageRecord(record: MessageRecord | EventRecord): record is 
   return "messageId" in record;
 }
 
-export function isEventRecord<K extends keyof EventMap>(
-  record: MessageRecord | EventRecord<K>,
-): record is EventRecord<K> {
+export function isEventRecord<K extends keyof EventMap>(record: MessageRecord | EventRecord<K>): record is EventRecord<K> {
   return "eventType" in record;
 }
 
@@ -114,7 +107,7 @@ export function modelInputPlugin(): import("@yesimbot/agent-runtime").AgentPlugi
   return {
     name: "core.model-input",
     enforce: "pre",
-    toModelMessages: async (message) => isMessage(message) || isEvent(message) ? [formatInput(message)] : [],
+    toModelMessages: async (message) => (isMessage(message) || isEvent(message) ? [formatInput(message)] : []),
   };
 }
 
@@ -129,9 +122,7 @@ export function formatInput(input: Message | Event): UserModelMessage {
       minute: "2-digit",
       hour12: false,
     }).format(new Date(input.timestamp));
-    const sender = input.data.user.name
-      ? `${input.data.user.name} (${input.data.user.id})`
-      : input.data.user.id;
+    const sender = input.data.user.name ? `${input.data.user.name} (${input.data.user.id})` : input.data.user.id;
     return {
       role: "user",
       content: `[time=${JSON.stringify(time)} sender=${JSON.stringify(sender)} id=${JSON.stringify(input.data.messageId)}]\n${input.data.elements.map(formatElement).join("")}`,

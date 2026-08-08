@@ -1,9 +1,6 @@
 import type { Element } from "koishi";
 
-export function mentionKind(
-  selfId: string,
-  elements: readonly Element[] | undefined,
-): "self" | "all" | "here" | "none" {
+export function mentionKind(selfId: string, elements: readonly Element[] | undefined): "self" | "all" | "here" | "none" {
   for (const element of elements ?? []) {
     if (element.type !== "at") continue;
     const type = String(element.attrs.type ?? "");

@@ -43,10 +43,7 @@ export class ModelStickerClassifier implements StickerClassifier {
 
     if (!ref.entry.modalities?.input?.includes("image")) return undefined;
 
-    const basePrompt = this.config.classificationPrompt.replaceAll(
-      "{{categories}}",
-      input.categories.join(", ") || "暂无分类",
-    );
+    const basePrompt = this.config.classificationPrompt.replaceAll("{{categories}}", input.categories.join(", ") || "暂无分类");
     const prompt = this.config.tagMode
       ? [
           basePrompt,

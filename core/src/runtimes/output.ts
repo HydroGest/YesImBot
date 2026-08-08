@@ -37,7 +37,11 @@ export class OutputQueue<T> implements AsyncIterable<T> {
   }
 }
 
-export async function prepareOutputSegments(segments: readonly (readonly Element[])[], resources: ChannelResources, signal?: AbortSignal): Promise<Element[][]> {
+export async function prepareOutputSegments(
+  segments: readonly (readonly Element[])[],
+  resources: ChannelResources,
+  signal?: AbortSignal,
+): Promise<Element[][]> {
   const prepared: Element[][] = [];
   for (const segment of segments) {
     const next = await Promise.all(segment.map((element) => prepareElement(element, resources, signal)));
@@ -55,7 +59,10 @@ export function parseReply(raw: string): Element[][] {
   let cursor = 0;
   for (;;) {
     const open = source.indexOf("<text>", cursor);
-    if (open < 0) { masked += source.slice(cursor); break; }
+    if (open < 0) {
+      masked += source.slice(cursor);
+      break;
+    }
     masked += source.slice(cursor, open);
     const start = open + 6;
     const close = source.indexOf("</text>", start);
@@ -104,7 +111,12 @@ export function parseReply(raw: string): Element[][] {
 }
 
 async function prepareElement(element: Element, resources: ChannelResources, signal?: AbortSignal): Promise<Element | undefined> {
-  if (element.children.length) return h(element.type, element.attrs, (await Promise.all(element.children.map((child) => prepareElement(child, resources, signal)))).filter((child): child is Element => child !== undefined));
+  if (element.children.length)
+    return h(
+      element.type,
+      element.attrs,
+      (await Promise.all(element.children.map((child) => prepareElement(child, resources, signal)))).filter((child): child is Element => child !== undefined),
+    );
   const src = element.attrs.src;
   if (typeof src !== "string" || !RESOURCE_SOURCE.test(src) || (element.type !== "img" && element.type !== "file")) return element;
   if (element.type === "img" && !/^asset:\/\/[a-f0-9]{32}$/.test(src)) {
@@ -117,13 +129,35 @@ async function prepareElement(element: Element, resources: ChannelResources, sig
   const detected = detectMediaType(opened.bytes);
   if (element.type === "img" && !detected) return undefined;
   const mediaType = detected ?? opened.mediaType ?? "application/octet-stream";
-  return h(element.type, { ...element.attrs, src: `data:${mediaType};base64,${Buffer.from(opened.bytes).toString("base64")}` });
+  return h(element.type, {
+    ...element.attrs,
+    src: `data:${mediaType};base64,${Buffer.from(opened.bytes).toString("base64")}`,
+  });
 }
 
 function detectMediaType(bytes: Uint8Array): string | undefined {
   if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
-  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38 && (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61) return "image/gif";
-  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return "image/webp";
+  if (
+    bytes.length >= 6 &&
+    bytes[0] === 0x47 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x38 &&
+    (bytes[4] === 0x37 || bytes[4] === 0x39) &&
+    bytes[5] === 0x61
+  )
+    return "image/gif";
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  )
+    return "image/webp";
   return undefined;
 }

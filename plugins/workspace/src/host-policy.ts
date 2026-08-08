@@ -9,9 +9,7 @@ import type { HostChannelRule, HostRootSpec } from "./types";
 
 export const HOST_READ_LIMIT_BYTES = 10 * 1024 * 1024;
 
-export type HostPolicyDecision =
-  | { kind: "allow" }
-  | { kind: "approve"; fingerprint: string; riskTags: string[]; summary: string };
+export type HostPolicyDecision = { kind: "allow" } | { kind: "approve"; fingerprint: string; riskTags: string[]; summary: string };
 
 export interface HostPolicy {
   checkChannel(scope: ChannelScope): boolean;
@@ -232,10 +230,7 @@ function matchesRule(scope: ChannelScope, rule: HostChannelRule): boolean {
   if (scope.platform !== rule.platform && rule.platform !== "*") return false;
   if (scope.channelId !== rule.channelId && rule.channelId !== "*") return false;
   if (rule.type !== undefined && scope.type !== rule.type) return false;
-  if (
-    rule.selfId !== undefined &&
-    (scope.selfId === undefined || (scope.selfId !== rule.selfId && rule.selfId !== "*"))
-  ) {
+  if (rule.selfId !== undefined && (scope.selfId === undefined || (scope.selfId !== rule.selfId && rule.selfId !== "*"))) {
     return false;
   }
   return true;
@@ -289,13 +284,7 @@ function originalBytesForFingerprint(input: unknown): string {
   }
 }
 
-function makeFingerprint(
-  scope: ChannelScope,
-  toolName: string,
-  cwd: string,
-  policyRevision: string,
-  originalCommand: string,
-): string {
+function makeFingerprint(scope: ChannelScope, toolName: string, cwd: string, policyRevision: string, originalCommand: string): string {
   const normalizedScope = {
     type: scope.type,
     platform: scope.platform,
@@ -466,20 +455,13 @@ function classifySimpleCommand(command: RecordValue, state: WalkState): void {
 
   if (WRITE_COMMANDS[commandName]) {
     addTag(state, "write");
-    if (commandName === "rm" || commandName === "rmdir" || commandName === "unlink" || commandName === "shred")
-      addTag(state, "delete");
+    if (commandName === "rm" || commandName === "rmdir" || commandName === "unlink" || commandName === "shred") addTag(state, "delete");
     if (["cp", "mv", "tee", "truncate"].includes(commandName)) addTag(state, "overwrite");
   } else if (NETWORK_COMMANDS[commandName]) {
     addTag(state, "network");
   } else if (INTERPRETER_COMMANDS[commandName]) {
     addTag(state, "interpreter");
-  } else if (
-    commandName === "source" ||
-    commandName === "." ||
-    commandName === "eval" ||
-    commandName === "exec" ||
-    commandName === "xargs"
-  ) {
+  } else if (commandName === "source" || commandName === "." || commandName === "eval" || commandName === "exec" || commandName === "xargs") {
     addTag(state, "script");
   } else if (!READ_ONLY_COMMANDS[commandName]) {
     addTag(state, "unknown-command");
@@ -491,8 +473,7 @@ function classifySimpleCommand(command: RecordValue, state: WalkState): void {
     addTag(state, "write");
     addTag(state, "overwrite");
   }
-  if (commandName === "find" && argsContainFlag(args, ["-delete", "-exec", "-execdir", "-ok", "-okdir"]))
-    addTag(state, "write");
+  if (commandName === "find" && argsContainFlag(args, ["-delete", "-exec", "-execdir", "-ok", "-okdir"])) addTag(state, "write");
   if (commandName === "printf" && argsContainFlag(args, ["-v"])) addTag(state, "assignment");
 }
 
@@ -633,11 +614,7 @@ function orderedRiskTags(state: WalkState): string[] {
 
 function summaryFor(state: WalkState, riskTags: readonly string[]): string {
   const knownCommands = state.commands.filter(
-    (command) =>
-      READ_ONLY_COMMANDS[command] ||
-      WRITE_COMMANDS[command] ||
-      NETWORK_COMMANDS[command] ||
-      INTERPRETER_COMMANDS[command],
+    (command) => READ_ONLY_COMMANDS[command] || WRITE_COMMANDS[command] || NETWORK_COMMANDS[command] || INTERPRETER_COMMANDS[command],
   );
   const commandPart = knownCommands.length > 0 ? knownCommands.slice(0, 8).join(", ") : "unrecognized command";
   return `Host bash ${commandPart}; arguments and paths redacted; risks: ${riskTags.join(", ") || "none"}`;
@@ -671,8 +648,7 @@ function rootForCandidate(candidate: string, roots: readonly Root[]): Root | und
   if (matching.length === 0) return undefined;
   const longest = Math.max(...matching.map((root) => root.path.length));
   const mostSpecific = matching.filter((root) => root.path.length === longest);
-  if (new Set(mostSpecific.map((root) => root.mode)).size > 1)
-    throw new Error("Host file path has conflicting root modes");
+  if (new Set(mostSpecific.map((root) => root.mode)).size > 1) throw new Error("Host file path has conflicting root modes");
   return mostSpecific[0];
 }
 
@@ -684,8 +660,7 @@ function resolveConfiguredRoot(path: string, mode: RootMode, implicit: boolean):
     if (!metadata.isDirectory()) throw new Error("Host root must be a directory");
     return { path: realpathSync(candidate), mode };
   } catch (error) {
-    if (implicit && error instanceof Error && /ENOENT|no such file/i.test(error.message))
-      return { path: candidate, mode };
+    if (implicit && error instanceof Error && /ENOENT|no such file/i.test(error.message)) return { path: candidate, mode };
     throw error;
   }
 }
@@ -728,8 +703,7 @@ export function createHostPolicy(options: HostPolicyOptions = {}): HostPolicy {
   };
 
   const checkFile = (tool: "readFile" | "writeFile", path: string): void => {
-    if (invalidRoots || roots.length === 0 || !workspaceRoot || cwd.length === 0)
-      throw new Error("Host file roots are unavailable");
+    if (invalidRoots || roots.length === 0 || !workspaceRoot || cwd.length === 0) throw new Error("Host file roots are unavailable");
     const candidate = canonicalFileCandidate(path, cwd);
     const root = rootForCandidate(candidate.canonical, roots);
     if (!root) throw new Error("Host file path is outside configured roots");
@@ -738,8 +712,7 @@ export function createHostPolicy(options: HostPolicyOptions = {}): HostPolicy {
     if (candidate.exists) {
       const metadata = statSync(candidate.input);
       if (!metadata.isFile()) throw new Error("Host file must be a regular file");
-      if (tool === "readFile" && metadata.size > HOST_READ_LIMIT_BYTES)
-        throw new Error(`Host file exceeds ${HOST_READ_LIMIT_BYTES}-byte read limit`);
+      if (tool === "readFile" && metadata.size > HOST_READ_LIMIT_BYTES) throw new Error(`Host file exceeds ${HOST_READ_LIMIT_BYTES}-byte read limit`);
     }
   };
 
@@ -865,12 +838,7 @@ type ApprovalEntry = {
   waiters: ApprovalWaiter[];
 };
 
-function approvalRecord(
-  request: HostApprovalRequest,
-  requestId: string,
-  now: number,
-  status: HostApprovalStatus,
-): HostApprovalRecord {
+function approvalRecord(request: HostApprovalRequest, requestId: string, now: number, status: HostApprovalStatus): HostApprovalRecord {
   return {
     requestId,
     scope: { ...request.scope },
@@ -938,11 +906,7 @@ export function createHostApprovalBroker(options: HostApprovalBrokerOptions = {}
     entries.delete(entry.record.requestId);
   };
 
-  const finish = (
-    entry: ApprovalEntry,
-    status: Exclude<HostApprovalStatus, "pending" | "cancelled">,
-    actor?: string,
-  ): boolean => {
+  const finish = (entry: ApprovalEntry, status: Exclude<HostApprovalStatus, "pending" | "cancelled">, actor?: string): boolean => {
     if (entry.record.status !== "pending") return false;
     clearTimeout(entry.timer);
     entry.record = { ...entry.record, status };
@@ -969,9 +933,7 @@ export function createHostApprovalBroker(options: HostApprovalBrokerOptions = {}
         const index = entry.waiters.indexOf(waiter);
         if (index >= 0) entry.waiters.splice(index, 1);
         signal.removeEventListener("abort", onAbort);
-        emit(
-          auditEvent(entry.record, "cancelled", { durationMs: Date.now() - entry.record.createdAt, cancelled: true }),
-        );
+        emit(auditEvent(entry.record, "cancelled", { durationMs: Date.now() - entry.record.createdAt, cancelled: true }));
         resolve("rejected");
       };
       (waiter as { onAbort?: () => void }).onAbort = onAbort;
@@ -1010,12 +972,7 @@ export function createHostApprovalBroker(options: HostApprovalBrokerOptions = {}
     return waitFor(entry, signal);
   };
 
-  const transition = (
-    requestId: string,
-    status: "approved" | "rejected",
-    fingerprint?: string,
-    actor?: string,
-  ): boolean => {
+  const transition = (requestId: string, status: "approved" | "rejected", fingerprint?: string, actor?: string): boolean => {
     const entry = entries.get(requestId);
     if (!entry || entry.record.expiresAt <= Date.now()) {
       if (entry) expire(entry);
@@ -1033,9 +990,7 @@ export function createHostApprovalBroker(options: HostApprovalBrokerOptions = {}
       if (entry.record.status === "pending") {
         entry.record = { ...entry.record, status: "cancelled" };
         settleWaiters(entry, "rejected");
-        emit(
-          auditEvent(entry.record, "cancelled", { durationMs: Date.now() - entry.record.createdAt, cancelled: true }),
-        );
+        emit(auditEvent(entry.record, "cancelled", { durationMs: Date.now() - entry.record.createdAt, cancelled: true }));
       }
     }
     entries.clear();

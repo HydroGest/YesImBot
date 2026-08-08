@@ -34,10 +34,7 @@ export class ChannelArtifactStore implements ArtifactStore {
     if (!parsed) throw new Error("Invalid artifact URI");
     const directory = join(this.path(), parsed.toolName, parsed.uuid);
     try {
-      const [bytes, metadataRaw] = await Promise.all([
-        readFile(join(directory, "data")),
-        readFile(join(directory, "metadata.json"), "utf-8"),
-      ]);
+      const [bytes, metadataRaw] = await Promise.all([readFile(join(directory, "data")), readFile(join(directory, "metadata.json"), "utf-8")]);
       const metadata = parseMetadata(JSON.parse(metadataRaw), bytes.byteLength);
       return { bytes: new Uint8Array(bytes), mediaType: metadata.mediaType, filename: metadata.filename };
     } catch (cause) {
@@ -69,10 +66,7 @@ class ChannelArtifactWriter implements ArtifactWriter {
     const directory = join(base, uuid);
     const temporary = join(base, `.${uuid}.tmp`);
     await mkdir(temporary, { recursive: true });
-    await Promise.all([
-      writeFile(join(temporary, "data"), bytes),
-      writeFile(join(temporary, "metadata.json"), JSON.stringify(normalized)),
-    ]);
+    await Promise.all([writeFile(join(temporary, "data"), bytes), writeFile(join(temporary, "metadata.json"), JSON.stringify(normalized))]);
     await rename(temporary, directory);
     return `artifact://${this.toolName}/${uuid}`;
   }
@@ -82,20 +76,14 @@ function assertSafeArtifactName(name: string): void {
   if (typeof name !== "string" || !SAFE_ARTIFACT_NAME.test(name)) throw new Error("Invalid artifact tool name");
 }
 
-function parseMetadata(
-  value: unknown,
-  byteLength: number,
-): { filename?: string; mediaType?: string; byteLength: number } {
+function parseMetadata(value: unknown, byteLength: number): { filename?: string; mediaType?: string; byteLength: number } {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid artifact metadata");
   const metadata = value as Record<string, unknown>;
-  if (Object.keys(metadata).some((key) => !["filename", "mediaType", "byteLength"].includes(key)))
-    throw new Error("Invalid artifact metadata");
+  if (Object.keys(metadata).some((key) => !["filename", "mediaType", "byteLength"].includes(key))) throw new Error("Invalid artifact metadata");
   const filename = metadata.filename;
-  if (filename !== undefined && (typeof filename !== "string" || !isSafeBasename(filename)))
-    throw new Error("Invalid artifact filename");
+  if (filename !== undefined && (typeof filename !== "string" || !isSafeBasename(filename))) throw new Error("Invalid artifact filename");
   const mediaType = metadata.mediaType;
-  if (mediaType !== undefined && (typeof mediaType !== "string" || !SAFE_MEDIA_TYPE.test(mediaType)))
-    throw new Error("Invalid artifact media type");
+  if (mediaType !== undefined && (typeof mediaType !== "string" || !SAFE_MEDIA_TYPE.test(mediaType))) throw new Error("Invalid artifact media type");
   if (metadata.byteLength !== byteLength || !Number.isSafeInteger(metadata.byteLength) || metadata.byteLength < 0)
     throw new Error("Artifact metadata byte length mismatch");
   return {
@@ -110,9 +98,7 @@ function isSafeBasename(filename: string): boolean {
 }
 
 function parseArtifactUri(uri: string): { toolName: string; uuid: string } | undefined {
-  const match = uri.match(
-    /^artifact:\/\/([a-zA-Z0-9_-]+)\/([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/,
-  );
+  const match = uri.match(/^artifact:\/\/([a-zA-Z0-9_-]+)\/([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/);
   if (!match) return undefined;
   assertSafeArtifactName(match[1]!);
   return { toolName: match[1]!, uuid: match[2]! };

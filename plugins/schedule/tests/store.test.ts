@@ -1,18 +1,7 @@
 import { Context } from "cordis";
 import { clone, makeArray, pick } from "cosmokit";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
-import {
-  Database,
-  Driver,
-  Eval,
-  executeEval,
-  executeQuery,
-  executeSort,
-  executeUpdate,
-  Field,
-  RuntimeError,
-  Selection,
-} from "minato";
+import { Database, Driver, Eval, executeEval, executeQuery, executeSort, executeUpdate, Field, RuntimeError, Selection } from "minato";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ScheduleStore, registerScheduleModel } from "../src/store.js";
@@ -63,9 +52,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     this.store = Object.create(null);
   }
   public async stats(): Promise<Driver.Stats> {
-    const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]),
-    );
+    const tables = Object.fromEntries(Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]));
     return { tables, size: 0 };
   }
   public async prepare(): Promise<void> {}
@@ -568,9 +555,7 @@ describe("ScheduleStore", () => {
     });
     await store.cancel(sharedScope, created.id);
 
-    await expect(store.update(sharedScope, created.id, { kind: "cron", cron: "0 9 * * 1-5" })).rejects.toThrow(
-      /cannot change its rule/,
-    );
+    await expect(store.update(sharedScope, created.id, { kind: "cron", cron: "0 9 * * 1-5" })).rejects.toThrow(/cannot change its rule/);
   });
 
   it("rejects operations on unknown schedule ids", async () => {

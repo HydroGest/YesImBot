@@ -9,9 +9,7 @@ export interface AgentStorage<T = AgentEntry> {
   read: () => Promise<Readonly<T[]>> | Readonly<T[]>;
 }
 
-export function createMemoryStorage<T extends AgentEntry = AgentEntry>(
-  initialEntries: readonly T[] = [],
-): AgentStorage<T> {
+export function createMemoryStorage<T extends AgentEntry = AgentEntry>(initialEntries: readonly T[] = []): AgentStorage<T> {
   const entries: T[] = [...initialEntries];
 
   return {
@@ -48,9 +46,7 @@ export function createJsonlStorage(filePath: string): AgentStorage<AgentEntry> {
           try {
             entries.push(JSON.parse(line) as AgentEntry);
           } catch (error) {
-            throw new SyntaxError(
-              `Invalid JSON at line ${i + 1}: ${error instanceof Error ? error.message : String(error)}`,
-            );
+            throw new SyntaxError(`Invalid JSON at line ${i + 1}: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
         return entries;

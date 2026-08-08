@@ -79,8 +79,7 @@ export class ChannelResources {
 
     try {
       if (parsed.protocol === "asset:") {
-        if (!COMPLETE_ASSET_ID.test(parsed.hostname) || parsed.pathname !== "")
-          throw new ResourceReadError("invalid_resource_uri");
+        if (!COMPLETE_ASSET_ID.test(parsed.hostname) || parsed.pathname !== "") throw new ResourceReadError("invalid_resource_uri");
         try {
           return normalize({ bytes: await this.assets.get(parsed.hostname) });
         } catch {
@@ -112,10 +111,8 @@ export class ChannelResources {
   }
 
   public use(reader: ResourceReader): Disposer {
-    if (reader.scheme === "asset" || reader.scheme === "artifact")
-      throw new Error(`Scheme "${reader.scheme}" is reserved`);
-    if (this.readers.has(reader.scheme))
-      throw new Error(`Resource reader for scheme "${reader.scheme}" is already registered`);
+    if (reader.scheme === "asset" || reader.scheme === "artifact") throw new Error(`Scheme "${reader.scheme}" is reserved`);
+    if (this.readers.has(reader.scheme)) throw new Error(`Resource reader for scheme "${reader.scheme}" is already registered`);
     this.readers.set(reader.scheme, reader);
     return () => {
       if (this.readers.get(reader.scheme) === reader) this.readers.delete(reader.scheme);
@@ -142,11 +139,7 @@ export class ChannelResources {
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     try {
-      const result = await Promise.race([
-        reader.init(this, uri, { signal: controller.signal, maxBytes: READ_MAX_BYTES }),
-        timed,
-        cancelled,
-      ]);
+      const result = await Promise.race([reader.init(this, uri, { signal: controller.signal, maxBytes: READ_MAX_BYTES }), timed, cancelled]);
       if (signal?.aborted) throw new ResourceReadError("resource_read_aborted");
       return normalize(result);
     } catch (cause) {
@@ -189,8 +182,7 @@ function normalize(value: unknown): ResourceOpenResult {
   if (result.bytes.byteLength > READ_MAX_BYTES) throw new ResourceReadError("resource_too_large");
   if (result.mediaType !== undefined && !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(result.mediaType))
     throw new Error("Invalid resource media type");
-  if (result.filename !== undefined && (result.filename.length === 0 || /[\\/\0]/.test(result.filename)))
-    throw new Error("Invalid resource filename");
+  if (result.filename !== undefined && (result.filename.length === 0 || /[\\/\0]/.test(result.filename))) throw new Error("Invalid resource filename");
   return result as ResourceOpenResult;
 }
 

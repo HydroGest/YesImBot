@@ -32,8 +32,7 @@ export const createAgentChannel = (options?: CreateAgentChannelOptions): AgentCh
       );
     }
 
-    if (emitOptions?.save && options?.persist)
-      promises.push(Promise.resolve().then(async () => options.persist(event, emitOptions)));
+    if (emitOptions?.save && options?.persist) promises.push(Promise.resolve().then(async () => options.persist(event, emitOptions)));
 
     await Promise.all(promises);
   };

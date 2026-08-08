@@ -108,13 +108,9 @@ function formatStickerPrompt(config: StickerConfig): string {
     "- sticker_steal 收藏当前消息中的图片；",
     "- sticker_send 发送指定或随机表情包。",
     "不要自己编造或直接输出 artifact://、asset://、workspace:// 等资源 URI；这些 URI 只能由系统生成。",
-    ...(config.tagMode
-      ? ["- sticker_tags 查询实验性标签；sticker_send 可传多个 tags，并会从匹配分随机范围内发送。"]
-      : []),
+    ...(config.tagMode ? ["- sticker_tags 查询实验性标签；sticker_send 可传多个 tags，并会从匹配分随机范围内发送。"] : []),
     ...(config.stickerElement
-      ? [
-          '也可以直接输出 <sticker id="..."/>、<sticker category="..."/> 或 <sticker tags="可爱,猫"/> 发送表情，不需要调用 sticker_send。',
-        ]
+      ? ['也可以直接输出 <sticker id="..."/>、<sticker category="..."/> 或 <sticker tags="可爱,猫"/> 发送表情，不需要调用 sticker_send。']
       : []),
     config.stickerElement ? "需要发图时可直接输出 <sticker/>，或调用 sticker_send。" : "需要发图时调用 sticker_send。",
     'sticker_search 返回的 id 只能用于 sticker_send 或 <sticker id="..."/>，不能拼成任何 URI。',

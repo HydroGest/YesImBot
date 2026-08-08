@@ -16,21 +16,12 @@ export default class GlobalBrainPlugin {
     " 全局脑插件：让同一个 Bot 在多个群聊和私聊之间共享值得保留的知识、问题与经验。某个会话写入的内容会持久化到全局脑，其他会话按需读取，并自行判断是否回复、转发或吸收。";
   public static readonly inject = ["yesimbot"];
   public static readonly Config: Schema<GlobalBrainConfig> = Schema.object({
-    shareImmediately: Schema.boolean()
-      .default(false)
-      .description("允许 brain_deposit 在请求时立即向其他 session 唤起一次请求"),
+    shareImmediately: Schema.boolean().default(false).description("允许 brain_deposit 在请求时立即向其他 session 唤起一次请求"),
     storageDir: Schema.string().default("").description("全局脑存储目录；留空时使用 <baseDir>/global-brain"),
-    brainPrompt: Schema.string()
-      .role("textarea")
-      .default("")
-      .description("全局脑对 agent 的提示词；留空使用内置默认提示词"),
+    brainPrompt: Schema.string().role("textarea").default("").description("全局脑对 agent 的提示词；留空使用内置默认提示词"),
     maxDigestThreads: Schema.number().min(1).max(20).default(5).description("每次自然 turn 最多摘要的全局脑新内容数量"),
     maxDigestReplies: Schema.number().min(1).max(20).default(5).description("每次自然 turn 最多摘要的回复线程数量"),
-    maxDigestContentLength: Schema.number()
-      .min(1)
-      .max(2000)
-      .default(80)
-      .description("全局脑摘要中每条内容的最大字符数"),
+    maxDigestContentLength: Schema.number().min(1).max(2000).default(80).description("全局脑摘要中每条内容的最大字符数"),
     maxBlobBytes: Schema.number()
       .min(1)
       .default(5 * 1024 * 1024)
@@ -56,9 +47,7 @@ export default class GlobalBrainPlugin {
   public async start(): Promise<void> {
     this.dispose?.();
     this.dispose = undefined;
-    const storageDir = this.config.storageDir
-      ? resolve(this.ctx.baseDir, this.config.storageDir)
-      : join(this.ctx.baseDir, "global-brain");
+    const storageDir = this.config.storageDir ? resolve(this.ctx.baseDir, this.config.storageDir) : join(this.ctx.baseDir, "global-brain");
     const store = createGlobalBrainStore({
       filePath: join(storageDir, "brain.jsonl"),
       maxDigestThreads: this.config.maxDigestThreads,
@@ -100,10 +89,7 @@ export default class GlobalBrainPlugin {
         defaultShareImmediately: this.config.shareImmediately,
         onImmediateShare: (thread) => this.enqueueImmediateShare(thread, scope),
       }),
-      appendSystemPrompt: () =>
-        this.config.brainPrompt && this.config.brainPrompt.trim().length > 0
-          ? this.config.brainPrompt
-          : formatBrainPrompt(),
+      appendSystemPrompt: () => (this.config.brainPrompt && this.config.brainPrompt.trim().length > 0 ? this.config.brainPrompt : formatBrainPrompt()),
       prepareStep: async (messages, context) => {
         if (injectedTurn === context.turnId) return messages;
         injectedTurn = context.turnId;

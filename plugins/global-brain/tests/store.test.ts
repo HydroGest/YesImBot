@@ -76,9 +76,7 @@ describe("GlobalBrainStore", () => {
       expect(reply.id).toBe(view?.replies[0]?.id);
 
       await expect(store.resolve(thread.id, scopeA as never)).resolves.toMatchObject({ status: "resolved" });
-      await expect(store.reply({ threadId: thread.id, sourceScope: scopeB as never, content: "晚了" })).rejects.toThrow(
-        /resolved/i,
-      );
+      await expect(store.reply({ threadId: thread.id, sourceScope: scopeB as never, content: "晚了" })).rejects.toThrow(/resolved/i);
     });
   });
 
@@ -126,12 +124,7 @@ describe("GlobalBrainStore", () => {
       });
 
       const scopes = await store.participantScopes();
-      expect(scopes).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ channelId: "group-a" }),
-          expect.objectContaining({ channelId: "group-b" }),
-        ]),
-      );
+      expect(scopes).toEqual(expect.arrayContaining([expect.objectContaining({ channelId: "group-a" }), expect.objectContaining({ channelId: "group-b" })]));
     });
   });
 

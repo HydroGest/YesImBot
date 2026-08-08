@@ -259,13 +259,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isRawQqExport(value: unknown): value is RawQqExport {
-  return (
-    isRecord(value) &&
-    isRecord(value.chatInfo) &&
-    "statistics" in value &&
-    Array.isArray(value.messages) &&
-    isRecord(value.exportOptions)
-  );
+  return isRecord(value) && isRecord(value.chatInfo) && "statistics" in value && Array.isArray(value.messages) && isRecord(value.exportOptions);
 }
 
 function normalizeConversationType(value: unknown): QqConversationType {
@@ -278,12 +272,7 @@ function readString(value: unknown): string | undefined {
 }
 
 function inferGroupChannelId(fileName: string, chatInfo: RawChatInfo): string | undefined {
-  return (
-    fileName.match(/\(([^()]+)\)(?:_[^.]*)?\.json$/u)?.[1] ??
-    readString(chatInfo.channelId) ??
-    readString(chatInfo.groupUin) ??
-    readString(chatInfo.uin)
-  );
+  return fileName.match(/\(([^()]+)\)(?:_[^.]*)?\.json$/u)?.[1] ?? readString(chatInfo.channelId) ?? readString(chatInfo.groupUin) ?? readString(chatInfo.uin);
 }
 
 function inferPrivateChannelId(messages: RawMessage[], botSelfId: string, chatInfo: RawChatInfo): string | undefined {
@@ -294,18 +283,9 @@ function inferPrivateChannelId(messages: RawMessage[], botSelfId: string, chatIn
   return readString(chatInfo.channelId) ?? readString(chatInfo.uin);
 }
 
-function inferChannelId(
-  filePath: string,
-  conversationType: QqConversationType,
-  chatInfo: RawChatInfo,
-  messages: RawMessage[],
-  botSelfId: string,
-): string {
+function inferChannelId(filePath: string, conversationType: QqConversationType, chatInfo: RawChatInfo, messages: RawMessage[], botSelfId: string): string {
   const fileName = basename(filePath);
-  const channelId =
-    conversationType === "group"
-      ? inferGroupChannelId(fileName, chatInfo)
-      : `private:${inferPrivateChannelId(messages, botSelfId, chatInfo)}`;
+  const channelId = conversationType === "group" ? inferGroupChannelId(fileName, chatInfo) : `private:${inferPrivateChannelId(messages, botSelfId, chatInfo)}`;
   if (!channelId) throw new Error(`Unable to infer QQ channel id for ${fileName}`);
   return channelId;
 }
@@ -402,9 +382,7 @@ async function parseQqExportFile(filePath: string, botSelfId: string): Promise<P
   if (!isRawQqExport(parsed)) throw new Error(`Unsupported QQ export shape: ${basename(filePath)}`);
   const conversationType = normalizeConversationType(parsed.chatInfo.type);
   const channelId = inferChannelId(filePath, conversationType, parsed.chatInfo, parsed.messages, botSelfId);
-  return parsed.messages.map((message, index) =>
-    normalizeMessage(message, index, filePath, conversationType, channelId, botSelfId),
-  );
+  return parsed.messages.map((message, index) => normalizeMessage(message, index, filePath, conversationType, channelId, botSelfId));
 }
 
 async function discoverInputFiles(input: string): Promise<string[]> {
@@ -478,10 +456,7 @@ function estimateTokens(value: string): number {
 }
 
 function estimateRequestTokens(messages: ImportMessage[]): number {
-  return messages.reduce(
-    (total, message) => total + estimateTokens(`${message.role}\n${message.content}\n${message.chat_time}`),
-    0,
-  );
+  return messages.reduce((total, message) => total + estimateTokens(`${message.role}\n${message.content}\n${message.chat_time}`), 0);
 }
 
 function createChunk(
@@ -647,9 +622,7 @@ export async function buildQqMemosImportPlan(config: QqMemosImportConfig): Promi
   }
 
   const inputFiles = await discoverInputFiles(config.input);
-  const parsedMessages = (
-    await Promise.all(inputFiles.map((file) => parseQqExportFile(file, config.botSelfId)))
-  ).flat();
+  const parsedMessages = (await Promise.all(inputFiles.map((file) => parseQqExportFile(file, config.botSelfId)))).flat();
   const deduped = dedupeMessages(parsedMessages);
   const importable = deduped.messages.filter(shouldImportMessage);
   const chunks = createChunks(importable, {
@@ -701,10 +674,7 @@ function sanitizeErrorMessage(message: string, apiKey: string): string {
   return message.replaceAll(`Token ${apiKey}`, "Token [REDACTED]").replaceAll(apiKey, "[REDACTED]");
 }
 
-async function postMemosRequest(
-  request: ImportAddMessageRequest,
-  options: { baseUrl: string; apiKey: string; fetch: typeof fetch },
-): Promise<void> {
+async function postMemosRequest(request: ImportAddMessageRequest, options: { baseUrl: string; apiKey: string; fetch: typeof fetch }): Promise<void> {
   const response = await options.fetch(`${options.baseUrl.replace(/\/+$/u, "")}/add/message`, {
     method: "POST",
     headers: new Headers({

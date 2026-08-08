@@ -6,11 +6,7 @@ import type { Context } from "koishi";
 
 import type { McpClientTransport, McpHttpServer, McpServer, McpSseServer, McpStdioServer } from "./types.js";
 
-export async function connectMcpServer(
-  ctx: Context,
-  name: string,
-  server: McpServer,
-): Promise<{ client: Client; transport: McpClientTransport }> {
+export async function connectMcpServer(ctx: Context, name: string, server: McpServer): Promise<{ client: Client; transport: McpClientTransport }> {
   ctx.logger.info(`连接到 MCP 服务器 ${name}...`);
 
   switch (server.type) {
@@ -39,11 +35,7 @@ export function parseKeyValueString(input: string): Record<string, string> {
   return result;
 }
 
-async function connectToStdioServer(
-  ctx: Context,
-  name: string,
-  server: McpStdioServer,
-): Promise<{ client: Client; transport: StdioClientTransport }> {
+async function connectToStdioServer(ctx: Context, name: string, server: McpStdioServer): Promise<{ client: Client; transport: StdioClientTransport }> {
   ctx.logger.info(`连接到 STDIO 服务器 ${name}，命令: ${server.command} ${server.args?.join(" ")}`);
 
   const env = typeof server.env === "string" ? parseKeyValueString(server.env) : server.env;
@@ -60,19 +52,11 @@ async function connectToStdioServer(
   return { client, transport };
 }
 
-async function connectToHttpServer(
-  ctx: Context,
-  name: string,
-  server: McpHttpServer,
-): Promise<{ client: Client; transport: StreamableHTTPClientTransport }> {
+async function connectToHttpServer(ctx: Context, name: string, server: McpHttpServer): Promise<{ client: Client; transport: StreamableHTTPClientTransport }> {
   return connectToRemoteServer(ctx, name, "HTTP", server, StreamableHTTPClientTransport);
 }
 
-async function connectToSseServer(
-  ctx: Context,
-  name: string,
-  server: McpSseServer,
-): Promise<{ client: Client; transport: SSEClientTransport }> {
+async function connectToSseServer(ctx: Context, name: string, server: McpSseServer): Promise<{ client: Client; transport: SSEClientTransport }> {
   return connectToRemoteServer(ctx, name, "SSE", server, SSEClientTransport);
 }
 

@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import * as model from "../src/models/index.js";
 import { ModelService } from "../src/models/index.js";
 
 type ModelProvider = Parameters<ModelService["register"]>[0];
@@ -136,11 +135,7 @@ describe("models.json modalities", () => {
 
   it("does not expose provider-declared image modalities without a models.json override", async () => {
     const path = await createModelsPath({});
-    const service = await createModelService(
-      JSON.parse(await readFile(path, "utf8")),
-      path.slice(0, -"/models.json".length),
-      createProviderWithImage(),
-    );
+    const service = await createModelService(JSON.parse(await readFile(path, "utf8")), path.slice(0, -"/models.json".length), createProviderWithImage());
 
     expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toBeUndefined();
   });

@@ -24,9 +24,7 @@ function reader(scheme: string, prompt: string, init: ResourceReader["init"]): R
   return { scheme, prompt, init };
 }
 
-async function createResources(
-  overrides: { readTimeoutMs?: number } = {},
-): Promise<ChannelResources> {
+async function createResources(overrides: { readTimeoutMs?: number } = {}): Promise<ChannelResources> {
   return new ChannelResources(await tempRoot(), null, overrides.readTimeoutMs ?? 10_000);
 }
 
@@ -72,26 +70,32 @@ describe("read tool resource errors", () => {
   it("rejects traversal attempts", async () => {
     const resources = await createResources();
     const tool = createReadTool(resources, false);
-    await expect(tool.execute({ uri: "workspace:///../secret" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({ error: "invalid_resource_uri" });
+    await expect(tool.execute({ uri: "workspace:///../secret" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({
+      error: "invalid_resource_uri",
+    });
   });
 
   it("returns unavailable for unregistered schemes", async () => {
     const resources = await createResources();
     const tool = createReadTool(resources, false);
-    await expect(tool.execute({ uri: "skill://csv/SKILL.md" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({ error: "resource_unavailable" });
+    await expect(tool.execute({ uri: "skill://csv/SKILL.md" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({
+      error: "resource_unavailable",
+    });
   });
 
   it("respects timeout configuration", async () => {
     const resources = await createResources({ readTimeoutMs: 1 });
-    resources.use(reader("test", "test", async (_resources, _uri, { signal }) => {
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => resolve({ bytes: PNG_BYTES }), 100);
-        signal.addEventListener("abort", () => {
-          clearTimeout(timeout);
-          reject(new Error("Aborted"));
+    resources.use(
+      reader("test", "test", async (_resources, _uri, { signal }) => {
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => resolve({ bytes: PNG_BYTES }), 100);
+          signal.addEventListener("abort", () => {
+            clearTimeout(timeout);
+            reject(new Error("Aborted"));
+          });
         });
-      });
-    }));
+      }),
+    );
     const tool = createReadTool(resources, false);
     await expect(tool.execute({ uri: "test:///file" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({ error: "timeout" });
   });
@@ -109,7 +113,10 @@ describe("read tool resource errors", () => {
     resources.use(reader("abort", "abort", async () => Promise.withResolvers<{ bytes: Uint8Array }>().promise));
     const tool = createReadTool(resources, false);
     const controller = new AbortController();
-    const pending = tool.execute({ uri: "abort:///file" }, { toolCallId: "c", abortSignal: controller.signal } as never);
+    const pending = tool.execute({ uri: "abort:///file" }, {
+      toolCallId: "c",
+      abortSignal: controller.signal,
+    } as never);
     controller.abort();
     await expect(pending).resolves.toMatchObject({ error: expect.any(String) });
   });
@@ -118,12 +125,16 @@ describe("read tool resource errors", () => {
     const resources = await createResources();
     resources.use(reader("unsafe", "unsafe", async () => ({ bytes: new Uint8Array([1]), filename: "../secret.txt" })));
     const tool = createReadTool(resources, false);
-    await expect(tool.execute({ uri: "unsafe:///file" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({ error: "resource_read_failed" });
+    await expect(tool.execute({ uri: "unsafe:///file" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({
+      error: "resource_read_failed",
+    });
 
     const oversizedResources = await createResources();
     oversizedResources.use(reader("large", "large", async () => ({ bytes: new Uint8Array(5 * 1024 * 1024 + 1) })));
     const oversizedTool = createReadTool(oversizedResources, false);
-    await expect(oversizedTool.execute({ uri: "large:///file" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({ error: "resource_too_large" });
+    await expect(oversizedTool.execute({ uri: "large:///file" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({
+      error: "resource_too_large",
+    });
   });
 
   it("rejects an empty path before dispatching a custom scheme", async () => {
@@ -131,7 +142,9 @@ describe("read tool resource errors", () => {
     const open = vi.fn(async () => ({ bytes: PNG_BYTES }));
     resources.use(reader("custom", "custom", open));
     const tool = createReadTool(resources, false);
-    await expect(tool.execute({ uri: "custom:///" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({ error: "invalid_resource_uri" });
+    await expect(tool.execute({ uri: "custom:///" }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({
+      error: "invalid_resource_uri",
+    });
     expect(open).not.toHaveBeenCalled();
   });
 
@@ -155,18 +168,17 @@ describe("read tool resource errors", () => {
       "asset://SHORT",
       "asset://a6e2b32e1d9d64b2e906ac5c3216d18f/extra",
     ]) {
-      await expect(tool.execute({ uri }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({ error: "invalid_resource_uri" });
+      await expect(tool.execute({ uri }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({
+        error: "invalid_resource_uri",
+      });
     }
   });
 });
 
 describe("prepareOutputSegments", () => {
-  async function resourcesWith(
-    open: ResourceReader["init"],
-    registrations: Map<string, ResourceReader> = new Map(),
-  ): Promise<ChannelResources> {
+  async function resourcesWith(open: ResourceReader["init"], registrations: Map<string, ResourceReader> = new Map()): Promise<ChannelResources> {
     const resources = await createResources();
-    for (const [scheme, r] of registrations) resources.use(r);
+    for (const [_scheme, r] of registrations) resources.use(r);
     if (!registrations.has("workspace")) {
       resources.use(reader("workspace", "workspace 文件引用", open));
     }
@@ -174,7 +186,11 @@ describe("prepareOutputSegments", () => {
   }
 
   it("resolves a workspace image source to a data URL before delivery", async () => {
-    const resources = await resourcesWith(async () => ({ bytes: PNG_BYTES, mediaType: "image/png", filename: "chart.png" }));
+    const resources = await resourcesWith(async () => ({
+      bytes: PNG_BYTES,
+      mediaType: "image/png",
+      filename: "chart.png",
+    }));
 
     const prepared = await prepareOutputSegments(
       [
@@ -275,13 +291,8 @@ describe("prepareOutputSegments", () => {
 
   it("materializes ordinary files with a generic MIME fallback", async () => {
     const resources = await resourcesWith(async () => ({ bytes: new Uint8Array([1, 2, 3]), filename: "report.bin" }));
-    const prepared = await prepareOutputSegments(
-      [[{ type: "file", attrs: { src: "workspace:///reports/report.bin" }, children: [] }]],
-      resources,
-    );
-    expect((prepared[0]![0] as { attrs: { src: string } }).attrs.src).toContain(
-      "data:application/octet-stream;base64,",
-    );
+    const prepared = await prepareOutputSegments([[{ type: "file", attrs: { src: "workspace:///reports/report.bin" }, children: [] }]], resources);
+    expect((prepared[0]![0] as { attrs: { src: string } }).attrs.src).toContain("data:application/octet-stream;base64,");
   });
 
   it("leaves audio and video output untouched", async () => {
@@ -300,10 +311,7 @@ describe("prepareOutputSegments", () => {
 
   it("does not trust an image MIME hint for arbitrary output bytes", async () => {
     const resources = await resourcesWith(async () => ({ bytes: new Uint8Array([1, 2, 3]), mediaType: "image/png" }));
-    const prepared = await prepareOutputSegments(
-      [[{ type: "img", attrs: { src: "workspace:///fake.png" }, children: [] }]],
-      resources,
-    );
+    const prepared = await prepareOutputSegments([[{ type: "img", attrs: { src: "workspace:///fake.png" }, children: [] }]], resources);
     expect(prepared).toHaveLength(0);
   });
 });
@@ -314,7 +322,10 @@ describe("read tool model projection", () => {
   ): Promise<{ tool: ReadTool; resources: ChannelResources }> {
     const resources = await createResources();
     const budget = overrides.imageBudget === undefined ? null : overrides.imageBudget;
-    return { tool: createReadTool(new ChannelResources(resources.path, budget), overrides.imageCapable ?? false), resources };
+    return {
+      tool: createReadTool(new ChannelResources(resources.path, budget), overrides.imageCapable ?? false),
+      resources,
+    };
   }
 
   async function readAndProject(tool: ReadTool, uri: string, toolCallId = "call-1") {
@@ -342,7 +353,10 @@ describe("read tool model projection", () => {
     const id = await resources.assets.put(PNG_BYTES);
     expect((await readAndProject(tool, `asset://${id}`)).output.type).toBe("json");
 
-    const { tool: budgetless, resources: budgetlessResources } = await createTool({ imageCapable: true, imageBudget: null });
+    const { tool: budgetless, resources: budgetlessResources } = await createTool({
+      imageCapable: true,
+      imageBudget: null,
+    });
     const id2 = await budgetlessResources.assets.put(PNG_BYTES);
     expect((await readAndProject(budgetless, `asset://${id2}`)).output.type).toBe("json");
   });

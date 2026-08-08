@@ -100,41 +100,23 @@ interface ResourceProbe {
 }
 
 /** Persists inbound image and restricted text-file elements while the Session is live. */
-export async function persistElements(
-  ctx: Context,
-  elements: readonly Element[],
-  resources: ChannelResources,
-): Promise<Element[]> {
+export async function persistElements(ctx: Context, elements: readonly Element[], resources: ChannelResources): Promise<Element[]> {
   const budget: ResourceBudget = { images: 0, files: 0, bytes: 0 };
   return Promise.all(elements.map((element) => persistElement(ctx, element, resources.assets, budget)));
 }
 
-async function persistElement(
-  ctx: Context,
-  element: Element,
-  store: AssetStore,
-  budget: ResourceBudget,
-): Promise<Element> {
+async function persistElement(ctx: Context, element: Element, store: AssetStore, budget: ResourceBudget): Promise<Element> {
   if (element.type === "img") return storeImage(ctx, element, store, budget);
   if (element.type === "file") return storeTextFile(ctx, element, store, budget);
   if (element.children.length === 0) return element;
-  return h(
-    element.type,
-    element.attrs,
-    await Promise.all(element.children.map((child) => persistElement(ctx, child, store, budget))),
-  );
+  return h(element.type, element.attrs, await Promise.all(element.children.map((child) => persistElement(ctx, child, store, budget))));
 }
 
 async function storeImage(ctx: Context, element: Element, store: AssetStore, budget: ResourceBudget): Promise<Element> {
   if (typeof element.attrs.src !== "string" || budget.images >= MAX_IMAGES) return element;
   budget.images += 1;
   try {
-    const data = await loadResource(
-      ctx,
-      element.attrs.src,
-      "image",
-      Math.min(MAX_BYTES_PER_IMAGE, MAX_TOTAL_BYTES - budget.bytes),
-    );
+    const data = await loadResource(ctx, element.attrs.src, "image", Math.min(MAX_BYTES_PER_IMAGE, MAX_TOTAL_BYTES - budget.bytes));
     if (budget.bytes + data.byteLength > MAX_TOTAL_BYTES) return element;
     budget.bytes += data.byteLength;
     return h("img", {
@@ -148,23 +130,13 @@ async function storeImage(ctx: Context, element: Element, store: AssetStore, bud
   }
 }
 
-async function storeTextFile(
-  ctx: Context,
-  element: Element,
-  store: AssetStore,
-  budget: ResourceBudget,
-): Promise<Element> {
+async function storeTextFile(ctx: Context, element: Element, store: AssetStore, budget: ResourceBudget): Promise<Element> {
   if (typeof element.attrs.src !== "string" || budget.files >= MAX_FILES) return element;
   const filename = fileName(element);
   if (!filename || !hasTextFileExtension(filename)) return element;
   budget.files += 1;
   try {
-    const data = await loadResource(
-      ctx,
-      element.attrs.src,
-      "text",
-      Math.min(MAX_BYTES_PER_FILE, MAX_TOTAL_BYTES - budget.bytes),
-    );
+    const data = await loadResource(ctx, element.attrs.src, "text", Math.min(MAX_BYTES_PER_FILE, MAX_TOTAL_BYTES - budget.bytes));
     if (budget.bytes + data.byteLength > MAX_TOTAL_BYTES || !isUtf8Text(data)) return element;
     budget.bytes += data.byteLength;
     return h("file", { id: await store.put(data), title: filename });
@@ -205,13 +177,7 @@ async function loadResource(ctx: Context, src: string, kind: ResourceKind, maxBy
   }
 }
 
-async function loadResourceBytes(
-  ctx: Context,
-  src: string,
-  kind: ResourceKind,
-  signal: AbortSignal,
-  maxBytes: number,
-): Promise<Uint8Array> {
+async function loadResourceBytes(ctx: Context, src: string, kind: ResourceKind, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
   const data = decodeDataUrl(src, maxBytes);
   if (data) return data;
   signal.throwIfAborted();
@@ -219,13 +185,7 @@ async function loadResourceBytes(
   return loadRemote(ctx, src, kind, signal, maxBytes);
 }
 
-async function loadRemote(
-  ctx: Context,
-  src: string,
-  kind: ResourceKind,
-  signal: AbortSignal,
-  maxBytes: number,
-): Promise<Uint8Array> {
+async function loadRemote(ctx: Context, src: string, kind: ResourceKind, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
   const probe = await headProbe(ctx, src);
   if (probe && ((probe.length !== null && probe.length > maxBytes) || !matchesKind(probe.type, kind))) {
     throw new Error("Resource rejected by HEAD pre-check");
@@ -265,11 +225,7 @@ async function loadLocalFile(src: string, signal: AbortSignal, maxBytes: number)
   return data;
 }
 
-async function readBoundedStream(
-  stream: ReadableStream<Uint8Array>,
-  signal: AbortSignal,
-  maxBytes: number,
-): Promise<Uint8Array> {
+async function readBoundedStream(stream: ReadableStream<Uint8Array>, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let length = 0;
@@ -306,9 +262,7 @@ function decodeDataUrl(src: string, maxBytes: number): Uint8Array | null {
   const [, _mime, base64, payload] = match;
   if (base64 && Math.ceil(payload.length / 4) * 3 > maxBytes) throw new Error("Resource exceeds byte limit");
   if (!base64 && payload.length > maxBytes) throw new Error("Resource exceeds byte limit");
-  const decoded = base64
-    ? new Uint8Array(Buffer.from(payload, "base64"))
-    : new TextEncoder().encode(decodeURIComponent(payload));
+  const decoded = base64 ? new Uint8Array(Buffer.from(payload, "base64")) : new TextEncoder().encode(decodeURIComponent(payload));
   if (decoded.byteLength > maxBytes) throw new Error("Resource exceeds byte limit");
   return decoded;
 }

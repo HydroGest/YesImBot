@@ -4,14 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgent } from "../src/agent.js";
 import { createAgentChannel } from "../src/channel.js";
 import { createMessageEntry } from "../src/entry.js";
-import {
-  buildModelMessages,
-  createAssistantMessage,
-  createCustomMessage,
-  createSystemMessage,
-  createToolMessage,
-  createUserMessage,
-} from "../src/message.js";
+import { buildModelMessages, createAssistantMessage, createCustomMessage, createSystemMessage, createToolMessage, createUserMessage } from "../src/message.js";
 import { createPluginHost } from "../src/plugin.js";
 import type { AgentPlugin } from "../src/plugin.js";
 import { createStateManager } from "../src/state.js";

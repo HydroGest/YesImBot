@@ -72,9 +72,7 @@ function createModel(): TestModel {
   return {
     tables,
     extend: vi.fn(),
-    get: vi.fn(async (table: string, query: Record<string, unknown>) =>
-      (tables.get(table) ?? []).filter((row) => matches(row, query)),
-    ),
+    get: vi.fn(async (table: string, query: Record<string, unknown>) => (tables.get(table) ?? []).filter((row) => matches(row, query))),
     create: vi.fn(async (table: string, row: ScheduleRow) => {
       const rows = tables.get(table) ?? [];
       rows.push(row);
@@ -200,14 +198,7 @@ describe("SchedulePlugin", () => {
 
     const agent = factories[0]?.({ scope: { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } });
     expect(agent).toBeDefined();
-    expect(await toolNames(agent!)).toEqual([
-      "schedule_create",
-      "schedule_list",
-      "schedule_update",
-      "schedule_pause",
-      "schedule_resume",
-      "schedule_cancel",
-    ]);
+    expect(await toolNames(agent!)).toEqual(["schedule_create", "schedule_list", "schedule_update", "schedule_pause", "schedule_resume", "schedule_cancel"]);
     expect(plugin).toBeDefined();
   });
 
@@ -256,13 +247,7 @@ describe("SchedulePlugin", () => {
       channelId: "room",
       isDirect: false,
     };
-    expect(
-      await create.action!(
-        { session: sharedSession, options: { at: "2099-01-01T00:00:00Z" } },
-        "日报",
-        "每天早上写一份日报",
-      ),
-    ).toContain("已创建定时任务");
+    expect(await create.action!({ session: sharedSession, options: { at: "2099-01-01T00:00:00Z" } }, "日报", "每天早上写一份日报")).toContain("已创建定时任务");
 
     const rows = model.tables.get("yesimbot_schedule")!;
     expect(rows).toHaveLength(1);
@@ -284,9 +269,7 @@ describe("SchedulePlugin", () => {
       channelId: "user-1",
       isDirect: true,
     };
-    expect(
-      await create.action!({ session: directSession, options: { cron: "0 9 * * 1" } }, "周报", "每周一写周报"),
-    ).toContain("已创建定时任务");
+    expect(await create.action!({ session: directSession, options: { cron: "0 9 * * 1" } }, "周报", "每周一写周报")).toContain("已创建定时任务");
     const weekly = rows.find((row) => row.title === "周报")!;
     expect(weekly).toMatchObject({
       type: "direct",
@@ -299,9 +282,7 @@ describe("SchedulePlugin", () => {
     });
 
     const id = rows[0].id;
-    expect(await update.action!({ session: sharedSession, options: { title: "日报 v2" } }, id)).toContain(
-      "已更新定时任务",
-    );
+    expect(await update.action!({ session: sharedSession, options: { title: "日报 v2" } }, id)).toContain("已更新定时任务");
     expect(rows.find((row) => row.id === id)).toMatchObject({ title: "日报 v2" });
 
     expect(await pause.action!({ session: sharedSession, options: {} }, id)).toContain("已暂停");
@@ -328,9 +309,7 @@ describe("SchedulePlugin", () => {
     };
     expect(await cancel.action!({ session: otherSession, options: {} }, id)).toContain("取消失败");
     // A Session-less invocation is rejected before any Store operation.
-    expect(await create.action!({ session: undefined, options: { at: "2099-01-01T00:00:00Z" } }, "无会话", "p")).toBe(
-      "无法获取当前频道信息",
-    );
+    expect(await create.action!({ session: undefined, options: { at: "2099-01-01T00:00:00Z" } }, "无会话", "p")).toBe("无法获取当前频道信息");
 
     expect(references(plugin, sharedSession)).toBe(false);
     expect(references(plugin, directSession)).toBe(false);
@@ -367,9 +346,7 @@ describe("SchedulePlugin", () => {
   it("rearms the running scheduler for Agent creation of earlier work", async () => {
     vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
     const model = createModel();
-    model.tables.set("yesimbot_schedule", [
-      futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" }),
-    ]);
+    model.tables.set("yesimbot_schedule", [futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" })]);
     const { ctx, ready, factories, trigger } = createContext(model);
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
@@ -386,9 +363,7 @@ describe("SchedulePlugin", () => {
   it("rearms the running scheduler for authority-4 command creation of earlier work", async () => {
     vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
     const model = createModel();
-    model.tables.set("yesimbot_schedule", [
-      futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" }),
-    ]);
+    model.tables.set("yesimbot_schedule", [futureRow({ at: "2026-08-01T03:00:00.000Z", nextRunAt: "2026-08-01T03:00:00.000Z" })]);
     const { ctx, ready, commands, trigger } = createContext(model);
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
@@ -414,10 +389,7 @@ describe("SchedulePlugin", () => {
     const pause = tools.find((tool) => tool.name === "schedule_pause")!;
     const resume = tools.find((tool) => tool.name === "schedule_resume")!;
     const cancel = tools.find((tool) => tool.name === "schedule_cancel")!;
-    const created = (await create.execute!(
-      { title: "agent", prompt: "Run.", at: "2099-01-01T00:00:00Z" },
-      {} as never,
-    )) as { id: string };
+    const created = (await create.execute!({ title: "agent", prompt: "Run.", at: "2099-01-01T00:00:00Z" }, {} as never)) as { id: string };
 
     await update.execute!({ id: created.id, title: "agent v2" }, {} as never);
     await pause.execute!({ id: created.id }, {} as never);

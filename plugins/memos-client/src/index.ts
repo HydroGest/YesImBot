@@ -10,10 +10,7 @@ import { createAddMessageTool } from "./tools/core/add-message.js";
 import { createSearchMessageTool } from "./tools/core/search-message.js";
 import type { MemosChannelType, MemosClientConfig } from "./types.js";
 
-function captureMessageEvent(
-  message: AgentMessage,
-  assign: (snapshot: { authorId: string; messageId: string; channelType: MemosChannelType }) => void,
-): void {
+function captureMessageEvent(message: AgentMessage, assign: (snapshot: { authorId: string; messageId: string; channelType: MemosChannelType }) => void): void {
   if (!isMessage(message)) {
     return;
   }

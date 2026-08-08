@@ -18,12 +18,26 @@ describe("Conversation.compact", () => {
     generateText.mockResolvedValue({ text: "LLM memory" });
     const root = await mkdtemp(join(tmpdir(), "yesimbot-conversation-"));
     roots.push(root);
-    const conversation = new Conversation(root, { threshold: 0.9, charTokenRatio: 1.8, minMessages: 2, maxFailures: 3 });
+    const conversation = new Conversation(root, {
+      threshold: 0.9,
+      charTokenRatio: 1.8,
+      minMessages: 2,
+      maxFailures: 3,
+    });
     await conversation.init();
-    await conversation.storage.append(createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }), createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }));
+    await conversation.storage.append(
+      createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }),
+      createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }),
+    );
 
     await expect(conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toEqual({ compacted: true });
-    expect(generateText).toHaveBeenCalledWith(expect.objectContaining({ model: expect.anything(), system: expect.stringContaining("Athena"), prompt: expect.stringContaining("persona") }));
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: expect.anything(),
+        system: expect.stringContaining("Athena"),
+        prompt: expect.stringContaining("persona"),
+      }),
+    );
     expect((await conversation.list()).filter((item) => item.isActive)).toHaveLength(1);
     expect(await conversation.storage.read()).toHaveLength(1);
   });
@@ -32,21 +46,43 @@ describe("Conversation.compact", () => {
     generateText.mockResolvedValue({ text: " " });
     const root = await mkdtemp(join(tmpdir(), "yesimbot-conversation-"));
     roots.push(root);
-    const conversation = new Conversation(root, { threshold: 0.9, charTokenRatio: 1.8, minMessages: 2, maxFailures: 3 });
+    const conversation = new Conversation(root, {
+      threshold: 0.9,
+      charTokenRatio: 1.8,
+      minMessages: 2,
+      maxFailures: 3,
+    });
     await conversation.init();
-    await conversation.storage.append(createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }), createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }));
+    await conversation.storage.append(
+      createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }),
+      createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }),
+    );
     const before = await conversation.list();
-    await expect(conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toMatchObject({ compacted: false, reason: "empty_summary" });
+    await expect(conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toMatchObject({
+      compacted: false,
+      reason: "empty_summary",
+    });
     expect(await conversation.list()).toEqual(before);
   });
   it("skips model compaction below the minimum message count", async () => {
     generateText.mockReset();
     const root = await mkdtemp(join(tmpdir(), "yesimbot-conversation-"));
     roots.push(root);
-    const conversation = new Conversation(root, { threshold: 0.9, charTokenRatio: 1.8, minMessages: 3, maxFailures: 3 });
+    const conversation = new Conversation(root, {
+      threshold: 0.9,
+      charTokenRatio: 1.8,
+      minMessages: 3,
+      maxFailures: 3,
+    });
     await conversation.init();
-    await conversation.storage.append(createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }), createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }));
-    await expect(conversation.compact("auto", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toEqual({ compacted: false, reason: "minimum_messages" });
+    await conversation.storage.append(
+      createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }),
+      createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }),
+    );
+    await expect(conversation.compact("auto", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toEqual({
+      compacted: false,
+      reason: "minimum_messages",
+    });
     expect(generateText).not.toHaveBeenCalled();
   });
 
@@ -54,11 +90,22 @@ describe("Conversation.compact", () => {
     generateText.mockReset().mockRejectedValue(new Error("model unavailable"));
     const root = await mkdtemp(join(tmpdir(), "yesimbot-conversation-"));
     roots.push(root);
-    const conversation = new Conversation(root, { threshold: 0.9, charTokenRatio: 1.8, minMessages: 2, maxFailures: 3 });
+    const conversation = new Conversation(root, {
+      threshold: 0.9,
+      charTokenRatio: 1.8,
+      minMessages: 2,
+      maxFailures: 3,
+    });
     await conversation.init();
-    await conversation.storage.append(createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }), createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }));
+    await conversation.storage.append(
+      createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }),
+      createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }),
+    );
     const before = await conversation.status();
-    await expect(conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toEqual({ compacted: false, reason: "model_failure" });
+    await expect(conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toEqual({
+      compacted: false,
+      reason: "model_failure",
+    });
     expect(await conversation.status()).toEqual(before);
   });
 
@@ -66,26 +113,48 @@ describe("Conversation.compact", () => {
     generateText.mockReset().mockRejectedValueOnce(new Error("temporary")).mockResolvedValueOnce({ text: "stable memory" });
     const root = await mkdtemp(join(tmpdir(), "yesimbot-conversation-"));
     roots.push(root);
-    const conversation = new Conversation(root, { threshold: 0.9, charTokenRatio: 1.8, minMessages: 2, maxFailures: 2 });
+    const conversation = new Conversation(root, {
+      threshold: 0.9,
+      charTokenRatio: 1.8,
+      minMessages: 2,
+      maxFailures: 2,
+    });
     await conversation.init();
     const sourceSession = (await conversation.status()).active!.filename.replace(/\.jsonl$/, "");
-    await conversation.storage.append(createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }), createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }));
+    await conversation.storage.append(
+      createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }),
+      createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }),
+    );
     await conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" });
     await expect(conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toEqual({ compacted: true });
     const entries = await conversation.storage.read();
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ type: "compact", data: expect.objectContaining({ sourceSession, summary: "stable memory" }) });
+    expect(entries[0]).toMatchObject({
+      type: "compact",
+      data: expect.objectContaining({ sourceSession, summary: "stable memory" }),
+    });
   });
 
   it("stops trying after the configured consecutive failure limit", async () => {
     generateText.mockReset().mockRejectedValue(new Error("model unavailable"));
     const root = await mkdtemp(join(tmpdir(), "yesimbot-conversation-"));
     roots.push(root);
-    const conversation = new Conversation(root, { threshold: 0.9, charTokenRatio: 1.8, minMessages: 2, maxFailures: 1 });
+    const conversation = new Conversation(root, {
+      threshold: 0.9,
+      charTokenRatio: 1.8,
+      minMessages: 2,
+      maxFailures: 1,
+    });
     await conversation.init();
-    await conversation.storage.append(createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }), createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }));
+    await conversation.storage.append(
+      createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }),
+      createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }),
+    );
     await conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" });
-    await expect(conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toEqual({ compacted: false, reason: "failure_limit" });
+    await expect(conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toEqual({
+      compacted: false,
+      reason: "failure_limit",
+    });
     expect(generateText).toHaveBeenCalledOnce();
   });
 });

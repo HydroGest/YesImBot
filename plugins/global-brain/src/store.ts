@@ -334,10 +334,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
       return serialize(async () => {
         const key = scopeKey(scope);
         const threadItems = [...threads.values()]
-          .filter(
-            (thread) =>
-              thread.status === "open" && scopeKey(thread.sourceScope) !== key && !isThreadSeen(thread.id, key),
-          )
+          .filter((thread) => thread.status === "open" && scopeKey(thread.sourceScope) !== key && !isThreadSeen(thread.id, key))
           .sort((left, right) => right.createdAt - left.createdAt)
           .slice(0, options.maxDigestThreads);
         const replyItems = [...threads.values()]
@@ -414,9 +411,7 @@ function isBrainContent(value: unknown): value is BrainContent {
   }
   if (content.kind === "forward") {
     return (
-      typeof content.platform === "string" &&
-      typeof content.forwardId === "string" &&
-      (content.summary === undefined || typeof content.summary === "string")
+      typeof content.platform === "string" && typeof content.forwardId === "string" && (content.summary === undefined || typeof content.summary === "string")
     );
   }
   return false;
@@ -425,11 +420,7 @@ function isBrainContent(value: unknown): value is BrainContent {
 function isSeenRecord(value: unknown): value is BrainSeenRecord {
   if (typeof value !== "object" || value === null) return false;
   const seen = value as Partial<BrainSeenRecord>;
-  return (
-    typeof seen.scopeKey === "string" &&
-    typeof seen.seenAt === "number" &&
-    (typeof seen.threadId === "string" || typeof seen.replyId === "string")
-  );
+  return typeof seen.scopeKey === "string" && typeof seen.seenAt === "number" && (typeof seen.threadId === "string" || typeof seen.replyId === "string");
 }
 
 function isReply(value: unknown): value is BrainReply {
@@ -464,8 +455,7 @@ function requireContent(content: string): string {
 }
 
 function requirePayload(payload: BrainContent): BrainContent {
-  if (!isBrainContent(payload))
-    throw new BrainStoreError("invalid_payload", "Payload is not a supported brain content");
+  if (!isBrainContent(payload)) throw new BrainStoreError("invalid_payload", "Payload is not a supported brain content");
   return payload;
 }
 

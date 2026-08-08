@@ -74,8 +74,7 @@ export class Channels implements Resources {
   }
 
   public use(reader: ResourceReader): Disposer {
-    if (this.readers.has(reader.scheme))
-      throw new Error(`Resource reader for scheme "${reader.scheme}" is already registered`);
+    if (this.readers.has(reader.scheme)) throw new Error(`Resource reader for scheme "${reader.scheme}" is already registered`);
     const disposers = new Map<Channel, Disposer>();
     this.readers.set(reader.scheme, reader);
     this.readerDisposers.set(reader, disposers);
@@ -118,11 +117,8 @@ export class Channels implements Resources {
         continue;
       }
       try {
-        const manifest = parseManifest(
-          JSON.parse(await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")),
-        );
-        if (channelDirectoryName(manifest) !== entry.name)
-          throw new Error("Manifest directory name does not match directory");
+        const manifest = parseManifest(JSON.parse(await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")));
+        if (channelDirectoryName(manifest) !== entry.name) throw new Error("Manifest directory name does not match directory");
         this.manifests.set(scopeKey(manifest), manifest);
       } catch (cause) {
         this.logger.error("storage.manifest_invalid", { directoryName: entry.name, cause });
@@ -137,8 +133,7 @@ export class Channels implements Resources {
       const root = join(this.channelsPath, directory);
       try {
         const stat = await fs.lstat(root);
-        if (!stat.isDirectory() || stat.isSymbolicLink())
-          throw new Error("Channel storage destination is not a directory");
+        if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Channel storage destination is not a directory");
         const manifest = parseManifest(JSON.parse(await fs.readFile(join(root, "channel.json"), "utf8")));
         if (scopeKey(manifest) !== key) throw new Error("Channel storage integrity mismatch");
         this.manifests.set(key, manifest);
@@ -163,22 +158,18 @@ export class Channels implements Resources {
     if ((await fs.lstat(root)).isSymbolicLink()) throw new Error("Channel directory is a symbolic link");
     const realRoot = await fs.realpath(root);
     const rel = relative(this.channelsPath, realRoot);
-    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel))
-      throw new Error("Resolved storage path escapes its channel root");
+    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) throw new Error("Resolved storage path escapes its channel root");
     return root;
   }
 }
 
 export function scopeMapKey(scope: ChannelScope): string {
-  return scope.type === "direct"
-    ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`
-    : `shared:${scope.platform}:${scope.channelId}`;
+  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
 }
 
 export function channelDirectoryName(scope: ChannelScope): string {
   assertScope(scope);
-  const encode = (value: string): string =>
-    [...value].map((char) => (/[A-Za-z0-9]/.test(char) ? char : `%${char.codePointAt(0)!.toString(16)}%`)).join("");
+  const encode = (value: string): string => [...value].map((char) => (/[A-Za-z0-9]/.test(char) ? char : `%${char.codePointAt(0)!.toString(16)}%`)).join("");
   return (
     scope.type === "direct"
       ? ["direct", encode(scope.platform), encode(scope.channelId), encode(scope.selfId)]
@@ -191,12 +182,9 @@ function scopeKey(scope: ChannelScope): string {
 }
 
 function assertScope(scope: ChannelScope): void {
-  if (scope.type !== "shared" && scope.type !== "direct")
-    throw new TypeError("ChannelScope.type must be 'shared' or 'direct'");
-  if (typeof scope.platform !== "string" || scope.platform.length === 0)
-    throw new TypeError("ChannelScope.platform must be a non-empty string");
-  if (typeof scope.channelId !== "string" || scope.channelId.length === 0)
-    throw new TypeError("ChannelScope.channelId must be a non-empty string");
+  if (scope.type !== "shared" && scope.type !== "direct") throw new TypeError("ChannelScope.type must be 'shared' or 'direct'");
+  if (typeof scope.platform !== "string" || scope.platform.length === 0) throw new TypeError("ChannelScope.platform must be a non-empty string");
+  if (typeof scope.channelId !== "string" || scope.channelId.length === 0) throw new TypeError("ChannelScope.channelId must be a non-empty string");
   if (scope.type === "direct" && (typeof scope.selfId !== "string" || scope.selfId.length === 0))
     throw new TypeError("ChannelScope.selfId must be a non-empty string");
 }
@@ -205,13 +193,8 @@ function parseManifest(value: unknown): ChannelManifest {
   if (typeof value !== "object" || value === null) throw new Error("Channel manifest is not an object");
   const manifest = value as Partial<ChannelManifest>;
   if (manifest.type !== "shared" && manifest.type !== "direct") throw new Error("Channel manifest type is invalid");
-  if (
-    typeof manifest.platform !== "string" ||
-    typeof manifest.channelId !== "string" ||
-    typeof manifest.createdAt !== "string"
-  )
+  if (typeof manifest.platform !== "string" || typeof manifest.channelId !== "string" || typeof manifest.createdAt !== "string")
     throw new Error("Channel manifest is invalid");
-  if (manifest.type === "direct" && typeof manifest.selfId !== "string")
-    throw new Error("Channel manifest selfId is invalid");
+  if (manifest.type === "direct" && typeof manifest.selfId !== "string") throw new Error("Channel manifest selfId is invalid");
   return manifest as ChannelManifest;
 }

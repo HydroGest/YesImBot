@@ -239,19 +239,7 @@ describe("MemOS tools", () => {
 
     expect(tool.name).toBe("add_message");
     expect(schema).toContain("content");
-    for (const forbidden of [
-      "messages",
-      "role",
-      "user_id",
-      "conversation_id",
-      "agent_id",
-      "chat_time",
-      "tags",
-      "info",
-      "baseUrl",
-      "apiKey",
-      "async_mode",
-    ]) {
+    for (const forbidden of ["messages", "role", "user_id", "conversation_id", "agent_id", "chat_time", "tags", "info", "baseUrl", "apiKey", "async_mode"]) {
       expect(schema).not.toContain(forbidden);
     }
   });

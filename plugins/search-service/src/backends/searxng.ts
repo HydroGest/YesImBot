@@ -103,9 +103,7 @@ class SearXNGBackend implements SearchBackend {
   public createSearchTool(): AgentTool<SearXNGSearchInput, WebSearchOutput> {
     return {
       name: "web_search",
-      description:
-        "Search the web for current information, news, facts, or web content. " +
-        "Returns structured JSON with titles, URLs, and snippets.",
+      description: "Search the web for current information, news, facts, or web content. " + "Returns structured JSON with titles, URLs, and snippets.",
       inputSchema: searchInputSchema,
       execute: async (input) => this.search(input),
     };
@@ -122,12 +120,7 @@ class SearXNGBackend implements SearchBackend {
       categories: categories?.join(","),
       language: input.language ?? this.config.language,
       time_range: input.timeRange,
-      safesearch:
-        input.safeSearch != null
-          ? String(input.safeSearch)
-          : this.config.safeSearch != null
-            ? String(this.config.safeSearch)
-            : undefined,
+      safesearch: input.safeSearch != null ? String(input.safeSearch) : this.config.safeSearch != null ? String(this.config.safeSearch) : undefined,
     };
     const headers: Record<string, string> = {};
 
@@ -170,12 +163,7 @@ class SearXNGBackend implements SearchBackend {
   }
 }
 
-export function createSearXNGBackend(
-  ctx: Context,
-  config: SearXNGConfig | undefined,
-  runtime: SearchRuntimeConfig,
-  logger: Logger,
-): SearchBackend {
+export function createSearXNGBackend(ctx: Context, config: SearXNGConfig | undefined, runtime: SearchRuntimeConfig, logger: Logger): SearchBackend {
   if (!config?.endpoint) {
     throw new Error("SearXNG provider requires searxng.endpoint to be configured");
   }

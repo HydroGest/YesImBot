@@ -102,11 +102,7 @@ export interface CoreSystemPromptOptions {
   readonly logger?: Logger;
 }
 
-async function readPromptFile(
-  basePath: string,
-  fileName: "AGENTS.md" | "PERSONA.md",
-  logger?: Logger,
-): Promise<string | undefined> {
+async function readPromptFile(basePath: string, fileName: "AGENTS.md" | "PERSONA.md", logger?: Logger): Promise<string | undefined> {
   try {
     const content = (await readFile(join(basePath, fileName), "utf8")).trim();
     return content.length > 0 ? content : undefined;
@@ -125,12 +121,7 @@ export async function readPersona(basePath: string, logger?: Logger): Promise<st
 }
 
 function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 }
 
 function wrap(tag: "agents" | "persona", content: string): SystemModelMessage {
@@ -155,10 +146,7 @@ function formatRuntimeContext(channel: ChannelScope, selfId: string): SystemMode
 }
 
 export async function buildCoreSystemPrompt(options: CoreSystemPromptOptions): Promise<SystemModelMessage[]> {
-  const [agents, persona] = await Promise.all([
-    readPromptFile(options.basePath, "AGENTS.md", options.logger),
-    readPersona(options.basePath, options.logger),
-  ]);
+  const [agents, persona] = await Promise.all([readPromptFile(options.basePath, "AGENTS.md", options.logger), readPersona(options.basePath, options.logger)]);
 
   return [
     { role: "system", content: coreConstitution(options.customInnerThought) },

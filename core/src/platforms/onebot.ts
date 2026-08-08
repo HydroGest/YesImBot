@@ -41,12 +41,7 @@ export function translateOneBotEvent(base: RecordBase, session: Session): EventR
   });
 }
 
-export async function translateOneBotMessage(
-  ctx: Context,
-  base: RecordBase,
-  session: Session,
-  resources: ChannelResources,
-): Promise<MessageRecord | null> {
+export async function translateOneBotMessage(ctx: Context, base: RecordBase, session: Session, resources: ChannelResources): Promise<MessageRecord | null> {
   if (session.type !== "message-created" || !Array.isArray(session.elements)) return null;
   if (typeof session.messageId !== "string" || session.messageId.length === 0) return null;
   return {
@@ -63,15 +58,12 @@ function recordBase(session: Session): RecordBase {
     timestamp: session.timestamp,
     channel: {
       id: session.channelId ?? "",
-      type:
-        session.event.channel?.type ?? (session.isDirect ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
+      type: session.event.channel?.type ?? (session.isDirect ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
       ...(session.event.channel?.name === undefined ? {} : { name: session.event.channel.name }),
     },
     user: {
       id: session.userId || session.event.user?.id || session.author?.id || "",
-      ...((session.event.user?.name ?? session.author?.name) === undefined
-        ? {}
-        : { name: session.event.user?.name ?? session.author?.name }),
+      ...((session.event.user?.name ?? session.author?.name) === undefined ? {} : { name: session.event.user?.name ?? session.author?.name }),
     },
   };
 }

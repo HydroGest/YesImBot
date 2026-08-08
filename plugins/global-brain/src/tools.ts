@@ -237,10 +237,7 @@ function createBrainStatusTool(options: BrainToolOptions): AgentTool {
   };
 }
 
-async function resolveDepositInput(
-  input: BrainDepositToolInput,
-  options: BrainToolOptions,
-): Promise<{ content: string; payload: BrainContent }> {
+async function resolveDepositInput(input: BrainDepositToolInput, options: BrainToolOptions): Promise<{ content: string; payload: BrainContent }> {
   if (input.assetId) {
     const bytes = await options.assets.get(input.assetId);
     const blobId = await options.store.putBlob(bytes);
@@ -277,12 +274,7 @@ async function resolveDepositInput(
   return { content: input.content, payload: { kind: "text", text: input.content } };
 }
 
-async function materializeView(
-  view: BrainThreadView,
-  store: GlobalBrainStore,
-  assets: AssetStore,
-  scope: ChannelScope,
-): Promise<BrainThreadView> {
+async function materializeView(view: BrainThreadView, store: GlobalBrainStore, assets: AssetStore, scope: ChannelScope): Promise<BrainThreadView> {
   const payload = view.thread.payload;
   if (payload?.kind === "forward") {
     if (payload.platform !== scope.platform) return view;

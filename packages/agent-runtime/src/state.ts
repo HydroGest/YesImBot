@@ -14,10 +14,7 @@ export interface AgentStateManager {
   update(updater: (current: AgentState) => AgentState): Promise<AgentState> | AgentState;
 }
 
-export function createStateManager(options: {
-  storage: AgentStorage<AgentEntry>;
-  initialState?: AgentState;
-}): AgentStateManager {
+export function createStateManager(options: { storage: AgentStorage<AgentEntry>; initialState?: AgentState }): AgentStateManager {
   let current = options.initialState ?? { version: 1 };
 
   return {

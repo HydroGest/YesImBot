@@ -39,13 +39,7 @@ export function firstFrameToPng(input: Uint8Array): StaticFrame | undefined {
     if (reader.numFrames() === 0) return undefined;
     const width = reader.width;
     const height = reader.height;
-    if (
-      !Number.isInteger(width) ||
-      !Number.isInteger(height) ||
-      width <= 0 ||
-      height <= 0 ||
-      width * height > MAX_FRAME_PIXELS
-    ) {
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width * height > MAX_FRAME_PIXELS) {
       return undefined;
     }
 
@@ -101,9 +95,7 @@ function decodeStaticImage(input: Uint8Array, mediaType: string): RgbaImage | un
 }
 
 function hasValidDimensions(width: number, height: number): boolean {
-  return (
-    Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0 && width * height <= MAX_FRAME_PIXELS
-  );
+  return Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0 && width * height <= MAX_FRAME_PIXELS;
 }
 
 function encodeRgbaToGif(rgba: Uint8Array, width: number, height: number): Uint8Array {

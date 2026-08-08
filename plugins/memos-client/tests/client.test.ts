@@ -36,9 +36,11 @@ describe("memosConfigSchema", () => {
 
 describe("MemosCloudClient", () => {
   it("posts search requests with token auth", async () => {
-    const post = vi.fn<() => Promise<{ code: number; data: { memory_detail_list: never[] }; message: string }>>(
-      async () => ({ code: 0, data: { memory_detail_list: [] }, message: "ok" }),
-    );
+    const post = vi.fn<() => Promise<{ code: number; data: { memory_detail_list: never[] }; message: string }>>(async () => ({
+      code: 0,
+      data: { memory_detail_list: [] },
+      message: "ok",
+    }));
     const client = new MemosCloudClient({
       baseUrl: DEFAULT_MEMOS_BASE_URL,
       apiKey: "mpg-test",
@@ -142,9 +144,7 @@ describe("MemosCloudClient", () => {
         code: "api_error",
         apiCode: 40132,
       });
-      expect((error as Error).message).toBe(
-        "MemOS searchMemory failed with code 40132: Authorization failed for Token [REDACTED]",
-      );
+      expect((error as Error).message).toBe("MemOS searchMemory failed with code 40132: Authorization failed for Token [REDACTED]");
       expect(JSON.stringify(error)).not.toContain("mpg-secret-key");
       return true;
     });

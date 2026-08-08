@@ -110,9 +110,7 @@ export default class McpClientPlugin {
     let registeredTools: AgentTool[] = [];
 
     const publishAgentPlugin = () => {
-      registeredTools = [...registry.values()]
-        .flatMap(({ tools }) => Object.values(tools))
-        .sort((left, right) => left.name.localeCompare(right.name));
+      registeredTools = [...registry.values()].flatMap(({ tools }) => Object.values(tools)).sort((left, right) => left.name.localeCompare(right.name));
 
       for (const tool of registeredTools) {
         this.logger.info(`注册工具 ${tool.name}`);
@@ -158,15 +156,12 @@ export default class McpClientPlugin {
 
     this.ctx.logger.info("注册 MCP 客户端工具...");
     for (const [name, client] of this.clients.entries()) {
-      
       client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
         try {
           await refreshServerTools(name, client);
           publishAgentPlugin();
         } catch (error) {
-          this.ctx.logger.error(
-            `刷新 MCP 服务器 ${name} 工具失败: ${error instanceof Error ? error.message : String(error)}`,
-          );
+          this.ctx.logger.error(`刷新 MCP 服务器 ${name} 工具失败: ${error instanceof Error ? error.message : String(error)}`);
         }
       });
       await refreshServerTools(name, client);
@@ -227,12 +222,7 @@ function wrapToolWithArtifacts(tool: AgentTool, artifacts: ArtifactStore): Agent
         }
 
         const mediaType = typeof block.mimeType === "string" ? block.mimeType.toLowerCase() : undefined;
-        if (
-          block.type === "image" &&
-          typeof block.data === "string" &&
-          mediaType !== undefined &&
-          SUPPORTED_IMAGE_MIMES[mediaType]
-        ) {
+        if (block.type === "image" && typeof block.data === "string" && mediaType !== undefined && SUPPORTED_IMAGE_MIMES[mediaType]) {
           const bytes = decodeInlineImage(block.data);
           if (!bytes) {
             lines.push("[图片资源：数据无效或大小超出限制]");

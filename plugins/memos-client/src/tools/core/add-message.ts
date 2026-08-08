@@ -7,9 +7,7 @@ export interface AddMessageToolInput {
   content: string;
 }
 
-export type AddMessageToolOutput =
-  | { outcome: "persisted" | "accepted"; taskId?: string }
-  | { outcome: "failed"; error: { code: string; message: string } };
+export type AddMessageToolOutput = { outcome: "persisted" | "accepted"; taskId?: string } | { outcome: "failed"; error: { code: string; message: string } };
 
 export interface AddMessageToolOptions {
   client: MemosCloudClient;
@@ -28,9 +26,7 @@ function sanitizeErrorMessage(error: unknown, apiKey: string): string {
   return message.replaceAll(`Token ${apiKey}`, "Token [REDACTED]").replaceAll(apiKey, "[REDACTED]");
 }
 
-export function createAddMessageTool(
-  options: AddMessageToolOptions,
-): AgentTool<AddMessageToolInput, AddMessageToolOutput> {
+export function createAddMessageTool(options: AddMessageToolOptions): AgentTool<AddMessageToolInput, AddMessageToolOutput> {
   return {
     name: "add_message",
     description: "Write a durable long-term memory candidate to MemOS.",

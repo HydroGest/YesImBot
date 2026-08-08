@@ -90,12 +90,7 @@ async function execute(tool: AgentTool, input: unknown): Promise<unknown> {
 describe("sticker agent tools", () => {
   it("exposes the expected sticker tool names", () => {
     const { tools } = createDeps();
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "sticker_steal",
-      "sticker_send",
-      "sticker_categories",
-      "sticker_search",
-    ]);
+    expect(tools.map((tool) => tool.name)).toEqual(["sticker_steal", "sticker_send", "sticker_categories", "sticker_search"]);
   });
 
   it("exposes sticker_tags only in experimental tag mode", () => {
@@ -189,10 +184,7 @@ describe("sticker agent tools", () => {
 
   it("sticker_send keeps exact tag matching when fuzzy matching is disabled", async () => {
     const deps = createDeps({ tagMode: true, fuzzyTagMatch: false });
-    deps.store.listByScopeKey.mockResolvedValue([
-      projection({ id: "a".repeat(64), tags: ["猫猫"] }),
-      projection({ id: "b".repeat(64), tags: ["猫"] }),
-    ]);
+    deps.store.listByScopeKey.mockResolvedValue([projection({ id: "a".repeat(64), tags: ["猫猫"] }), projection({ id: "b".repeat(64), tags: ["猫"] })]);
     const [, sendTool] = deps.tools;
 
     const result = await execute(sendTool, { tags: ["猫"] });

@@ -112,10 +112,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
         id: saved.sticker.id,
         category: saved.sticker.category,
         tags: saved.sticker.tags,
-        message:
-          saved.status === "duplicate"
-            ? `表情包已存在于分类：${saved.sticker.category}`
-            : `已收藏到分类：${saved.sticker.category}`,
+        message: saved.status === "duplicate" ? `表情包已存在于分类：${saved.sticker.category}` : `已收藏到分类：${saved.sticker.category}`,
       };
     },
   };
@@ -126,13 +123,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
       "发送一个已收藏的表情包。",
       "可用 sticker_categories 和 sticker_search 查询；sticker_id 优先，也可按 category 随机或按 index 指定。",
       ...(config.sendStaticAsGif ? ["静态图片会自动转成单帧 GIF 后发送。"] : []),
-      ...(config.tagMode
-        ? [
-            `也可仅传 tags 选择多个标签，并从匹配分范围内的表情包中随机发送。${
-              config.fuzzyTagMatch ? "tag 默认支持模糊匹配。" : ""
-            }`,
-          ]
-        : []),
+      ...(config.tagMode ? [`也可仅传 tags 选择多个标签，并从匹配分范围内的表情包中随机发送。${config.fuzzyTagMatch ? "tag 默认支持模糊匹配。" : ""}`] : []),
     ].join("\n"),
     inputSchema: jsonSchema<SendStickerInput>({
       type: "object",
@@ -168,14 +159,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
           if (!selected) return { ok: false, error: "sticker_index_out_of_range" };
           sticker = selected;
         } else if (tags && tags.length > 0) {
-          const tagged = await pickBestTaggedSticker(
-            store,
-            scopeKey,
-            tags,
-            category,
-            config.fuzzyTagMatch,
-            config.tagRandomRange,
-          );
+          const tagged = await pickBestTaggedSticker(store, scopeKey, tags, category, config.fuzzyTagMatch, config.tagRandomRange);
           if (!tagged) return { ok: false, error: "sticker_not_found" };
           sticker = tagged;
         } else {
@@ -193,10 +177,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
           id: sticker.id,
           category: sticker.category,
           tags: sticker.tags,
-          message:
-            tags && tags.length > 0
-              ? `已按标签 ${tags.join("、")} 发送 ${sticker.category} 分类的表情包`
-              : `已发送 ${sticker.category} 分类的表情包`,
+          message: tags && tags.length > 0 ? `已按标签 ${tags.join("、")} 发送 ${sticker.category} 分类的表情包` : `已发送 ${sticker.category} 分类的表情包`,
         };
       } catch (cause) {
         return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
@@ -291,9 +272,7 @@ export async function pickBestTaggedSticker(
   if (normalized.length === 0) return null;
   const rows = await store.listByScopeKey(scopeKey);
   const scoped = category ? rows.filter((sticker) => sticker.category === category) : rows;
-  const matches = scoped.filter((sticker) =>
-    normalized.some((tag) => stickerMatches(sticker.tags, tag, fuzzyTagMatch)),
-  );
+  const matches = scoped.filter((sticker) => normalized.some((tag) => stickerMatches(sticker.tags, tag, fuzzyTagMatch)));
   if (matches.length === 0) return null;
   const score = (sticker: StickerProjection): number =>
     normalized.reduce((count, tag) => count + (stickerMatches(sticker.tags, tag, fuzzyTagMatch) ? 1 : 0), 0);

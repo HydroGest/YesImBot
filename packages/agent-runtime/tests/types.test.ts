@@ -107,9 +107,7 @@ describe("public types", () => {
     expectTypeOf<Array<keyof AgentCustomMessages>>().toEqualTypeOf<
       Array<"example.custom" | "example.user" | "compact.summary" | "custom.note" | "custom.visible">
     >();
-    expectTypeOf<Array<keyof AgentCustomEntries>>().toEqualTypeOf<
-      Array<"event" | "example.entry" | "message" | "state">
-    >();
+    expectTypeOf<Array<keyof AgentCustomEntries>>().toEqualTypeOf<Array<"event" | "example.entry" | "message" | "state">>();
     expectTypeOf<AgentCustomState>().toMatchTypeOf<{ exampleFlag?: boolean }>();
     expectTypeOf<Array<keyof AgentCustomChannelEvents>>().toEqualTypeOf<Array<"example" | "internal" | "stream">>();
     expectTypeOf<AgentInternalEventInit>().toMatchTypeOf<{
@@ -144,10 +142,7 @@ describe("public types", () => {
   it("exposes immutable Agent configuration", () => {
     type HasSetModel = "setModel" extends keyof Agent ? true : false;
     type HasSetTools = "setTools" extends keyof Agent ? true : false;
-    const prompt: SystemPromptAppend = [
-      "base",
-      { role: "system", content: "structured", providerOptions: { mock: {} } },
-    ];
+    const prompt: SystemPromptAppend = ["base", { role: "system", content: "structured", providerOptions: { mock: {} } }];
     const config: AgentConfig = { model: {} as never, systemPrompt: prompt };
 
     expect(config.systemPrompt).toBe(prompt);

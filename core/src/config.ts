@@ -96,9 +96,7 @@ export const Config: Schema<Config> = Schema.intersect([
         charactersPerSecond: Schema.number().min(1).default(8),
         maxTotalDelayMs: Schema.number().min(1).default(60_000),
       }),
-      customInnerThought: Schema.boolean()
-        .description("在系统提示中加入 Core 自定义 <inner_thought> 内心独白协议")
-        .default(false),
+      customInnerThought: Schema.boolean().description("在系统提示中加入 Core 自定义 <inner_thought> 内心独白协议").default(false),
     }),
   }).description("回复分段与节奏"),
   Schema.object({

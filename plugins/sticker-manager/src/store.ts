@@ -120,9 +120,7 @@ export class StickerStore {
       for (const row of rows) {
         counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
       }
-      return [...counts.entries()]
-        .map(([category, count]) => ({ category, count }))
-        .sort((left, right) => left.category.localeCompare(right.category));
+      return [...counts.entries()].map(([category, count]) => ({ category, count })).sort((left, right) => left.category.localeCompare(right.category));
     });
   }
 
@@ -135,9 +133,7 @@ export class StickerStore {
           counts.set(tag, (counts.get(tag) ?? 0) + 1);
         }
       }
-      return [...counts.entries()]
-        .map(([tag, count]) => ({ tag, count }))
-        .sort((left, right) => left.tag.localeCompare(right.tag));
+      return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((left, right) => left.tag.localeCompare(right.tag));
     });
   }
 
@@ -180,9 +176,7 @@ export class StickerStore {
 
   public listCategory(scopeKey: string, category: string): Promise<StickerProjection[]> {
     return this.mutate(async () => {
-      const rows = (await this.rows(scopeKey))
-        .filter((row) => row.category === category)
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      const rows = (await this.rows(scopeKey)).filter((row) => row.category === category).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
       return rows.map(toProjection);
     });
   }
@@ -191,11 +185,7 @@ export class StickerStore {
     return this.mutate(async () => {
       const target = normalizeCategory(newName);
       if (!target) throw new Error("新分类名不能为空");
-      const result = await this.model.set(
-        STICKER_TABLE,
-        { scopeKey, category: oldName },
-        { category: target, updatedAt: new Date().toISOString() },
-      );
+      const result = await this.model.set(STICKER_TABLE, { scopeKey, category: oldName }, { category: target, updatedAt: new Date().toISOString() });
       return result.matched ?? 0;
     });
   }
@@ -204,11 +194,7 @@ export class StickerStore {
     return this.mutate(async () => {
       const normalizedTarget = normalizeCategory(target);
       if (!normalizedTarget) throw new Error("目标分类名不能为空");
-      const result = await this.model.set(
-        STICKER_TABLE,
-        { scopeKey, category: source },
-        { category: normalizedTarget, updatedAt: new Date().toISOString() },
-      );
+      const result = await this.model.set(STICKER_TABLE, { scopeKey, category: source }, { category: normalizedTarget, updatedAt: new Date().toISOString() });
       return result.matched ?? 0;
     });
   }
@@ -217,22 +203,13 @@ export class StickerStore {
     return this.mutate(async () => {
       const target = normalizeCategory(category);
       if (!target) throw new Error("分类名不能为空");
-      const result = await this.model.set(
-        STICKER_TABLE,
-        { scopeKey, contentId },
-        { category: target, updatedAt: new Date().toISOString() },
-      );
+      const result = await this.model.set(STICKER_TABLE, { scopeKey, contentId }, { category: target, updatedAt: new Date().toISOString() });
       if (result.matched === 0) throw new Error("未找到该表情包");
       return result.matched ?? 0;
     });
   }
 
-  public updateClassification(
-    scopeKey: string,
-    contentId: string,
-    category: string,
-    tags?: readonly string[],
-  ): Promise<void> {
+  public updateClassification(scopeKey: string, contentId: string, category: string, tags?: readonly string[]): Promise<void> {
     return this.mutate(async () => {
       const row = await this.findRow(scopeKey, contentId);
       if (!row) throw new Error("未找到该表情包");
@@ -270,11 +247,7 @@ export class StickerStore {
       const row = await this.findRow(scopeKey, contentId);
       if (!row) throw new Error("未找到该表情包");
       const now = new Date().toISOString();
-      await this.model.set(
-        STICKER_TABLE,
-        { scopeKey, contentId },
-        { usageCount: row.usageCount + 1, lastUsedAt: now, updatedAt: now },
-      );
+      await this.model.set(STICKER_TABLE, { scopeKey, contentId }, { usageCount: row.usageCount + 1, lastUsedAt: now, updatedAt: now });
       return toProjection({ ...row, usageCount: row.usageCount + 1, lastUsedAt: now, updatedAt: now });
     });
   }
@@ -287,12 +260,7 @@ export class StickerStore {
     return this.mutate(async () => (await this.rows(scopeKey)).map(toProjection));
   }
 
-  public copyToScope(
-    sourceScopeKey: string,
-    targetScopeKey: string,
-    bytes: Uint8Array,
-    row: StickerRow,
-  ): Promise<SaveStickerResult> {
+  public copyToScope(sourceScopeKey: string, targetScopeKey: string, bytes: Uint8Array, row: StickerRow): Promise<SaveStickerResult> {
     return this.save({
       scopeKey: targetScopeKey,
       bytes,
@@ -330,9 +298,9 @@ export class StickerStore {
         await this.files.remove(name);
         deletedOrphanFiles += 1;
       }
-      const missingFiles = (
-        await Promise.all(rows.map(async (row) => ((await this.files.exists(row.contentId)) ? null : row.contentId)))
-      ).filter((contentId): contentId is string => contentId !== null);
+      const missingFiles = (await Promise.all(rows.map(async (row) => ((await this.files.exists(row.contentId)) ? null : row.contentId)))).filter(
+        (contentId): contentId is string => contentId !== null,
+      );
       return { orphanFiles: orphanFiles.length, missingFiles, deletedOrphanFiles };
     });
   }

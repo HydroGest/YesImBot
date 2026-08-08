@@ -1,9 +1,4 @@
-import type {
-  AssistantModelMessage,
-  SystemModelMessage,
-  ToolModelMessage,
-  UserModelMessage,
-} from "@ai-sdk/provider-utils";
+import type { AssistantModelMessage, SystemModelMessage, ToolModelMessage, UserModelMessage } from "@ai-sdk/provider-utils";
 import type { AssistantContent, LanguageModelUsage, ModelMessage, ToolContent, UserContent } from "ai";
 
 import { createRandomId } from "./id.js";
@@ -25,8 +20,7 @@ export interface AgentCustomMessages {
   custom: CustomMessageBase<"custom", unknown>;
 }
 
-export type AgentCustomMessage<T extends keyof AgentCustomMessages = keyof AgentCustomMessages> =
-  AgentCustomMessages[T];
+export type AgentCustomMessage<T extends keyof AgentCustomMessages = keyof AgentCustomMessages> = AgentCustomMessages[T];
 
 type AgentCustomMessageKey = Extract<keyof AgentCustomMessages, string>;
 
@@ -34,15 +28,9 @@ export type AgentCustomMessageType = {
   [K in AgentCustomMessageKey]: AgentCustomMessages[K] extends CustomMessageBase<K, unknown> ? K : never;
 }[AgentCustomMessageKey];
 
-export type AgentCustomMessageData<T extends AgentCustomMessageType> =
-  AgentCustomMessages[T] extends CustomMessageBase<T, infer D> ? D : never;
+export type AgentCustomMessageData<T extends AgentCustomMessageType> = AgentCustomMessages[T] extends CustomMessageBase<T, infer D> ? D : never;
 
-export type AgentMessage =
-  | AgentUserMessage
-  | AgentSystemMessage
-  | AgentAssistantMessage
-  | AgentToolMessage
-  | AgentCustomMessage;
+export type AgentMessage = AgentUserMessage | AgentSystemMessage | AgentAssistantMessage | AgentToolMessage | AgentCustomMessage;
 
 export interface AgentUserMessage extends AgentMessageBase, UserModelMessage {}
 
@@ -101,9 +89,7 @@ function isModelMessageRole(role: AgentMessage["role"]): role is Exclude<AgentMe
   return role === "system" || role === "user" || role === "assistant" || role === "tool";
 }
 
-function toPlainModelMessage(
-  message: AgentUserMessage | AgentAssistantMessage | AgentToolMessage | Extract<AgentMessage, { role: "system" }>,
-): ModelMessage {
+function toPlainModelMessage(message: AgentUserMessage | AgentAssistantMessage | AgentToolMessage | Extract<AgentMessage, { role: "system" }>): ModelMessage {
   switch (message.role) {
     case "system":
       return { role: "system", content: message.content };

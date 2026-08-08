@@ -47,10 +47,7 @@ describe("formatSkillsForPrompt", () => {
   });
 
   it("excludes skills with disableModelInvocation=true", () => {
-    const result = formatSkillsForPrompt([
-      skill({ name: "visible" }),
-      skill({ name: "hidden", disableModelInvocation: true }),
-    ]);
+    const result = formatSkillsForPrompt([skill({ name: "visible" }), skill({ name: "hidden", disableModelInvocation: true })]);
     expect(result).toContain("<name>visible</name>");
     expect(result).not.toContain("<name>hidden</name>");
   });

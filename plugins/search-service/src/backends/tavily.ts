@@ -17,12 +17,7 @@ export const tavilyConfigSchema: Schema<TavilyConfig> = Schema.object({
     .default("basic")
     .description("搜索深度"),
   topic: Schema.union([Schema.const("general"), Schema.const("news"), Schema.const("finance")]).description("搜索主题"),
-  timeRange: Schema.union([
-    Schema.const("day"),
-    Schema.const("week"),
-    Schema.const("month"),
-    Schema.const("year"),
-  ]).description("时间范围"),
+  timeRange: Schema.union([Schema.const("day"), Schema.const("week"), Schema.const("month"), Schema.const("year")]).description("时间范围"),
 });
 
 const searchInputSchema = jsonSchema<TavilySearchInput>({
@@ -151,9 +146,7 @@ class TavilyBackend implements SearchBackend {
   public createSearchTool(): AgentTool<TavilySearchInput, WebSearchOutput> {
     return {
       name: "web_search",
-      description:
-        "Search the web for current information, news, facts, or web content. " +
-        "Returns structured JSON with titles, URLs, and snippets.",
+      description: "Search the web for current information, news, facts, or web content. " + "Returns structured JSON with titles, URLs, and snippets.",
 
       inputSchema: searchInputSchema,
       execute: async (input) => this.search(input),
@@ -163,8 +156,7 @@ class TavilyBackend implements SearchBackend {
   public createScrapeTool(): AgentTool<TavilyScrapeInput, WebScrapeOutput> {
     return {
       name: "web_scrape",
-      description:
-        "Extract readable content from one or more web pages. " + "Use after web_search when full page text is needed.",
+      description: "Extract readable content from one or more web pages. " + "Use after web_search when full page text is needed.",
       inputSchema: scrapeInputSchema,
       execute: async (input) => {
         const normalized = normalizeUrlList(input.urls, MAX_URLS_PER_SCRAPE);
@@ -277,12 +269,7 @@ class TavilyBackend implements SearchBackend {
   }
 }
 
-export function createTavilyBackend(
-  ctx: Context,
-  config: TavilyConfig | undefined,
-  runtime: SearchRuntimeConfig,
-  logger: Logger,
-): SearchBackend {
+export function createTavilyBackend(ctx: Context, config: TavilyConfig | undefined, runtime: SearchRuntimeConfig, logger: Logger): SearchBackend {
   if (!config?.apiKey) {
     throw new Error("Tavily provider requires tavily.apiKey to be configured");
   }

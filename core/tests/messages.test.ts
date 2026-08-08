@@ -352,9 +352,7 @@ function context(history: readonly AgentMessage[], current: readonly AgentMessag
   return { history, current } as ModelMessageContext;
 }
 
-function plugin(
-  _imageBudget: { maxCount: number; maxBytesPerImage: number; maxTotalBytes: number } | null = null,
-): AgentPlugin {
+function plugin(_imageBudget: { maxCount: number; maxBytesPerImage: number; maxTotalBytes: number } | null = null): AgentPlugin {
   return modelInputPlugin();
 }
 
@@ -407,9 +405,7 @@ describe("modelInputPlugin", () => {
   });
 
   it("never leaks src, data URIs, or platform URLs for unpersisted images", async () => {
-    const input = createMessage(
-      miMessageRecordWithText('<img src="https://example.test/x.png"/><img src="data:image/png;base64,AAAA"/>'),
-    );
+    const input = createMessage(miMessageRecordWithText('<img src="https://example.test/x.png"/><img src="data:image/png;base64,AAAA"/>'));
     const result = await project(input, context([input]), plugin());
 
     expect(result.content).toContain("[图片]");

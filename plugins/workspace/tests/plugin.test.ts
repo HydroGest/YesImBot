@@ -17,10 +17,7 @@ import WorkspacePlugin from "../src";
 import type { MountSpec, SandboxBashConfig, WorkspacePluginConfig } from "../src/types";
 import { Workspace } from "../src/workspace";
 
-type WorkspaceFactory = (context: {
-  readonly scope: ChannelScope;
-  readonly bot?: unknown;
-}) => AgentPlugin | Promise<AgentPlugin | null>;
+type WorkspaceFactory = (context: { readonly scope: ChannelScope; readonly bot?: unknown }) => AgentPlugin | Promise<AgentPlugin | null>;
 
 type ResourceOpener = (
   scope: ChannelScope,
@@ -60,11 +57,9 @@ function hostIdentity(): { uid: number; gid: number } {
 function hostRuntimeAvailable(): boolean {
   if (process.platform !== "linux") return true;
   const identity = hostIdentity();
-  const result = spawnSync(
-    "/usr/bin/setpriv",
-    ["--clear-groups", "--reuid", String(identity.uid), "--regid", String(identity.gid), "--", "/bin/true"],
-    { stdio: "ignore" },
-  );
+  const result = spawnSync("/usr/bin/setpriv", ["--clear-groups", "--reuid", String(identity.uid), "--regid", String(identity.gid), "--", "/bin/true"], {
+    stdio: "ignore",
+  });
   return result.status === 0 && result.error === undefined;
 }
 
@@ -107,10 +102,7 @@ function createContext(baseDir: string) {
   });
   const bot = { sendMessage: vi.fn(async () => []) };
   const getStoragePath = vi.fn(async (scope: ChannelScope) => {
-    const directory =
-      scope.type === "direct"
-        ? `direct-${scope.platform}-${scope.channelId}-${scope.selfId}`
-        : `shared-${scope.platform}-${scope.channelId}`;
+    const directory = scope.type === "direct" ? `direct-${scope.platform}-${scope.channelId}-${scope.selfId}` : `shared-${scope.platform}-${scope.channelId}`;
     const root = join(baseDir, "channels", directory);
     await mkdir(root, { recursive: true });
     return root;
@@ -176,9 +168,7 @@ describe("WorkspacePlugin", () => {
     expect(sandbox.bash).not.toHaveProperty("allowedChannels");
     expect(sandbox.bash).not.toHaveProperty("identity");
 
-    expect(() =>
-      WorkspacePlugin.Config({ bash: { mode: "host", allowedChannels: [], hostRoots: [] } as never }),
-    ).toThrow();
+    expect(() => WorkspacePlugin.Config({ bash: { mode: "host", allowedChannels: [], hostRoots: [] } as never })).toThrow();
   });
 
   it("requires the complete Host branch", () => {
@@ -230,9 +220,7 @@ describe("WorkspacePlugin", () => {
     const agentPlugin = mocks.factories[0]!({
       scope: { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" },
     });
-    expect((await tools(agentPlugin)).map((tool) => tool.name).sort()).toEqual(
-      hostRuntimeAvailable() ? ["bash", "readFile", "writeFile"] : [],
-    );
+    expect((await tools(agentPlugin)).map((tool) => tool.name).sort()).toEqual(hostRuntimeAvailable() ? ["bash", "readFile", "writeFile"] : []);
     expect(workspaceCache(plugin).size).toBe(0);
   });
 
@@ -279,9 +267,7 @@ describe("WorkspacePlugin", () => {
     expect(agentPlugin).toBeDefined();
     expect((await tools(agentPlugin!)).map((tool) => tool.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
     expect(getStoragePath).toHaveBeenCalledWith(scope);
-    expect(workspaceRoot(plugin, JSON.stringify(["onebot", "room"]))).toBe(
-      join(baseDir, "channels", "shared-onebot-room", "workspace"),
-    );
+    expect(workspaceRoot(plugin, JSON.stringify(["onebot", "room"]))).toBe(join(baseDir, "channels", "shared-onebot-room", "workspace"));
   });
   it("does not register a Skill scheme without a valid catalog", async () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-no-skills-"));
@@ -352,20 +338,14 @@ describe("WorkspacePlugin", () => {
   it.each(["ro", "overlay"] as const)("fails fast for a missing %s host path", async (mode) => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
     const mocks = createContext(baseDir);
-    new WorkspacePlugin(
-      mocks.ctx as never,
-      sandboxConfig({ mounts: [{ source: "missing", target: "/missing", mode }] }),
-    );
+    new WorkspacePlugin(mocks.ctx as never, sandboxConfig({ mounts: [{ source: "missing", target: "/missing", mode }] }));
     await expect(mocks.ready[0]?.()).rejects.toThrow();
   });
 
   it("creates persist mount host paths", async () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
     const mocks = createContext(baseDir);
-    new WorkspacePlugin(
-      mocks.ctx as never,
-      sandboxConfig({ mounts: [{ source: "created/shared", target: "/shared", mode: "rw" }] }),
-    );
+    new WorkspacePlugin(mocks.ctx as never, sandboxConfig({ mounts: [{ source: "created/shared", target: "/shared", mode: "rw" }] }));
     await expect(mocks.ready[0]?.()).resolves.toBeUndefined();
     await expect(access(join(baseDir, "created", "shared"), constants.F_OK)).resolves.toBeUndefined();
   });
@@ -413,9 +393,7 @@ describe("WorkspacePlugin", () => {
     await expect(readFile!.execute!({ path: "/skills/csv/scripts/analyze.sh" }, {} as never)).resolves.toEqual({
       content: "echo csv\n",
     });
-    await expect(
-      writeFileTool!.execute!({ path: "/skills/csv/scripts/analyze.sh", content: "changed" }, {} as never),
-    ).rejects.toThrow();
+    await expect(writeFileTool!.execute!({ path: "/skills/csv/scripts/analyze.sh", content: "changed" }, {} as never)).rejects.toThrow();
   });
 
   it("keeps a Skill opener catalog snapshot after Workspace stop", async () => {
@@ -431,11 +409,10 @@ describe("WorkspacePlugin", () => {
     await mocks.dispose[0]?.();
 
     await expect(
-      registration.open(
-        { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" },
-        "skill://csv/SKILL.md",
-        { signal: AbortSignal.timeout(1000), maxBytes: 1024 },
-      ),
+      registration.open({ platform: "onebot", selfId: "bot", channelId: "room", type: "shared" }, "skill://csv/SKILL.md", {
+        signal: AbortSignal.timeout(1000),
+        maxBytes: 1024,
+      }),
     ).resolves.toMatchObject({ filename: "SKILL.md" });
   });
 
@@ -459,39 +436,26 @@ describe("WorkspacePlugin", () => {
   it("rejects user mounts that overlap the reserved Skill mount root", async () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
     const mocks = createContext(baseDir);
-    new WorkspacePlugin(
-      mocks.ctx as never,
-      sandboxConfig({ mounts: [{ source: ".", target: "/skills", mode: "ro" }] }),
-    );
+    new WorkspacePlugin(mocks.ctx as never, sandboxConfig({ mounts: [{ source: ".", target: "/skills", mode: "ro" }] }));
     await expect(mocks.ready[0]?.()).rejects.toThrow(/reserved/);
   });
   it("registers Host approval commands and releases the unchanged risky call after authority-5 approval", async () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-host-approval-"));
     const mocks = createContext(baseDir);
-    const plugin = new WorkspacePlugin(mocks.ctx as never, {
-      bash: {
-        mode: "host",
-        allowedChannels: [{ platform: "onebot", channelId: "room" }],
-        hostRoots: [],
-        identity: hostIdentity(),
-      },
-    });
+
     await mocks.ready[0]?.();
 
-    expect(mocks.commands.map((record) => record.name)).toEqual([
-      "yesimbot.workspace.approvals",
-      "yesimbot.workspace.approve",
-      "yesimbot.workspace.reject",
-    ]);
+    expect(mocks.commands.map((record) => record.name)).toEqual(["yesimbot.workspace.approvals", "yesimbot.workspace.approve", "yesimbot.workspace.reject"]);
     expect(mocks.commands.every((record) => record.options?.authority === 5)).toBe(true);
 
     const scope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } satisfies ChannelScope;
     const agent = await mocks.factories[0]?.({ scope, bot: mocks.bot });
     if (!hostRuntimeAvailable()) {
       expect(await tools(agent!)).toEqual([]);
-      await expect(
-        agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "pwd" } }, {} as never),
-      ).resolves.toEqual({ type: "block", reason: "host-runtime-unavailable" });
+      await expect(agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "pwd" } }, {} as never)).resolves.toEqual({
+        type: "block",
+        reason: "host-runtime-unavailable",
+      });
       return;
     }
     expect(agent?.tools ? await tools(agent) : []).toHaveLength(3);
@@ -570,12 +534,11 @@ describe("WorkspacePlugin", () => {
     const agent = await mocks.factories[0]!({ scope, bot: mocks.bot });
     expect(await tools(agent!)).toEqual([]);
     expect(mocks.getStoragePath).not.toHaveBeenCalled();
-    await expect(
-      agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "pwd" } }, {} as never),
-    ).resolves.toEqual({ type: "block", reason: "host-channel-not-allowed" });
-    await expect(
-      agent!.beforeToolCall?.({ toolCallId: "core", toolName: "sendMessage", args: {} }, {} as never),
-    ).resolves.toEqual({ type: "allow" });
+    await expect(agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "pwd" } }, {} as never)).resolves.toEqual({
+      type: "block",
+      reason: "host-channel-not-allowed",
+    });
+    await expect(agent!.beforeToolCall?.({ toolCallId: "core", toolName: "sendMessage", args: {} }, {} as never)).resolves.toEqual({ type: "allow" });
   });
 
   it("fails closed when the Host approval broker is unavailable", async () => {
@@ -594,9 +557,10 @@ describe("WorkspacePlugin", () => {
     const scope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } satisfies ChannelScope;
     const agent = await mocks.factories[0]!({ scope, bot: mocks.bot });
     expect(await tools(agent!)).toEqual([]);
-    await expect(
-      agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "rm file" } }, {} as never),
-    ).resolves.toEqual({ type: "block", reason: "host-approval-unavailable" });
+    await expect(agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "rm file" } }, {} as never)).resolves.toEqual({
+      type: "block",
+      reason: "host-approval-unavailable",
+    });
   });
 
   it.each([
@@ -619,9 +583,10 @@ describe("WorkspacePlugin", () => {
     const agent = await mocks.factories[0]!({ scope, bot: mocks.bot });
     expect(await tools(agent!)).toEqual([]);
     expect(mocks.getStoragePath).not.toHaveBeenCalled();
-    await expect(
-      agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "pwd" } }, {} as never),
-    ).resolves.toEqual({ type: "block", reason: "host-runtime-unavailable" });
+    await expect(agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "pwd" } }, {} as never)).resolves.toEqual({
+      type: "block",
+      reason: "host-runtime-unavailable",
+    });
   });
 
   it("fails closed when the real channel cwd cannot be created", async () => {
@@ -640,9 +605,10 @@ describe("WorkspacePlugin", () => {
     const scope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } satisfies ChannelScope;
     const agent = await mocks.factories[0]!({ scope, bot: mocks.bot });
     expect(await tools(agent!)).toEqual([]);
-    await expect(
-      agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "pwd" } }, {} as never),
-    ).resolves.toEqual({ type: "block", reason: "host-runtime-unavailable" });
+    await expect(agent!.beforeToolCall?.({ toolCallId: "blocked", toolName: "bash", args: { command: "pwd" } }, {} as never)).resolves.toEqual({
+      type: "block",
+      reason: "host-runtime-unavailable",
+    });
   });
 
   it("stops the shared Host runner when the plugin stops", async () => {
@@ -691,13 +657,8 @@ describe("WorkspacePlugin", () => {
       platform: "onebot",
       channelId: "new",
     });
-    const oldDecision = await oldAgent!.beforeToolCall?.(
-      { toolCallId: "old", toolName: "bash", args: { command: "pwd" } },
-      {} as never,
-    );
-    expect(oldDecision).toEqual(
-      hostRuntimeAvailable() ? { type: "allow" } : { type: "block", reason: "host-runtime-unavailable" },
-    );
+    const oldDecision = await oldAgent!.beforeToolCall?.({ toolCallId: "old", toolName: "bash", args: { command: "pwd" } }, {} as never);
+    expect(oldDecision).toEqual(hostRuntimeAvailable() ? { type: "allow" } : { type: "block", reason: "host-runtime-unavailable" });
   });
 
   it("keeps an existing Sandbox runtime's mode settings after config mutation", async () => {

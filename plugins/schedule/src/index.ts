@@ -84,11 +84,7 @@ export default class SchedulePlugin {
       }
     };
 
-    track(
-      this.ctx
-        .command("yesimbot.schedule", "查看当前频道的定时任务", { authority: 4 })
-        .action(async ({ session }) => this.listText(scopeOf(session))),
-    );
+    track(this.ctx.command("yesimbot.schedule", "查看当前频道的定时任务", { authority: 4 }).action(async ({ session }) => this.listText(scopeOf(session))));
 
     track(
       this.ctx
@@ -109,8 +105,7 @@ export default class SchedulePlugin {
           if (at !== undefined && cron !== undefined) {
             return "只能提供 --at 或 --cron 之一";
           }
-          const input: ScheduleCreateInput =
-            at !== undefined ? { title, prompt, kind: "once", at } : { title, prompt, kind: "cron", cron };
+          const input: ScheduleCreateInput = at !== undefined ? { title, prompt, kind: "once", at } : { title, prompt, kind: "cron", cron };
           try {
             const schedule = await this.store.create(scope, input);
             await this.scheduler?.rearm();
@@ -122,9 +117,7 @@ export default class SchedulePlugin {
     );
 
     track(
-      this.ctx
-        .command("yesimbot.schedule.list", "列出当前频道的定时任务", { authority: 4 })
-        .action(async ({ session }) => this.listText(scopeOf(session))),
+      this.ctx.command("yesimbot.schedule.list", "列出当前频道的定时任务", { authority: 4 }).action(async ({ session }) => this.listText(scopeOf(session))),
     );
 
     track(

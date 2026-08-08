@@ -42,11 +42,7 @@ export function mergeTools(toolSets: readonly AgentToolSet[]): AgentToolSet {
   return merged;
 }
 
-export async function runBeforeToolHooks(
-  plugins: readonly AgentPlugin[],
-  call: ToolCallContext,
-  context: ToolHookContext,
-): Promise<ToolDecision> {
+export async function runBeforeToolHooks(plugins: readonly AgentPlugin[], call: ToolCallContext, context: ToolHookContext): Promise<ToolDecision> {
   let current = call;
   let currentDecision: ToolDecision = { type: "allow" };
 
@@ -67,11 +63,7 @@ export async function runBeforeToolHooks(
   return currentDecision;
 }
 
-export async function runAfterToolHooks(
-  plugins: readonly AgentPlugin[],
-  result: ToolResultContext,
-  context: ToolHookContext,
-): Promise<ToolResultContext> {
+export async function runAfterToolHooks(plugins: readonly AgentPlugin[], result: ToolResultContext, context: ToolHookContext): Promise<ToolResultContext> {
   let current = result;
 
   for (const plugin of plugins) {

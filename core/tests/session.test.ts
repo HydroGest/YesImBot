@@ -37,9 +37,7 @@ describe("session commands", () => {
     };
     registerSessionCommands(ctx as never, runtimes as never, { authority: 4 });
     const action = commands.get("yesimbot.session.compact")!.action.mock.calls[0]![0];
-    await expect(
-      action({ session: { platform: "test", selfId: "bot", channelId: "room", isDirect: false } }),
-    ).resolves.toBe("ok");
+    await expect(action({ session: { platform: "test", selfId: "bot", channelId: "room", isDirect: false } })).resolves.toBe("ok");
     expect(runtimes.compact).toHaveBeenCalledWith({ type: "shared", platform: "test", channelId: "room" });
   });
 
@@ -48,9 +46,7 @@ describe("session commands", () => {
     roots.push(root);
     const conversation = new Conversation(root);
     await conversation.init();
-    await conversation.storage.append(
-      createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "hello" }),
-    );
+    await conversation.storage.append(createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "hello" }));
     const first = (await conversation.list()).find((item) => item.isActive)!;
 
     await conversation.archive(true);

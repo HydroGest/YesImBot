@@ -15,10 +15,7 @@ function node(message: unknown[], overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createReader(
-  records: readonly unknown[],
-  config = { parseImages: false, maxForwardPageChars: 6000, attachImageSummary: true },
-) {
+function createReader(records: readonly unknown[], config = { parseImages: false, maxForwardPageChars: 6000, attachImageSummary: true }) {
   const getForwardMsg = vi.fn(async () => records);
   const reader = createForwardReader({ getForwardMsg } as OneBotInternal, config);
   return { getForwardMsg, reader };
@@ -58,9 +55,7 @@ describe("createForwardReader", () => {
   });
 
   it("attaches image summary to animated emoji placeholders when enabled", async () => {
-    const { reader } = createReader([
-      node([{ type: "image", data: { summary: "大笑", file: "face.gif", sub_type: 1 } }]),
-    ]);
+    const { reader } = createReader([node([{ type: "image", data: { summary: "大笑", file: "face.gif", sub_type: 1 } }])]);
 
     await expect(reader({ forwardId: "forward" })).resolves.toEqual({
       messages: [["Alice (10001)", expect.any(String), ["[动画表情: 大笑]"]]],
@@ -124,9 +119,7 @@ describe("createForwardReader", () => {
         },
       ]),
     ]);
-    const persistImages = vi.fn(
-      async (images) => new Map(images.map((image, index) => [image.file, `asset-${index}`])),
-    );
+    const persistImages = vi.fn(async (images) => new Map(images.map((image, index) => [image.file, `asset-${index}`])));
     const reader = createForwardReader({ getForwardMsg } as OneBotInternal, {
       parseImages: true,
       maxForwardPageChars: 6000,
@@ -138,9 +131,7 @@ describe("createForwardReader", () => {
     expect(result).toEqual({
       messages: [["Alice (10001)", expect.any(String), ["[图片：asset://asset-0]"]]],
     });
-    expect(persistImages).toHaveBeenCalledWith([
-      { file: "cover.jpg", summary: "cover", url: "https://private.test/cover.jpg" },
-    ]);
+    expect(persistImages).toHaveBeenCalledWith([{ file: "cover.jpg", summary: "cover", url: "https://private.test/cover.jpg" }]);
     expect(JSON.stringify(result)).not.toContain("private.test");
   });
 
@@ -233,10 +224,7 @@ describe("createForwardReader", () => {
   });
 
   it("returns a complete oversized first record as an over-limit singleton", async () => {
-    const { reader } = createReader([
-      node([{ type: "text", data: { text: "a".repeat(6001) } }]),
-      node([{ type: "text", data: { text: "later" } }]),
-    ]);
+    const { reader } = createReader([node([{ type: "text", data: { text: "a".repeat(6001) } }]), node([{ type: "text", data: { text: "later" } }])]);
 
     await expect(reader({ forwardId: "forward" })).resolves.toMatchObject({
       messages: [["Alice (10001)", expect.any(String), ["a".repeat(6001)]]],
@@ -247,9 +235,7 @@ describe("createForwardReader", () => {
   });
 
   it("defaults to thirty records, clamps direct page inputs, and returns an empty terminal page", async () => {
-    const { reader } = createReader(
-      Array.from({ length: 61 }, (_, index) => node([{ type: "text", data: { text: String(index) } }])),
-    );
+    const { reader } = createReader(Array.from({ length: 61 }, (_, index) => node([{ type: "text", data: { text: String(index) } }])));
 
     const defaultPage = await reader({ forwardId: "forward" });
     const clampedPage = await reader({ forwardId: "forward", offset: -3, limit: 99 });

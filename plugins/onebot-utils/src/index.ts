@@ -1,12 +1,6 @@
 import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
 import { Context, h, Logger, Schema, type Bot, type Element } from "koishi";
-import {
-  persistElements,
-  type AssetStore,
-  type ChannelPluginContext,
-  type ChannelPluginFactory,
-  type ChannelScope,
-} from "koishi-plugin-yesimbot";
+import { persistElements, type AssetStore, type ChannelPluginContext, type ChannelPluginFactory, type ChannelScope } from "koishi-plugin-yesimbot";
 
 import { projectAnimatedImages } from "./animated-image.js";
 import { createForwardReader, type ForwardImageRequest, type ForwardResult, type ForwardToolInput } from "./forward.js";
@@ -96,10 +90,7 @@ function getOneBotInternal(bot: Bot): OneBotInternal {
   return internal;
 }
 
-async function loadForwardSendNodes(
-  internal: OneBotInternal,
-  forwardId: string,
-): Promise<readonly OneBotForwardSendNode[] | undefined> {
+async function loadForwardSendNodes(internal: OneBotInternal, forwardId: string): Promise<readonly OneBotForwardSendNode[] | undefined> {
   const response = await internal.getForwardMsg(forwardId);
   if (!Array.isArray(response)) return undefined;
   const nodes = response as unknown as readonly {
@@ -120,10 +111,7 @@ async function loadForwardSendNodes(
   );
 }
 
-async function resolveForwardSendContent(
-  internal: OneBotInternal,
-  segments: readonly OneBotCQCode[],
-): Promise<readonly OneBotCQCode[]> {
+async function resolveForwardSendContent(internal: OneBotInternal, segments: readonly OneBotCQCode[]): Promise<readonly OneBotCQCode[]> {
   return Promise.all(
     segments.map(async (segment) => {
       if (segment.type !== "image") return { ...segment, data: { ...segment.data } };
@@ -173,9 +161,7 @@ async function persistForwardImages(
   const assetIds = new Map<string, string>();
   for (let offset = 0; offset < resolved.length; offset += MAX_FORWARD_IMAGES_PER_PERSIST_BATCH) {
     const batch = resolved.slice(offset, offset + MAX_FORWARD_IMAGES_PER_PERSIST_BATCH);
-    const elements = batch
-      .filter((item): item is { file: string; url: string } => item !== undefined)
-      .map(({ url }) => h("img", { src: url }));
+    const elements = batch.filter((item): item is { file: string; url: string } => item !== undefined).map(({ url }) => h("img", { src: url }));
     if (elements.length === 0) continue;
     let persisted: Element[];
     try {
@@ -194,21 +180,14 @@ async function persistForwardImages(
   return assetIds;
 }
 
-function createOneBotTools(
-  ctx: Context,
-  bot: Bot,
-  config: Readonly<OnebotUtilsConfig>,
-  scope: ChannelScope,
-  assets: AssetStore,
-): AgentTool[] {
+function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsConfig>, scope: ChannelScope, assets: AssetStore): AgentTool[] {
   let forwardReader: ReturnType<typeof createForwardReader> | undefined;
 
   const isGroupScope = scope.type === "shared";
 
   const getForwardMessageTool: AgentTool<ForwardToolInput, ForwardResult> = {
     name: TOOLS.GET_FORWARD_MESSAGE,
-    description:
-      "分页获取合并转发消息的紧凑元组。使用 forwardId；若返回 tips，表示还有剩余内容，可按其中的 nextOffset 使用相同 forwardId 继续读取。",
+    description: "分页获取合并转发消息的紧凑元组。使用 forwardId；若返回 tips，表示还有剩余内容，可按其中的 nextOffset 使用相同 forwardId 继续读取。",
     inputSchema: jsonSchema<ForwardToolInput>({
       type: "object",
       properties: {
@@ -243,8 +222,7 @@ function createOneBotTools(
 
   const sendForwardMessageTool: AgentTool<{ forwardId: string }, ForwardSendResult> = {
     name: TOOLS.SEND_FORWARD_MESSAGE,
-    description:
-      "将合并转发消息原样发送到当前频道。传入与 onebot_get_forward_message 相同的 forwardId；不要根据摘要逐条粘贴或重建消息。",
+    description: "将合并转发消息原样发送到当前频道。传入与 onebot_get_forward_message 相同的 forwardId；不要根据摘要逐条粘贴或重建消息。",
     inputSchema: jsonSchema<{ forwardId: string }>({
       type: "object",
       properties: {
@@ -267,10 +245,7 @@ function createOneBotTools(
           };
         }
         const target = directChannelId(scope.channelId);
-        const messageId =
-          scope.type === "direct"
-            ? await internal.sendPrivateForwardMsg(target, nodes)
-            : await internal.sendGroupForwardMsg(target, nodes);
+        const messageId = scope.type === "direct" ? await internal.sendPrivateForwardMsg(target, nodes) : await internal.sendGroupForwardMsg(target, nodes);
         return { ok: true, messageId: String(messageId) };
       } catch (cause) {
         return {

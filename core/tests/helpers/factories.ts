@@ -1,5 +1,4 @@
 import { h, type Session } from "koishi";
-import type { Element } from "koishi";
 import { vi } from "vitest";
 
 export function session(overrides: Record<string, unknown> = {}): Session {

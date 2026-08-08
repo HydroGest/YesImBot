@@ -2,20 +2,54 @@ import { join, resolve } from "node:path";
 
 import type { EmbeddingModel, LanguageModel } from "ai";
 import { Context, Logger, Schema } from "koishi";
+
 import { readModelsConfig } from "./config.js";
 
 export const CHAT_MODEL_MODALITIES = ["text", "audio", "image", "video", "pdf"] as const;
 
 export type ModelId = `${string}:${string}`;
 export type ChatModelModality = (typeof CHAT_MODEL_MODALITIES)[number];
-export interface ChatModelConfig { id: string; name?: string; hidden?: boolean; toolCall?: boolean; reasoning?: boolean; limit?: { context: number; output: number }; modalities?: { input?: ChatModelModality[]; output?: ChatModelModality[] }; variants?: Record<string, unknown>; }
-export interface EmbeddingModelConfig { id: string; name?: string; hidden?: boolean; dimension?: number; }
-export interface ChatModelRef { fullId: ModelId; providerId: string; modelId: string; entry: ChatModelConfig; model: LanguageModel; }
-export interface BaseProviderConfig { id: string; apiKey: string; baseURL?: string; chatModels: ChatModelConfig[]; embeddingModels?: EmbeddingModelConfig[]; }
+export interface ChatModelConfig {
+  id: string;
+  name?: string;
+  hidden?: boolean;
+  toolCall?: boolean;
+  reasoning?: boolean;
+  limit?: { context: number; output: number };
+  modalities?: { input?: ChatModelModality[]; output?: ChatModelModality[] };
+  variants?: Record<string, unknown>;
+}
+export interface EmbeddingModelConfig {
+  id: string;
+  name?: string;
+  hidden?: boolean;
+  dimension?: number;
+}
+export interface ChatModelRef {
+  fullId: ModelId;
+  providerId: string;
+  modelId: string;
+  entry: ChatModelConfig;
+  model: LanguageModel;
+}
+export interface BaseProviderConfig {
+  id: string;
+  apiKey: string;
+  baseURL?: string;
+  chatModels: ChatModelConfig[];
+  embeddingModels?: EmbeddingModelConfig[];
+}
 
-function isChatModelModality(value: string): value is ChatModelModality { return CHAT_MODEL_MODALITIES.some((modality) => modality === value); }
-function parseModelId(fullId: string): { provider: string; model: string } | null { const idx = fullId.indexOf(":"); return idx <= 0 ? null : { provider: fullId.slice(0, idx), model: fullId.slice(idx + 1) }; }
-function formatModelId(providerId: string, modelId: string): ModelId { return `${providerId}:${modelId}`; }
+function isChatModelModality(value: string): value is ChatModelModality {
+  return CHAT_MODEL_MODALITIES.some((modality) => modality === value);
+}
+function parseModelId(fullId: string): { provider: string; model: string } | null {
+  const idx = fullId.indexOf(":");
+  return idx <= 0 ? null : { provider: fullId.slice(0, idx), model: fullId.slice(idx + 1) };
+}
+function formatModelId(providerId: string, modelId: string): ModelId {
+  return `${providerId}:${modelId}`;
+}
 
 export interface ModelServiceConfig {
   basePath: string;
@@ -221,9 +255,7 @@ export class ModelService {
       if (this.chatModels.has(modelsConfig.defaults.chat)) {
         this.defaults.chat = modelsConfig.defaults.chat as ModelId;
       } else {
-        this.logger.warn(
-          `Ignoring models.json chat default "${modelsConfig.defaults.chat}" because it is not a registered chat model.`,
-        );
+        this.logger.warn(`Ignoring models.json chat default "${modelsConfig.defaults.chat}" because it is not a registered chat model.`);
       }
     }
 
@@ -231,9 +263,7 @@ export class ModelService {
       if (this.embeddingModels.has(modelsConfig.defaults.embedding)) {
         this.defaults.embedding = modelsConfig.defaults.embedding as ModelId;
       } else {
-        this.logger.warn(
-          `Ignoring models.json embedding default "${modelsConfig.defaults.embedding}" because it is not a registered embedding model.`,
-        );
+        this.logger.warn(`Ignoring models.json embedding default "${modelsConfig.defaults.embedding}" because it is not a registered embedding model.`);
       }
     }
 
@@ -415,9 +445,7 @@ function readModalityArray(
   return undefined;
 }
 
-function isModelModality(
-  value: unknown,
-): value is NonNullable<NonNullable<ChatModelConfig["modalities"]>["input"]>[number] {
+function isModelModality(value: unknown): value is NonNullable<NonNullable<ChatModelConfig["modalities"]>["input"]>[number] {
   return typeof value === "string" && isChatModelModality(value);
 }
 
@@ -477,9 +505,7 @@ async function loadModelsConfig(filePath?: string): Promise<ModelsConfigLoadResu
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { config: empty, warnings: [] };
     return {
       config: empty,
-      warnings: [
-        `Failed to parse models.json at ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
-      ],
+      warnings: [`Failed to parse models.json at ${filePath}: ${error instanceof Error ? error.message : String(error)}`],
     };
   }
 
@@ -544,5 +570,3 @@ function createEmptyModelsConfig(): ModelsConfigData {
     embedding: {},
   };
 }
-
-

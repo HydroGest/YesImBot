@@ -7,23 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { Workspace } from "../src/workspace";
 
-const COMMON_COMMANDS = [
-  "ls",
-  "cat",
-  "echo",
-  "pwd",
-  "mkdir",
-  "rm",
-  "touch",
-  "cp",
-  "mv",
-  "find",
-  "grep",
-  "sort",
-  "head",
-  "tail",
-  "wc",
-];
+const COMMON_COMMANDS = ["ls", "cat", "echo", "pwd", "mkdir", "rm", "touch", "cp", "mv", "find", "grep", "sort", "head", "tail", "wc"];
 
 async function tmpRoot(name: string): Promise<string> {
   return mkdtemp(join(tmpdir(), `yesimbot-${name}-`));
@@ -81,9 +65,7 @@ describe("Workspace filesystem", () => {
     });
 
     await expect(workspace.fs.readFile("/knowledge/guide.md", "utf8")).resolves.toBe("# Guide\n");
-    await expect(workspace.fs.writeFile("/knowledge/guide.md", "changed", "utf8")).rejects.toThrow(
-      /read-only file system/,
-    );
+    await expect(workspace.fs.writeFile("/knowledge/guide.md", "changed", "utf8")).rejects.toThrow(/read-only file system/);
   });
 
   it("keeps default command paths when custom workspace mounts are configured", async () => {

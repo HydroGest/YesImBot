@@ -91,27 +91,15 @@ interface OneBotFileSegment {
   data: object;
 }
 
-type ForwardPart =
-  | string
-  | { image: readonly [summary: string, file: string, size: string | null] }
-  | { forward: string };
+type ForwardPart = string | { image: readonly [summary: string, file: string, size: string | null] } | { forward: string };
 
 type ForwardMessage = readonly [sender: string, time: string | null, content: readonly ForwardPart[]];
 
 export type ForwardResult = ForwardPage | ForwardFailure;
 
-type OneBotForwardSegment =
-  | OneBotTextSegment
-  | OneBotImageSegment
-  | OneBotNestedForwardSegment
-  | OneBotRecordSegment
-  | OneBotVideoSegment
-  | OneBotFileSegment;
+type OneBotForwardSegment = OneBotTextSegment | OneBotImageSegment | OneBotNestedForwardSegment | OneBotRecordSegment | OneBotVideoSegment | OneBotFileSegment;
 
-export function createForwardReader(
-  internal: OneBotInternal,
-  config: Readonly<ForwardReaderConfig>,
-): (input: ForwardToolInput) => Promise<ForwardResult> {
+export function createForwardReader(internal: OneBotInternal, config: Readonly<ForwardReaderConfig>): (input: ForwardToolInput) => Promise<ForwardResult> {
   const cache = new Map<string, readonly ForwardMessage[]>();
 
   return async function readForwardPage(input) {
@@ -136,11 +124,7 @@ export function createForwardReader(
     if (config.persistImages && imageRequests.length > 0) {
       const assetIds = await config.persistImages(imageRequests);
       const render = (items: readonly ForwardMessage[]): ForwardMessage[] =>
-        items.map((record) => [
-          record[0],
-          record[1],
-          coalesceParts(record[2].map((part) => renderImagePart(part, assetIds))),
-        ]);
+        items.map((record) => [record[0], record[1], coalesceParts(record[2].map((part) => renderImagePart(part, assetIds)))]);
       const renderedRecords = render(records);
       cache.set(forwardId, renderedRecords);
       for (const [nestedForwardId, nestedRecords] of nestedForwards) {
@@ -163,11 +147,7 @@ function normalizeNode(
   nestedForwards: Map<string, readonly ForwardMessage[]>,
   imageUrls: Map<string, string>,
 ): ForwardMessage {
-  return [
-    formatSender(node.sender),
-    formatTime(node.time),
-    normalizeSegments(node.message, config, nestedForwards, imageUrls),
-  ];
+  return [formatSender(node.sender), formatTime(node.time), normalizeSegments(node.message, config, nestedForwards, imageUrls)];
 }
 
 function formatSender(sender: OneBotSenderInfo): string {
@@ -279,15 +259,11 @@ function formatFileSize(value: unknown): string | null {
   if (!Number.isSafeInteger(bytes)) return null;
   if (bytes < 1000) return `${bytes} B`;
 
-  const unit: readonly [number, string] =
-    bytes < 1_000_000 ? [1000, "KB"] : bytes < 1_000_000_000 ? [1_000_000, "MB"] : [1_000_000_000, "GB"];
+  const unit: readonly [number, string] = bytes < 1_000_000 ? [1000, "KB"] : bytes < 1_000_000_000 ? [1_000_000, "MB"] : [1_000_000_000, "GB"];
   return `${(bytes / unit[0]).toFixed(1)} ${unit[1]}`;
 }
 
-function collectImageRequests(
-  records: readonly (readonly ForwardMessage[])[],
-  imageUrls: ReadonlyMap<string, string>,
-): ForwardImageRequest[] {
+function collectImageRequests(records: readonly (readonly ForwardMessage[])[], imageUrls: ReadonlyMap<string, string>): ForwardImageRequest[] {
   const requests = new Map<string, ForwardImageRequest>();
   for (const recordList of records) {
     for (const record of recordList) {

@@ -1,12 +1,10 @@
 import type { Bot, Context, Session } from "koishi";
-import { Universal } from "koishi";
 
 import { Agents } from "../agents/index.js";
 import type { Channel, Channels, ChannelScope } from "../channels/index.js";
 import type { Config } from "../config.js";
-import type { EventRecord, MessageRecord } from "../messages/index.js";
 import { ModelService } from "../models/index.js";
-import { ChannelRuntime, type RuntimeResult } from "./channel.js";
+import { ChannelRuntime } from "./channel.js";
 
 export class Runtimes {
   private readonly runtimes = new Map<string, ChannelRuntime>();
@@ -107,9 +105,7 @@ export class Runtimes {
 
   public async list(scope: ChannelScope): Promise<string> {
     const sessions = await (await this.channels.resolve(scope)).conversation.list();
-    return sessions.length
-      ? sessions.map((session) => `${session.isActive ? "→ " : "  "}${session.filename}`).join("\n")
-      : "无会话记录。";
+    return sessions.length ? sessions.map((session) => `${session.isActive ? "→ " : "  "}${session.filename}`).join("\n") : "无会话记录。";
   }
 
   private resolveVision() {
@@ -139,9 +135,7 @@ export class Runtimes {
 }
 
 function runtimeKey(scope: ChannelScope): string {
-  return scope.type === "direct"
-    ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`
-    : `shared:${scope.platform}:${scope.channelId}`;
+  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
 }
 
 export { type RuntimeResult, type PostOptions, type ChannelOutput, ChannelRuntime } from "./channel.js";

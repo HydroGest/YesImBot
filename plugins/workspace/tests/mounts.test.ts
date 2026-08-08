@@ -102,9 +102,7 @@ describe("workspace mount validation", () => {
       { source: await realpath(join(baseDir, "docs")), target: "/docs", mode: "ro" },
       { source: await realpath(join(baseDir, "docs")), target: "/overlay", mode: "overlay" },
     ]);
-    await expect(normalizeMounts([{ source: "missing", target: "/missing", mode: "ro" }], baseDir)).rejects.toThrow(
-      /does not exist/,
-    );
+    await expect(normalizeMounts([{ source: "missing", target: "/missing", mode: "ro" }], baseDir)).rejects.toThrow(/does not exist/);
   });
 
   it.each([

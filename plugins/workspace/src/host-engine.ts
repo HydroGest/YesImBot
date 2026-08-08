@@ -228,16 +228,7 @@ class HostRunnerImpl implements HostRunner {
     const args = ["--noprofile", "--norc", "-c", entry.input.command];
     const executable = useSetpriv ? SETPRIV_PATH : BASH_PATH;
     const executableArgs = useSetpriv
-      ? [
-          "--clear-groups",
-          "--reuid",
-          String(entry.input.uid),
-          "--regid",
-          String(entry.input.gid),
-          "--",
-          BASH_PATH,
-          ...args,
-        ]
+      ? ["--clear-groups", "--reuid", String(entry.input.uid), "--regid", String(entry.input.gid), "--", BASH_PATH, ...args]
       : args;
     const spawnOptions: SpawnOptions = {
       cwd: entry.input.cwd,

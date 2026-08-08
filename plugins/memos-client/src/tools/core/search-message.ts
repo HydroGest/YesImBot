@@ -61,10 +61,7 @@ function buildSearchFilter(identity: MemosIdentity, config: MemosClientConfig): 
     return undefined;
   }
 
-  const and: Array<Record<string, unknown>> = [
-    { scene: identity.info.scene },
-    { memory_scope: identity.info.memory_scope },
-  ];
+  const and: Array<Record<string, unknown>> = [{ scene: identity.info.scene }, { memory_scope: identity.info.memory_scope }];
 
   if (config.searchFilterMode === "strict") {
     and.push({ agent_id: identity.agentId });
@@ -90,11 +87,7 @@ function sanitizeErrorMessage(error: unknown, apiKey: string): string {
   return message.replaceAll(`Token ${apiKey}`, "Token [REDACTED]").replaceAll(apiKey, "[REDACTED]");
 }
 
-async function searchWithIdentity(
-  options: SearchMessageToolOptions,
-  identity: MemosIdentity,
-  query: string,
-): Promise<SearchMessageToolOutput> {
+async function searchWithIdentity(options: SearchMessageToolOptions, identity: MemosIdentity, query: string): Promise<SearchMessageToolOutput> {
   const response = await options.client.searchMemory<SearchMemoryData>({
     user_id: identity.userId,
     query,
@@ -134,9 +127,7 @@ async function searchWithIdentity(
   return { outcome: "completed", memories };
 }
 
-export function createSearchMessageTool(
-  options: SearchMessageToolOptions,
-): AgentTool<SearchMessageToolInput, SearchMessageToolOutput> {
+export function createSearchMessageTool(options: SearchMessageToolOptions): AgentTool<SearchMessageToolInput, SearchMessageToolOutput> {
   return {
     name: "search_message",
     description: "Search relevant long-term memory before answering.",

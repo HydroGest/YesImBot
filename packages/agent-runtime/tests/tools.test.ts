@@ -1,9 +1,4 @@
-import type {
-  LanguageModelV3,
-  LanguageModelV3CallOptions,
-  LanguageModelV3FinishReason,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3FinishReason, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -26,9 +21,7 @@ function createToolModel() {
     },
     async doStream(options: LanguageModelV3CallOptions) {
       const tools = options.tools ?? {};
-      observedToolNames.push(
-        Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools),
-      );
+      observedToolNames.push(Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools));
       return {
         stream: new ReadableStream<LanguageModelV3StreamPart>({
           start(controller) {
@@ -71,9 +64,7 @@ function createSingleToolCallModel() {
     async doStream(options: LanguageModelV3CallOptions) {
       observedPrompts.push(structuredClone(options.prompt));
       const tools = options.tools ?? {};
-      observedToolNames.push(
-        Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools),
-      );
+      observedToolNames.push(Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools));
       callCount += 1;
       if (callCount === 1) {
         return {
@@ -231,25 +222,19 @@ describe("tools", () => {
       ],
     });
 
-    const firstTurnId = agent.send(createUserMessage("hello"));
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
-    const secondTurnId = agent.send(createUserMessage("again"));
+
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
 
     expect(createCount).toBe(1);
-    expect((model as unknown as { observedToolNames: string[][] }).observedToolNames).toEqual([
-      ["stable_lookup"],
-      ["stable_lookup"],
-    ]);
+    expect((model as unknown as { observedToolNames: string[][] }).observedToolNames).toEqual([["stable_lookup"], ["stable_lookup"]]);
   });
 
   it("resolves deprecated tool extensions once and reuses the frozen registry", async () => {
     const model = createToolModel();
-    const extend = vi.fn(
-      (tools) => [...tools, { name: "legacy", inputSchema: z.object({}), execute: async () => "legacy" }] as never,
-    );
+    const extend = vi.fn((tools) => [...tools, { name: "legacy", inputSchema: z.object({}), execute: async () => "legacy" }] as never);
     const agent = createAgent({
       model,
       tools: [{ name: "base", inputSchema: z.object({}), execute: async () => "base" } as never],
@@ -405,12 +390,8 @@ describe("tools", () => {
       events.push(event);
     }
 
-    const start = events.find(
-      (event): event is Extract<AgentInternalEvent, { type: "tool.start" }> => event.type === "tool.start",
-    );
-    const done = events.find(
-      (event): event is Extract<AgentInternalEvent, { type: "tool.done" }> => event.type === "tool.done",
-    );
+    const start = events.find((event): event is Extract<AgentInternalEvent, { type: "tool.start" }> => event.type === "tool.start");
+    const done = events.find((event): event is Extract<AgentInternalEvent, { type: "tool.done" }> => event.type === "tool.done");
     expect(start).toBeDefined();
     expect(done).toBeDefined();
     expect(start?.args).toEqual({});
@@ -493,8 +474,6 @@ describe("tools", () => {
       ],
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
-
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
     expect(seen).toEqual([{ query: "replaced" }]);
@@ -549,8 +528,6 @@ describe("tools", () => {
       ],
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
-
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
     expect(seen).toEqual([
@@ -596,8 +573,6 @@ describe("tools", () => {
       }
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
-
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
     expect(pluginErrors).toContain("broken-observer:observer boom");
@@ -617,9 +592,7 @@ function createObservedToolModel() {
     },
     async doStream(options: LanguageModelV3CallOptions) {
       const tools = options.tools ?? {};
-      observedToolNames.push(
-        Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools),
-      );
+      observedToolNames.push(Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools));
 
       return {
         stream: new ReadableStream<LanguageModelV3StreamPart>({
@@ -717,8 +690,6 @@ describe("terminal tool", () => {
     const model = createObservedToolModel();
     const agent = createAgent({ model, tools: [] });
 
-    const turnId = agent.send(createUserMessage("hello"));
-
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
     expect(model.observedToolNames).toEqual([[]]);
@@ -731,8 +702,6 @@ describe("terminal tool", () => {
       tools: [],
       terminalTool: true,
     });
-
-    const turnId = agent.send(createUserMessage("hello"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -762,8 +731,6 @@ describe("terminal tool", () => {
       tools: [],
       terminalTool: { name: "finish_turn" },
     });
-
-    const turnId = agent.send(createUserMessage("hello"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);

@@ -58,14 +58,7 @@ function deriveAgentHash(platform: string, selfId: string): string {
 }
 
 function deriveRuntimeConversationHash(input: MemosIdentityInput, subjectRawId: string): string {
-  return hashMemosIdParts([
-    "memos-conversation-v1",
-    "runtime_turn",
-    input.channelScope.platform,
-    input.channelType,
-    subjectRawId,
-    input.turnId,
-  ]);
+  return hashMemosIdParts(["memos-conversation-v1", "runtime_turn", input.channelScope.platform, input.channelType, subjectRawId, input.turnId]);
 }
 
 function deriveImportChunkConversationHash(input: MemosImportChunkIdentityInput): string {
@@ -90,9 +83,7 @@ export function deriveMemosIdentity(input: MemosIdentityInput): MemosIdentity {
   const subjectHash = deriveSubjectHash(input.channelScope.platform, input.channelType, subjectRawId);
   const agentHash = deriveAgentHash(input.channelScope.platform, input.channelScope.selfId);
   const authorHash = hashMemosIdParts(["memos-author-v1", input.channelScope.platform, input.authorId]);
-  const messageHash = input.messageId
-    ? hashMemosIdParts(["memos-message-v1", input.channelScope.platform, input.messageId])
-    : undefined;
+  const messageHash = input.messageId ? hashMemosIdParts(["memos-message-v1", input.channelScope.platform, input.messageId]) : undefined;
   const memoryScope = resolveMemoryScope(input);
 
   const info: MemosIdentityInfo = {

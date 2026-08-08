@@ -9,13 +9,7 @@ import type { ChannelScope } from "koishi-plugin-yesimbot";
 
 import { createBashToolSet, type WorkspaceBashBackend } from "./bash-tool";
 import { createHostRunner, type HostRunner } from "./host-engine";
-import {
-  createHostApprovalBroker,
-  createHostPolicy,
-  type HostApprovalBroker,
-  type HostApprovalRecord,
-  type HostApprovalRequest,
-} from "./host-policy";
+import { createHostApprovalBroker, createHostPolicy, type HostApprovalBroker, type HostApprovalRecord, type HostApprovalRequest } from "./host-policy";
 import { normalizeMounts, type NormalizedMountSpec } from "./mounts";
 import { formatHostWorkspacePrompt, formatWorkspacePrompt } from "./prompt";
 import { formatSkillsForPrompt, loadSkills, type Skill } from "./skills";
@@ -158,9 +152,7 @@ export default class WorkspacePlugin {
         ),
       );
     }
-    this.disposeSchemes.push(
-      this.ctx.yesimbot.registerResourceScheme("workspace", WORKSPACE_SCHEME_PROMPT, this.openWorkspace.bind(this)),
-    );
+    this.disposeSchemes.push(this.ctx.yesimbot.registerResourceScheme("workspace", WORKSPACE_SCHEME_PROMPT, this.openWorkspace.bind(this)));
 
     this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope, bot }) => {
       const runtimeSkills = skillCatalog.map((skill) => ({ ...skill }));
@@ -228,10 +220,7 @@ export default class WorkspacePlugin {
       const records = broker.list();
       if (records.length === 0) return "没有待审批的 Host 调用";
       return records
-        .map(
-          (record) =>
-            `${record.requestId} [${record.riskTags.join(", ")}] expires=${new Date(record.expiresAt).toISOString()} ${record.summary}`,
-        )
+        .map((record) => `${record.requestId} [${record.riskTags.join(", ")}] expires=${new Date(record.expiresAt).toISOString()} ${record.summary}`)
         .join("\n");
     });
     add("yesimbot.workspace.approve <requestId>", "批准 Host 调用", (argv, requestId) => {
@@ -290,10 +279,9 @@ export default class WorkspacePlugin {
         return toolsPromise;
       },
       appendSystemPrompt: async () => {
-        return [
-          formatHostWorkspacePrompt({ workspaceDir, timeoutMs: 30_000, hostRoots: config.hostRoots }),
-          formatSkillsForPrompt(runtimeSkills),
-        ].filter(Boolean);
+        return [formatHostWorkspacePrompt({ workspaceDir, timeoutMs: 30_000, hostRoots: config.hostRoots }), formatSkillsForPrompt(runtimeSkills)].filter(
+          Boolean,
+        );
       },
       beforeToolCall: async (call: ToolCallContext, context: ToolHookContext) => {
         if (!HOST_TOOL_NAMES.has(call.toolName)) return { type: "allow" } as const;
@@ -385,11 +373,7 @@ export default class WorkspacePlugin {
     sandbox: SandboxBashConfig,
     mounts: readonly NormalizedMountSpec[] | undefined,
   ): Promise<Workspace> {
-    const key = JSON.stringify(
-      channel.type === "direct"
-        ? [channel.platform, channel.selfId, channel.channelId]
-        : [channel.platform, channel.channelId],
-    );
+    const key = JSON.stringify(channel.type === "direct" ? [channel.platform, channel.selfId, channel.channelId] : [channel.platform, channel.channelId]);
     const existing = this.workspaces.get(key);
     if (existing) {
       return existing;
@@ -408,11 +392,7 @@ export default class WorkspacePlugin {
     return workspace;
   }
 
-  private createWorkspaceConfig(
-    root: string,
-    sandbox: SandboxBashConfig,
-    mounts: readonly NormalizedMountSpec[],
-  ): SandboxWorkspaceConfig {
+  private createWorkspaceConfig(root: string, sandbox: SandboxBashConfig, mounts: readonly NormalizedMountSpec[]): SandboxWorkspaceConfig {
     return {
       root,
       filesystem: {
@@ -494,10 +474,7 @@ export default class WorkspacePlugin {
   }
 }
 
-async function readBoundedFile(
-  filePath: string,
-  options: { signal: AbortSignal; maxBytes: number },
-): Promise<Uint8Array> {
+async function readBoundedFile(filePath: string, options: { signal: AbortSignal; maxBytes: number }): Promise<Uint8Array> {
   const metadata = await stat(filePath);
   if (!metadata.isFile()) throw new Error("Resource path is not a file");
   if (metadata.size > options.maxBytes) throw new Error("Resource file exceeds read limit");
@@ -506,8 +483,7 @@ async function readBoundedFile(
   return bytes;
 }
 
-const SKILL_SCHEME_PROMPT =
-  "读取已注册技能文件：skill://<skill-name>/<relative-path>。执行技能脚本请使用 /skills/<skill-name>/... 虚拟路径。";
+const SKILL_SCHEME_PROMPT = "读取已注册技能文件：skill://<skill-name>/<relative-path>。执行技能脚本请使用 /skills/<skill-name>/... 虚拟路径。";
 
 const WORKSPACE_SCHEME_PROMPT =
   'workspace:///relative/path 是频道工作区文件的对外引用，与沙箱内的 /home/workspace/relative/path 是同一个文件。沙箱内部操作用 readFile/bash 的 /home/workspace/... 路径，bash 不接受 workspace:// 形式。把工作区文件发出去时可用作 img/file 的 src，例如 <img src="workspace:///out/chart.png"/>。';
@@ -599,18 +575,10 @@ async function hostExecutionPrerequisites(identity: HostIdentity): Promise<boole
   }
 }
 
-async function hostRootsAreUsable(
-  roots: readonly { readonly path: string; readonly mode: "ro" | "rw" }[] | undefined,
-): Promise<boolean> {
+async function hostRootsAreUsable(roots: readonly { readonly path: string; readonly mode: "ro" | "rw" }[] | undefined): Promise<boolean> {
   if (!Array.isArray(roots)) return false;
   for (const root of roots) {
-    if (
-      !root ||
-      typeof root.path !== "string" ||
-      root.path.length === 0 ||
-      root.path.includes("\0") ||
-      (root.mode !== "ro" && root.mode !== "rw")
-    ) {
+    if (!root || typeof root.path !== "string" || root.path.length === 0 || root.path.includes("\0") || (root.mode !== "ro" && root.mode !== "rw")) {
       return false;
     }
     try {
@@ -633,11 +601,9 @@ async function hostIdentityCanSpawn(identity: HostIdentity): Promise<boolean> {
       settled = true;
       resolveProbe(result);
     };
-    const child = spawn(
-      "/usr/bin/setpriv",
-      ["--clear-groups", "--reuid", String(identity.uid), "--regid", String(identity.gid), "--", "/bin/true"],
-      { stdio: "ignore" },
-    );
+    const child = spawn("/usr/bin/setpriv", ["--clear-groups", "--reuid", String(identity.uid), "--regid", String(identity.gid), "--", "/bin/true"], {
+      stdio: "ignore",
+    });
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       finish(false);
@@ -658,8 +624,7 @@ function createBlockedHostAgentPlugin(reason: string): AgentPlugin {
   return {
     name: "workspace",
     tools: async () => [],
-    beforeToolCall: async (call) =>
-      HOST_TOOL_NAMES.has(call.toolName) ? ({ type: "block", reason } as const) : ({ type: "allow" } as const),
+    beforeToolCall: async (call) => (HOST_TOOL_NAMES.has(call.toolName) ? ({ type: "block", reason } as const) : ({ type: "allow" } as const)),
   } satisfies AgentPlugin;
 }
 

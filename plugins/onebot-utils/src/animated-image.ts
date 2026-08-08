@@ -7,20 +7,14 @@ export interface AnimatedImageProjectionOptions {
   readonly attachImageSummary?: boolean;
 }
 
-export function projectAnimatedImages(
-  entries: readonly AgentEntry[],
-  options: AnimatedImageProjectionOptions = {},
-): AgentEntry[] {
+export function projectAnimatedImages(entries: readonly AgentEntry[], options: AnimatedImageProjectionOptions = {}): AgentEntry[] {
   const attachImageSummary = options.attachImageSummary ?? true;
   return entries.map((entry) => {
     if (entry.type !== "message") return entry;
     const data = getMessageData(entry.data);
     if (!data) return entry;
     const elements = data.elements.map((element) => projectElement(element, attachImageSummary));
-    if (
-      elements.length === data.elements.length &&
-      elements.every((element, index) => element === data.elements[index])
-    ) {
+    if (elements.length === data.elements.length && elements.every((element, index) => element === data.elements[index])) {
       return entry;
     }
     const message = entry.data as unknown as { data: { elements: readonly Element[] } };
@@ -31,9 +25,7 @@ export function projectAnimatedImages(
 function getMessageData(message: AgentMessage): { elements: readonly Element[] } | undefined {
   if (message.role !== "custom" || message.type !== "yesimbot.message") return undefined;
   const data = (message as { data?: unknown }).data;
-  return typeof data === "object" && data !== null && "elements" in data
-    ? (data as { elements: readonly Element[] })
-    : undefined;
+  return typeof data === "object" && data !== null && "elements" in data ? (data as { elements: readonly Element[] }) : undefined;
 }
 
 function projectElement(element: Element, attachImageSummary: boolean): Element {
@@ -60,11 +52,7 @@ function isAnimatedImageElement(attrs: { summary?: unknown; sub_type?: unknown; 
   return isAnimatedImage(attrs) || (typeof attrs.summary === "string" && attrs.summary.trim().length > 0);
 }
 
-export function formatAnimatedImageLabel(options: {
-  readonly attachImageSummary: boolean;
-  readonly summary?: unknown;
-  readonly id?: unknown;
-}): string {
+export function formatAnimatedImageLabel(options: { readonly attachImageSummary: boolean; readonly summary?: unknown; readonly id?: unknown }): string {
   const parts: string[] = [];
   if (options.attachImageSummary) {
     const summary = options.summary;

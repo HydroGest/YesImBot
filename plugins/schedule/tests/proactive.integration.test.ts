@@ -5,25 +5,14 @@ import { join } from "node:path";
 import { Context } from "@koishijs/core";
 import { clone, makeArray, pick } from "cosmokit";
 import { Universal } from "koishi";
-import {
-  Database,
-  Driver,
-  Eval,
-  executeEval,
-  executeQuery,
-  executeSort,
-  executeUpdate,
-  Field,
-  RuntimeError,
-  Selection,
-} from "minato";
+import { Database, Driver, Eval, executeEval, executeQuery, executeSort, executeUpdate, Field, RuntimeError, Selection } from "minato";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import type { EventRecord } from "../../../core/src/messages.js";
 import SchedulePlugin from "../src/index.js";
-import { SCHEDULE_TABLE, ScheduleStore } from "../src/store.js";
+import { ScheduleStore } from "../src/store.js";
 
 const SCOPE = {
   type: "shared",
@@ -66,9 +55,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     this.store = Object.create(null);
   }
   public async stats(): Promise<Driver.Stats> {
-    const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]),
-    );
+    const tables = Object.fromEntries(Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]));
     return { tables, size: 0 };
   }
   public async prepare(): Promise<void> {}
@@ -236,12 +223,7 @@ async function startPluginAt(fixture: Fixture, instant: string): Promise<void> {
  * Advances fake time while yielding one real event-loop turn until the
  * observable completion condition is true.
  */
-async function settleUntil<T>(
-  description: string,
-  condition: () => T | false | Promise<T | false>,
-  timeoutMs = 120_000,
-  stepMs = 1_000,
-): Promise<T> {
+async function settleUntil<T>(description: string, condition: () => T | false | Promise<T | false>, timeoutMs = 120_000, stepMs = 1_000): Promise<T> {
   for (let elapsedMs = 0; elapsedMs <= timeoutMs; elapsedMs += stepMs) {
     const result = await condition();
     if (result) return result;

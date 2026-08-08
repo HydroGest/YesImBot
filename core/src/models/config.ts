@@ -11,6 +11,9 @@ export function mutateModelsConfig(path: string, mutate: (value: unknown) => unk
     const next = await mutate(await readModelsConfig(path));
     await writeFile(path, `${JSON.stringify(next, null, 2)}\n`);
   });
-  mutationTail = task.then(() => undefined, () => undefined);
+  mutationTail = task.then(
+    () => undefined,
+    () => undefined,
+  );
   return task;
 }

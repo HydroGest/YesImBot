@@ -9,14 +9,7 @@ import type { Schedule, ScheduleProjection } from "../src/types.js";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
-const TOOL_NAMES = [
-  "schedule_create",
-  "schedule_list",
-  "schedule_update",
-  "schedule_pause",
-  "schedule_resume",
-  "schedule_cancel",
-] as const;
+const TOOL_NAMES = ["schedule_create", "schedule_list", "schedule_update", "schedule_pause", "schedule_resume", "schedule_cancel"] as const;
 
 const scope: ChannelScope = {
   type: "shared",

@@ -1,8 +1,8 @@
 import { h } from "koishi";
 
+import type { ChannelScope } from "../../src/channels/index.js";
 import type { Config } from "../../src/config.js";
 import type { EventRecord, MessageRecord } from "../../src/messages/index.js";
-import type { ChannelScope } from "../../src/channels/index.js";
 
 export const scope: ChannelScope = {
   type: "shared",
@@ -41,9 +41,7 @@ export function defaultConfig(overrides: Partial<Config> = {}): Config {
   };
 }
 
-export function deliveryFailedEvent(
-  overrides: Partial<EventRecord<"delivery.failed">> = {},
-): EventRecord<"delivery.failed"> {
+export function deliveryFailedEvent(overrides: Partial<EventRecord<"delivery.failed">> = {}): EventRecord<"delivery.failed"> {
   return {
     eventType: "delivery.failed",
     platform: "test",

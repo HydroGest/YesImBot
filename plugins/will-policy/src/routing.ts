@@ -26,9 +26,5 @@ export class PolicyRoutingEngine implements WillEngine {
 }
 
 function isPokeEvent(input: Event): boolean {
-  return (
-    input.role === "custom" &&
-    input.type === "yesimbot.event" &&
-    (input.data as { eventType?: string }).eventType === "notice.poke"
-  );
+  return input.role === "custom" && input.type === "yesimbot.event" && (input.data as { eventType?: string }).eventType === "notice.poke";
 }

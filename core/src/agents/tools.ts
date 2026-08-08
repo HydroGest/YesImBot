@@ -25,7 +25,11 @@ export function createSendMessageTool(bot: Bot): AgentTool<SendMessageInput, Sen
   return {
     name: "sendMessage",
     description: "向指定频道发送一条消息。回复当前频道请直接输出文本即可。",
-    inputSchema: jsonSchema<SendMessageInput>({ type: "object", properties: { channelId: { type: "string", minLength: 1 }, content: { type: "string" } }, required: ["channelId", "content"] }),
+    inputSchema: jsonSchema<SendMessageInput>({
+      type: "object",
+      properties: { channelId: { type: "string", minLength: 1 }, content: { type: "string" } },
+      required: ["channelId", "content"],
+    }),
     execute: async ({ channelId, content }) => {
       try {
         const messageIds: string[] = [];
@@ -61,7 +65,13 @@ export function createReadTool(resources: ChannelResources, imageOutputSupported
     toModelOutput: ({ toolCallId, output }) => {
       const image = pendingImages.get(toolCallId);
       if (!image) return { type: "json", value: output };
-      return { type: "content", value: [...(output.text ? [{ type: "text" as const, text: output.text }] : []), { type: "image-data" as const, data: Buffer.from(image.bytes).toString("base64"), mediaType: image.mediaType }] };
+      return {
+        type: "content",
+        value: [
+          ...(output.text ? [{ type: "text" as const, text: output.text }] : []),
+          { type: "image-data" as const, data: Buffer.from(image.bytes).toString("base64"), mediaType: image.mediaType },
+        ],
+      };
     },
   };
 }
@@ -69,8 +79,16 @@ export function createReadTool(resources: ChannelResources, imageOutputSupported
 export function createDescribeImageTool(model: LanguageModel, resources: ChannelResources): AgentTool<DescribeImageInput, DescribeImageOutput> {
   return {
     name: "describe_image",
-    description: "当你需要了解图片内容、但当前无法直接查看图片时，使用本工具调用外部视觉模型生成图片描述。uri 必须是 asset://<32位十六进制id>。返回 {text} 或 {error}：invalid_uri 表示 URI 形状不合法；asset_not_found 表示资源不存在；not_an_image 表示该资源不是已知格式的图片；vision_call_failed 表示外部模型调用失败，可重试一次。",
-    inputSchema: jsonSchema<DescribeImageInput>({ type: "object", properties: { uri: { type: "string", description: "要描述的图片资源 URI，形如 asset://<32位十六进制id>" }, question: { type: "string", description: "要从图片中获取的信息" } }, required: ["uri", "question"] }),
+    description:
+      "当你需要了解图片内容、但当前无法直接查看图片时，使用本工具调用外部视觉模型生成图片描述。uri 必须是 asset://<32位十六进制id>。返回 {text} 或 {error}：invalid_uri 表示 URI 形状不合法；asset_not_found 表示资源不存在；not_an_image 表示该资源不是已知格式的图片；vision_call_failed 表示外部模型调用失败，可重试一次。",
+    inputSchema: jsonSchema<DescribeImageInput>({
+      type: "object",
+      properties: {
+        uri: { type: "string", description: "要描述的图片资源 URI，形如 asset://<32位十六进制id>" },
+        question: { type: "string", description: "要从图片中获取的信息" },
+      },
+      required: ["uri", "question"],
+    }),
     execute: async ({ uri, question }, execution) => {
       if (!/^asset:\/\/[a-f0-9]{32}$/.test(uri)) return { error: "invalid_uri" };
       const id = uri.slice("asset://".length);
@@ -87,7 +105,15 @@ export function createDescribeImageTool(model: LanguageModel, resources: Channel
           model,
           temperature: 0.2,
           abortSignal: execution.abortSignal,
-          messages: [{ role: "user", content: [{ type: "text", text: `请详细描述这张图片，并回答问题：${question}\n\n图片内容：` }, { type: "file", data: bytes, mediaType }] }],
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: `请详细描述这张图片，并回答问题：${question}\n\n图片内容：` },
+                { type: "file", data: bytes, mediaType },
+              ],
+            },
+          ],
         });
         return { text: result.text };
       } catch (cause) {
@@ -105,7 +131,10 @@ function readDescription(resources: ChannelResources, imageOutputSupported: bool
     "- asset://<32位十六进制id>：平台输入的不可变资源，包括图片与文本文件。消息里看到的 [图片：asset://xxx] 和 [文件：名字 asset://xxx] 就是它；路径部分必须为空。",
     "- artifact://<tool>/<uuid>：工具输出的不可变工件，uuid 由工具返回，原样传入。",
   ];
-  for (const reader of resources.listReaders().slice().sort((a, b) => a.scheme.localeCompare(b.scheme))) {
+  for (const reader of resources
+    .listReaders()
+    .slice()
+    .sort((a, b) => a.scheme.localeCompare(b.scheme))) {
     lines.push(`- ${reader.scheme}://：${reader.prompt}`);
   }
   lines.push(
@@ -140,8 +169,27 @@ function describeBytes(bytes: Uint8Array, mediaType?: string): string {
 function detectedMediaType(bytes: Uint8Array): string | undefined {
   if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
-  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38 && (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61) return "image/gif";
-  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return "image/webp";
+  if (
+    bytes.length >= 6 &&
+    bytes[0] === 0x47 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x38 &&
+    (bytes[4] === 0x37 || bytes[4] === 0x39) &&
+    bytes[5] === 0x61
+  )
+    return "image/gif";
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  )
+    return "image/webp";
   return undefined;
 }
 

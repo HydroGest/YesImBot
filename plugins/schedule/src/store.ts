@@ -13,14 +13,7 @@ import {
   type ScheduleRule,
   type ScheduleRuleShape,
 } from "./time.js";
-import type {
-  Schedule,
-  ScheduleCreateInput,
-  ScheduleLastResult,
-  ScheduleRow,
-  ScheduleState,
-  ScheduleUpdateInput,
-} from "./types.js";
+import type { Schedule, ScheduleCreateInput, ScheduleLastResult, ScheduleRow, ScheduleState, ScheduleUpdateInput } from "./types.js";
 
 export const SCHEDULE_TABLE = "yesimbot_schedule";
 
@@ -64,8 +57,7 @@ export class ScheduleStore {
       const now = new Date(Date.now());
       validateCreate(input, now);
       await this.assertEnabledCapacity(scope);
-      const rule: ScheduleRule =
-        input.kind === "once" ? { kind: "once", at: input.at } : { kind: "cron", cron: input.cron };
+      const rule: ScheduleRule = input.kind === "once" ? { kind: "once", at: input.at } : { kind: "cron", cron: input.cron };
       const row: ScheduleRow = {
         id: randomUUID(),
         type: scope.type,
@@ -133,11 +125,7 @@ export class ScheduleStore {
         if (row.state === "enabled") next = nextRunAt(rule, now);
       }
       const updatedAt = new Date(Date.now()).toISOString();
-      await this.model.set(
-        SCHEDULE_TABLE,
-        { ...scopeQuery(scope), id },
-        { title, prompt, kind, at, cron, nextRunAt: next, updatedAt },
-      );
+      await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { title, prompt, kind, at, cron, nextRunAt: next, updatedAt });
       return toSchedule({
         ...row,
         title,
@@ -156,11 +144,7 @@ export class ScheduleStore {
       const row = await this.fetchRow(scope, id);
       if (row.state !== "enabled") throw new Error(`schedule ${id} is not enabled`);
       const updatedAt = new Date(Date.now()).toISOString();
-      await this.model.set(
-        SCHEDULE_TABLE,
-        { ...scopeQuery(scope), id },
-        { state: "paused", nextRunAt: null, updatedAt },
-      );
+      await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { state: "paused", nextRunAt: null, updatedAt });
       return toSchedule({
         ...row,
         state: "paused",
@@ -182,11 +166,7 @@ export class ScheduleStore {
       }
       const next = nextRunAt(rule, now);
       const updatedAt = new Date(Date.now()).toISOString();
-      await this.model.set(
-        SCHEDULE_TABLE,
-        { ...scopeQuery(scope), id },
-        { state: "enabled", nextRunAt: next, updatedAt },
-      );
+      await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { state: "enabled", nextRunAt: next, updatedAt });
       return toSchedule({
         ...row,
         state: "enabled",
@@ -203,11 +183,7 @@ export class ScheduleStore {
         throw new Error(`schedule ${id} cannot be cancelled`);
       }
       const updatedAt = new Date(Date.now()).toISOString();
-      await this.model.set(
-        SCHEDULE_TABLE,
-        { ...scopeQuery(scope), id },
-        { state: "cancelled", nextRunAt: null, updatedAt },
-      );
+      await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { state: "cancelled", nextRunAt: null, updatedAt });
       return toSchedule({
         ...row,
         state: "cancelled",
@@ -332,11 +308,7 @@ export class ScheduleStore {
           finishedAt: updatedAt,
         };
         if (row.kind === "once") {
-          await this.model.set(
-            SCHEDULE_TABLE,
-            { id: row.id },
-            { state: "completed", nextRunAt: null, lastResult, updatedAt },
-          );
+          await this.model.set(SCHEDULE_TABLE, { id: row.id }, { state: "completed", nextRunAt: null, lastResult, updatedAt });
         } else {
           await this.model.set(
             SCHEDULE_TABLE,

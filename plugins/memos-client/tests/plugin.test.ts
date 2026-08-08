@@ -320,18 +320,9 @@ describe("MemosClientPlugin", () => {
       } as never,
       {} as never,
     );
-    await runtimePlugin.toModelMessages?.(
-      { ...message, data: { ...message.data, schemaVersion: 2 } } as never,
-      {} as never,
-    );
-    await runtimePlugin.toModelMessages?.(
-      { ...message, data: { ...message.data, schemaVersion: undefined } } as never,
-      {} as never,
-    );
-    await runtimePlugin.toModelMessages?.(
-      { role: "user", id: "user-message", timestamp: Date.now(), content: "ignored" } as never,
-      {} as never,
-    );
+    await runtimePlugin.toModelMessages?.({ ...message, data: { ...message.data, schemaVersion: 2 } } as never, {} as never);
+    await runtimePlugin.toModelMessages?.({ ...message, data: { ...message.data, schemaVersion: undefined } } as never, {} as never);
+    await runtimePlugin.toModelMessages?.({ role: "user", id: "user-message", timestamp: Date.now(), content: "ignored" } as never, {} as never);
 
     const addTool = (await getTools(runtimePlugin)).find((tool) => tool.name === "add_message");
     await addTool?.execute?.({ content: "仍归属原作者" }, toolContext("turn-real"));

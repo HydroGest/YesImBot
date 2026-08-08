@@ -248,11 +248,7 @@ function toPosix(value) {
 }
 
 function isManagedPluginName(name) {
-  return (
-    name === "koishi-plugin-yesimbot" ||
-    name.startsWith("koishi-plugin-yesimbot-") ||
-    /^@yesimbot\/koishi-plugin-provider-/.test(name)
-  );
+  return name === "koishi-plugin-yesimbot" || name.startsWith("koishi-plugin-yesimbot-") || /^@yesimbot\/koishi-plugin-provider-/.test(name);
 }
 
 function configKeyToPackageName(key) {
@@ -324,9 +320,7 @@ function updateManifest(plugins) {
     pkg.dependencies[plugin.name] = "workspace:^";
   }
 
-  pkg.dependencies = Object.fromEntries(
-    Object.entries(pkg.dependencies).sort(([left], [right]) => left.localeCompare(right)),
-  );
+  pkg.dependencies = Object.fromEntries(Object.entries(pkg.dependencies).sort(([left], [right]) => left.localeCompare(right)));
 
   fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
 }

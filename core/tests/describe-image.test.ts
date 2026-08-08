@@ -33,13 +33,23 @@ describe("createDescribeImageTool", () => {
   it("describes an asset image through the vision model", async () => {
     const resources = await createResources();
     const id = await resources.assets.put(PNG_BYTES);
-    vi.mocked(generateText).mockResolvedValueOnce({ text: "一只猫在沙发上", steps: [], warnings: [], usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } } as never);
+    vi.mocked(generateText).mockResolvedValueOnce({
+      text: "一只猫在沙发上",
+      steps: [],
+      warnings: [],
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    } as never);
     const tool = createDescribeImageTool({} as never, resources);
 
-    const result = await tool.execute({ uri: `asset://${id}`, question: "图片里有什么？" }, { toolCallId: "call", abortSignal: undefined } as never);
+    const result = await tool.execute({ uri: `asset://${id}`, question: "图片里有什么？" }, {
+      toolCallId: "call",
+      abortSignal: undefined,
+    } as never);
 
     expect(result).toEqual({ text: "一只猫在沙发上" });
-    const options = vi.mocked(generateText).mock.calls[0]![0] as { messages: Array<{ content: Array<{ type: string; text?: string; data?: Uint8Array; mediaType?: string }> }> };
+    const options = vi.mocked(generateText).mock.calls[0]![0] as {
+      messages: Array<{ content: Array<{ type: string; text?: string; data?: Uint8Array; mediaType?: string }> }>;
+    };
     const parts = options.messages[0]!.content;
     expect(parts[0]).toMatchObject({ type: "text" });
     expect(parts[0]!.text).toContain("图片里有什么？");
@@ -52,8 +62,15 @@ describe("createDescribeImageTool", () => {
     const get = vi.spyOn(resources.assets, "get");
     const tool = createDescribeImageTool({} as never, resources);
 
-    await expect(tool.execute({ uri: "asset://SHORT", question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({ error: "invalid_uri" });
-    await expect(tool.execute({ uri: "artifact://mcp/x", question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({ error: "invalid_uri" });
+    await expect(tool.execute({ uri: "asset://SHORT", question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({
+      error: "invalid_uri",
+    });
+    await expect(
+      tool.execute({ uri: "artifact://mcp/x", question: "什么" }, {
+        toolCallId: "call",
+        abortSignal: undefined,
+      } as never),
+    ).resolves.toEqual({ error: "invalid_uri" });
     expect(get).not.toHaveBeenCalled();
   });
 
@@ -61,7 +78,9 @@ describe("createDescribeImageTool", () => {
     const resources = await createResources();
     const tool = createDescribeImageTool({} as never, resources);
 
-    await expect(tool.execute({ uri: VALID_URI, question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({ error: "asset_not_found" });
+    await expect(tool.execute({ uri: VALID_URI, question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({
+      error: "asset_not_found",
+    });
   });
 
   it("rejects non-image bytes", async () => {
@@ -69,7 +88,9 @@ describe("createDescribeImageTool", () => {
     const id = await resources.assets.put(new Uint8Array([1, 2, 3]));
     const tool = createDescribeImageTool({} as never, resources);
 
-    await expect(tool.execute({ uri: `asset://${id}`, question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({ error: "not_an_image" });
+    await expect(tool.execute({ uri: `asset://${id}`, question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({
+      error: "not_an_image",
+    });
   });
 
   it("surfaces a failed vision call as an error result", async () => {
@@ -78,6 +99,8 @@ describe("createDescribeImageTool", () => {
     vi.mocked(generateText).mockRejectedValueOnce(new Error("boom"));
     const tool = createDescribeImageTool({} as never, resources);
 
-    await expect(tool.execute({ uri: `asset://${id}`, question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({ error: "vision_call_failed: boom" });
+    await expect(tool.execute({ uri: `asset://${id}`, question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({
+      error: "vision_call_failed: boom",
+    });
   });
 });

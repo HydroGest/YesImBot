@@ -28,11 +28,7 @@ describe("session-live input resources", () => {
     );
     const resources = { assets: { put: vi.fn(async () => id) } };
 
-    const elements = await persistElements(
-      { http } as never,
-      [h("img", { src: "https://example.test/image.png" })],
-      resources as never,
-    );
+    const elements = await persistElements({ http } as never, [h("img", { src: "https://example.test/image.png" })], resources as never);
 
     expect(resources.assets.put).toHaveBeenCalledWith(PNG);
     expect(elements).toEqual([h("img", { id })]);

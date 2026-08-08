@@ -19,11 +19,7 @@ export interface ImporterOptions {
   maxImportFileBytes: number;
 }
 
-export async function importImageFile(
-  options: ImporterOptions,
-  filePath: string,
-  category: string,
-): Promise<ImportStats> {
+export async function importImageFile(options: ImporterOptions, filePath: string, category: string): Promise<ImportStats> {
   const stats = emptyStats();
   stats.total = 1;
   try {
@@ -75,11 +71,7 @@ export async function importDirectory(options: ImporterOptions, sourceDir: strin
   return stats;
 }
 
-export async function importEmojiHubTxt(
-  options: ImporterOptions,
-  filePath: string,
-  category: string,
-): Promise<ImportStats> {
+export async function importEmojiHubTxt(options: ImporterOptions, filePath: string, category: string): Promise<ImportStats> {
   const stats = emptyStats();
   let content: string;
   try {

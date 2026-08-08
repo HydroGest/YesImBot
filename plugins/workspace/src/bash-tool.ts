@@ -108,18 +108,12 @@ export async function createBashToolSet(input: CreateBashToolSetInput): Promise<
     sandbox,
     destination: input.destination,
     extraInstructions:
-      input.environment === "host"
-        ? "Commands execute in the approved Host environment."
-        : "Commands execute in the Sandbox virtual filesystem.",
+      input.environment === "host" ? "Commands execute in the approved Host environment." : "Commands execute in the Sandbox virtual filesystem.",
     onBeforeBashCall({ command }) {
       sandbox.setPendingCommand(command);
       return undefined;
     },
   });
 
-  return [
-    withName("bash", toolkit.tools.bash, abortSignals),
-    withName("readFile", toolkit.tools.readFile),
-    withName("writeFile", toolkit.tools.writeFile),
-  ];
+  return [withName("bash", toolkit.tools.bash, abortSignals), withName("readFile", toolkit.tools.readFile), withName("writeFile", toolkit.tools.writeFile)];
 }

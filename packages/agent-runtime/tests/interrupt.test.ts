@@ -1,9 +1,4 @@
-import type {
-  LanguageModelV3,
-  LanguageModelV3CallOptions,
-  LanguageModelV3FinishReason,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3FinishReason, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -28,11 +23,7 @@ function createInterruptibleModel() {
         stream: new ReadableStream<LanguageModelV3StreamPart>({
           start(controller) {
             controller.enqueue({ type: "stream-start", warnings: [] });
-            options.abortSignal?.addEventListener(
-              "abort",
-              () => controller.error(new DOMException("Aborted", "AbortError")),
-              { once: true },
-            );
+            options.abortSignal?.addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")), { once: true });
           },
         }),
       };

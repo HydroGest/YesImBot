@@ -139,10 +139,7 @@ async function createInputDirectory(): Promise<string> {
     }),
   );
   await mkdir(join(dir, "nested"));
-  await writeJson(
-    join(dir, "nested", "Nested_Should_Not_Load.json"),
-    createExportFixture({ name: "Nested", type: "group", messages: [] }),
-  );
+  await writeJson(join(dir, "nested", "Nested_Should_Not_Load.json"), createExportFixture({ name: "Nested", type: "group", messages: [] }));
   return dir;
 }
 

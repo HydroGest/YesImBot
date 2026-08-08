@@ -1,12 +1,4 @@
-import {
-  hasToolCall,
-  isLoopFinished,
-  jsonSchema,
-  streamText,
-  type LanguageModel,
-  type LanguageModelUsage,
-  type SystemModelMessage,
-} from "ai";
+import { hasToolCall, isLoopFinished, jsonSchema, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage } from "ai";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
@@ -33,9 +25,7 @@ export interface AgentSendOptions {
 export interface AgentConfig {
   id?: string;
   model: LanguageModel;
-  systemPrompt?:
-    | SystemPromptAppend
-    | ((runtime: AgentPluginRuntime) => Promise<SystemPromptAppend | void> | SystemPromptAppend | void);
+  systemPrompt?: SystemPromptAppend | ((runtime: AgentPluginRuntime) => Promise<SystemPromptAppend | void> | SystemPromptAppend | void);
   tools?: AgentToolSet;
   terminalTool?: boolean | { name: string; description?: string };
   storage?: AgentStorage<AgentEntry>;
@@ -102,10 +92,7 @@ function isTerminalTurnEvent(event: AgentInternalEvent) {
   return event.type === "turn.done" || event.type === "turn.failed" || event.type === "turn.aborted";
 }
 
-async function resolveConfiguredSystemPrompt(
-  input: AgentConfig["systemPrompt"],
-  runtime: AgentPluginRuntime,
-): Promise<ResolvedSystemPrompt> {
+async function resolveConfiguredSystemPrompt(input: AgentConfig["systemPrompt"], runtime: AgentPluginRuntime): Promise<ResolvedSystemPrompt> {
   const value = typeof input === "function" ? await input(runtime) : input;
   if (value === undefined) return { blocks: [] };
   if (typeof value === "string") return { legacy: value, blocks: [] };
@@ -116,15 +103,13 @@ export function createAgent(config: AgentConfig): Agent {
   const id = config.id ?? crypto.randomUUID();
   const baseStorage = config.storage ?? createMemoryStorage();
   const channel = createAgentChannel();
-  const enableTerminalTool =
-    config.terminalTool === true || (config.terminalTool && typeof config.terminalTool === "object");
+  const enableTerminalTool = config.terminalTool === true || (config.terminalTool && typeof config.terminalTool === "object");
   const terminalToolName = enableTerminalTool
     ? config.terminalTool && typeof config.terminalTool === "object"
       ? config.terminalTool.name
       : "finalize"
     : undefined;
-  const terminalToolDescription =
-    config.terminalTool && typeof config.terminalTool === "object" ? config.terminalTool.description : undefined;
+  const terminalToolDescription = config.terminalTool && typeof config.terminalTool === "object" ? config.terminalTool.description : undefined;
 
   let storageReady = Promise.resolve();
   const mutateStorage = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -210,9 +195,7 @@ export function createAgent(config: AgentConfig): Agent {
         if (entry.type !== "message") continue;
 
         await emitInternal(
-          options.turnId
-            ? { type: "message.appended", message: entry.data, turnId: options.turnId }
-            : { type: "message.appended", message: entry.data },
+          options.turnId ? { type: "message.appended", message: entry.data, turnId: options.turnId } : { type: "message.appended", message: entry.data },
         );
       }
 
@@ -245,9 +228,7 @@ export function createAgent(config: AgentConfig): Agent {
         ? [
             {
               name: terminalToolName!,
-              description:
-                terminalToolDescription ??
-                "Mark the current assistant response as final. Call this after final text and required tools.",
+              description: terminalToolDescription ?? "Mark the current assistant response as final. Call this after final text and required tools.",
               inputSchema: jsonSchema({
                 type: "object",
                 additionalProperties: false,
@@ -343,10 +324,7 @@ export function createAgent(config: AgentConfig): Agent {
                     turnId,
                     abortSignal: hookContext.signal,
                   };
-                  const output = await raceAbort(
-                    Promise.resolve(execute(nextInput, executeContext)),
-                    hookContext.signal,
-                  );
+                  const output = await raceAbort(Promise.resolve(execute(nextInput, executeContext)), hookContext.signal);
                   throwIfAborted(hookContext.signal);
                   const result = await pluginHost.helpers.afterToolCall(
                     {
@@ -413,10 +391,7 @@ export function createAgent(config: AgentConfig): Agent {
     return entries.filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message");
   };
 
-  const rememberSubmittedEntries = (
-    messages: AgentMessage[],
-    entries: Array<Extract<AgentEntry, { type: "message" }>>,
-  ) => {
+  const rememberSubmittedEntries = (messages: AgentMessage[], entries: Array<Extract<AgentEntry, { type: "message" }>>) => {
     if (messages.length !== entries.length) {
       return;
     }
@@ -447,18 +422,12 @@ export function createAgent(config: AgentConfig): Agent {
       freshMessages.map((message) => createMessageEntry(message)),
       { turnId },
     );
-    const freshEntries = transformed.filter(
-      (entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message",
-    );
+    const freshEntries = transformed.filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message");
     rememberSubmittedEntries(freshMessages, freshEntries);
     return [...knownEntries, ...freshEntries];
   };
 
-  const buildBoundaryModelMessages = async (
-    turnId: string,
-    currentEntries: Array<Extract<AgentEntry, { type: "message" }>>,
-    signal: AbortSignal,
-  ) => {
+  const buildBoundaryModelMessages = async (turnId: string, currentEntries: Array<Extract<AgentEntry, { type: "message" }>>, signal: AbortSignal) => {
     const persisted = await collectHistoryMessageEntries();
     const currentEntryIds = new Set(currentEntries.map((entry) => entry.id));
     const history = persisted.filter((entry) => !currentEntryIds.has(entry.id)).map((entry) => entry.data);
@@ -607,9 +576,7 @@ export function createAgent(config: AgentConfig): Agent {
                 },
               );
               allMessages.push(
-                ...stepEntries
-                  .filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message")
-                  .map((entry) => entry.data),
+                ...stepEntries.filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message").map((entry) => entry.data),
               );
             }
 
@@ -705,9 +672,7 @@ export function createAgent(config: AgentConfig): Agent {
     async append(message) {
       await this.init();
       const entries = await appendEntries([createMessageEntry(message)]);
-      const messageEntries = entries.filter(
-        (entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message",
-      );
+      const messageEntries = entries.filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message");
       rememberSubmittedEntries([message], messageEntries);
     },
     send(message, options = {}) {
@@ -716,9 +681,7 @@ export function createAgent(config: AgentConfig): Agent {
 
       if (options.ifBusy === "join" && activeTurnId && !submittedMessageEntries.has(message)) {
         persistence = appendEntries([createMessageEntry(message)], { turnId: activeTurnId }).then((entries) => {
-          const messageEntries = entries.filter(
-            (entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message",
-          );
+          const messageEntries = entries.filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message");
           rememberSubmittedEntries([message], messageEntries);
         });
       }

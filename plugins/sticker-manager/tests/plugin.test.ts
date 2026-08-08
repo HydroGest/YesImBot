@@ -141,12 +141,7 @@ describe("StickerManagerPlugin", () => {
       bot: {},
     });
     const tools = typeof agentPlugin.tools === "function" ? ((await agentPlugin.tools({} as never)) ?? []) : [];
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "sticker_steal",
-      "sticker_send",
-      "sticker_categories",
-      "sticker_search",
-    ]);
+    expect(tools.map((tool) => tool.name)).toEqual(["sticker_steal", "sticker_send", "sticker_categories", "sticker_search"]);
 
     await dispose[0]?.();
     expect(disposeFactory).toHaveBeenCalledOnce();

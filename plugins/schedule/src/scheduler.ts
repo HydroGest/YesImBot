@@ -110,10 +110,7 @@ export class ScheduleScheduler {
       await this.trigger(event);
       await this.store.finish(row.id, occurrenceAt, "accepted");
     } catch (cause) {
-      const error =
-        cause instanceof Error
-          ? { name: cause.name, message: cause.message }
-          : { name: "Error", message: String(cause) };
+      const error = cause instanceof Error ? { name: cause.name, message: cause.message } : { name: "Error", message: String(cause) };
       await this.store.finish(row.id, occurrenceAt, "failed", error);
     }
   }

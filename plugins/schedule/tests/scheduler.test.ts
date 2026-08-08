@@ -2,18 +2,7 @@ import { Context } from "cordis";
 import { clone, makeArray, pick } from "cosmokit";
 import { Universal } from "koishi";
 import type { ChannelScope, EventRecord } from "koishi-plugin-yesimbot";
-import {
-  Database,
-  Driver,
-  Eval,
-  executeEval,
-  executeQuery,
-  executeSort,
-  executeUpdate,
-  Field,
-  RuntimeError,
-  Selection,
-} from "minato";
+import { Database, Driver, Eval, executeEval, executeQuery, executeSort, executeUpdate, Field, RuntimeError, Selection } from "minato";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { MAX_CONCURRENT_TRIGGERS, ScheduleScheduler } from "../src/scheduler.js";
@@ -52,9 +41,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     this.store = Object.create(null);
   }
   public async stats(): Promise<Driver.Stats> {
-    const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]),
-    );
+    const tables = Object.fromEntries(Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]));
     return { tables, size: 0 };
   }
   public async prepare(): Promise<void> {}

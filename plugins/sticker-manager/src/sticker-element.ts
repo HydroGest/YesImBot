@@ -18,10 +18,7 @@ interface StickerElementOptions {
 const STICKER_ARTIFACT_SOURCE = /^artifact:\/\/sticker\//;
 const STICKER_ID = /^[a-f0-9]{64}$/i;
 
-export async function projectStickerElements(
-  entries: readonly AgentEntry[],
-  options: StickerElementOptions,
-): Promise<AgentEntry[]> {
+export async function projectStickerElements(entries: readonly AgentEntry[], options: StickerElementOptions): Promise<AgentEntry[]> {
   if (!options.config.stickerElement) return [...entries];
 
   const result: AgentEntry[] = [];
@@ -41,10 +38,7 @@ export async function projectStickerElements(
   return result;
 }
 
-export async function projectStickerHistoryElements(
-  entries: readonly AgentEntry[],
-  options: StickerElementOptions,
-): Promise<AgentEntry[]> {
+export async function projectStickerHistoryElements(entries: readonly AgentEntry[], options: StickerElementOptions): Promise<AgentEntry[]> {
   if (!options.config.stickerElement) return [...entries];
 
   const result: AgentEntry[] = [];
@@ -70,13 +64,7 @@ function assistantText(content: unknown): string | undefined {
   return content
     .map((part) => {
       if (typeof part === "string") return part;
-      if (
-        part &&
-        typeof part === "object" &&
-        "type" in part &&
-        part.type === "text" &&
-        typeof (part as { text?: unknown }).text === "string"
-      ) {
+      if (part && typeof part === "object" && "type" in part && part.type === "text" && typeof (part as { text?: unknown }).text === "string") {
         return (part as { text: string }).text;
       }
       return "";
@@ -188,24 +176,14 @@ function stickerIdFromFilename(filename: string | undefined): string | undefined
   return dot > 0 ? filename.slice(0, dot) : undefined;
 }
 
-async function resolveSticker(
-  attrs: Readonly<Record<string, unknown>>,
-  options: StickerElementOptions,
-): Promise<StickerProjection | null> {
+async function resolveSticker(attrs: Readonly<Record<string, unknown>>, options: StickerElementOptions): Promise<StickerProjection | null> {
   const id = stringAttr(attrs.id);
   if (id) return options.store.get(options.scopeKey, id);
 
   const category = stringAttr(attrs.category);
   const tags = parseTags(attrs.tags);
   if (tags.length > 0) {
-    return pickBestTaggedSticker(
-      options.store,
-      options.scopeKey,
-      tags,
-      category,
-      options.config.fuzzyTagMatch,
-      options.config.tagRandomRange,
-    );
+    return pickBestTaggedSticker(options.store, options.scopeKey, tags, category, options.config.fuzzyTagMatch, options.config.tagRandomRange);
   }
   return options.store.random(options.scopeKey, category);
 }

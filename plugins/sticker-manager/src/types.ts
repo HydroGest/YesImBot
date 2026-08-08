@@ -80,9 +80,7 @@ export interface SaveStickerInput {
   source: StickerSource;
 }
 
-export type SaveStickerResult =
-  | { status: "created"; sticker: StickerProjection }
-  | { status: "duplicate"; sticker: StickerProjection };
+export type SaveStickerResult = { status: "created"; sticker: StickerProjection } | { status: "duplicate"; sticker: StickerProjection };
 
 export interface CleanupResult {
   orphanFiles: number;
@@ -109,9 +107,7 @@ export interface MigrationResult {
 
 export function scopeKeyFor(scope: ChannelScope, config: Pick<StickerConfig, "scope">): string {
   if (config.scope === "global") return "global";
-  return scope.type === "shared"
-    ? `shared:${scope.platform}:${scope.channelId}`
-    : `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`;
+  return scope.type === "shared" ? `shared:${scope.platform}:${scope.channelId}` : `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`;
 }
 
 export function normalizeCategory(value: string): string {

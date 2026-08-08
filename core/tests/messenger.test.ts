@@ -102,12 +102,7 @@ describe("Messenger", () => {
       },
     );
     Object.assign(ctx, { http });
-    const messenger = new Messenger(
-      ctx,
-      { ...config, allowedChannels: [{ platform: "test", channelId: "room-1" }] },
-      channels as never,
-      runtimes as never,
-    );
+    const messenger = new Messenger(ctx, { ...config, allowedChannels: [{ platform: "test", channelId: "room-1" }] }, channels as never, runtimes as never);
     const session = {
       type: "message-created",
       platform: "test",
@@ -125,9 +120,7 @@ describe("Messenger", () => {
     await messenger["handle"](session as never);
 
     expect(resources.assets.put).toHaveBeenCalledOnce();
-    expect(runtime.handle).toHaveBeenCalledWith(
-      expect.objectContaining({ elements: [h("img", { id: "0123456789abcdef0123456789abcdef" })] }),
-    );
+    expect(runtime.handle).toHaveBeenCalledWith(expect.objectContaining({ elements: [h("img", { id: "0123456789abcdef0123456789abcdef" })] }));
     expect(runtimes.get).toHaveBeenCalledWith(channel, bot, session);
   });
 

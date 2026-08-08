@@ -26,12 +26,7 @@ function newRunner(options: Parameters<typeof createHostRunner>[0] = {}): HostRu
   return runner;
 }
 
-function input(
-  cwd: string,
-  command: string,
-  signal: AbortSignal = new AbortController().signal,
-  environment: NodeJS.ProcessEnv = {},
-): HostRunnerInput {
+function input(cwd: string, command: string, signal: AbortSignal = new AbortController().signal, environment: NodeJS.ProcessEnv = {}): HostRunnerInput {
   return {
     command,
     cwd,

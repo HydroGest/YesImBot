@@ -82,7 +82,7 @@ describe("busy behavior", () => {
 
   it("keeps joined messages clean while retaining them in the active turn result", async () => {
     const agent = createAgent({ model: createBlockingModel() });
-    const turnId = agent.send(createUserMessage("first"));
+
     const joinedMessage = createUserMessage("joined");
 
     agent.send(joinedMessage, { ifBusy: "join" });
@@ -118,7 +118,6 @@ describe("busy behavior", () => {
       model: createBlockingModel(),
       storage: deferredStorage.storage,
     });
-    const firstTurnId = agent.send(createUserMessage("first"));
 
     agent.send(createUserMessage("joined"), { ifBusy: "join" });
     for (let attempt = 0; attempt < 10 && deferredStorage.appended.length === 0; attempt += 1) {

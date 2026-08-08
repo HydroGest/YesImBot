@@ -140,8 +140,7 @@ export interface AgentInternalEventMeta {
 
 export type AgentInternalEvent<T extends AgentInternalEventInit = AgentInternalEventInit> = T & AgentInternalEventMeta;
 
-export type AgentCustomChannelEvent<T extends keyof AgentCustomChannelEvents = keyof AgentCustomChannelEvents> =
-  AgentCustomChannelEvents[T];
+export type AgentCustomChannelEvent<T extends keyof AgentCustomChannelEvents = keyof AgentCustomChannelEvents> = AgentCustomChannelEvents[T];
 
 function formatDiagnosticCause(cause: unknown): string | undefined {
   if (cause === undefined) {

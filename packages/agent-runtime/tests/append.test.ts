@@ -401,8 +401,6 @@ describe("append", () => {
       storage,
     });
 
-    const turnId = agent.send(createUserMessage("hello"));
-
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
     expect(modelRequests[0].map(flattenPromptContent)).toEqual([["hello"]]);
@@ -467,7 +465,6 @@ describe("append", () => {
       });
     });
 
-    const turnId = agent.send(createUserMessage("trigger"));
     await started;
     await agent.append(createUserMessage("observed while busy"));
     releaseTool?.();
@@ -496,8 +493,6 @@ describe("append", () => {
         } as never,
       ],
     });
-
-    const turnId = agent.send(createUserMessage("trigger"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -534,8 +529,6 @@ describe("append", () => {
       ],
     });
 
-    const turnId = agent.send(createUserMessage("trigger"));
-
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
     expect(modelRequests).toHaveLength(3);
@@ -550,9 +543,7 @@ describe("append", () => {
     const persistedMessages = (await agent.storage.read()).filter((entry) => entry.type === "message");
     expect(
       persistedMessages.filter(
-        (entry) =>
-          entry.data.role === "tool" &&
-          entry.data.content.some((part) => part.type === "tool-result" && part.toolCallId === "call_1"),
+        (entry) => entry.data.role === "tool" && entry.data.content.some((part) => part.type === "tool-result" && part.toolCallId === "call_1"),
       ),
     ).toHaveLength(1);
   });
@@ -583,12 +574,7 @@ describe("append", () => {
         {
           name: "slow-first-append",
           async onAppend(entries) {
-            if (
-              entries.some(
-                (entry) =>
-                  entry.type === "message" && entry.data.role === "user" && entry.data.content === "slow observation",
-              )
-            ) {
+            if (entries.some((entry) => entry.type === "message" && entry.data.role === "user" && entry.data.content === "slow observation")) {
               await slowAppendReady;
             }
             return entries;
@@ -606,7 +592,6 @@ describe("append", () => {
       });
     });
 
-    const turnId = agent.send(createUserMessage("trigger"));
     await started;
     const slowAppend = agent.append(createUserMessage("slow observation"));
     const fastAppend = agent.append(createUserMessage("fast observation"));
@@ -619,11 +604,7 @@ describe("append", () => {
     expect(agent.isIdle()).toBe(true);
 
     expect(modelRequests).toHaveLength(2);
-    expect(modelRequests[1].map(flattenPromptContent).slice(0, 3)).toEqual([
-      ["trigger"],
-      ["slow observation"],
-      ["fast observation"],
-    ]);
+    expect(modelRequests[1].map(flattenPromptContent).slice(0, 3)).toEqual([["trigger"], ["slow observation"], ["fast observation"]]);
   });
 
   it("keeps joined busy input explicit at the tool-loop boundary while appended observations come from history", async () => {
@@ -655,7 +636,6 @@ describe("append", () => {
       });
     });
 
-    const turnId = agent.send(createUserMessage("trigger"));
     await started;
     await agent.append(createUserMessage("observed while busy"));
     agent.send(createUserMessage("joined while busy"), { ifBusy: "join" });
@@ -664,9 +644,7 @@ describe("append", () => {
     await agent.wait();
 
     const entries = await agent.storage.read();
-    const joined = entries.filter(
-      (entry) => entry.type === "message" && entry.data.role === "user" && entry.data.content === "joined while busy",
-    );
+    const joined = entries.filter((entry) => entry.type === "message" && entry.data.role === "user" && entry.data.content === "joined while busy");
     expect(joined).toHaveLength(1);
 
     expect(modelRequests).toHaveLength(2);

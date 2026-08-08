@@ -7,9 +7,7 @@ import { Element, h } from "koishi";
 import { parseReply } from "../src/runtimes/output.js";
 
 function text(segment: readonly Element[]): string {
-  return segment
-    .map((element) => (element.type === "text" ? `${element.attrs["content"] ?? ""}` : element.toString()))
-    .join("");
+  return segment.map((element) => (element.type === "text" ? `${element.attrs["content"] ?? ""}` : element.toString())).join("");
 }
 
 describe("parseReply", () => {

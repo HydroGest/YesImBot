@@ -1,20 +1,10 @@
 import type { ChannelScope, EventMap } from "koishi-plugin-yesimbot";
 import { describe, expect, it } from "vitest";
 
-import type {
-  Schedule,
-  ScheduleCreateInput,
-  ScheduleLastResult,
-  ScheduleState,
-  ScheduleUpdateInput,
-} from "../src/types.js";
+import type { Schedule, ScheduleCreateInput, ScheduleLastResult, ScheduleState, ScheduleUpdateInput } from "../src/types.js";
 
 // The due extension must carry exactly one top-level field: schedule metadata.
-type _dueKeys = [keyof EventMap["schedule.due"]] extends ["schedule"]
-  ? ["schedule"] extends [keyof EventMap["schedule.due"]]
-    ? true
-    : never
-  : never;
+type _dueKeys = [keyof EventMap["schedule.due"]] extends ["schedule"] ? (["schedule"] extends [keyof EventMap["schedule.due"]] ? true : never) : never;
 const _dueKeysCheck: _dueKeys = true;
 
 describe("Schedule domain types", () => {

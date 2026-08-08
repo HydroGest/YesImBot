@@ -19,10 +19,7 @@ export function isBlockedUrl(url: string, blacklist: readonly RegExp[]): boolean
   return blacklist.some((pattern) => pattern.test(url));
 }
 
-export function filterBlockedResults<T extends { url: string }>(
-  results: readonly T[],
-  blacklist: readonly RegExp[],
-): T[] {
+export function filterBlockedResults<T extends { url: string }>(results: readonly T[], blacklist: readonly RegExp[]): T[] {
   if (blacklist.length === 0) return [...results];
   return results.filter((result) => !isBlockedUrl(result.url, blacklist));
 }
@@ -47,10 +44,7 @@ export function dedupeByUrl<T extends { url: string }>(results: readonly T[]): T
   return deduped;
 }
 
-export function normalizeUrlList(
-  urls: readonly string[],
-  maxUrls: number,
-): Array<{ url: string } | { url: string; error: string }> {
+export function normalizeUrlList(urls: readonly string[], maxUrls: number): Array<{ url: string } | { url: string; error: string }> {
   const seen = new Set<string>();
   const results: Array<{ url: string } | { url: string; error: string }> = [];
 

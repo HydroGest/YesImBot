@@ -103,11 +103,7 @@ function toProjection(schedule: Schedule): ScheduleProjection {
   };
 }
 
-function createTool(
-  scope: ChannelScope,
-  store: ScheduleStore,
-  rearm: (() => Promise<void>) | undefined,
-): AgentTool<CreateToolInput, ScheduleProjection> {
+function createTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<CreateToolInput, ScheduleProjection> {
   return {
     name: "schedule_create",
     description:
@@ -128,22 +124,16 @@ function createTool(
 function listTool(scope: ChannelScope, store: ScheduleStore): AgentTool<Record<string, never>, ScheduleProjection[]> {
   return {
     name: "schedule_list",
-    description:
-      "列出当前频道的全部定时任务，返回每个任务的紧凑信息：id、标题、类型（once/cron）、状态、下次执行时间和最近结果。",
+    description: "列出当前频道的全部定时任务，返回每个任务的紧凑信息：id、标题、类型（once/cron）、状态、下次执行时间和最近结果。",
     inputSchema: LIST_SCHEMA,
     execute: async () => (await store.list(scope)).map(toProjection),
   };
 }
 
-function updateTool(
-  scope: ChannelScope,
-  store: ScheduleStore,
-  rearm: (() => Promise<void>) | undefined,
-): AgentTool<UpdateToolInput, ScheduleProjection> {
+function updateTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<UpdateToolInput, ScheduleProjection> {
   return {
     name: "schedule_update",
-    description:
-      "更新当前频道一个定时任务的标题、提示词或执行规则。规则替换时 at 与 cron 至多提供一个；未提供的字段保持不变。",
+    description: "更新当前频道一个定时任务的标题、提示词或执行规则。规则替换时 at 与 cron 至多提供一个；未提供的字段保持不变。",
     inputSchema: UPDATE_SCHEMA,
     execute: async ({ id, title, prompt, at, cron }) => {
       let patch: ScheduleUpdateInput = {};
@@ -158,11 +148,7 @@ function updateTool(
   };
 }
 
-function pauseTool(
-  scope: ChannelScope,
-  store: ScheduleStore,
-  rearm: (() => Promise<void>) | undefined,
-): AgentTool<IdToolInput, ScheduleProjection> {
+function pauseTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<IdToolInput, ScheduleProjection> {
   return {
     name: "schedule_pause",
     description: "暂停当前频道一个启用的定时任务：保留规则与最近结果，不再触发。",
@@ -175,11 +161,7 @@ function pauseTool(
   };
 }
 
-function resumeTool(
-  scope: ChannelScope,
-  store: ScheduleStore,
-  rearm: (() => Promise<void>) | undefined,
-): AgentTool<IdToolInput, ScheduleProjection> {
+function resumeTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<IdToolInput, ScheduleProjection> {
   return {
     name: "schedule_resume",
     description: "恢复当前频道一个已暂停的定时任务，并计算其下一个未来执行时刻。",
@@ -192,11 +174,7 @@ function resumeTool(
   };
 }
 
-function cancelTool(
-  scope: ChannelScope,
-  store: ScheduleStore,
-  rearm: (() => Promise<void>) | undefined,
-): AgentTool<IdToolInput, ScheduleProjection> {
+function cancelTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<IdToolInput, ScheduleProjection> {
   return {
     name: "schedule_cancel",
     description: "取消当前频道一个启用或暂停的定时任务：本次及以后都不会再触发，记录保留为已取消。",
@@ -215,11 +193,7 @@ function cancelTool(
  * no schema accepts a scope, channel, or Session parameter, and every Store
  * call passes the captured scope.
  */
-export function createScheduleTools(
-  scope: ChannelScope,
-  store: ScheduleStore,
-  rearm?: () => Promise<void>,
-): AgentTool[] {
+export function createScheduleTools(scope: ChannelScope, store: ScheduleStore, rearm?: () => Promise<void>): AgentTool[] {
   return [
     createTool(scope, store, rearm),
     listTool(scope, store),

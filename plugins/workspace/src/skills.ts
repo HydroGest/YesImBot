@@ -20,8 +20,7 @@ function validateName(name: string, parentDirName: string): string[] {
   const errors: string[] = [];
   if (name !== parentDirName) errors.push(`name "${name}" does not match parent directory "${parentDirName}"`);
   if (name.length > MAX_NAME_LENGTH) errors.push(`name exceeds ${MAX_NAME_LENGTH} characters (${name.length})`);
-  if (!/^[a-z0-9-]+$/.test(name))
-    errors.push("name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)");
+  if (!/^[a-z0-9-]+$/.test(name)) errors.push("name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)");
   if (name.startsWith("-") || name.endsWith("-")) errors.push("name must not start or end with a hyphen");
   if (name.includes("--")) errors.push("name must not contain consecutive hyphens");
   return errors;
@@ -48,12 +47,7 @@ export async function loadSkillsFromDir(dir: string): Promise<LoadSkillsResult> 
   return loadSkillsFromDirInternal(dir, true, rootDir, new Set());
 }
 
-async function loadSkillsFromDirInternal(
-  dir: string,
-  includeRootFiles: boolean,
-  rootDir: string,
-  visited: Set<string>,
-): Promise<LoadSkillsResult> {
+async function loadSkillsFromDirInternal(dir: string, includeRootFiles: boolean, rootDir: string, visited: Set<string>): Promise<LoadSkillsResult> {
   const skills: Skill[] = [];
   const diagnostics: ResourceDiagnostic[] = [];
   let realDir: string;
@@ -163,9 +157,7 @@ async function loadSkillFromFile(
       diagnostics.push({ type: "warning", message: error, path: filePath });
     }
 
-    const invalidName = nameErrors.some(
-      (error) => error.includes("exceeds") || error.includes("invalid characters") || error.includes("must not"),
-    );
+    const invalidName = nameErrors.some((error) => error.includes("exceeds") || error.includes("invalid characters") || error.includes("must not"));
     if (descriptionErrors.length > 0 || invalidName || !description) {
       return { skill: null, diagnostics };
     }
@@ -216,12 +208,7 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
 }
 
 function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 function normalizePath(input: string): string {
@@ -306,9 +293,7 @@ export async function loadSkills(options: LoadSkillsOptions): Promise<LoadSkills
   return { skills: Array.from(skillMap.values()), diagnostics: [...allDiagnostics, ...collisionDiagnostics] };
 }
 
-export const parseFrontmatter = <T extends Record<string, unknown> = Record<string, unknown>>(
-  content: string,
-): ParsedFrontmatter<T> => {
+export const parseFrontmatter = <T extends Record<string, unknown> = Record<string, unknown>>(content: string): ParsedFrontmatter<T> => {
   const parsed = matter(content);
   return { frontmatter: parsed.data as T, body: parsed.content.trim() };
 };

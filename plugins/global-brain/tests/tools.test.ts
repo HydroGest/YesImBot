@@ -86,13 +86,7 @@ describe("GlobalBrain tools", () => {
         artifacts: createMemoryArtifacts(),
       });
 
-      expect(tools.map((tool) => tool.name)).toEqual([
-        "brain_deposit",
-        "brain_read",
-        "brain_reply",
-        "brain_resolve",
-        "brain_status",
-      ]);
+      expect(tools.map((tool) => tool.name)).toEqual(["brain_deposit", "brain_read", "brain_reply", "brain_resolve", "brain_status"]);
       const schema = JSON.stringify(tools.map((tool) => tool.inputSchema));
       expect(schema).toContain("kind");
       expect(schema).toContain("content");
@@ -123,10 +117,10 @@ describe("GlobalBrain tools", () => {
       });
       const context = toolContext();
 
-      const created = (await tools[0]?.execute?.(
-        { kind: "question", content: "谁有 XX 的资料？", tags: ["search"] },
-        context,
-      )) as { outcome: "created"; thread: { id: string } };
+      const created = (await tools[0]?.execute?.({ kind: "question", content: "谁有 XX 的资料？", tags: ["search"] }, context)) as {
+        outcome: "created";
+        thread: { id: string };
+      };
       expect(created.outcome).toBe("created");
 
       const reply = await tools[2]?.execute?.(
@@ -182,10 +176,10 @@ describe("GlobalBrain tools", () => {
         artifacts: createMemoryArtifacts(),
       });
 
-      const created = (await sourceTools[0]?.execute?.(
-        { kind: "share", assetId, content: "一张梗图", tags: ["meme"] },
-        toolContext(),
-      )) as { outcome: "created"; thread: { id: string; payload: { kind: string; blobId: string } } };
+      const created = (await sourceTools[0]?.execute?.({ kind: "share", assetId, content: "一张梗图", tags: ["meme"] }, toolContext())) as {
+        outcome: "created";
+        thread: { id: string; payload: { kind: string; blobId: string } };
+      };
       expect(created.outcome).toBe("created");
       expect(created.thread.payload).toMatchObject({ kind: "asset", blobId: expect.any(String) });
 
@@ -218,7 +212,10 @@ describe("GlobalBrain tools", () => {
       const artifact = (await tools[0]?.execute?.(
         { kind: "share", artifactUri: "artifact://web-fetch/0192abcd-0192-7000-8000-000000000000" },
         toolContext(),
-      )) as { outcome: "created"; thread: { payload: { kind: string; mediaType: string; filename: string } } };
+      )) as {
+        outcome: "created";
+        thread: { payload: { kind: string; mediaType: string; filename: string } };
+      };
       expect(artifact.outcome).toBe("created");
       expect(artifact.thread.payload).toMatchObject({
         kind: "artifact",
@@ -286,15 +283,13 @@ describe("GlobalBrain tools", () => {
       });
       const context = toolContext();
 
-      const created = (await tools[0]?.execute?.(
-        { kind: "share", content: "urgent", shareImmediately: true },
-        context,
-      )) as { outcome: "created"; thread: { id: string } };
+      const created = (await tools[0]?.execute?.({ kind: "share", content: "urgent", shareImmediately: true }, context)) as {
+        outcome: "created";
+        thread: { id: string };
+      };
       expect(created.outcome).toBe("created");
       expect(onImmediateShare).toHaveBeenCalledTimes(1);
-      expect(onImmediateShare).toHaveBeenCalledWith(
-        expect.objectContaining({ id: created.thread.id, kind: "share", content: "urgent" }),
-      );
+      expect(onImmediateShare).toHaveBeenCalledWith(expect.objectContaining({ id: created.thread.id, kind: "share", content: "urgent" }));
 
       onImmediateShare.mockClear();
       await tools[0]?.execute?.({ kind: "share", content: "waiting", shareImmediately: false }, context);

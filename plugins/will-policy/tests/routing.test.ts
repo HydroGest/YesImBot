@@ -55,24 +55,12 @@ describe("PolicyRoutingEngine", () => {
     });
 
     await expect(engine.decide(message([], 1), state)).resolves.toBe("trigger");
-    await expect(engine.decide(message([{ type: "at", attrs: { id: "bot-1" }, children: [] }]), state)).resolves.toBe(
-      "trigger",
-    );
-    await expect(engine.decide(message([{ type: "at", attrs: { type: "all" }, children: [] }]), state)).resolves.toBe(
-      "wait",
-    );
-    await expect(engine.decide(message([{ type: "at", attrs: { type: "here" }, children: [] }]), state)).resolves.toBe(
-      "wait",
-    );
-    await expect(engine.decide(message([{ type: "quote", attrs: { id: "q-1" }, children: [] }]), state)).resolves.toBe(
-      "trigger",
-    );
-    await expect(
-      engine.decide(message([{ type: "img", attrs: { id: "asset-1" }, children: [] }]), state),
-    ).resolves.toBe("trigger");
+    await expect(engine.decide(message([{ type: "at", attrs: { id: "bot-1" }, children: [] }]), state)).resolves.toBe("trigger");
+    await expect(engine.decide(message([{ type: "at", attrs: { type: "all" }, children: [] }]), state)).resolves.toBe("wait");
+    await expect(engine.decide(message([{ type: "at", attrs: { type: "here" }, children: [] }]), state)).resolves.toBe("wait");
+    await expect(engine.decide(message([{ type: "quote", attrs: { id: "q-1" }, children: [] }]), state)).resolves.toBe("trigger");
+    await expect(engine.decide(message([{ type: "img", attrs: { id: "asset-1" }, children: [] }]), state)).resolves.toBe("trigger");
     await expect(engine.decide(pokeEvent(), state)).resolves.toBe("trigger");
-    await expect(
-      engine.decide(message([{ type: "text", attrs: { content: "hi" }, children: [] }]), state),
-    ).resolves.toBe("wait");
+    await expect(engine.decide(message([{ type: "text", attrs: { content: "hi" }, children: [] }]), state)).resolves.toBe("wait");
   });
 });

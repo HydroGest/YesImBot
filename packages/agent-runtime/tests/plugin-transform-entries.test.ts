@@ -60,13 +60,13 @@ describe("transformEntries hook", () => {
       createEntry("message", { role: "assistant", id: "m2", timestamp: 2, content: [] } as AgentMessage),
     ]);
 
-    let doGenerateCalled = false;
+    let _doGenerateCalled = false;
     const mockModel = {
       specificationVersion: "v1" as const,
       provider: "mock",
       modelId: "mock-model",
       doGenerate: vi.fn().mockImplementation(async () => {
-        doGenerateCalled = true;
+        _doGenerateCalled = true;
         return {
           content: [{ type: "text", text: "response" }],
           finishReason: "stop",
@@ -83,7 +83,6 @@ describe("transformEntries hook", () => {
       systemPrompt: "test",
     });
 
-    const turnId = agent.send({ role: "user", id: "new", timestamp: Date.now(), content: [] } as AgentMessage);
     await agent.wait();
 
     expect(callCount.length).toBeGreaterThan(0);

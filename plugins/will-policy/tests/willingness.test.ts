@@ -48,9 +48,7 @@ describe("PolicyWillingnessEngine", () => {
       mentionForce: true,
     });
 
-    await expect(engine.decide(message([{ type: "at", attrs: { id: "bot-1" }, children: [] }]), state)).resolves.toBe(
-      "trigger",
-    );
+    await expect(engine.decide(message([{ type: "at", attrs: { id: "bot-1" }, children: [] }]), state)).resolves.toBe("trigger");
     expect(engine.getCurrentWillingness()).toBeGreaterThan(0);
   });
 
@@ -79,9 +77,7 @@ describe("PolicyWillingnessEngine", () => {
       maxScore: 100,
     });
 
-    await expect(
-      engine.decide(message([{ type: "img", attrs: { id: "asset-1" }, children: [] }]), state),
-    ).resolves.toBe("trigger");
+    await expect(engine.decide(message([{ type: "img", attrs: { id: "asset-1" }, children: [] }]), state)).resolves.toBe("trigger");
     expect(engine.getCurrentWillingness()).toBeGreaterThan(0);
   });
 

@@ -15,10 +15,7 @@ const DEBUG_ACTION: unique symbol = Symbol("yesimbot.will-policy.debug-action");
 type DebugCommand = Command & { [DEBUG_ACTION]?: boolean };
 
 export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.object({
-  engine: Schema.union([
-    Schema.const("routing").description("固定规则（routing）"),
-    Schema.const("willingness").description("意愿值引擎(willingness)"),
-  ])
+  engine: Schema.union([Schema.const("routing").description("固定规则（routing）"), Schema.const("willingness").description("意愿值引擎(willingness)")])
     .default("routing")
     .description("该克隆实例使用的引擎；routing 适合稳定规则，willingness 适合动态活跃度"),
   routing: Schema.object({
@@ -91,9 +88,7 @@ export default class WillPolicyPlugin {
           routing: resolved.routing,
           willingness: resolved.willingness,
         });
-        return resolved.engine === "routing"
-          ? new PolicyRoutingEngine(resolved.routing)
-          : new PolicyWillingnessEngine(resolved.willingness);
+        return resolved.engine === "routing" ? new PolicyRoutingEngine(resolved.routing) : new PolicyWillingnessEngine(resolved.willingness);
       },
     };
     this.disposeFactory = this.ctx.yesimbot.registerWillEngineFactory(factory);
@@ -137,11 +132,7 @@ export default class WillPolicyPlugin {
   }
 
   private instanceDescription(): string {
-    return [
-      `WillPolicy[${this.instanceId.slice(0, 8)}]`,
-      `engine=${this.config.engine}`,
-      `priority=${this.config.factoryPriority ?? 1000}`,
-    ].join(" ");
+    return [`WillPolicy[${this.instanceId.slice(0, 8)}]`, `engine=${this.config.engine}`, `priority=${this.config.factoryPriority ?? 1000}`].join(" ");
   }
 }
 

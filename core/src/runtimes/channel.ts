@@ -6,16 +6,40 @@ import { createDescribeImageTool, createReadTool, createSendMessageTool } from "
 import type { Will, WillState } from "../agents/will.js";
 import type { Channel } from "../channels/index.js";
 import type { Config } from "../config.js";
-import { createEvent, createMessage, formatInput, isEvent, isMessage, isMessageRecord, type Event, type EventRecord, type Message, type MessageRecord } from "../messages/index.js";
-import { buildCoreSystemPrompt, readPersona } from "./prompt.js";
+import {
+  createEvent,
+  createMessage,
+  formatInput,
+  isEvent,
+  isMessage,
+  isMessageRecord,
+  type Event,
+  type EventRecord,
+  type Message,
+  type MessageRecord,
+} from "../messages/index.js";
 import { OutputQueue, parseReply, prepareOutputSegments } from "./output.js";
+import { buildCoreSystemPrompt, readPersona } from "./prompt.js";
 
-const MODEL_INPUT_PLUGIN: AgentPlugin = { name: "core.model-input", enforce: "pre", toModelMessages: async (message) => isMessage(message) || isEvent(message) ? [formatInput(message)] : [] };
-export type ChannelOutput = { readonly turnId: string; readonly messageId: string; readonly segments: readonly Element[][] };
+const MODEL_INPUT_PLUGIN: AgentPlugin = {
+  name: "core.model-input",
+  enforce: "pre",
+  toModelMessages: async (message) => (isMessage(message) || isEvent(message) ? [formatInput(message)] : []),
+};
+export type ChannelOutput = {
+  readonly turnId: string;
+  readonly messageId: string;
+  readonly segments: readonly Element[][];
+};
 export type RuntimeResult =
   | { readonly kind: "wait"; readonly eventId: string }
   | { readonly kind: "join"; readonly eventId: string; readonly turnId: string }
-  | { readonly kind: "run"; readonly eventId: string; readonly output: AsyncIterable<ChannelOutput>; readonly signal: AbortSignal };
+  | {
+      readonly kind: "run";
+      readonly eventId: string;
+      readonly output: AsyncIterable<ChannelOutput>;
+      readonly signal: AbortSignal;
+    };
 export type PostOptions = { readonly trigger?: boolean; readonly ifBusy?: "defer" | "join" | "reject" };
 
 export interface ChannelRuntimeOptions {
@@ -44,7 +68,10 @@ export class ChannelRuntime {
   private idleTimer: NodeJS.Timeout | undefined;
 
   private persona = "";
-  public constructor(private readonly ctx: Context, private readonly options: ChannelRuntimeOptions) {
+  public constructor(
+    private readonly ctx: Context,
+    private readonly options: ChannelRuntimeOptions,
+  ) {
     this.scope = options.channel.scope;
     this.selfId = options.bot.selfId;
     this.logger = ctx.logger("yesimbot/channel-runtime");
@@ -52,10 +79,20 @@ export class ChannelRuntime {
     const tools: AgentToolSet = [createSendMessageTool(options.bot), createReadTool(options.channel.resources, options.imageOutputSupported)];
     if (options.visionModel) tools.push(createDescribeImageTool(options.visionModel, options.channel.resources));
     this.agent = createAgent({
-      id: this.scope.type === "direct" ? `direct:${this.scope.platform}:${this.scope.selfId}:${this.scope.channelId}` : `shared:${this.scope.platform}:${this.scope.channelId}`,
+      id:
+        this.scope.type === "direct"
+          ? `direct:${this.scope.platform}:${this.scope.selfId}:${this.scope.channelId}`
+          : `shared:${this.scope.platform}:${this.scope.channelId}`,
       model: options.model,
       storage: options.channel.conversation.storage,
-      systemPrompt: () => buildCoreSystemPrompt({ basePath: options.config.basePath, channel: this.scope, selfId: this.selfId, logger: this.logger, customInnerThought: options.config.reply.customInnerThought }),
+      systemPrompt: () =>
+        buildCoreSystemPrompt({
+          basePath: options.config.basePath,
+          channel: this.scope,
+          selfId: this.selfId,
+          logger: this.logger,
+          customInnerThought: options.config.reply.customInnerThought,
+        }),
       tools,
       plugins: [MODEL_INPUT_PLUGIN, ...options.plugins],
       terminalTool: { name: "finalize", description: "结束本轮回复。" },
@@ -89,20 +126,41 @@ export class ChannelRuntime {
 
   public fail(eventId: string, cause: unknown): Promise<void> {
     return this.schedule(async () => {
-      const input = createEvent({ eventType: "delivery.failed", platform: this.scope.platform, selfId: this.selfId, channel: { id: this.scope.channelId, type: this.scope.type === "direct" ? 1 : 0 }, timestamp: Date.now(), text: "delivery failed", delivery: { turnId: "", messageId: eventId, segmentIndex: 0, segmentTotal: 0, error: { name: cause instanceof Error ? cause.name : "Error", message: cause instanceof Error ? cause.message : String(cause) } } });
+      const input = createEvent({
+        eventType: "delivery.failed",
+        platform: this.scope.platform,
+        selfId: this.selfId,
+        channel: { id: this.scope.channelId, type: this.scope.type === "direct" ? 1 : 0 },
+        timestamp: Date.now(),
+        text: "delivery failed",
+        delivery: {
+          turnId: "",
+          messageId: eventId,
+          segmentIndex: 0,
+          segmentTotal: 0,
+          error: {
+            name: cause instanceof Error ? cause.name : "Error",
+            message: cause instanceof Error ? cause.message : String(cause),
+          },
+        },
+      });
       await this.agent.append(input);
       this.ctx.emit("yesimbot/event", input);
     });
   }
 
-  public wait(): Promise<void> { return this.agent.wait(); }
+  public wait(): Promise<void> {
+    return this.agent.wait();
+  }
 
   public compact(reason: "auto" | "idle" | "manual"): Promise<unknown> {
-    return this.schedule(() => this.options.channel.conversation.compact(reason, {
-      model: this.options.model,
-      personaName: "Athena",
-      persona: this.persona,
-    }));
+    return this.schedule(() =>
+      this.options.channel.conversation.compact(reason, {
+        model: this.options.model,
+        personaName: "Athena",
+        persona: this.persona,
+      }),
+    );
   }
 
   public stop(): Promise<void> {
@@ -110,7 +168,11 @@ export class ChannelRuntime {
     this.stopped = true;
     this.clearIdleTimer();
     for (const controller of this.controllers) controller.abort();
-    this.stopTask = this.schedule(async () => { await this.agent.interrupt("stop"); await this.agent.stop(); await Promise.allSettled([...this.streams]); });
+    this.stopTask = this.schedule(async () => {
+      await this.agent.interrupt("stop");
+      await this.agent.stop();
+      await Promise.allSettled([...this.streams]);
+    });
     return this.stopTask;
   }
 
@@ -133,11 +195,19 @@ export class ChannelRuntime {
     const task = this.consume(this.agent.run(input, { ifBusy: ifBusy === "join" ? "defer" : ifBusy }), queue, controller, passive);
     this.controllers.add(controller);
     this.streams.add(task);
-    void task.finally(() => { this.controllers.delete(controller); this.streams.delete(task); });
+    void task.finally(() => {
+      this.controllers.delete(controller);
+      this.streams.delete(task);
+    });
     return { kind: "run", eventId: input.id, output: queue, signal: controller.signal };
   }
 
-  private async consume(stream: AsyncIterable<AgentInternalEvent>, output: OutputQueue<ChannelOutput>, controller: AbortController, passive: boolean): Promise<void> {
+  private async consume(
+    stream: AsyncIterable<AgentInternalEvent>,
+    output: OutputQueue<ChannelOutput>,
+    controller: AbortController,
+    passive: boolean,
+  ): Promise<void> {
     let assistant = false;
     let turnId = "";
     try {
@@ -147,7 +217,10 @@ export class ChannelRuntime {
           const content = renderAssistantText(event.message.content);
           if (content !== undefined) {
             const segments = await prepareOutputSegments(parseReply(content), this.options.channel.resources, controller.signal);
-            if (segments.length) { output.push({ turnId, messageId: event.message.id, segments }); assistant = true; }
+            if (segments.length) {
+              output.push({ turnId, messageId: event.message.id, segments });
+              assistant = true;
+            }
           }
         }
         if (event.type === "turn.failed") throw new Error(event.error.message);
@@ -155,14 +228,35 @@ export class ChannelRuntime {
       }
       if (passive && assistant) await this.options.will.observe?.({ turnId, status: "done", messages: [] });
       output.close();
-    } catch (cause) { output.close(cause); }
-    finally { this.resetIdleTimer(); }
+    } catch (cause) {
+      output.close(cause);
+    } finally {
+      this.resetIdleTimer();
+    }
   }
 
-  private state(): WillState { return { activeTurnId: this.agent.getActiveTurnId() }; }
-  private schedule<T>(task: () => Promise<T>): Promise<T> { const result = this.tail.then(task, task); this.tail = result.then(() => undefined, () => undefined); return result; }
-  private assertOpen(): void { if (this.stopped) throw new Error("Channel runtime is stopped"); }
-  private resetIdleTimer(): void { this.clearIdleTimer(); if (this.stopped || !this.options.idleTimeout) return; this.idleTimer = setTimeout(() => { this.idleTimer = undefined; if (this.agent.getActiveTurnId() === null) void this.compact("idle"); }, this.options.idleTimeout); }
+  private state(): WillState {
+    return { activeTurnId: this.agent.getActiveTurnId() };
+  }
+  private schedule<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(task, task);
+    this.tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+  private assertOpen(): void {
+    if (this.stopped) throw new Error("Channel runtime is stopped");
+  }
+  private resetIdleTimer(): void {
+    this.clearIdleTimer();
+    if (this.stopped || !this.options.idleTimeout) return;
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = undefined;
+      if (this.agent.getActiveTurnId() === null) void this.compact("idle");
+    }, this.options.idleTimeout);
+  }
   private clearIdleTimer(): void {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
@@ -174,6 +268,6 @@ export class ChannelRuntime {
 function renderAssistantText(content: AssistantContent): string | undefined {
   if (typeof content === "string") return content.trim() ? content : undefined;
   if (!Array.isArray(content)) return undefined;
-  const text = content.map((part) => typeof part === "string" ? part : part.type === "text" ? part.text : "").join("");
+  const text = content.map((part) => (typeof part === "string" ? part : part.type === "text" ? part.text : "")).join("");
   return text.trim() ? text : undefined;
 }

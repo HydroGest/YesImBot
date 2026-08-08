@@ -58,9 +58,7 @@ export class Messenger {
 
   public async post(event: EventRecord, options?: PostOptions): Promise<void> {
     if (this.closed) return;
-    const bot = this.ctx.bots.find(
-      (candidate) => candidate.platform === event.platform && candidate.selfId === event.selfId,
-    );
+    const bot = this.ctx.bots.find((candidate) => candidate.platform === event.platform && candidate.selfId === event.selfId);
     if (!bot) throw new Error(`No Bot is available for ${event.platform}:${event.selfId}`);
     const channel = await this.channels.resolve(scopeFromRecord(event));
     const runtime = await this.runtimes.get(channel, bot);
@@ -94,13 +92,9 @@ export class Messenger {
       await assertAssignee(this.ctx, scope, session.selfId);
       const channel = await this.channels.resolve(scope);
       const translator = this.translators.get(session.platform) ?? this.translators.get("*");
-      const record = translator
-        ? await translator.translate(session, channel.resources)
-        : await translateDefault(this.ctx, session, channel.resources);
+      const record = translator ? await translator.translate(session, channel.resources) : await translateDefault(this.ctx, session, channel.resources);
       if (!record) return;
-      const bot = this.ctx.bots.find(
-        (candidate) => candidate.platform === record.platform && candidate.selfId === record.selfId,
-      );
+      const bot = this.ctx.bots.find((candidate) => candidate.platform === record.platform && candidate.selfId === record.selfId);
       if (!bot) throw new Error(`No Bot is available for ${record.platform}:${record.selfId}`);
       const runtime = await this.runtimes.get(channel, bot, session);
       const result = await runtime.handle(record);
@@ -209,50 +203,32 @@ function scopeFromSession(session: Session): ChannelScope | undefined {
     : { type: "shared", platform: session.platform, channelId: session.channelId };
 }
 
-async function translateDefault(
-  ctx: Context,
-  session: Session,
-  resources: ChannelResources,
-): Promise<MessageRecord | null> {
-  if (
-    session.type !== "message-created" ||
-    !session.messageId ||
-    !session.channelId ||
-    !Array.isArray(session.elements)
-  )
-    return null;
+async function translateDefault(ctx: Context, session: Session, resources: ChannelResources): Promise<MessageRecord | null> {
+  if (session.type !== "message-created" || !session.messageId || !session.channelId || !Array.isArray(session.elements)) return null;
   const base: RecordBase = {
     platform: session.platform,
     selfId: session.selfId,
     timestamp: session.timestamp,
     channel: {
       id: session.channelId,
-      type:
-        session.event.channel?.type ?? (session.isDirect ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
+      type: session.event.channel?.type ?? (session.isDirect ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT),
       ...(session.event.channel?.name === undefined ? {} : { name: session.event.channel.name }),
     },
     user: {
       id: session.userId || session.event.user?.id || session.author?.id || "",
-      ...((session.event.user?.name ?? session.author?.name) === undefined
-        ? {}
-        : { name: session.event.user?.name ?? session.author?.name }),
+      ...((session.event.user?.name ?? session.author?.name) === undefined ? {} : { name: session.event.user?.name ?? session.author?.name }),
     },
   };
   return { ...base, messageId: session.messageId, elements: await persistElements(ctx, session.elements, resources) };
 }
 
 function deliveryKey(scope: ChannelScope): string {
-  return scope.type === "direct"
-    ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`
-    : `shared:${scope.platform}:${scope.channelId}`;
+  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
 }
 
 function pacedDelay(segment: readonly Element[], pacing: PacingConfig, elapsed: number): number {
   const characters = segment.reduce((total, element) => total + elementTextLength(element), 0);
-  const target = Math.min(
-    Math.max(250, Math.ceil((characters / pacing.charactersPerSecond) * 1000)),
-    pacing.maxTotalDelayMs,
-  );
+  const target = Math.min(Math.max(250, Math.ceil((characters / pacing.charactersPerSecond) * 1000)), pacing.maxTotalDelayMs);
   return Math.max(0, target - elapsed);
 }
 

@@ -22,9 +22,7 @@ export class PolicyWillingnessEngine implements WillEngine {
 
     const now = Date.now();
     const decayed =
-      this.lastDecayAt === null || this.lastMessageAt === null
-        ? this.score
-        : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.config);
+      this.lastDecayAt === null || this.lastMessageAt === null ? this.score : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.config);
     const next = calculateScore(decayed, input.data, this.config);
     const probability = calculateProbability(next, this.config);
 
@@ -39,9 +37,7 @@ export class PolicyWillingnessEngine implements WillEngine {
   private decidePoke(): WillEngine.Decision {
     const now = Date.now();
     const decayed =
-      this.lastDecayAt === null || this.lastMessageAt === null
-        ? this.score
-        : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.config);
+      this.lastDecayAt === null || this.lastMessageAt === null ? this.score : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.config);
     const next = addGain(decayed, this.config.pokeGain, this.config);
     const probability = calculateProbability(next, this.config);
 
@@ -61,13 +57,7 @@ export class PolicyWillingnessEngine implements WillEngine {
   }
 }
 
-function decayScore(
-  score: number,
-  lastDecayAt: number,
-  lastMessageAt: number,
-  now: number,
-  config: PolicyWillingnessConfig,
-): number {
+function decayScore(score: number, lastDecayAt: number, lastMessageAt: number, now: number, config: PolicyWillingnessConfig): number {
   if (now < lastDecayAt) return score;
   const weightedSeconds = weightedSilenceSeconds(lastDecayAt, lastMessageAt, now, config);
   const decayed =
@@ -77,16 +67,10 @@ function decayScore(
   return decayed < 0.01 ? 0 : Math.max(0, decayed);
 }
 
-function weightedSilenceSeconds(
-  lastDecayAt: number,
-  lastMessageAt: number,
-  now: number,
-  config: PolicyWillingnessConfig,
-): number {
+function weightedSilenceSeconds(lastDecayAt: number, lastMessageAt: number, now: number, config: PolicyWillingnessConfig): number {
   const hotEnd = lastMessageAt + config.hotWindowSeconds * 1_000;
   const warmEnd = lastMessageAt + config.warmWindowSeconds * 1_000;
-  const overlap = (start: number, end: number) =>
-    Math.max(0, Math.min(now, end) - Math.max(lastDecayAt, start)) / 1_000;
+  const overlap = (start: number, end: number) => Math.max(0, Math.min(now, end) - Math.max(lastDecayAt, start)) / 1_000;
   return (
     overlap(lastMessageAt, hotEnd) * config.hotDecayWeight +
     overlap(hotEnd, warmEnd) * config.warmDecayWeight +
@@ -153,9 +137,5 @@ function shouldForce(data: Message["data"], config: PolicyWillingnessConfig): bo
 }
 
 function isPokeEvent(input: Event): boolean {
-  return (
-    input.role === "custom" &&
-    input.type === "yesimbot.event" &&
-    (input.data as { eventType?: string }).eventType === "notice.poke"
-  );
+  return input.role === "custom" && input.type === "yesimbot.event" && (input.data as { eventType?: string }).eventType === "notice.poke";
 }

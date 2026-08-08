@@ -128,14 +128,8 @@ describe("bash-tool adapter", () => {
     expect(sandboxResult).toEqual({ stdout: "out", stderr: "err", exitCode: 7 });
     expect(hostResult).toEqual({ stdout: "out", stderr: "err", exitCode: 7 });
 
-    const sandboxWrite = await toolByName(sandboxTools, "writeFile").execute!(
-      { path: "note.txt", content: "sandbox" },
-      {} as never,
-    );
-    const hostWrite = await toolByName(hostTools, "writeFile").execute!(
-      { path: "note.txt", content: "host" },
-      {} as never,
-    );
+    const sandboxWrite = await toolByName(sandboxTools, "writeFile").execute!({ path: "note.txt", content: "sandbox" }, {} as never);
+    const hostWrite = await toolByName(hostTools, "writeFile").execute!({ path: "note.txt", content: "host" }, {} as never);
     expect(sandboxWrite).toEqual({ success: true });
     expect(hostWrite).toEqual({ success: true });
     await expect(toolByName(sandboxTools, "readFile").execute!({ path: "note.txt" }, {} as never)).resolves.toEqual({
@@ -182,12 +176,8 @@ describe("bash-tool adapter", () => {
       stdout: expect.stringContaining("[stdout truncated: 1 characters removed]"),
       stderr: expect.stringContaining("[stderr truncated: 1 characters removed]"),
     });
-    expect(sandbox.calls).toEqual([
-      { command: "printf sandbox", options: { cwd: "/sandbox/workspace", signal: sandboxAbort.signal } },
-    ]);
-    expect(host.calls).toEqual([
-      { command: "printf host", options: { cwd: "/host/workspace", signal: hostAbort.signal } },
-    ]);
+    expect(sandbox.calls).toEqual([{ command: "printf sandbox", options: { cwd: "/sandbox/workspace", signal: sandboxAbort.signal } }]);
+    expect(host.calls).toEqual([{ command: "printf host", options: { cwd: "/host/workspace", signal: hostAbort.signal } }]);
 
     sandboxAbort.abort();
     hostAbort.abort();
