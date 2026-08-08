@@ -24,47 +24,20 @@ const searchInputSchema = jsonSchema<TavilySearchInput>({
   type: "object",
   properties: {
     query: { type: "string", minLength: 1, description: "Search query." },
-    limit: {
-      type: "number",
-      minimum: 1,
-      description: "Maximum number of results.",
-    },
-    searchDepth: {
-      type: "string",
-      enum: ["basic", "advanced"],
-      description: "Search depth.",
-    },
-    topic: {
-      type: "string",
-      enum: ["general", "news", "finance"],
-      description: "Search topic.",
-    },
-    timeRange: {
-      type: "string",
-      enum: ["day", "week", "month", "year"],
-      description: "Time range.",
-    },
+    limit: { type: "number", minimum: 1, description: "Maximum number of results." },
+    searchDepth: { type: "string", enum: ["basic", "advanced"], description: "Search depth." },
+    topic: { type: "string", enum: ["general", "news", "finance"], description: "Search topic." },
+    timeRange: { type: "string", enum: ["day", "week", "month", "year"], description: "Time range." },
     startDate: { type: "string", description: "Start date for the search." },
     endDate: { type: "string", description: "End date for the search." },
-    includeRawContent: {
-      type: "string",
-      enum: ["none", "text", "markdown"],
-      description: "Include raw content in the results.",
-    },
+    includeRawContent: { type: "string", enum: ["none", "text", "markdown"], description: "Include raw content in the results." },
   },
   required: ["query"],
 });
 
 const scrapeInputSchema = jsonSchema<TavilyScrapeInput>({
   type: "object",
-  properties: {
-    urls: {
-      type: "array",
-      items: { type: "string", format: "uri" },
-      minItems: 1,
-      description: "HTTP or HTTPS URLs to extract.",
-    },
-  },
+  properties: { urls: { type: "array", items: { type: "string", format: "uri" }, minItems: 1, description: "HTTP or HTTPS URLs to extract." } },
   required: ["urls"],
 });
 
@@ -196,20 +169,12 @@ class TavilyBackend implements SearchBackend {
 
     try {
       const response = await this.ctx.http.post<TavilySearchResponse>(this.config.searchEndpoint, body, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.config.apiKey}` },
         timeout: this.config.timeoutMs,
       });
 
       const rawResults = Array.isArray(response.results) ? response.results : [];
-      const mapped = rawResults.map((result) => ({
-        title: result.title ?? "",
-        url: result.url ?? "",
-        snippet: result.content ?? "",
-        score: result.score,
-      }));
+      const mapped = rawResults.map((result) => ({ title: result.title ?? "", url: result.url ?? "", snippet: result.content ?? "", score: result.score }));
       const filtered = filterBlockedResults(mapped, this.blacklist);
       const deduped = dedupeByUrl(filtered);
 
@@ -217,12 +182,7 @@ class TavilyBackend implements SearchBackend {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[TavilyBackend] Search failed: ${message}`);
-      return {
-        provider: this.name,
-        query: input.query,
-        results: [],
-        error: { message, code: "request_failed" },
-      };
+      return { provider: this.name, query: input.query, results: [], error: { message, code: "request_failed" } };
     }
   }
 
@@ -231,23 +191,14 @@ class TavilyBackend implements SearchBackend {
       const response = await this.ctx.http.post<TavilyExtractResponse>(
         this.config.extractEndpoint,
         { urls },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.config.apiKey}`,
-          },
-          timeout: this.config.timeoutMs,
-        },
+        { headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.config.apiKey}` }, timeout: this.config.timeoutMs },
       );
 
       const results: WebScrapeOutput["results"] = [];
 
       if (Array.isArray(response.results)) {
         for (const result of response.results) {
-          results.push({
-            url: result.url,
-            content: result.raw_content ?? undefined,
-          });
+          results.push({ url: result.url, content: result.raw_content ?? undefined });
         }
       }
 
@@ -261,10 +212,7 @@ class TavilyBackend implements SearchBackend {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[TavilyBackend] Extract failed: ${message}`);
-      return {
-        provider: this.name,
-        results: urls.map((url) => ({ url, error: message })),
-      };
+      return { provider: this.name, results: urls.map((url) => ({ url, error: message })) };
     }
   }
 }

@@ -30,10 +30,7 @@ export const Config: Schema<Config> = Schema.object({
 
 export function apply(ctx: Context, config: Config) {
   ctx.on("ready", () => {
-    const client = createAnthropic({
-      apiKey: config.apiKey,
-      baseURL: config.baseURL,
-    });
+    const client = createAnthropic({ apiKey: config.apiKey, baseURL: config.baseURL });
     const dispose = ctx.yesimbot.model.register({
       id: config.id,
       capabilities: { chat: true, embedding: false },

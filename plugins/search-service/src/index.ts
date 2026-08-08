@@ -53,14 +53,8 @@ export default class SearchService {
       blacklist: Schema.array(Schema.string()).default([]).description("URL 黑名单正则"),
     }),
     Schema.union([
-      Schema.object({
-        provider: Schema.const("tavily"),
-        tavily: tavilyConfigSchema,
-      }),
-      Schema.object({
-        provider: Schema.const("searxng"),
-        searxng: searxngConfigSchema,
-      }),
+      Schema.object({ provider: Schema.const("tavily"), tavily: tavilyConfigSchema }),
+      Schema.object({ provider: Schema.const("searxng"), searxng: searxngConfigSchema }),
     ]),
   ]);
 

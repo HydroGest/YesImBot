@@ -34,10 +34,7 @@ export interface HostBashConfig {
   readonly mode: "host";
   readonly allowedChannels: HostChannelRule[];
   readonly hostRoots: HostRootSpec[];
-  readonly identity: {
-    readonly uid: number;
-    readonly gid: number;
-  };
+  readonly identity: { readonly uid: number; readonly gid: number };
 }
 
 export type BashConfig = SandboxBashConfig | HostBashConfig;
@@ -73,12 +70,7 @@ export interface ResourceDiagnostic {
   type: "warning" | "error" | "collision";
   message: string;
   path?: string;
-  collision?: {
-    resourceType: "extension" | "skill" | "prompt" | "theme";
-    name: string;
-    winnerPath: string;
-    loserPath: string;
-  };
+  collision?: { resourceType: "extension" | "skill" | "prompt" | "theme"; name: string; winnerPath: string; loserPath: string };
 }
 
 export interface LoadSkillsResult {

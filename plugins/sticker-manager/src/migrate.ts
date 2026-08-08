@@ -46,10 +46,7 @@ export interface MigrateV3Options {
   ctx: Context;
   store: StickerStore;
   scopeKey: string;
-  channelMatch?: {
-    platform: string;
-    channelId: string;
-  };
+  channelMatch?: { platform: string; channelId: string };
   includeUnsourced?: boolean;
   sourceDir?: string;
   limit?: number;
@@ -101,13 +98,7 @@ export async function migrateV3(options: MigrateV3Options): Promise<MigrationRes
         stats.imported += 1;
         continue;
       }
-      const result = await options.store.save({
-        scopeKey: options.scopeKey,
-        bytes,
-        mediaType,
-        category: row.category ?? "",
-        source: v3Source(row),
-      });
+      const result = await options.store.save({ scopeKey: options.scopeKey, bytes, mediaType, category: row.category ?? "", source: v3Source(row) });
       if (result.status === "created") stats.imported += 1;
       else stats.duplicate += 1;
     } catch (cause) {
@@ -164,14 +155,7 @@ export async function migrateScope(options: MigrateScopeOptions): Promise<Migrat
 
 function v3Source(row: V3StickerRow): StickerSource {
   const source = normalizeV3Source(row.source);
-  return {
-    kind: "v3",
-    platform: source.platform,
-    channelId: source.channelId,
-    userId: source.userId,
-    messageId: source.messageId,
-    v3Id: row.id,
-  };
+  return { kind: "v3", platform: source.platform, channelId: source.channelId, userId: source.userId, messageId: source.messageId, v3Id: row.id };
 }
 
 function normalizeV3Source(source: V3StickerRow["source"]): V3StickerSource {
@@ -183,12 +167,7 @@ function normalizeV3Source(source: V3StickerRow["source"]): V3StickerSource {
     }
   }
   if (!source || typeof source !== "object") return {};
-  return {
-    platform: stringOf(source.platform),
-    channelId: stringOf(source.channelId),
-    userId: stringOf(source.userId),
-    messageId: stringOf(source.messageId),
-  };
+  return { platform: stringOf(source.platform), channelId: stringOf(source.channelId), userId: stringOf(source.userId), messageId: stringOf(source.messageId) };
 }
 
 function stringOf(value: unknown): string | undefined {
@@ -196,14 +175,7 @@ function stringOf(value: unknown): string | undefined {
 }
 
 function emptyMigrationStats(): MigrationResult {
-  return {
-    total: 0,
-    imported: 0,
-    duplicate: 0,
-    failed: 0,
-    failedItems: [],
-    removedSource: 0,
-  };
+  return { total: 0, imported: 0, duplicate: 0, failed: 0, failedItems: [], removedSource: 0 };
 }
 
 function messageOf(cause: unknown): string {

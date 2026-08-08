@@ -87,10 +87,7 @@ interface ParsedMessage {
   sourceFileName: string;
 }
 
-type ImportMessage = MemosMessage & {
-  role: "system" | "user" | "assistant";
-  chat_time: string;
-};
+type ImportMessage = MemosMessage & { role: "system" | "user" | "assistant"; chat_time: string };
 
 type ImportAddMessageRequest = MemosAddMessageRequest & {
   agent_id: string;
@@ -133,12 +130,7 @@ export interface QqMemosImportPlan {
   filteredMessageCount: number;
   duplicateMessageCount: number;
   chunks: QqMemosImportChunk[];
-  defaults: {
-    maxTokens: number;
-    maxMessages: number;
-    maxHours: number;
-    overlapMessages: number;
-  };
+  defaults: { maxTokens: number; maxMessages: number; maxHours: number; overlapMessages: number };
 }
 
 interface CliRuntime {
@@ -415,10 +407,7 @@ function conversationKey(message: ParsedMessage): string {
   return `${message.conversationType}:${message.channelId}`;
 }
 
-function dedupeMessages(messages: ParsedMessage[]): {
-  messages: ParsedMessage[];
-  duplicates: number;
-} {
+function dedupeMessages(messages: ParsedMessage[]): { messages: ParsedMessage[]; duplicates: number } {
   const seenPrimary = new Set<string>();
   const seenFallback = new Set<string>();
   const kept: ParsedMessage[] = [];
@@ -471,12 +460,7 @@ function createChunk(
   const endChatTime = formatChatTime(last.timestampMs);
   const startTime = new Date(first.timestampMs).toISOString();
   const endTime = new Date(last.timestampMs).toISOString();
-  const channelScope = {
-    platform: PLATFORM,
-    selfId: config.botSelfId,
-    channelId: first.channelId,
-    isDirect: first.conversationType === "private",
-  };
+  const channelScope = { platform: PLATFORM, selfId: config.botSelfId, channelId: first.channelId, isDirect: first.conversationType === "private" };
   const identity = deriveMemosImportChunkIdentity({
     channelScope,
     channelType: first.conversationType,
@@ -560,24 +544,13 @@ function compareMessages(left: ParsedMessage, right: ParsedMessage): number {
 function shouldSplitChunk(
   current: ParsedMessage[],
   next: ParsedMessage,
-  options: {
-    maxMessages: number;
-    maxTokens: number;
-    maxHours: number;
-    botSelfId: string;
-    asyncMode: boolean;
-  },
+  options: { maxMessages: number; maxTokens: number; maxHours: number; botSelfId: string; asyncMode: boolean },
 ): boolean {
   if (current.length === 0) return false;
   if (current.length + 1 > options.maxMessages) return true;
   const first = current[0];
   if (first && next.timestampMs - first.timestampMs > options.maxHours * 60 * 60 * 1000) return true;
-  return (
-    createChunk([...current, next], 0, {
-      botSelfId: options.botSelfId,
-      asyncMode: options.asyncMode,
-    }).estimatedTokens > options.maxTokens
-  );
+  return createChunk([...current, next], 0, { botSelfId: options.botSelfId, asyncMode: options.asyncMode }).estimatedTokens > options.maxTokens;
 }
 
 function createChunks(
@@ -625,14 +598,7 @@ export async function buildQqMemosImportPlan(config: QqMemosImportConfig): Promi
   const parsedMessages = (await Promise.all(inputFiles.map((file) => parseQqExportFile(file, config.botSelfId)))).flat();
   const deduped = dedupeMessages(parsedMessages);
   const importable = deduped.messages.filter(shouldImportMessage);
-  const chunks = createChunks(importable, {
-    botSelfId: config.botSelfId,
-    asyncMode,
-    maxTokens,
-    maxMessages,
-    maxHours,
-    overlapMessages,
-  });
+  const chunks = createChunks(importable, { botSelfId: config.botSelfId, asyncMode, maxTokens, maxMessages, maxHours, overlapMessages });
 
   return {
     inputFileCount: inputFiles.length,
@@ -641,12 +607,7 @@ export async function buildQqMemosImportPlan(config: QqMemosImportConfig): Promi
     filteredMessageCount: parsedMessages.length - importable.length - deduped.duplicates,
     duplicateMessageCount: deduped.duplicates,
     chunks,
-    defaults: {
-      maxTokens,
-      maxMessages,
-      maxHours,
-      overlapMessages,
-    },
+    defaults: { maxTokens, maxMessages, maxHours, overlapMessages },
   };
 }
 
@@ -677,10 +638,7 @@ function sanitizeErrorMessage(message: string, apiKey: string): string {
 async function postMemosRequest(request: ImportAddMessageRequest, options: { baseUrl: string; apiKey: string; fetch: typeof fetch }): Promise<void> {
   const response = await options.fetch(`${options.baseUrl.replace(/\/+$/u, "")}/add/message`, {
     method: "POST",
-    headers: new Headers({
-      Authorization: `Token ${options.apiKey}`,
-      "Content-Type": "application/json",
-    }),
+    headers: new Headers({ Authorization: `Token ${options.apiKey}`, "Content-Type": "application/json" }),
     body: JSON.stringify(request),
   });
   const responseText = await response.text();

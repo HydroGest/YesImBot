@@ -2,12 +2,12 @@ import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Session } from "koishi";
 
 import type { ChannelScope } from "../channels/index.js";
-import { DefaultWill, type Will, WillPlugin } from "./will.js";
+import { defaultWill, type Will, type WillPlugin } from "./will.js";
 
 export type Disposer = () => void;
 
-export abstract class ChannelPlugin {
-  public abstract init(scope: ChannelScope, bot: Bot): Awaitable<AgentPlugin | null>;
+export interface ChannelPlugin {
+  init(scope: ChannelScope, bot: Bot): Awaitable<AgentPlugin | null>;
 }
 
 export class Agents {
@@ -43,14 +43,14 @@ export class Agents {
   }
 
   public async initWill(scope: ChannelScope, session?: Session): Promise<Will> {
-    if (!session) return new DefaultWill();
+    if (!session) return defaultWill;
     const plugins = [...this.willPlugins].map((plugin, index) => ({ plugin, index }));
     plugins.sort((left, right) => left.plugin.priority - right.plugin.priority || left.index - right.index);
     for (const { plugin } of plugins) {
       if (plugin.match(session)) return plugin.init(scope);
     }
-    return new DefaultWill();
+    return defaultWill;
   }
 }
 
-export { type Will, WillPlugin } from "./will.js";
+export type { Will, WillPlugin } from "./will.js";

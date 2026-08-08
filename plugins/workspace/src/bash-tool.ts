@@ -14,10 +14,7 @@ export interface CreateBashToolSetInput {
   environment: "sandbox" | "host";
 }
 
-type AbortSignalScope = {
-  getSignal(): AbortSignal | undefined;
-  run<T>(signal: AbortSignal | undefined, operation: () => T): T;
-};
+type AbortSignalScope = { getSignal(): AbortSignal | undefined; run<T>(signal: AbortSignal | undefined, operation: () => T): T };
 
 function createAbortSignalScope(): AbortSignalScope {
   let currentSignal: AbortSignal | undefined;
@@ -40,10 +37,7 @@ function createAbortSignalScope(): AbortSignalScope {
 }
 
 function withName(name: string, tool: Tool, abortSignals?: AbortSignalScope): AgentTool {
-  const agentTool = {
-    ...tool,
-    name,
-  } as AgentTool;
+  const agentTool = { ...tool, name } as AgentTool;
 
   if (!agentTool.execute || !abortSignals) {
     return agentTool;
@@ -73,10 +67,7 @@ function createBackendSandbox(input: CreateBashToolSetInput, abortSignals: Abort
       // having to parse bash-tool's generated `cd` prefix.
       const originalCommand = pendingCommand;
       pendingCommand = undefined;
-      return (await input.backend.executeCommand(originalCommand ?? command, {
-        cwd: input.destination,
-        signal: abortSignals.getSignal(),
-      })) as CommandResult;
+      return (await input.backend.executeCommand(originalCommand ?? command, { cwd: input.destination, signal: abortSignals.getSignal() })) as CommandResult;
     },
 
     async readFile(path) {
@@ -85,10 +76,7 @@ function createBackendSandbox(input: CreateBashToolSetInput, abortSignals: Abort
 
     async writeFiles(files) {
       await input.backend.writeFiles(
-        files.map((file) => ({
-          path: file.path,
-          content: typeof file.content === "string" ? file.content : file.content.toString("utf8"),
-        })),
+        files.map((file) => ({ path: file.path, content: typeof file.content === "string" ? file.content : file.content.toString("utf8") })),
       );
     },
 

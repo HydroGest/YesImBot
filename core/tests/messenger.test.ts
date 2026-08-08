@@ -16,14 +16,8 @@ const config: Config = {
   allowedChannels: [],
   imageInput: false,
   resourceReadTimeoutMs: 30_000,
-  reply: {
-    pacing: { charactersPerSecond: 100_000, maxTotalDelayMs: 60_000 },
-    customInnerThought: false,
-  },
-  session: {
-    compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined },
-    idle: { timeout: 0 },
-  },
+  reply: { pacing: { charactersPerSecond: 100_000, maxTotalDelayMs: 60_000 }, customInnerThought: false },
+  session: { compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined }, idle: { timeout: 0 } },
 };
 
 const event: EventRecord<"delivery.failed"> = {
@@ -33,13 +27,7 @@ const event: EventRecord<"delivery.failed"> = {
   timestamp: 1,
   channel: { id: "room-1", type: 0 },
   text: "delivery failed",
-  delivery: {
-    turnId: "turn-1",
-    messageId: "message-1",
-    segmentIndex: 0,
-    segmentTotal: 1,
-    error: { name: "Error", message: "offline" },
-  },
+  delivery: { turnId: "turn-1", messageId: "message-1", segmentIndex: 0, segmentTotal: 1, error: { name: "Error", message: "offline" } },
 };
 
 describe("Messenger", () => {
@@ -60,9 +48,7 @@ describe("Messenger", () => {
         signal: new AbortController().signal,
       })),
     };
-    const channels = {
-      resolve: vi.fn(async () => ({ scope: { type: "shared", platform: "test", channelId: "room-1" } })),
-    };
+    const channels = { resolve: vi.fn(async () => ({ scope: { type: "shared", platform: "test", channelId: "room-1" } })) };
     const runtimes = { get: vi.fn(async () => runtime) };
 
     const messenger = new Messenger(ctx, config, channels as never, runtimes as never);
@@ -95,11 +81,7 @@ describe("Messenger", () => {
           },
         }),
       })),
-      {
-        head: vi.fn(async () => ({
-          get: (name: string) => ({ "content-type": "image/png", "content-length": "4" })[name] ?? null,
-        })),
-      },
+      { head: vi.fn(async () => ({ get: (name: string) => ({ "content-type": "image/png", "content-length": "4" })[name] ?? null })) },
     );
     Object.assign(ctx, { http });
     const messenger = new Messenger(ctx, { ...config, allowedChannels: [{ platform: "test", channelId: "room-1" }] }, channels as never, runtimes as never);
@@ -126,11 +108,7 @@ describe("Messenger", () => {
 
   it("feeds an active delivery rejection back to its producing Runtime", async () => {
     const ctx = new Context();
-    const bot = {
-      platform: "test",
-      selfId: "bot-1",
-      sendMessage: vi.fn(async () => Promise.reject(new Error("offline"))),
-    };
+    const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => Promise.reject(new Error("offline"))) };
     ctx.bots.push(bot as never);
     const runtime = {
       scope: { type: "shared", platform: "test", channelId: "room-1" },

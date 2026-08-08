@@ -8,29 +8,12 @@ import { describe, expect, it, vi } from "vitest";
 import { createGlobalBrainStore } from "../src/store.js";
 import { createBrainTools } from "../src/tools.js";
 
-const scopeA = {
-  type: "shared",
-  platform: "onebot",
-  selfId: "bot-a",
-  channelId: "group-a",
-};
+const scopeA = { type: "shared", platform: "onebot", selfId: "bot-a", channelId: "group-a" };
 
-const scopeB = {
-  type: "shared",
-  platform: "onebot",
-  selfId: "bot-a",
-  channelId: "group-b",
-};
+const scopeB = { type: "shared", platform: "onebot", selfId: "bot-a", channelId: "group-b" };
 
 function toolContext(): AgentToolExecuteContext {
-  return {
-    runtime: { id: "runtime" },
-    channel: {} as never,
-    state: {} as never,
-    storage: {} as never,
-    turnId: "turn-real",
-    toolCallId: "tool-call",
-  };
+  return { runtime: { id: "runtime" }, channel: {} as never, state: {} as never, storage: {} as never, turnId: "turn-real", toolCallId: "tool-call" };
 }
 
 function createMemoryAssets() {
@@ -73,18 +56,9 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 describe("GlobalBrain tools", () => {
   it("exposes only the intended brain_* tools and minimal schemas", async () => {
     await withTempDir(async (dir) => {
-      const store = createGlobalBrainStore({
-        filePath: join(dir, "brain.jsonl"),
-        maxDigestThreads: 5,
-        maxDigestReplies: 5,
-      });
+      const store = createGlobalBrainStore({ filePath: join(dir, "brain.jsonl"), maxDigestThreads: 5, maxDigestReplies: 5 });
       await store.init();
-      const tools = createBrainTools({
-        store,
-        scope: scopeA as never,
-        assets: createMemoryAssets(),
-        artifacts: createMemoryArtifacts(),
-      });
+      const tools = createBrainTools({ store, scope: scopeA as never, assets: createMemoryAssets(), artifacts: createMemoryArtifacts() });
 
       expect(tools.map((tool) => tool.name)).toEqual(["brain_deposit", "brain_read", "brain_reply", "brain_resolve", "brain_status"]);
       const schema = JSON.stringify(tools.map((tool) => tool.inputSchema));
@@ -103,18 +77,9 @@ describe("GlobalBrain tools", () => {
 
   it("creates threads, reads replies, relays human answers, and resolves own threads", async () => {
     await withTempDir(async (dir) => {
-      const store = createGlobalBrainStore({
-        filePath: join(dir, "brain.jsonl"),
-        maxDigestThreads: 5,
-        maxDigestReplies: 5,
-      });
+      const store = createGlobalBrainStore({ filePath: join(dir, "brain.jsonl"), maxDigestThreads: 5, maxDigestReplies: 5 });
       await store.init();
-      const tools = createBrainTools({
-        store,
-        scope: scopeA as never,
-        assets: createMemoryAssets(),
-        artifacts: createMemoryArtifacts(),
-      });
+      const tools = createBrainTools({ store, scope: scopeA as never, assets: createMemoryAssets(), artifacts: createMemoryArtifacts() });
       const context = toolContext();
 
       const created = (await tools[0]?.execute?.({ kind: "question", content: "谁有 XX 的资料？", tags: ["search"] }, context)) as {
@@ -124,21 +89,10 @@ describe("GlobalBrain tools", () => {
       expect(created.outcome).toBe("created");
 
       const reply = await tools[2]?.execute?.(
-        {
-          threadId: created.thread.id,
-          content: "我这边有资料。",
-          replySource: "human",
-          author: { id: "user-1", name: "Ada" },
-        },
+        { threadId: created.thread.id, content: "我这边有资料。", replySource: "human", author: { id: "user-1", name: "Ada" } },
         context,
       );
-      expect(reply).toMatchObject({
-        outcome: "created",
-        reply: {
-          replySource: "human",
-          author: { id: "user-1", name: "Ada" },
-        },
-      });
+      expect(reply).toMatchObject({ outcome: "created", reply: { replySource: "human", author: { id: "user-1", name: "Ada" } } });
 
       const read = await tools[1]?.execute?.({ threadId: created.thread.id }, context);
       expect(read).toMatchObject({ outcome: "ok", replies: [{ replySource: "human" }] });
@@ -153,28 +107,14 @@ describe("GlobalBrain tools", () => {
 
   it("deposits assets and materializes them into the target scope on read", async () => {
     await withTempDir(async (dir) => {
-      const store = createGlobalBrainStore({
-        filePath: join(dir, "brain.jsonl"),
-        maxDigestThreads: 5,
-        maxDigestReplies: 5,
-      });
+      const store = createGlobalBrainStore({ filePath: join(dir, "brain.jsonl"), maxDigestThreads: 5, maxDigestReplies: 5 });
       await store.init();
       const sourceAssets = createMemoryAssets();
       const assetId = "a".repeat(32);
       sourceAssets.entries.set(assetId, new Uint8Array([1, 2, 3]));
       const targetAssets = createMemoryAssets();
-      const sourceTools = createBrainTools({
-        store,
-        scope: scopeA as never,
-        assets: sourceAssets,
-        artifacts: createMemoryArtifacts(),
-      });
-      const targetTools = createBrainTools({
-        store,
-        scope: scopeB as never,
-        assets: targetAssets,
-        artifacts: createMemoryArtifacts(),
-      });
+      const sourceTools = createBrainTools({ store, scope: scopeA as never, assets: sourceAssets, artifacts: createMemoryArtifacts() });
+      const targetTools = createBrainTools({ store, scope: scopeB as never, assets: targetAssets, artifacts: createMemoryArtifacts() });
 
       const created = (await sourceTools[0]?.execute?.({ kind: "share", assetId, content: "一张梗图", tags: ["meme"] }, toolContext())) as {
         outcome: "created";
@@ -183,10 +123,7 @@ describe("GlobalBrain tools", () => {
       expect(created.outcome).toBe("created");
       expect(created.thread.payload).toMatchObject({ kind: "asset", blobId: expect.any(String) });
 
-      const read = (await targetTools[1]?.execute?.({ threadId: created.thread.id }, toolContext())) as {
-        outcome: "ok";
-        localAssetUri?: string;
-      };
+      const read = (await targetTools[1]?.execute?.({ threadId: created.thread.id }, toolContext())) as { outcome: "ok"; localAssetUri?: string };
       expect(read.outcome).toBe("ok");
       expect(read.localAssetUri).toBe("asset://asset-1");
       expect(targetAssets.put).toHaveBeenCalledOnce();
@@ -195,59 +132,29 @@ describe("GlobalBrain tools", () => {
 
   it("deposits artifact and forward metadata", async () => {
     await withTempDir(async (dir) => {
-      const store = createGlobalBrainStore({
-        filePath: join(dir, "brain.jsonl"),
-        maxDigestThreads: 5,
-        maxDigestReplies: 5,
-      });
+      const store = createGlobalBrainStore({ filePath: join(dir, "brain.jsonl"), maxDigestThreads: 5, maxDigestReplies: 5 });
       await store.init();
       const artifacts = createMemoryArtifacts();
-      const tools = createBrainTools({
-        store,
-        scope: scopeA as never,
-        assets: createMemoryAssets(),
-        artifacts,
-      });
+      const tools = createBrainTools({ store, scope: scopeA as never, assets: createMemoryAssets(), artifacts });
 
       const artifact = (await tools[0]?.execute?.(
         { kind: "share", artifactUri: "artifact://web-fetch/0192abcd-0192-7000-8000-000000000000" },
         toolContext(),
-      )) as {
-        outcome: "created";
-        thread: { payload: { kind: string; mediaType: string; filename: string } };
-      };
+      )) as { outcome: "created"; thread: { payload: { kind: string; mediaType: string; filename: string } } };
       expect(artifact.outcome).toBe("created");
-      expect(artifact.thread.payload).toMatchObject({
-        kind: "artifact",
-        mediaType: "application/pdf",
-        filename: "report.pdf",
-      });
+      expect(artifact.thread.payload).toMatchObject({ kind: "artifact", mediaType: "application/pdf", filename: "report.pdf" });
 
       const forward = (await tools[0]?.execute?.(
-        {
-          kind: "share",
-          forward: { platform: "onebot", forwardId: "forward-1", summary: "炸裂转发" },
-        },
+        { kind: "share", forward: { platform: "onebot", forwardId: "forward-1", summary: "炸裂转发" } },
         toolContext(),
       )) as { outcome: "created"; thread: { payload: { kind: string; forwardId: string } } };
       expect(forward.outcome).toBe("created");
       expect(forward.thread.payload).toMatchObject({ kind: "forward", forwardId: "forward-1" });
 
-      const targetTools = createBrainTools({
-        store,
-        scope: scopeB as never,
-        assets: createMemoryAssets(),
-        artifacts: createMemoryArtifacts(),
-      });
-      const read = (await targetTools[1]?.execute?.({ threadId: forward.thread.id }, toolContext())) as {
-        outcome: string;
-        localForward?: unknown;
-      };
+      const targetTools = createBrainTools({ store, scope: scopeB as never, assets: createMemoryAssets(), artifacts: createMemoryArtifacts() });
+      const read = (await targetTools[1]?.execute?.({ threadId: forward.thread.id }, toolContext())) as { outcome: string; localForward?: unknown };
       expect(read.outcome).toBe("ok");
-      expect(read.localForward).toEqual({
-        forwardId: "forward-1",
-        sendTool: "onebot_send_forward_message",
-      });
+      expect(read.localForward).toEqual({ forwardId: "forward-1", sendTool: "onebot_send_forward_message" });
 
       const discordTools = createBrainTools({
         store,
@@ -255,10 +162,7 @@ describe("GlobalBrain tools", () => {
         assets: createMemoryAssets(),
         artifacts: createMemoryArtifacts(),
       });
-      const crossRead = (await discordTools[1]?.execute?.({ threadId: forward.thread.id }, toolContext())) as {
-        outcome: string;
-        localForward?: unknown;
-      };
+      const crossRead = (await discordTools[1]?.execute?.({ threadId: forward.thread.id }, toolContext())) as { outcome: string; localForward?: unknown };
       expect(crossRead.outcome).toBe("ok");
       expect(crossRead.localForward).toBeUndefined();
     });
@@ -266,11 +170,7 @@ describe("GlobalBrain tools", () => {
 
   it("dispatches immediate shares through the optional callback", async () => {
     await withTempDir(async (dir) => {
-      const store = createGlobalBrainStore({
-        filePath: join(dir, "brain.jsonl"),
-        maxDigestThreads: 5,
-        maxDigestReplies: 5,
-      });
+      const store = createGlobalBrainStore({ filePath: join(dir, "brain.jsonl"), maxDigestThreads: 5, maxDigestReplies: 5 });
       await store.init();
       const onImmediateShare = vi.fn<(thread: unknown) => Promise<void>>(async () => undefined);
       const tools = createBrainTools({
@@ -302,24 +202,12 @@ describe("GlobalBrain tools", () => {
 
   it("returns structured failures for unknown threads", async () => {
     await withTempDir(async (dir) => {
-      const store = createGlobalBrainStore({
-        filePath: join(dir, "brain.jsonl"),
-        maxDigestThreads: 5,
-        maxDigestReplies: 5,
-      });
+      const store = createGlobalBrainStore({ filePath: join(dir, "brain.jsonl"), maxDigestThreads: 5, maxDigestReplies: 5 });
       await store.init();
-      const tools = createBrainTools({
-        store,
-        scope: scopeA as never,
-        assets: createMemoryAssets(),
-        artifacts: createMemoryArtifacts(),
-      });
+      const tools = createBrainTools({ store, scope: scopeA as never, assets: createMemoryAssets(), artifacts: createMemoryArtifacts() });
 
       const read = await tools[1]?.execute?.({ threadId: "missing" }, toolContext());
-      expect(read).toEqual({
-        outcome: "failed",
-        error: { code: "thread_not_found", message: "Thread does not exist" },
-      });
+      expect(read).toEqual({ outcome: "failed", error: { code: "thread_not_found", message: "Thread does not exist" } });
     });
   });
 });

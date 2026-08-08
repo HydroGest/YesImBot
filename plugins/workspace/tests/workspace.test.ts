@@ -42,11 +42,7 @@ describe("Workspace filesystem", () => {
 
   it("persists writes in the default channel workspace", async () => {
     const root = await tmpRoot("workspace-root");
-    const workspace = await Workspace.create({
-      root,
-      filesystem: {},
-      bash: { cwd: "/home/workspace" },
-    });
+    const workspace = await Workspace.create({ root, filesystem: {}, bash: { cwd: "/home/workspace" } });
 
     await workspace.fs.writeFile("/home/workspace/report.txt", "hello", "utf8");
 
@@ -58,11 +54,7 @@ describe("Workspace filesystem", () => {
     const docs = await tmpRoot("workspace-docs");
     await writeFile(join(docs, "guide.md"), "# Guide\n", "utf8");
 
-    const workspace = await Workspace.create({
-      root,
-      filesystem: { readOnlyPaths: { "/knowledge": docs } },
-      bash: { cwd: "/home/workspace" },
-    });
+    const workspace = await Workspace.create({ root, filesystem: { readOnlyPaths: { "/knowledge": docs } }, bash: { cwd: "/home/workspace" } });
 
     await expect(workspace.fs.readFile("/knowledge/guide.md", "utf8")).resolves.toBe("# Guide\n");
     await expect(workspace.fs.writeFile("/knowledge/guide.md", "changed", "utf8")).rejects.toThrow(/read-only file system/);
@@ -71,11 +63,7 @@ describe("Workspace filesystem", () => {
   it("keeps default command paths when custom workspace mounts are configured", async () => {
     const root = await tmpRoot("workspace-root");
     const custom = await tmpRoot("workspace-custom");
-    const workspace = await Workspace.create({
-      root,
-      filesystem: { persistPaths: { "/custom": custom } },
-      bash: { cwd: "/home/workspace" },
-    });
+    const workspace = await Workspace.create({ root, filesystem: { persistPaths: { "/custom": custom } }, bash: { cwd: "/home/workspace" } });
 
     const rootListing = await workspace.bash.exec("ls /");
     const binListing = await workspace.bash.exec("ls /bin");
@@ -103,11 +91,7 @@ describe("Workspace filesystem", () => {
     const repo = await tmpRoot("workspace-repo");
     await writeFile(join(repo, "package.json"), '{"name":"demo"}\n', "utf8");
 
-    const workspace = await Workspace.create({
-      root,
-      filesystem: { overlayPaths: { "/repo": repo } },
-      bash: { cwd: "/repo" },
-    });
+    const workspace = await Workspace.create({ root, filesystem: { overlayPaths: { "/repo": repo } }, bash: { cwd: "/repo" } });
 
     await workspace.fs.writeFile("/repo/package.json", '{"name":"changed"}\n', "utf8");
 
@@ -117,11 +101,7 @@ describe("Workspace filesystem", () => {
 
   it("registers python3/js-exec command stubs when enabled", async () => {
     const root = await tmpRoot("workspace-python");
-    const workspace = await Workspace.create({
-      root,
-      filesystem: {},
-      bash: { cwd: "/home/workspace", python: true, javascript: true },
-    });
+    const workspace = await Workspace.create({ root, filesystem: {}, bash: { cwd: "/home/workspace", python: true, javascript: true } });
     await workspace.init();
 
     for (const command of ["python3", "python", "js-exec", "node"]) {
@@ -137,11 +117,7 @@ describe("Workspace filesystem", () => {
 
   it("does not register python3/js-exec stubs when disabled", async () => {
     const root = await tmpRoot("workspace-nopython");
-    const workspace = await Workspace.create({
-      root,
-      filesystem: {},
-      bash: { cwd: "/home/workspace" },
-    });
+    const workspace = await Workspace.create({ root, filesystem: {}, bash: { cwd: "/home/workspace" } });
     await workspace.init();
 
     await expect(workspace.fs.readFile("/bin/python3", "utf8")).rejects.toThrow(/ENOENT/);

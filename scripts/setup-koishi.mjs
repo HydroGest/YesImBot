@@ -20,15 +20,7 @@ const requireApp = createRequire(path.join(appRoot, "package.json"));
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const options = {
-    app: null,
-    createApp: null,
-    repo: DEFAULT_REPO,
-    check: false,
-    pull: false,
-    start: false,
-    help: false,
-  };
+  const options = { app: null, createApp: null, repo: DEFAULT_REPO, check: false, pull: false, start: false, help: false };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];

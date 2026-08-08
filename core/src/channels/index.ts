@@ -109,6 +109,7 @@ export class Channels implements Resources {
     this.channels.set(key, channel);
     return channel;
   }
+
   private async scan(): Promise<void> {
     await fs.mkdir(this.channelsPath, { recursive: true });
     for (const entry of await fs.readdir(this.channelsPath, { withFileTypes: true })) {
@@ -143,10 +144,7 @@ export class Channels implements Resources {
         const manifest = { ...scope, createdAt: new Date().toISOString() } as ChannelManifest;
         try {
           await fs.mkdir(temporary);
-          await fs.writeFile(join(temporary, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`, {
-            encoding: "utf8",
-            flag: "wx",
-          });
+          await fs.writeFile(join(temporary, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
           await fs.rename(temporary, root);
         } finally {
           await fs.rm(temporary, { recursive: true, force: true });

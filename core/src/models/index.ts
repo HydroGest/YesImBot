@@ -71,10 +71,7 @@ interface EmbeddingModelOverride extends Partial<Omit<EmbeddingModelConfig, "id"
 }
 
 interface ModelsConfigData {
-  defaults: {
-    chat?: string;
-    embedding?: string;
-  };
+  defaults: { chat?: string; embedding?: string };
   aliases: Record<string, string>;
   chat: Record<string, ChatModelOverride>;
   embedding: Record<string, EmbeddingModelOverride>;
@@ -117,10 +114,7 @@ export class ModelService {
   private embeddingModels = new Map<string, EmbeddingModelRecord>();
   private aliases = new Map<string, ModelId>();
   private modelsConfig = createEmptyModelsConfig();
-  private defaults: {
-    chat?: ModelId;
-    embedding?: ModelId;
-  } = {};
+  private defaults: { chat?: ModelId; embedding?: ModelId } = {};
   private readonly logger: Logger;
 
   constructor(ctx: Context, config: ModelServiceConfig) {
@@ -174,24 +168,14 @@ export class ModelService {
           const cloned = cloneChatModelConfig(config);
           // Strip provider modalities: only models.json overrides own this field.
           cloned.modalities = undefined;
-          this.chatModels.set(fullId, {
-            fullId,
-            providerId: provider.id,
-            modelId: config.id,
-            config: cloned,
-          });
+          this.chatModels.set(fullId, { fullId, providerId: provider.id, modelId: config.id, config: cloned });
         }
       }
 
       if (provider.capabilities.embedding) {
         for (const config of provider.embeddingModels()) {
           const fullId = formatModelId(provider.id, config.id);
-          this.embeddingModels.set(fullId, {
-            fullId,
-            providerId: provider.id,
-            modelId: config.id,
-            config: cloneEmbeddingModelConfig(config),
-          });
+          this.embeddingModels.set(fullId, { fullId, providerId: provider.id, modelId: config.id, config: cloneEmbeddingModelConfig(config) });
         }
       }
     }
@@ -226,11 +210,7 @@ export class ModelService {
         this.logger.warn(`Ignoring models.json embedding override for unknown model "${fullId}".`);
         continue;
       }
-      record.config = {
-        ...record.config,
-        name: override.name ?? record.config.name,
-        hidden: override.hidden ?? record.config.hidden,
-      };
+      record.config = { ...record.config, name: override.name ?? record.config.name, hidden: override.hidden ?? record.config.hidden };
     }
 
     for (const [alias, target] of Object.entries(modelsConfig.aliases)) {
@@ -379,17 +359,11 @@ export class ModelService {
   }
 
   public listChatModels(): Array<{ fullId: string; config: ChatModelConfig }> {
-    return [...this.chatModels.values()].map((record) => ({
-      fullId: record.fullId,
-      config: cloneChatModelConfig(record.config),
-    }));
+    return [...this.chatModels.values()].map((record) => ({ fullId: record.fullId, config: cloneChatModelConfig(record.config) }));
   }
 
   public listEmbeddingModels(): Array<{ fullId: string; config: EmbeddingModelConfig }> {
-    return [...this.embeddingModels.values()].map((record) => ({
-      fullId: record.fullId,
-      config: cloneEmbeddingModelConfig(record.config),
-    }));
+    return [...this.embeddingModels.values()].map((record) => ({ fullId: record.fullId, config: cloneEmbeddingModelConfig(record.config) }));
   }
 }
 
@@ -486,10 +460,7 @@ function readEmbeddingOverrides(section: JsonObject, warnings: string[]): Record
       warnings.push(`models.json embedding override for "${fullId}" must be an object.`);
       continue;
     }
-    result[fullId] = {
-      name: readString(value.name),
-      hidden: readBoolean(value.hidden),
-    };
+    result[fullId] = { name: readString(value.name), hidden: readBoolean(value.hidden) };
   }
   return result;
 }
@@ -503,10 +474,7 @@ async function loadModelsConfig(filePath?: string): Promise<ModelsConfigLoadResu
     parsed = await readModelsConfig(filePath);
   } catch (error: unknown) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { config: empty, warnings: [] };
-    return {
-      config: empty,
-      warnings: [`Failed to parse models.json at ${filePath}: ${error instanceof Error ? error.message : String(error)}`],
-    };
+    return { config: empty, warnings: [`Failed to parse models.json at ${filePath}: ${error instanceof Error ? error.message : String(error)}`] };
   }
 
   if (!isPlainObject(parsed)) {
@@ -530,10 +498,7 @@ async function loadModelsConfig(filePath?: string): Promise<ModelsConfigLoadResu
 
   return {
     config: {
-      defaults: {
-        chat: readString(defaultsSection.chat),
-        embedding: readString(defaultsSection.embedding),
-      },
+      defaults: { chat: readString(defaultsSection.chat), embedding: readString(defaultsSection.embedding) },
       aliases,
       chat: readChatOverrides(chatSection, warnings),
       embedding: readEmbeddingOverrides(embeddingSection, warnings),
@@ -563,10 +528,5 @@ function isHiddenModel(config: { hidden?: boolean } | undefined): boolean {
 }
 
 function createEmptyModelsConfig(): ModelsConfigData {
-  return {
-    defaults: {},
-    aliases: {},
-    chat: {},
-    embedding: {},
-  };
+  return { defaults: {}, aliases: {}, chat: {}, embedding: {} };
 }

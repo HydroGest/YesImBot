@@ -11,10 +11,7 @@ export type { LoadSkillsOptions, LoadSkillsResult, ResourceDiagnostic, Skill, Sk
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 
-type ParsedFrontmatter<T extends Record<string, unknown>> = {
-  frontmatter: T;
-  body: string;
-};
+type ParsedFrontmatter<T extends Record<string, unknown>> = { frontmatter: T; body: string };
 
 function validateName(name: string, parentDirName: string): string[] {
   const errors: string[] = [];
@@ -125,21 +122,12 @@ async function loadSkillsFromDirInternal(dir: string, includeRootFiles: boolean,
   return { skills, diagnostics };
 }
 
-async function loadSkillFromFile(
-  filePath: string,
-  rootDir?: string,
-): Promise<{
-  skill: Skill | null;
-  diagnostics: ResourceDiagnostic[];
-}> {
+async function loadSkillFromFile(filePath: string, rootDir?: string): Promise<{ skill: Skill | null; diagnostics: ResourceDiagnostic[] }> {
   const diagnostics: ResourceDiagnostic[] = [];
   try {
     const realFilePath = await realpath(filePath);
     if (rootDir && !isPathContained(rootDir, realFilePath)) {
-      return {
-        skill: null,
-        diagnostics: [{ type: "warning", message: "skill path escapes its configured root", path: filePath }],
-      };
+      return { skill: null, diagnostics: [{ type: "warning", message: "skill path escapes its configured root", path: filePath }] };
     }
     const rawContent = await readFile(realFilePath, "utf-8");
     const { frontmatter } = parseFrontmatter<SkillFrontmatter>(rawContent);
@@ -163,13 +151,7 @@ async function loadSkillFromFile(
     }
 
     return {
-      skill: {
-        name,
-        description,
-        filePath: realFilePath,
-        baseDir: skillDir,
-        disableModelInvocation: frontmatter["disable-model-invocation"] === true,
-      },
+      skill: { name, description, filePath: realFilePath, baseDir: skillDir, disableModelInvocation: frontmatter["disable-model-invocation"] === true },
       diagnostics,
     };
   } catch (error) {
@@ -248,12 +230,7 @@ export async function loadSkills(options: LoadSkillsOptions): Promise<LoadSkills
           type: "collision",
           message: `name "${skill.name}" collision`,
           path: skill.filePath,
-          collision: {
-            resourceType: "skill",
-            name: skill.name,
-            winnerPath: existing.filePath,
-            loserPath: skill.filePath,
-          },
+          collision: { resourceType: "skill", name: skill.name, winnerPath: existing.filePath, loserPath: skill.filePath },
         });
       } else {
         skillMap.set(skill.name, skill);

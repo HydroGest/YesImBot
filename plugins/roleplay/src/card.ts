@@ -23,11 +23,7 @@ export async function loadCharacterCard(path: string): Promise<CharacterCardV3> 
 
   return version === "v3"
     ? (card as CharacterCardV3)
-    : CCardLib.character.convert(card as CharacterCard, {
-        from: version,
-        to: "v3",
-        options: { convertRisuFields: false },
-      });
+    : CCardLib.character.convert(card as CharacterCard, { from: version, to: "v3", options: { convertRisuFields: false } });
 }
 
 function extractCharacterCardPayload(source: Buffer): string {

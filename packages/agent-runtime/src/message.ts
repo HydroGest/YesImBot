@@ -46,10 +46,7 @@ export interface AgentToolMessage extends AgentMessageBase, ToolModelMessage {}
 export type CreateMessageOptions = Partial<Pick<AgentMessageBase, "id" | "timestamp">>;
 
 function createMessageBase(options: CreateMessageOptions = {}): AgentMessageBase {
-  return {
-    id: options.id ?? createRandomId(),
-    timestamp: options.timestamp ?? Date.now(),
-  };
+  return { id: options.id ?? createRandomId(), timestamp: options.timestamp ?? Date.now() };
 }
 
 export function createUserMessage(content: UserContent, options: CreateMessageOptions = {}): AgentUserMessage {
@@ -77,12 +74,7 @@ export function createCustomMessage<T extends AgentCustomMessageType>(
   data: AgentCustomMessageData<T>,
   options: CreateMessageOptions = {},
 ): AgentCustomMessages[T] {
-  return {
-    ...createMessageBase(options),
-    role: "custom",
-    type,
-    data,
-  } as unknown as AgentCustomMessages[T];
+  return { ...createMessageBase(options), role: "custom", type, data } as unknown as AgentCustomMessages[T];
 }
 
 function isModelMessageRole(role: AgentMessage["role"]): role is Exclude<AgentMessage["role"], "custom"> {

@@ -42,11 +42,7 @@ function pokeEvent(): Event {
 
 describe("PolicyWillingnessEngine", () => {
   it("forces mention triggers when configured", async () => {
-    const engine = new PolicyWillingnessEngine({
-      ...defaultWillingnessConfig(),
-      probabilityThreshold: 100,
-      mentionForce: true,
-    });
+    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 100, mentionForce: true });
 
     await expect(engine.decide(message([{ type: "at", attrs: { id: "bot-1" }, children: [] }]), state)).resolves.toBe("trigger");
     expect(engine.getCurrentWillingness()).toBeGreaterThan(0);
@@ -55,12 +51,7 @@ describe("PolicyWillingnessEngine", () => {
   it("samples probability from the willingness score", async () => {
     const random = vi.spyOn(Math, "random").mockReturnValue(0.9);
     try {
-      const engine = new PolicyWillingnessEngine({
-        ...defaultWillingnessConfig(),
-        probabilityThreshold: 0,
-        textGain: 100,
-        maxScore: 100,
-      });
+      const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 0, textGain: 100, maxScore: 100 });
 
       await expect(engine.decide(message([]), state)).resolves.toBe("trigger");
     } finally {
@@ -69,36 +60,21 @@ describe("PolicyWillingnessEngine", () => {
   });
 
   it("adds image gain when a message contains an image", async () => {
-    const engine = new PolicyWillingnessEngine({
-      ...defaultWillingnessConfig(),
-      probabilityThreshold: 0,
-      imageGain: 60,
-      textGain: 0,
-      maxScore: 100,
-    });
+    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 0, imageGain: 60, textGain: 0, maxScore: 100 });
 
     await expect(engine.decide(message([{ type: "img", attrs: { id: "asset-1" }, children: [] }]), state)).resolves.toBe("trigger");
     expect(engine.getCurrentWillingness()).toBeGreaterThan(0);
   });
 
   it("adds poke gain for poke events", async () => {
-    const engine = new PolicyWillingnessEngine({
-      ...defaultWillingnessConfig(),
-      probabilityThreshold: 0,
-      pokeGain: 80,
-      maxScore: 100,
-    });
+    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 0, pokeGain: 80, maxScore: 100 });
 
     await expect(engine.decide(pokeEvent(), state)).resolves.toBe("trigger");
     expect(engine.getCurrentWillingness()).toBeGreaterThan(0);
   });
 
   it("charges reply cost with a zero floor", async () => {
-    const engine = new PolicyWillingnessEngine({
-      ...defaultWillingnessConfig(),
-      initialScore: 50,
-      replyCost: 30,
-    });
+    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), initialScore: 50, replyCost: 30 });
 
     await engine.onReply?.();
     expect(engine["score"]).toBe(20);

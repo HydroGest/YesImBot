@@ -25,12 +25,7 @@ type ResourceOpener = (
   options: { signal: AbortSignal; maxBytes: number },
 ) => Promise<{ bytes: Uint8Array; mediaType?: string; filename?: string }>;
 
-type CommandRecord = {
-  name: string;
-  options?: Record<string, unknown>;
-  action?: (...args: unknown[]) => unknown;
-  disposed: boolean;
-};
+type CommandRecord = { name: string; options?: Record<string, unknown>; action?: (...args: unknown[]) => unknown; disposed: boolean };
 
 function workspaceCache(plugin: WorkspacePlugin): ReadonlyMap<string, Workspace> {
   const value: unknown = Reflect.get(plugin, "workspaces");
@@ -68,14 +63,7 @@ function sandboxConfig(
   skillPaths?: string[],
 ): WorkspacePluginConfig {
   return {
-    bash: {
-      mode: "sandbox",
-      cwd: "/home/workspace",
-      timeoutMs: 1000,
-      enableNetwork: false,
-      mounts: [],
-      ...overrides,
-    },
+    bash: { mode: "sandbox", cwd: "/home/workspace", timeoutMs: 1000, enableNetwork: false, mounts: [], ...overrides },
     ...(skillPaths ? { skillPaths } : {}),
   };
 }
@@ -117,13 +105,7 @@ function createContext(baseDir: string) {
     bot,
     ctx: {
       baseDir,
-      logger: () => ({
-        info: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-      }),
+      logger: () => ({ info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
       on: vi.fn((event: string, callback: () => Promise<void> | void) => {
         if (event === "ready") ready.push(callback);
         if (event === "dispose") dispose.push(callback);
@@ -158,12 +140,7 @@ describe("WorkspacePlugin", () => {
     expect(defaults.bash?.mounts).toEqual([]);
 
     const sandbox = WorkspacePlugin.Config({
-      bash: {
-        mode: "sandbox",
-        mounts: [],
-        allowedChannels: [{ platform: "onebot", channelId: "room" }],
-        identity: { uid: 1000, gid: 1000 },
-      } as never,
+      bash: { mode: "sandbox", mounts: [], allowedChannels: [{ platform: "onebot", channelId: "room" }], identity: { uid: 1000, gid: 1000 } } as never,
     });
     expect(sandbox.bash).not.toHaveProperty("allowedChannels");
     expect(sandbox.bash).not.toHaveProperty("identity");
@@ -190,17 +167,11 @@ describe("WorkspacePlugin", () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-schema-"));
     const mocks = createContext(baseDir);
     new WorkspacePlugin(mocks.ctx as never, {
-      bash: {
-        mounts: [],
-        allowedChannels: [{ platform: "onebot", channelId: "room" }],
-        identity: { uid: 1000, gid: 1000 },
-      } as never,
+      bash: { mounts: [], allowedChannels: [{ platform: "onebot", channelId: "room" }], identity: { uid: 1000, gid: 1000 } } as never,
     });
 
     await mocks.ready[0]?.();
-    const agentPlugin = mocks.factories[0]!({
-      scope: { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" },
-    });
+    const agentPlugin = mocks.factories[0]!({ scope: { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" } });
     expect((await tools(agentPlugin)).map((tool) => tool.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
   });
 
@@ -208,18 +179,11 @@ describe("WorkspacePlugin", () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-host-config-"));
     const mocks = createContext(baseDir);
     const plugin = new WorkspacePlugin(mocks.ctx as never, {
-      bash: {
-        mode: "host",
-        allowedChannels: [{ platform: "onebot", channelId: "room" }],
-        hostRoots: [],
-        identity: hostIdentity(),
-      },
+      bash: { mode: "host", allowedChannels: [{ platform: "onebot", channelId: "room" }], hostRoots: [], identity: hostIdentity() },
     });
 
     await mocks.ready[0]?.();
-    const agentPlugin = mocks.factories[0]!({
-      scope: { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" },
-    });
+    const agentPlugin = mocks.factories[0]!({ scope: { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" } });
     expect((await tools(agentPlugin)).map((tool) => tool.name).sort()).toEqual(hostRuntimeAvailable() ? ["bash", "readFile", "writeFile"] : []);
     expect(workspaceCache(plugin).size).toBe(0);
   });
@@ -235,13 +199,7 @@ describe("WorkspacePlugin", () => {
     });
     const ctx = {
       baseDir,
-      logger: () => ({
-        info: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-      }),
+      logger: () => ({ info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
       on: vi.fn((event: string, callback: () => Promise<void> | void) => {
         if (event === "ready") ready.push(callback);
       }),
@@ -257,12 +215,7 @@ describe("WorkspacePlugin", () => {
     const plugin = new WorkspacePlugin(ctx as never, sandboxConfig());
 
     await ready[0]?.();
-    const scope = {
-      platform: "onebot",
-      selfId: "bot",
-      channelId: "room",
-      type: "shared",
-    } satisfies ChannelScope;
+    const scope = { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" } satisfies ChannelScope;
     const agentPlugin = factories[0]?.({ scope });
     expect(agentPlugin).toBeDefined();
     expect((await tools(agentPlugin!)).map((tool) => tool.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
@@ -283,12 +236,7 @@ describe("WorkspacePlugin", () => {
     const mocks = createContext(baseDir);
     const plugin = new WorkspacePlugin(mocks.ctx as never, sandboxConfig());
     await mocks.ready[0]?.();
-    const scope = {
-      platform: "onebot",
-      selfId: "bot",
-      channelId: "room",
-      type: "shared",
-    } satisfies ChannelScope;
+    const scope = { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" } satisfies ChannelScope;
     await tools(mocks.factories[0]!({ scope }));
     const root = join(baseDir, "channels", "shared-onebot-room", "workspace");
 
@@ -300,12 +248,7 @@ describe("WorkspacePlugin", () => {
 
   it("reopens the same root after a plugin restart", async () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-"));
-    const scope = {
-      platform: "onebot",
-      selfId: "bot",
-      channelId: "room",
-      type: "shared",
-    } satisfies ChannelScope;
+    const scope = { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" } satisfies ChannelScope;
     const first = createContext(baseDir);
     const firstPlugin = new WorkspacePlugin(first.ctx as never, sandboxConfig());
     await first.ready[0]?.();
@@ -366,22 +309,13 @@ describe("WorkspacePlugin", () => {
     await mkdir(workspaceRoot, { recursive: true });
     await writeFile(join(workspaceRoot, "report.txt"), "live report");
 
-    const workspaceResult = await mocks.schemes.get("workspace")!.open(scope, "workspace:///report.txt", {
-      signal: AbortSignal.timeout(1000),
-      maxBytes: 1024,
-    });
+    const workspaceResult = await mocks.schemes.get("workspace")!.open(scope, "workspace:///report.txt", { signal: AbortSignal.timeout(1000), maxBytes: 1024 });
     expect(new TextDecoder().decode(workspaceResult.bytes)).toBe("live report");
 
-    const skillResult = await mocks.schemes.get("skill")!.open(scope, "skill://csv/scripts/analyze.sh", {
-      signal: AbortSignal.timeout(1000),
-      maxBytes: 1024,
-    });
+    const skillResult = await mocks.schemes.get("skill")!.open(scope, "skill://csv/scripts/analyze.sh", { signal: AbortSignal.timeout(1000), maxBytes: 1024 });
     expect(new TextDecoder().decode(skillResult.bytes)).toBe("echo csv\n");
     await expect(
-      mocks.schemes.get("workspace")!.open(scope, "workspace://host/report.txt", {
-        signal: AbortSignal.timeout(1000),
-        maxBytes: 1024,
-      }),
+      mocks.schemes.get("workspace")!.open(scope, "workspace://host/report.txt", { signal: AbortSignal.timeout(1000), maxBytes: 1024 }),
     ).rejects.toThrow();
 
     const agentPlugin = mocks.factories[0]!({ scope });
@@ -390,9 +324,7 @@ describe("WorkspacePlugin", () => {
     expect(agentTools.map((tool) => tool.name)).not.toContain(loaderName);
     const readFile = agentTools.find((tool) => tool.name === "readFile");
     const writeFileTool = agentTools.find((tool) => tool.name === "writeFile");
-    await expect(readFile!.execute!({ path: "/skills/csv/scripts/analyze.sh" }, {} as never)).resolves.toEqual({
-      content: "echo csv\n",
-    });
+    await expect(readFile!.execute!({ path: "/skills/csv/scripts/analyze.sh" }, {} as never)).resolves.toEqual({ content: "echo csv\n" });
     await expect(writeFileTool!.execute!({ path: "/skills/csv/scripts/analyze.sh", content: "changed" }, {} as never)).rejects.toThrow();
   });
 
@@ -425,12 +357,9 @@ describe("WorkspacePlugin", () => {
     new WorkspacePlugin(mocks.ctx as never, sandboxConfig({}, [join(baseDir, "skills")]));
     await mocks.ready[0]?.();
     const scope = { platform: "onebot", selfId: "bot", channelId: "room", type: "shared" } satisfies ChannelScope;
-    await expect(
-      mocks.schemes.get("skill")!.open(scope, "skill://csv/SKILL.md", {
-        signal: AbortSignal.timeout(1000),
-        maxBytes: 1,
-      }),
-    ).rejects.toThrow(/exceeds read limit/);
+    await expect(mocks.schemes.get("skill")!.open(scope, "skill://csv/SKILL.md", { signal: AbortSignal.timeout(1000), maxBytes: 1 })).rejects.toThrow(
+      /exceeds read limit/,
+    );
   });
 
   it("rejects user mounts that overlap the reserved Skill mount root", async () => {
@@ -488,12 +417,7 @@ describe("WorkspacePlugin", () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-host-tools-"));
     const mocks = createContext(baseDir);
     const plugin = new WorkspacePlugin(mocks.ctx as never, {
-      bash: {
-        mode: "host",
-        allowedChannels: [{ platform: "onebot", channelId: "room" }],
-        hostRoots: [],
-        identity: hostIdentity(),
-      },
+      bash: { mode: "host", allowedChannels: [{ platform: "onebot", channelId: "room" }], hostRoots: [], identity: hostIdentity() },
     });
     await mocks.ready[0]?.();
     const scope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } satisfies ChannelScope;
@@ -511,9 +435,7 @@ describe("WorkspacePlugin", () => {
     const write = agentTools.find((tool) => tool.name === "writeFile")!;
     const read = agentTools.find((tool) => tool.name === "readFile")!;
     expect(bash.description).toContain("approved Host environment");
-    await expect(write.execute!({ path: "note.txt", content: "host" }, {} as never)).resolves.toEqual({
-      success: true,
-    });
+    await expect(write.execute!({ path: "note.txt", content: "host" }, {} as never)).resolves.toEqual({ success: true });
     await expect(read.execute!({ path: "note.txt" }, {} as never)).resolves.toEqual({ content: "host" });
     await mocks.dispose[0]?.();
   });
@@ -522,12 +444,7 @@ describe("WorkspacePlugin", () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-host-deny-"));
     const mocks = createContext(baseDir);
     new WorkspacePlugin(mocks.ctx as never, {
-      bash: {
-        mode: "host",
-        allowedChannels: [{ platform: "onebot", channelId: "allowed" }],
-        hostRoots: [],
-        identity: hostIdentity(),
-      },
+      bash: { mode: "host", allowedChannels: [{ platform: "onebot", channelId: "allowed" }], hostRoots: [], identity: hostIdentity() },
     });
     await mocks.ready[0]?.();
     const scope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "blocked" } satisfies ChannelScope;
@@ -545,12 +462,7 @@ describe("WorkspacePlugin", () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-host-no-broker-"));
     const mocks = createContext(baseDir);
     const plugin = new WorkspacePlugin(mocks.ctx as never, {
-      bash: {
-        mode: "host",
-        allowedChannels: [{ platform: "onebot", channelId: "room" }],
-        hostRoots: [],
-        identity: hostIdentity(),
-      },
+      bash: { mode: "host", allowedChannels: [{ platform: "onebot", channelId: "room" }], hostRoots: [], identity: hostIdentity() },
     });
     await mocks.ready[0]?.();
     Reflect.set(plugin, "hostApprovalBroker", undefined);
@@ -570,13 +482,7 @@ describe("WorkspacePlugin", () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-host-prereq-"));
     const mocks = createContext(baseDir);
     new WorkspacePlugin(mocks.ctx as never, {
-      bash: {
-        mode: "host",
-        allowedChannels: [{ platform: "onebot", channelId: "room" }],
-        hostRoots: [],
-        identity: hostIdentity(),
-        ...overrides,
-      } as never,
+      bash: { mode: "host", allowedChannels: [{ platform: "onebot", channelId: "room" }], hostRoots: [], identity: hostIdentity(), ...overrides } as never,
     });
     await mocks.ready[0]?.();
     const scope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } satisfies ChannelScope;
@@ -594,12 +500,7 @@ describe("WorkspacePlugin", () => {
     const mocks = createContext(baseDir);
     mocks.getStoragePath.mockRejectedValue(new Error("storage unavailable"));
     new WorkspacePlugin(mocks.ctx as never, {
-      bash: {
-        mode: "host",
-        allowedChannels: [{ platform: "onebot", channelId: "room" }],
-        hostRoots: [],
-        identity: hostIdentity(),
-      },
+      bash: { mode: "host", allowedChannels: [{ platform: "onebot", channelId: "room" }], hostRoots: [], identity: hostIdentity() },
     });
     await mocks.ready[0]?.();
     const scope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } satisfies ChannelScope;
@@ -615,12 +516,7 @@ describe("WorkspacePlugin", () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-host-stop-"));
     const mocks = createContext(baseDir);
     const plugin = new WorkspacePlugin(mocks.ctx as never, {
-      bash: {
-        mode: "host",
-        allowedChannels: [{ platform: "onebot", channelId: "room" }],
-        hostRoots: [],
-        identity: hostIdentity(),
-      },
+      bash: { mode: "host", allowedChannels: [{ platform: "onebot", channelId: "room" }], hostRoots: [], identity: hostIdentity() },
     });
     await mocks.ready[0]?.();
     const scope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } satisfies ChannelScope;
@@ -641,22 +537,12 @@ describe("WorkspacePlugin", () => {
   it("keeps an existing Host plugin's allowlist snapshot after config mutation", async () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-host-snapshot-"));
     const mocks = createContext(baseDir);
-    const config = {
-      bash: {
-        mode: "host" as const,
-        allowedChannels: [{ platform: "onebot", channelId: "old" }],
-        hostRoots: [],
-        identity: hostIdentity(),
-      },
-    };
+    const config = { bash: { mode: "host" as const, allowedChannels: [{ platform: "onebot", channelId: "old" }], hostRoots: [], identity: hostIdentity() } };
     new WorkspacePlugin(mocks.ctx as never, config);
     await mocks.ready[0]?.();
     const oldScope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "old" } satisfies ChannelScope;
     const oldAgent = await mocks.factories[0]!({ scope: oldScope, bot: mocks.bot });
-    (config.bash.allowedChannels as Array<{ platform: string; channelId: string }>).splice(0, 1, {
-      platform: "onebot",
-      channelId: "new",
-    });
+    (config.bash.allowedChannels as Array<{ platform: string; channelId: string }>).splice(0, 1, { platform: "onebot", channelId: "new" });
     const oldDecision = await oldAgent!.beforeToolCall?.({ toolCallId: "old", toolName: "bash", args: { command: "pwd" } }, {} as never);
     expect(oldDecision).toEqual(hostRuntimeAvailable() ? { type: "allow" } : { type: "block", reason: "host-runtime-unavailable" });
   });
@@ -664,14 +550,7 @@ describe("WorkspacePlugin", () => {
   it("keeps an existing Sandbox runtime's mode settings after config mutation", async () => {
     baseDir = await mkdtemp(join(tmpdir(), "yesimbot-workspace-sandbox-snapshot-"));
     const mocks = createContext(baseDir);
-    const config = {
-      bash: {
-        mode: "sandbox" as const,
-        cwd: "/home/workspace",
-        timeoutMs: 1000,
-        mounts: [],
-      },
-    };
+    const config = { bash: { mode: "sandbox" as const, cwd: "/home/workspace", timeoutMs: 1000, mounts: [] } };
     const plugin = new WorkspacePlugin(mocks.ctx as never, config);
     await mocks.ready[0]?.();
     const scope = { type: "shared", platform: "onebot", selfId: "bot", channelId: "room" } satisfies ChannelScope;

@@ -2,15 +2,7 @@ import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-vi.mock("koishi", () => ({
-  Context: class {},
-  Logger: class {},
-  Universal: {
-    Channel: {
-      Type: { TEXT: 0, DIRECT: 1, CATEGORY: 2, VOICE: 3 },
-    },
-  },
-}));
+vi.mock("koishi", () => ({ Context: class {}, Logger: class {}, Universal: { Channel: { Type: { TEXT: 0, DIRECT: 1, CATEGORY: 2, VOICE: 3 } } } }));
 
 import SchedulePlugin from "../src/index.js";
 import { ScheduleScheduler } from "../src/scheduler.js";
@@ -38,12 +30,7 @@ type TestModel = {
 function createCommandMock() {
   const commands: CommandRecord[] = [];
   const command = vi.fn((def: string, _description?: string, options?: Record<string, unknown>) => {
-    const record: CommandRecord = {
-      name: def.split(/\s+/, 1)[0] ?? def,
-      options,
-      optionCalls: [],
-      disposed: false,
-    };
+    const record: CommandRecord = { name: def.split(/\s+/, 1)[0] ?? def, options, optionCalls: [], disposed: false };
     commands.push(record);
     const api = {
       option: (name: string, config: unknown) => {
@@ -99,13 +86,7 @@ function createContext(model: TestModel) {
     return vi.fn();
   });
   const ctx = {
-    logger: () => ({
-      info: vi.fn(),
-      success: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-    }),
+    logger: () => ({ info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
     on: vi.fn((event: string, callback: () => Promise<void> | void) => {
       if (event === "ready") ready.push(callback);
       if (event === "dispose") dispose.push(callback);
@@ -204,12 +185,7 @@ describe("SchedulePlugin", () => {
 
   it("recovers persisted schedules and arms the earliest due timer on ready", async () => {
     const model = createModel();
-    const missed = futureRow({
-      id: "missed",
-      title: "已错过",
-      at: "2020-01-01T00:00:00Z",
-      nextRunAt: "2020-01-01T00:00:00Z",
-    });
+    const missed = futureRow({ id: "missed", title: "已错过", at: "2020-01-01T00:00:00Z", nextRunAt: "2020-01-01T00:00:00Z" });
     const upcoming = futureRow({ id: "upcoming" });
     model.tables.set("yesimbot_schedule", [missed, upcoming]);
 
@@ -218,10 +194,7 @@ describe("SchedulePlugin", () => {
     await ready[0]?.();
 
     expect(missed).toMatchObject({ state: "completed", nextRunAt: null });
-    expect(missed.lastResult).toMatchObject({
-      occurrenceAt: "2020-01-01T00:00:00Z",
-      status: "missed",
-    });
+    expect(missed.lastResult).toMatchObject({ occurrenceAt: "2020-01-01T00:00:00Z", status: "missed" });
     expect(upcoming).toMatchObject({ state: "enabled", nextRunAt: "2099-01-01T00:00:00Z" });
     expect(vi.getTimerCount()).toBe(1);
     expect(trigger).not.toHaveBeenCalled();
@@ -241,12 +214,7 @@ describe("SchedulePlugin", () => {
     const list = commands.find(({ name }) => name === "yesimbot.schedule.list")!;
     const parent = commands.find(({ name }) => name === "yesimbot.schedule")!;
 
-    const sharedSession = {
-      platform: "onebot",
-      selfId: "bot",
-      channelId: "room",
-      isDirect: false,
-    };
+    const sharedSession = { platform: "onebot", selfId: "bot", channelId: "room", isDirect: false };
     expect(await create.action!({ session: sharedSession, options: { at: "2099-01-01T00:00:00Z" } }, "日报", "每天早上写一份日报")).toContain("已创建定时任务");
 
     const rows = model.tables.get("yesimbot_schedule")!;
@@ -263,23 +231,10 @@ describe("SchedulePlugin", () => {
       state: "enabled",
     });
 
-    const directSession = {
-      platform: "onebot",
-      selfId: "bot",
-      channelId: "user-1",
-      isDirect: true,
-    };
+    const directSession = { platform: "onebot", selfId: "bot", channelId: "user-1", isDirect: true };
     expect(await create.action!({ session: directSession, options: { cron: "0 9 * * 1" } }, "周报", "每周一写周报")).toContain("已创建定时任务");
     const weekly = rows.find((row) => row.title === "周报")!;
-    expect(weekly).toMatchObject({
-      type: "direct",
-      platform: "onebot",
-      selfId: "bot",
-      channelId: "user-1",
-      kind: "cron",
-      cron: "0 9 * * 1",
-      state: "enabled",
-    });
+    expect(weekly).toMatchObject({ type: "direct", platform: "onebot", selfId: "bot", channelId: "user-1", kind: "cron", cron: "0 9 * * 1", state: "enabled" });
 
     const id = rows[0].id;
     expect(await update.action!({ session: sharedSession, options: { title: "日报 v2" } }, id)).toContain("已更新定时任务");
@@ -292,21 +247,13 @@ describe("SchedulePlugin", () => {
     expect(rows.find((row) => row.id === id)).toMatchObject({ state: "enabled" });
 
     expect(await cancel.action!({ session: sharedSession, options: {} }, id)).toContain("已取消");
-    expect(rows.find((row) => row.id === id)).toMatchObject({
-      state: "cancelled",
-      nextRunAt: null,
-    });
+    expect(rows.find((row) => row.id === id)).toMatchObject({ state: "cancelled", nextRunAt: null });
 
     expect(await list.action!({ session: sharedSession, options: {} })).toContain(id);
     expect(await parent.action!({ session: sharedSession, options: {} })).toContain(id);
 
     // The scope comes from the live Session only: another channel cannot manage it.
-    const otherSession = {
-      platform: "onebot",
-      selfId: "bot",
-      channelId: "other-room",
-      isDirect: false,
-    };
+    const otherSession = { platform: "onebot", selfId: "bot", channelId: "other-room", isDirect: false };
     expect(await cancel.action!({ session: otherSession, options: {} }, id)).toContain("取消失败");
     // A Session-less invocation is rejected before any Store operation.
     expect(await create.action!({ session: undefined, options: { at: "2099-01-01T00:00:00Z" } }, "无会话", "p")).toBe("无法获取当前频道信息");
@@ -336,11 +283,7 @@ describe("SchedulePlugin", () => {
     // No wake can submit anything after stop: the row stays enabled and unclaimed.
     vi.advanceTimersByTime(24 * 60 * 60 * 1000);
     expect(trigger).not.toHaveBeenCalled();
-    expect(upcoming).toMatchObject({
-      state: "enabled",
-      nextRunAt: "2099-01-01T00:00:00Z",
-      lastResult: null,
-    });
+    expect(upcoming).toMatchObject({ state: "enabled", nextRunAt: "2099-01-01T00:00:00Z", lastResult: null });
     expect(model.tables.get("yesimbot_schedule")).toHaveLength(1);
   });
   it("rearms the running scheduler for Agent creation of earlier work", async () => {

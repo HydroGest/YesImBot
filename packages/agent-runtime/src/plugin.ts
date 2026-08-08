@@ -162,11 +162,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
   };
 
   const emitPluginError = (pluginName: string, error: unknown) => {
-    emitInternal({
-      type: "plugin.error",
-      plugin: pluginName,
-      error: createDiagnostic(error),
-    });
+    emitInternal({ type: "plugin.error", plugin: pluginName, error: createDiagnostic(error) });
   };
 
   const stopPlugin = async (plugin: AgentPlugin) => {
@@ -405,11 +401,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
             await stopPlugin(plugin);
           }
           if (plugin.optional) {
-            emitInternal({
-              type: "plugin.disabled",
-              plugin: plugin.name,
-              reason: createDiagnostic(error),
-            });
+            emitInternal({ type: "plugin.disabled", plugin: plugin.name, reason: createDiagnostic(error) });
             continue;
           }
           await rollbackPlugins(didStartPlugin ? plugin : undefined);

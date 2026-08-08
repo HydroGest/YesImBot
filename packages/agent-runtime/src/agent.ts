@@ -126,27 +126,16 @@ export function createAgent(config: AgentConfig): Agent {
     read: () => storageReady.then(() => baseStorage.read()),
     clear: () => mutateStorage(() => Promise.resolve(baseStorage.clear())),
   };
-  const state = createStateManager({
-    storage,
-    initialState: config.initialState ?? config.defaultState,
-  });
+  const state = createStateManager({ storage, initialState: config.initialState ?? config.defaultState });
 
   const model = config.model;
   const baseTools = config.tools ?? [];
   let frozenSystemPrompt: string | SystemModelMessage[] | undefined;
   let frozenTools: AgentToolSet = [];
 
-  const pluginHost = createPluginHost({
-    plugins: config.plugins ?? [],
-    runtime: { id, channel, state, storage },
-  });
+  const pluginHost = createPluginHost({ plugins: config.plugins ?? [], runtime: { id, channel, state, storage } });
 
-  const runtimeContext = {
-    runtime: { id },
-    channel,
-    state,
-    storage,
-  };
+  const runtimeContext = { runtime: { id }, channel, state, storage };
 
   let initialized = false;
   let initPromise: Promise<void> | undefined;
@@ -217,31 +206,19 @@ export function createAgent(config: AgentConfig): Agent {
     }
 
     initPromise = (async () => {
-      const base = await resolveConfiguredSystemPrompt(config.systemPrompt, {
-        id,
-        channel,
-        state,
-        storage,
-      });
+      const base = await resolveConfiguredSystemPrompt(config.systemPrompt, { id, channel, state, storage });
 
       const terminalTools: AgentToolSet = enableTerminalTool
         ? [
             {
               name: terminalToolName!,
               description: terminalToolDescription ?? "Mark the current assistant response as final. Call this after final text and required tools.",
-              inputSchema: jsonSchema({
-                type: "object",
-                additionalProperties: false,
-              }),
+              inputSchema: jsonSchema({ type: "object", additionalProperties: false }),
               execute: async () => ({ finalized: true }),
             },
           ]
         : [];
-      await pluginHost.init({
-        legacySystemPrompt: base.legacy,
-        baseTools,
-        terminalTools,
-      });
+      await pluginHost.init({ legacySystemPrompt: base.legacy, baseTools, terminalTools });
 
       const blocks = [...base.blocks, ...pluginHost.stablePromptBlocks];
       frozenSystemPrompt =
@@ -278,41 +255,21 @@ export function createAgent(config: AgentConfig): Agent {
         execute: execute
           ? async (input, options) => {
               const run = serial.then(async () => {
-                const hookContext: ToolHookContext = {
-                  ...runtimeContext,
-                  turnId,
-                  signal: options.abortSignal ?? signal,
-                };
+                const hookContext: ToolHookContext = { ...runtimeContext, turnId, signal: options.abortSignal ?? signal };
                 throwIfAborted(hookContext.signal);
 
-                const originalCall = {
-                  toolCallId: options.toolCallId,
-                  toolName,
-                  args: input,
-                };
+                const originalCall = { toolCallId: options.toolCallId, toolName, args: input };
                 const decision = await pluginHost.helpers.beforeToolCall({ type: "allow" }, originalCall, hookContext);
                 throwIfAborted(hookContext.signal);
 
                 const nextInput = decision.type === "replace" ? decision.args : input;
 
                 if (decision.type === "block") {
-                  await emitInternal({
-                    type: "tool.blocked",
-                    turnId,
-                    toolName,
-                    toolCallId: options.toolCallId,
-                    reason: decision.reason,
-                  });
+                  await emitInternal({ type: "tool.blocked", turnId, toolName, toolCallId: options.toolCallId, reason: decision.reason });
                   return { blocked: true, reason: decision.reason };
                 }
 
-                await emitInternal({
-                  type: "tool.start",
-                  turnId,
-                  toolName,
-                  toolCallId: options.toolCallId,
-                  args: nextInput,
-                });
+                await emitInternal({ type: "tool.start", turnId, toolName, toolCallId: options.toolCallId, args: nextInput });
 
                 try {
                   const executeContext: AgentToolExecuteContext = {
@@ -327,45 +284,20 @@ export function createAgent(config: AgentConfig): Agent {
                   const output = await raceAbort(Promise.resolve(execute(nextInput, executeContext)), hookContext.signal);
                   throwIfAborted(hookContext.signal);
                   const result = await pluginHost.helpers.afterToolCall(
-                    {
-                      toolCallId: options.toolCallId,
-                      toolName,
-                      args: nextInput,
-                      result: output,
-                      isError: false,
-                    },
+                    { toolCallId: options.toolCallId, toolName, args: nextInput, result: output, isError: false },
                     hookContext,
                   );
 
-                  await emitInternal({
-                    type: "tool.done",
-                    turnId,
-                    toolName,
-                    toolCallId: options.toolCallId,
-                    result: result.result,
-                  });
+                  await emitInternal({ type: "tool.done", turnId, toolName, toolCallId: options.toolCallId, result: result.result });
                   return result.result;
                 } catch (error) {
                   const diagnostic = createDiagnostic(error);
                   await pluginHost.helpers.afterToolCall(
-                    {
-                      toolCallId: options.toolCallId,
-                      toolName,
-                      args: nextInput,
-                      result: diagnostic,
-                      isError: true,
-                    },
+                    { toolCallId: options.toolCallId, toolName, args: nextInput, result: diagnostic, isError: true },
                     hookContext,
                   );
 
-                  await emitInternal({
-                    type: "tool.failed",
-                    turnId,
-                    toolName,
-                    toolCallId: options.toolCallId,
-                    error: diagnostic,
-                    args: nextInput,
-                  });
+                  await emitInternal({ type: "tool.failed", turnId, toolName, toolCallId: options.toolCallId, error: diagnostic, args: nextInput });
                   throw error;
                 }
               });
@@ -433,18 +365,7 @@ export function createAgent(config: AgentConfig): Agent {
     const history = persisted.filter((entry) => !currentEntryIds.has(entry.id)).map((entry) => entry.data);
     const current = currentEntries.map((entry) => entry.data);
 
-    return buildModelMessages({
-      history,
-      current,
-      pluginHost,
-      context: {
-        runtime: { id },
-        channel,
-        state,
-        turnId,
-        signal,
-      },
-    });
+    return buildModelMessages({ history, current, pluginHost, context: { runtime: { id }, channel, state, turnId, signal } });
   };
 
   const createTurnStream = (turnId: string): AsyncIterable<AgentInternalEvent> => {
@@ -546,9 +467,7 @@ export function createAgent(config: AgentConfig): Agent {
               stepNumber,
               signal: abortSignal,
             });
-            return {
-              messages: [...prepared],
-            };
+            return { messages: [...prepared] };
           },
           maxRetries: 0,
           onAbort() {
@@ -560,31 +479,21 @@ export function createAgent(config: AgentConfig): Agent {
             persistedResponseMessageCount = step.response.messages.length;
             const stepMessages: AgentMessage[] = responseMessages.map((message) =>
               message.role === "assistant"
-                ? createAssistantMessage(message.content, {
-                    providerOptions: message.providerOptions,
-                    usage: step.usage,
-                    finishReason: step.finishReason,
-                  })
+                ? createAssistantMessage(message.content, { providerOptions: message.providerOptions, usage: step.usage, finishReason: step.finishReason })
                 : createToolMessage(message.content),
             );
 
             if (stepMessages.length > 0) {
               const stepEntries = await appendEntries(
                 stepMessages.map((message) => createMessageEntry(message)),
-                {
-                  turnId: request.turnId,
-                },
+                { turnId: request.turnId },
               );
               allMessages.push(
                 ...stepEntries.filter((entry): entry is Extract<AgentEntry, { type: "message" }> => entry.type === "message").map((entry) => entry.data),
               );
             }
 
-            await emitInternal({
-              type: "turn.step",
-              turnId: request.turnId,
-              step: step.stepNumber,
-            });
+            await emitInternal({ type: "turn.step", turnId: request.turnId, step: step.stepNumber });
           },
         });
 
@@ -610,47 +519,24 @@ export function createAgent(config: AgentConfig): Agent {
       }
 
       await emitInternal({ type: "turn.done", turnId: request.turnId });
-      const result: TurnResult = {
-        turnId: request.turnId,
-        status: "done",
-        messages: allMessages,
-        usage,
-      };
-      await pluginHost.helpers.onTurnFinish(result, {
-        runtime: { id },
-        channel,
-        state,
-        turnId: request.turnId,
-      });
+      const result: TurnResult = { turnId: request.turnId, status: "done", messages: allMessages, usage };
+      await pluginHost.helpers.onTurnFinish(result, { runtime: { id }, channel, state, turnId: request.turnId });
       return result;
     } catch (error) {
       const aborted = error instanceof DOMException && error.name === "AbortError";
       const diagnostic = createDiagnostic(error);
-      const result: TurnResult = {
-        turnId: request.turnId,
-        status: aborted ? "aborted" : "failed",
-        messages: allMessages,
-        error: diagnostic,
-        usage,
-      };
+      const result: TurnResult = { turnId: request.turnId, status: aborted ? "aborted" : "failed", messages: allMessages, error: diagnostic, usage };
       await persistTerminalTurnEvent(
         aborted
           ? { type: "turn.aborted", turnId: request.turnId, reason: formatErrorCause(error) }
           : { type: "turn.failed", turnId: request.turnId, error: diagnostic },
       );
-      await pluginHost.helpers.onTurnFinish(result, {
-        runtime: { id },
-        channel,
-        state,
-        turnId: request.turnId,
-      });
+      await pluginHost.helpers.onTurnFinish(result, { runtime: { id }, channel, state, turnId: request.turnId });
       return result;
     }
   };
 
-  const turnQueue = createTurnQueue({
-    onRun: executeTurn,
-  });
+  const turnQueue = createTurnQueue({ onRun: executeTurn });
 
   const agent: Agent = {
     id,

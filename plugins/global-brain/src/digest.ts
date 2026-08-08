@@ -1,10 +1,6 @@
 import type { BrainDigest } from "./types.js";
 
-const KIND_LABELS: Record<BrainDigest["threads"][number]["kind"], string> = {
-  question: "新问题",
-  share: "新分享",
-  insight: "新认知",
-};
+const KIND_LABELS: Record<BrainDigest["threads"][number]["kind"], string> = { question: "新问题", share: "新分享", insight: "新认知" };
 
 export function formatBrainDigest(digest: BrainDigest, maxContentLength: number): string | undefined {
   const lines: string[] = [];

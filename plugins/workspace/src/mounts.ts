@@ -39,11 +39,7 @@ export async function normalizeMounts(mounts: readonly MountSpec[] | undefined, 
       throw new Error(`Mount ${index} mode must be rw, ro, or overlay`);
     }
 
-    return {
-      source: mount.source,
-      target: normalizeVirtualMountPath(mount.target),
-      mode: mount.mode,
-    } satisfies MountSpec;
+    return { source: mount.source, target: normalizeVirtualMountPath(mount.target), mode: mount.mode } satisfies MountSpec;
   });
 
   assertMountTargetConflicts(candidates);
@@ -65,11 +61,7 @@ export async function normalizeMounts(mounts: readonly MountSpec[] | undefined, 
       throw new Error(`Mount source is not a directory for ${mount.target}: ${source}`);
     }
 
-    normalized.push({
-      source: await realpath(source),
-      target: mount.target,
-      mode: mount.mode,
-    });
+    normalized.push({ source: await realpath(source), target: mount.target, mode: mount.mode });
   }
 
   return normalized;

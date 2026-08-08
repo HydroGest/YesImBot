@@ -49,8 +49,5 @@ export const createAgentChannel = (options?: CreateAgentChannelOptions): AgentCh
     };
   };
 
-  return {
-    emit,
-    subscribe,
-  };
+  return { emit, subscribe };
 };

@@ -12,11 +12,7 @@ interface CommandAction {
 
 interface TestShared {
   readonly root: { readonly command: ReturnType<typeof vi.fn> };
-  readonly command: {
-    readonly ctx: object | undefined;
-    readonly action: ReturnType<typeof vi.fn>;
-    readonly dispose: ReturnType<typeof vi.fn>;
-  };
+  readonly command: { readonly ctx: object | undefined; readonly action: ReturnType<typeof vi.fn>; readonly dispose: ReturnType<typeof vi.fn> };
   readonly actions: CommandAction[];
 }
 
@@ -47,27 +43,14 @@ async function createInstance(filter: () => boolean, shared = createShared()) {
     yesimbot: { registerWillEngineFactory: vi.fn(() => () => undefined) },
     command: vi.fn(() => shared.command),
   };
-  const plugin = new WillPolicyPlugin(ctx as never, {
-    engine: "routing",
-    routing: defaultRoutingConfig(),
-    willingness: defaultWillingnessConfig(),
-  });
+  const plugin = new WillPolicyPlugin(ctx as never, { engine: "routing", routing: defaultRoutingConfig(), willingness: defaultWillingnessConfig() });
   await plugin.start();
-  return {
-    plugin,
-    register: ctx.yesimbot.registerWillEngineFactory,
-    shared,
-  };
+  return { plugin, register: ctx.yesimbot.registerWillEngineFactory, shared };
 }
 
 function factoryContext(): WillEngineFactoryContext {
   return {
-    scope: {
-      type: "shared",
-      platform: "test",
-      selfId: "bot-1",
-      channelId: "room-1",
-    },
+    scope: { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" },
     config: {} as never,
     session: { guildId: "room-1" } as never,
     createDefault: () => null as never,

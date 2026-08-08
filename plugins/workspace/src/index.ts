@@ -60,19 +60,11 @@ export default class WorkspacePlugin {
             .role("table")
             .required(),
           hostRoots: Schema.array(
-            Schema.object({
-              path: Schema.string().min(1).required(),
-              mode: Schema.union([Schema.const("ro"), Schema.const("rw")]).required(),
-            }),
+            Schema.object({ path: Schema.string().min(1).required(), mode: Schema.union([Schema.const("ro"), Schema.const("rw")]).required() }),
           )
             .role("table")
             .required(),
-          identity: Schema.object({
-            uid: Schema.natural().required(),
-            gid: Schema.natural().required(),
-          })
-            .role("table")
-            .required(),
+          identity: Schema.object({ uid: Schema.natural().required(), gid: Schema.natural().required() }).role("table").required(),
         }),
       ]),
     ]).description("Bash 沙箱配置"),
@@ -113,9 +105,7 @@ export default class WorkspacePlugin {
 
     const sandbox = this.getSandboxConfig();
     if (sandbox.mode === "host") {
-      this.hostApprovalBroker = createHostApprovalBroker({
-        audit: (event) => this.logger.info(`Host approval audit: ${JSON.stringify(event)}`),
-      });
+      this.hostApprovalBroker = createHostApprovalBroker({ audit: (event) => this.logger.info(`Host approval audit: ${JSON.stringify(event)}`) });
       this.registerHostApprovalCommands(this.hostApprovalBroker);
     }
     const skillPaths = (this.config.skillPaths ?? []).map((path) => resolve(this.ctx.baseDir, path));
@@ -132,11 +122,7 @@ export default class WorkspacePlugin {
     if (sandbox.mode === "sandbox") {
       const userMounts: MountSpec[] = [...(sandbox?.mounts ?? [])];
       assertNoSkillMountOverlap(userMounts);
-      const skillMounts: MountSpec[] = skillCatalog.map((skill) => ({
-        source: skill.baseDir,
-        target: `/skills/${skill.name}`,
-        mode: "ro" as const,
-      }));
+      const skillMounts: MountSpec[] = skillCatalog.map((skill) => ({ source: skill.baseDir, target: `/skills/${skill.name}`, mode: "ro" as const }));
       const requestedMounts = [...userMounts, ...skillMounts];
       this.normalizedMounts = await normalizeMounts(requestedMounts, this.ctx.baseDir);
       this.logger.info(`Sandbox mounts: ${JSON.stringify(this.normalizedMounts, null, 2)}`);
@@ -201,9 +187,7 @@ export default class WorkspacePlugin {
       requestId?: string,
     ) => unknown;
     type Command = { action: (handler: CommandAction) => Command; dispose?: () => void };
-    type CommandContext = {
-      command?: (name: string, description?: string, options?: Record<string, unknown>) => Command;
-    };
+    type CommandContext = { command?: (name: string, description?: string, options?: Record<string, unknown>) => Command };
     const register = (this.ctx as unknown as CommandContext).command;
     if (!register) return;
 
@@ -259,23 +243,13 @@ export default class WorkspacePlugin {
     if (!resources) return createBlockedHostAgentPlugin("host-runtime-unavailable");
 
     const { workspaceDir, policy, runner } = resources;
-    const backend = createHostBackend({
-      scope,
-      workspaceDir,
-      policy,
-      runner,
-      identity: config.identity,
-    });
+    const backend = createHostBackend({ scope, workspaceDir, policy, runner, identity: config.identity });
     let toolsPromise: ReturnType<typeof createBashToolSet> | undefined;
     const approvedCalls = new Map<string, { request: HostApprovalRecord; startedAt: number }>();
     return {
       name: "workspace",
       tools: async () => {
-        toolsPromise ??= createBashToolSet({
-          backend,
-          destination: workspaceDir,
-          environment: "host",
-        });
+        toolsPromise ??= createBashToolSet({ backend, destination: workspaceDir, environment: "host" });
         return toolsPromise;
       },
       appendSystemPrompt: async () => {
@@ -330,14 +304,7 @@ export default class WorkspacePlugin {
   private async createHostResources(
     scope: ChannelScope,
     config: Extract<BashConfig, { mode: "host" }>,
-  ): Promise<
-    | {
-        workspaceDir: string;
-        policy: ReturnType<typeof createHostPolicy>;
-        runner: HostRunner;
-      }
-    | undefined
-  > {
+  ): Promise<{ workspaceDir: string; policy: ReturnType<typeof createHostPolicy>; runner: HostRunner } | undefined> {
     if (!(await hostExecutionPrerequisites(config.identity))) return undefined;
     if (!(await hostRootsAreUsable(config.hostRoots))) return undefined;
 
@@ -395,9 +362,7 @@ export default class WorkspacePlugin {
   private createWorkspaceConfig(root: string, sandbox: SandboxBashConfig, mounts: readonly NormalizedMountSpec[]): SandboxWorkspaceConfig {
     return {
       root,
-      filesystem: {
-        ...workspaceMountMaps(mounts),
-      },
+      filesystem: { ...workspaceMountMaps(mounts) },
       bash: {
         cwd: sandbox.cwd ?? "/home/workspace",
         timeoutMs: sandbox.timeoutMs,
@@ -503,11 +468,7 @@ function workspaceMountMaps(mounts: readonly NormalizedMountSpec[]): {
   readOnlyPaths: Record<string, string>;
   overlayPaths: Record<string, string>;
 } {
-  const result = {
-    persistPaths: {} as Record<string, string>,
-    readOnlyPaths: {} as Record<string, string>,
-    overlayPaths: {} as Record<string, string>,
-  };
+  const result = { persistPaths: {} as Record<string, string>, readOnlyPaths: {} as Record<string, string>, overlayPaths: {} as Record<string, string> };
   for (const mount of mounts) {
     if (mount.mode === "rw") result.persistPaths[mount.target] = mount.source;
     if (mount.mode === "ro") result.readOnlyPaths[mount.target] = mount.source;

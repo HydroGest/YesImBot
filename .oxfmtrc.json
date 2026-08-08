@@ -14,15 +14,11 @@
       ]
     }
   },
-  "sortPackageJson": {
-    "sortDependencies": true,
-    "sortDevDependencies": true,
-    "sortPeerDependencies": true,
-    "sortScripts": true
-  },
+  "sortPackageJson": { "sortDependencies": true, "sortDevDependencies": true, "sortPeerDependencies": true, "sortScripts": true },
   "endOfLine": "lf",
   "semi": true,
   "printWidth": 160,
+  "objectWrap": "collapse",
   "singleQuote": false,
   "insertFinalNewline": true,
   "trailingComma": "all"

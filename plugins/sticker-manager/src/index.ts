@@ -48,23 +48,9 @@ export default class StickerManagerPlugin {
         const artifactIds = new Map<string, string>();
         return {
           name: "sticker-manager",
-          tools: () =>
-            createStickerTools({
-              store: this.store,
-              classifier,
-              sender: new BotStickerSender(bot, scope),
-              assets,
-              scope,
-              config: this.config,
-            }),
+          tools: () => createStickerTools({ store: this.store, classifier, sender: new BotStickerSender(bot, scope), assets, scope, config: this.config }),
           onAppend: (entries) =>
-            projectStickerElements(entries, {
-              store: this.store,
-              artifacts,
-              scopeKey: scopeKeyFor(scope, this.config),
-              config: this.config,
-              artifactIds,
-            }),
+            projectStickerElements(entries, { store: this.store, artifacts, scopeKey: scopeKeyFor(scope, this.config), config: this.config, artifactIds }),
           transformEntries: (entries) =>
             projectStickerHistoryElements(entries, {
               store: this.store,
@@ -76,12 +62,7 @@ export default class StickerManagerPlugin {
           appendSystemPrompt: () => formatStickerPrompt(this.config),
         } satisfies AgentPlugin;
       });
-      this.disposeCommands = registerStickerCommands({
-        ctx: this.ctx,
-        store: this.store,
-        classifier,
-        config: this.config,
-      });
+      this.disposeCommands = registerStickerCommands({ ctx: this.ctx, store: this.store, classifier, config: this.config });
       this.logger.success("Sticker manager plugin started");
     } catch (cause) {
       this.started = false;

@@ -30,13 +30,7 @@ function getMessageData(message: AgentMessage): { elements: readonly Element[] }
 
 function projectElement(element: Element, attachImageSummary: boolean): Element {
   if (element.type === "img" && isAnimatedImageElement(element.attrs)) {
-    return h("text", {
-      content: formatAnimatedImageLabel({
-        attachImageSummary,
-        summary: element.attrs.summary,
-        id: element.attrs.id,
-      }),
-    });
+    return h("text", { content: formatAnimatedImageLabel({ attachImageSummary, summary: element.attrs.summary, id: element.attrs.id }) });
   }
   if (element.children.length === 0) return element;
   const children = element.children.map((child) => projectElement(child, attachImageSummary));

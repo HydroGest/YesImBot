@@ -7,26 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScheduleStore, registerScheduleModel } from "../src/store.js";
 import type { ScheduleCreateInput, ScheduleUpdateInput } from "../src/types.js";
 
-const sharedScope: ChannelScope = {
-  type: "shared",
-  platform: "test",
-  selfId: "bot-1",
-  channelId: "room-1",
-};
+const sharedScope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
 
-const otherScope: ChannelScope = {
-  type: "shared",
-  platform: "test",
-  selfId: "bot-1",
-  channelId: "other-room",
-};
+const otherScope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "other-room" };
 
-const directScope: ChannelScope = {
-  type: "direct",
-  platform: "test",
-  selfId: "bot-1",
-  channelId: "room-1",
-};
+const directScope: ChannelScope = { type: "direct", platform: "test", selfId: "bot-1", channelId: "room-1" };
 
 const FUTURE = "2030-01-01T00:00:00.000Z";
 const PAST = "2020-01-01T00:00:00.000Z";
@@ -188,12 +173,7 @@ describe("ScheduleStore", () => {
   });
 
   it("creates a valid once schedule with the raw scope fields", async () => {
-    const schedule = await store.create(sharedScope, {
-      title: "Standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-    });
+    const schedule = await store.create(sharedScope, { title: "Standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
 
     expect(schedule).toMatchObject({
       type: "shared",
@@ -212,26 +192,16 @@ describe("ScheduleStore", () => {
   });
 
   it("rejects a cron interval below the 15-minute limit", async () => {
-    await expect(
-      store.create(sharedScope, {
-        title: "standup",
-        prompt: "Prepare the daily standup.",
-        kind: "cron",
-        cron: "*/5 * * * *",
-      }),
-    ).rejects.toThrow("15 minutes");
+    await expect(store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "cron", cron: "*/5 * * * *" })).rejects.toThrow(
+      "15 minutes",
+    );
   });
 
   it("computes the next Asia/Shanghai occurrence for a weekday cron", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
 
-    const schedule = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "cron",
-      cron: "0 9 * * 1-5",
-    });
+    const schedule = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "cron", cron: "0 9 * * 1-5" });
 
     // 09:00 Asia/Shanghai on Friday 2026-07-31 is 01:00 UTC.
     expect(schedule.nextRunAt).toBe("2026-07-31T01:00:00.000Z");
@@ -241,98 +211,52 @@ describe("ScheduleStore", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
 
-    const schedule = await store.create(sharedScope, {
-      title: "midnight",
-      prompt: "Fire at local midnight.",
-      kind: "cron",
-      cron: "0 0 * * *",
-    });
+    const schedule = await store.create(sharedScope, { title: "midnight", prompt: "Fire at local midnight.", kind: "cron", cron: "0 0 * * *" });
 
     // 00:00 Asia/Shanghai on 2026-08-01 is 16:00 UTC on 2026-07-31.
     expect(schedule.nextRunAt).toBe("2026-07-31T16:00:00.000Z");
   });
 
   it("rejects a past once instant", async () => {
-    await expect(
-      store.create(sharedScope, {
-        title: "standup",
-        prompt: "Prepare the daily standup.",
-        kind: "once",
-        at: PAST,
-      }),
-    ).rejects.toThrow(/in the future/);
+    await expect(store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: PAST })).rejects.toThrow(
+      /in the future/,
+    );
   });
 
   it("rejects an input that provides both rule forms", async () => {
     // A runtime value with both at and cron is outside the create input union.
-    const input = {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-      cron: "0 9 * * 1-5",
-    } as unknown as ScheduleCreateInput;
+    const input = { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE, cron: "0 9 * * 1-5" } as unknown as ScheduleCreateInput;
 
     await expect(store.create(sharedScope, input)).rejects.toThrow(/exactly one/);
   });
 
   it("rejects an input that provides no rule", async () => {
     // A runtime value without a rule is outside the create input union.
-    const input = {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-    } as unknown as ScheduleCreateInput;
+    const input = { title: "standup", prompt: "Prepare the daily standup." } as unknown as ScheduleCreateInput;
 
     await expect(store.create(sharedScope, input)).rejects.toThrow(/exactly one/);
   });
 
   it("rejects the twenty-first enabled schedule in one scope", async () => {
     for (let i = 0; i < 20; i++) {
-      await store.create(sharedScope, {
-        title: `schedule-${i}`,
-        prompt: "Prepare the daily standup.",
-        kind: "cron",
-        cron: "0 9 * * 1-5",
-      });
+      await store.create(sharedScope, { title: `schedule-${i}`, prompt: "Prepare the daily standup.", kind: "cron", cron: "0 9 * * 1-5" });
     }
 
-    await expect(
-      store.create(sharedScope, {
-        title: "overflow",
-        prompt: "Prepare the daily standup.",
-        kind: "cron",
-        cron: "0 9 * * 1-5",
-      }),
-    ).rejects.toThrow(/20 enabled schedules/);
+    await expect(store.create(sharedScope, { title: "overflow", prompt: "Prepare the daily standup.", kind: "cron", cron: "0 9 * * 1-5" })).rejects.toThrow(
+      /20 enabled schedules/,
+    );
   });
 
   it("enforces the 120-character title and 2000-character prompt limits", async () => {
-    await expect(
-      store.create(sharedScope, {
-        title: "x".repeat(121),
-        prompt: "Prepare the daily standup.",
-        kind: "once",
-        at: FUTURE,
-      }),
-    ).rejects.toThrow(/120 characters/);
+    await expect(store.create(sharedScope, { title: "x".repeat(121), prompt: "Prepare the daily standup.", kind: "once", at: FUTURE })).rejects.toThrow(
+      /120 characters/,
+    );
 
-    await expect(
-      store.create(sharedScope, {
-        title: "standup",
-        prompt: "x".repeat(2001),
-        kind: "once",
-        at: FUTURE,
-      }),
-    ).rejects.toThrow(/2000 characters/);
+    await expect(store.create(sharedScope, { title: "standup", prompt: "x".repeat(2001), kind: "once", at: FUTURE })).rejects.toThrow(/2000 characters/);
   });
 
   it("lists only rows of the exact scope", async () => {
-    await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-    });
+    await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
 
     expect(await store.list(sharedScope)).toHaveLength(1);
     expect(await store.list(otherScope)).toEqual([]);
@@ -344,12 +268,7 @@ describe("ScheduleStore", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
 
-    const schedule = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-    });
+    const schedule = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
 
     expect(schedule.createdAt).toBe("2026-07-31T00:00:00.000Z");
     expect(schedule.updatedAt).toBe("2026-07-31T00:00:00.000Z");
@@ -358,12 +277,7 @@ describe("ScheduleStore", () => {
   it("advances updatedAt on each mutation and preserves createdAt", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
 
     vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
     const updated = await store.update(sharedScope, created.id, { title: "standup v2" });
@@ -377,12 +291,7 @@ describe("ScheduleStore", () => {
   });
 
   it("pauses an enabled schedule and clears its next run", async () => {
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
 
     const paused = await store.pause(sharedScope, created.id);
     expect(paused.state).toBe("paused");
@@ -396,12 +305,7 @@ describe("ScheduleStore", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
 
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "cron",
-      cron: "0 9 * * 1-5",
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "cron", cron: "0 9 * * 1-5" });
     await store.pause(sharedScope, created.id);
 
     const resumed = await store.resume(sharedScope, created.id);
@@ -412,12 +316,7 @@ describe("ScheduleStore", () => {
   });
 
   it("refuses to resume a once schedule with no future occurrence", async () => {
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: "2030-01-01T00:00:00.000Z",
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: "2030-01-01T00:00:00.000Z" });
     await store.pause(sharedScope, created.id);
 
     vi.useFakeTimers();
@@ -429,20 +328,10 @@ describe("ScheduleStore", () => {
   it("rejects resume when twenty enabled schedules already occupy its exact scope", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
-    const paused = await store.create(sharedScope, {
-      title: "paused",
-      prompt: "Wait.",
-      kind: "cron",
-      cron: "0 9 * * 1-5",
-    });
+    const paused = await store.create(sharedScope, { title: "paused", prompt: "Wait.", kind: "cron", cron: "0 9 * * 1-5" });
     await store.pause(sharedScope, paused.id);
     for (let i = 0; i < 20; i++) {
-      await store.create(sharedScope, {
-        title: `replacement-${i}`,
-        prompt: "Run.",
-        kind: "cron",
-        cron: "0 9 * * 1-5",
-      });
+      await store.create(sharedScope, { title: `replacement-${i}`, prompt: "Run.", kind: "cron", cron: "0 9 * * 1-5" });
     }
 
     await expect(store.resume(sharedScope, paused.id)).rejects.toThrow(/20 enabled schedules/);
@@ -453,32 +342,19 @@ describe("ScheduleStore", () => {
   it("recovers an interrupted cron claim by advancing beyond elapsed next work", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
-    const created = await store.create(sharedScope, {
-      title: "quarterly",
-      prompt: "Ping.",
-      kind: "cron",
-      cron: "*/15 * * * *",
-    });
+    const created = await store.create(sharedScope, { title: "quarterly", prompt: "Ping.", kind: "cron", cron: "*/15 * * * *" });
     vi.setSystemTime(new Date("2026-08-01T00:15:00.000Z"));
     await store.claim(created.id, created.nextRunAt!);
 
     await store.recover(new Date("2026-08-01T00:40:00.000Z"));
 
     const [row] = await store.list(sharedScope);
-    expect(row.lastResult).toMatchObject({
-      occurrenceAt: "2026-08-01T00:15:00.000Z",
-      status: "interrupted",
-    });
+    expect(row.lastResult).toMatchObject({ occurrenceAt: "2026-08-01T00:15:00.000Z", status: "interrupted" });
     expect(row.nextRunAt).toBe("2026-08-01T00:45:00.000Z");
   });
 
   it("cancels a schedule and prevents later lifecycle operations", async () => {
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
 
     const cancelled = await store.cancel(sharedScope, created.id);
     expect(cancelled.state).toBe("cancelled");
@@ -491,18 +367,9 @@ describe("ScheduleStore", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
 
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
 
-    const updated = await store.update(sharedScope, created.id, {
-      title: "standup v2",
-      kind: "cron",
-      cron: "0 10 * * 1-5",
-    });
+    const updated = await store.update(sharedScope, created.id, { title: "standup v2", kind: "cron", cron: "0 10 * * 1-5" });
     expect(updated.title).toBe("standup v2");
     expect(updated.kind).toBe("cron");
     expect(updated.cron).toBe("0 10 * * 1-5");
@@ -513,12 +380,7 @@ describe("ScheduleStore", () => {
   });
 
   it("allows a title update on a due once schedule without re-validating its rule", async () => {
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: "2030-01-01T00:00:00.000Z",
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: "2030-01-01T00:00:00.000Z" });
 
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2031-01-01T00:00:00.000Z"));
@@ -529,30 +391,17 @@ describe("ScheduleStore", () => {
   });
 
   it("keeps a paused schedule unarmed across a rule update", async () => {
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
     await store.pause(sharedScope, created.id);
 
-    const updated = await store.update(sharedScope, created.id, {
-      kind: "cron",
-      cron: "0 9 * * 1-5",
-    });
+    const updated = await store.update(sharedScope, created.id, { kind: "cron", cron: "0 9 * * 1-5" });
     expect(updated.state).toBe("paused");
     expect(updated.nextRunAt).toBeNull();
     expect(updated.cron).toBe("0 9 * * 1-5");
   });
 
   it("rejects rule changes on a cancelled schedule", async () => {
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: FUTURE,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
     await store.cancel(sharedScope, created.id);
 
     await expect(store.update(sharedScope, created.id, { kind: "cron", cron: "0 9 * * 1-5" })).rejects.toThrow(/cannot change its rule/);

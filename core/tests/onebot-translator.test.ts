@@ -36,11 +36,7 @@ describe("OneBotTranslator", () => {
           },
         }),
       })),
-      {
-        head: vi.fn(async () => ({
-          get: (name: string) => ({ "content-type": "image/png", "content-length": "4" })[name] ?? null,
-        })),
-      },
+      { head: vi.fn(async () => ({ get: (name: string) => ({ "content-type": "image/png", "content-length": "4" })[name] ?? null })) },
     );
     const resources = { assets: { put: vi.fn(async () => id) } };
 
@@ -50,12 +46,7 @@ describe("OneBotTranslator", () => {
     );
 
     expect(resources.assets.put).toHaveBeenCalledWith(PNG);
-    expect(record).toMatchObject({
-      platform: "onebot",
-      selfId: "10000",
-      messageId: "40000",
-      elements: [h("img", { id })],
-    });
+    expect(record).toMatchObject({ platform: "onebot", selfId: "10000", messageId: "40000", elements: [h("img", { id })] });
   });
 
   it("maps a poke notice to its frozen event record", async () => {

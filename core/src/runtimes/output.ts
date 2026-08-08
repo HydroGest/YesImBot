@@ -129,10 +129,7 @@ async function prepareElement(element: Element, resources: ChannelResources, sig
   const detected = detectMediaType(opened.bytes);
   if (element.type === "img" && !detected) return undefined;
   const mediaType = detected ?? opened.mediaType ?? "application/octet-stream";
-  return h(element.type, {
-    ...element.attrs,
-    src: `data:${mediaType};base64,${Buffer.from(opened.bytes).toString("base64")}`,
-  });
+  return h(element.type, { ...element.attrs, src: `data:${mediaType};base64,${Buffer.from(opened.bytes).toString("base64")}` });
 }
 
 function detectMediaType(bytes: Uint8Array): string | undefined {

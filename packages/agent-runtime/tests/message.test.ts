@@ -20,12 +20,7 @@ declare module "../src/message.js" {
 
 vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ai")>();
-  return {
-    ...actual,
-    streamText: vi.fn(() => ({
-      fullStream: (async function* () {})(),
-    })),
-  };
+  return { ...actual, streamText: vi.fn(() => ({ fullStream: (async function* () {})() })) };
 });
 
 const streamTextMock = vi.mocked(streamText);
@@ -36,33 +31,14 @@ function createModelContext(plugins: AgentPlugin[] = []) {
   const storage = createMemoryStorage();
   const channel = createAgentChannel();
   const state = createStateManager({ storage });
-  const pluginHost = createPluginHost({
-    plugins,
-    runtime: {
-      id: "runtime_1",
-      channel,
-      state,
-      storage,
-    },
-  });
+  const pluginHost = createPluginHost({ plugins, runtime: { id: "runtime_1", channel, state, storage } });
 
-  return {
-    channel,
-    pluginHost,
-    context: {
-      runtime: { id: "runtime_1" },
-      channel,
-      state,
-    },
-  };
+  return { channel, pluginHost, context: { runtime: { id: "runtime_1" }, channel, state } };
 }
 
 describe("message constructors", () => {
   it("creates messages with message-owned ids and timestamps", () => {
-    const message = createUserMessage("hello", {
-      id: "msg_1",
-      timestamp: 123,
-    });
+    const message = createUserMessage("hello", { id: "msg_1", timestamp: 123 });
 
     const entry = createMessageEntry(message);
 
@@ -78,14 +54,7 @@ describe("message constructors", () => {
   it("preserves built-in message roles", () => {
     const systemMessage = createSystemMessage("rules");
     const assistantMessage = createAssistantMessage("answer");
-    const toolMessage = createToolMessage([
-      {
-        type: "tool-result",
-        toolCallId: "call_1",
-        toolName: "lookup",
-        output: { type: "json", value: { ok: true } },
-      },
-    ]);
+    const toolMessage = createToolMessage([{ type: "tool-result", toolCallId: "call_1", toolName: "lookup", output: { type: "json", value: { ok: true } } }]);
 
     expect(systemMessage.role).toBe("system");
     expect(assistantMessage.role).toBe("assistant");
@@ -277,21 +246,11 @@ describe("model conversion", () => {
   it("transforms history before adding current turn messages", async () => {
     const history = [createUserMessage("old")];
     const current = [createUserMessage("current")];
-    const { pluginHost, context } = createModelContext([
-      {
-        name: "prune",
-        transformMessages: async () => [],
-      },
-    ]);
+    const { pluginHost, context } = createModelContext([{ name: "prune", transformMessages: async () => [] }]);
 
     await pluginHost.init();
 
-    const result = await buildModelMessages({
-      history,
-      current,
-      pluginHost,
-      context,
-    });
+    const result = await buildModelMessages({ history, current, pluginHost, context });
 
     expect(result).toEqual([expect.objectContaining({ role: "user", content: "current" })]);
   });
@@ -368,12 +327,7 @@ describe("model conversion", () => {
     ]);
     await pluginHost.init();
 
-    const result = await buildModelMessages({
-      history: [createCustomMessage("custom.visible", { text: "shown" })],
-      current: [],
-      pluginHost,
-      context,
-    });
+    const result = await buildModelMessages({ history: [createCustomMessage("custom.visible", { text: "shown" })], current: [], pluginHost, context });
 
     expect(result).toEqual([{ role: "user", content: "shown" }]);
   });
@@ -383,12 +337,7 @@ describe("model conversion", () => {
     await pluginHost.init();
     const user = createUserMessage("current");
 
-    const result = await buildModelMessages({
-      history: [],
-      current: [user],
-      pluginHost,
-      context,
-    });
+    const result = await buildModelMessages({ history: [], current: [user], pluginHost, context });
 
     expect(result).toEqual([{ role: "user", content: "current" }]);
     expect("meta" in result[0]).toBe(false);
@@ -401,25 +350,9 @@ describe("system prompt resolution", () => {
   });
 
   it("resolves structured system input and plugin blocks once", async () => {
-    const resolveBase = vi.fn(async () => [
-      "constitution",
-      {
-        role: "system" as const,
-        content: "operator",
-        providerOptions: { mock: { cache: true } },
-      },
-    ]);
+    const resolveBase = vi.fn(async () => ["constitution", { role: "system" as const, content: "operator", providerOptions: { mock: { cache: true } } }]);
     const append = vi.fn(() => "plugin prompt");
-    const agent = createAgent({
-      model: {} as never,
-      systemPrompt: resolveBase,
-      plugins: [
-        {
-          name: "stable",
-          appendSystemPrompt: append,
-        },
-      ],
-    });
+    const agent = createAgent({ model: {} as never, systemPrompt: resolveBase, plugins: [{ name: "stable", appendSystemPrompt: append }] });
 
     agent.send(createUserMessage("first"));
     await agent.wait();
@@ -431,11 +364,7 @@ describe("system prompt resolution", () => {
     expect(streamTextMock).toHaveBeenCalledTimes(2);
     expect(streamTextMock.mock.calls[0]![0].system).toEqual([
       { role: "system", content: "constitution" },
-      {
-        role: "system",
-        content: "operator",
-        providerOptions: { mock: { cache: true } },
-      },
+      { role: "system", content: "operator", providerOptions: { mock: { cache: true } } },
       { role: "system", content: "plugin prompt" },
     ]);
     expect(streamTextMock.mock.calls[1]![0].system).toEqual(streamTextMock.mock.calls[0]![0].system);
@@ -446,21 +375,9 @@ describe("system prompt resolution", () => {
   });
 
   it("snapshots configured and plugin system blocks for later model calls", async () => {
-    const configuredBlock = {
-      role: "system" as const,
-      content: "configured-original",
-      providerOptions: { mock: { cache: "configured-original" } },
-    };
-    const pluginBlock = {
-      role: "system" as const,
-      content: "plugin-original",
-      providerOptions: { mock: { cache: "plugin-original" } },
-    };
-    const agent = createAgent({
-      model: {} as never,
-      systemPrompt: [configuredBlock],
-      plugins: [{ name: "stable", appendSystemPrompt: () => pluginBlock }],
-    });
+    const configuredBlock = { role: "system" as const, content: "configured-original", providerOptions: { mock: { cache: "configured-original" } } };
+    const pluginBlock = { role: "system" as const, content: "plugin-original", providerOptions: { mock: { cache: "plugin-original" } } };
+    const agent = createAgent({ model: {} as never, systemPrompt: [configuredBlock], plugins: [{ name: "stable", appendSystemPrompt: () => pluginBlock }] });
 
     agent.send(createUserMessage("first"));
     await agent.wait();
@@ -473,44 +390,19 @@ describe("system prompt resolution", () => {
 
     expect(streamTextMock.mock.calls.map(([call]) => call.system)).toEqual([
       [
-        {
-          role: "system",
-          content: "configured-original",
-          providerOptions: { mock: { cache: "configured-original" } },
-        },
-        {
-          role: "system",
-          content: "plugin-original",
-          providerOptions: { mock: { cache: "plugin-original" } },
-        },
+        { role: "system", content: "configured-original", providerOptions: { mock: { cache: "configured-original" } } },
+        { role: "system", content: "plugin-original", providerOptions: { mock: { cache: "plugin-original" } } },
       ],
       [
-        {
-          role: "system",
-          content: "configured-original",
-          providerOptions: { mock: { cache: "configured-original" } },
-        },
-        {
-          role: "system",
-          content: "plugin-original",
-          providerOptions: { mock: { cache: "plugin-original" } },
-        },
+        { role: "system", content: "configured-original", providerOptions: { mock: { cache: "configured-original" } } },
+        { role: "system", content: "plugin-original", providerOptions: { mock: { cache: "plugin-original" } } },
       ],
     ]);
   });
 
   it("runs the deprecated string reducer once for a legacy string prompt", async () => {
     const legacy = vi.fn((prompt: string) => `${prompt}\nlegacy`);
-    const agent = createAgent({
-      model: {} as never,
-      systemPrompt: "base",
-      plugins: [
-        {
-          name: "legacy",
-          extendSystemPrompt: legacy,
-        },
-      ],
-    });
+    const agent = createAgent({ model: {} as never, systemPrompt: "base", plugins: [{ name: "legacy", extendSystemPrompt: legacy }] });
 
     agent.send(createUserMessage("first"));
     await agent.wait();

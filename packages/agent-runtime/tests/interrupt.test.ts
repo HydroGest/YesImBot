@@ -53,10 +53,7 @@ function createTextModel(text = "ok") {
             controller.enqueue({
               type: "finish",
               finishReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 1, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
             });
             controller.close();
           },
@@ -84,19 +81,11 @@ function createToolCallModel() {
             controller.enqueue({ type: "stream-start", warnings: [] });
             controller.enqueue({ type: "tool-input-start", id: "call_1", toolName: "hang" });
             controller.enqueue({ type: "tool-input-end", id: "call_1" });
-            controller.enqueue({
-              type: "tool-call",
-              toolCallId: "call_1",
-              toolName: "hang",
-              input: "{}",
-            });
+            controller.enqueue({ type: "tool-call", toolCallId: "call_1", toolName: "hang", input: "{}" });
             controller.enqueue({
               type: "finish",
               finishReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 0, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 0, reasoning: 0 } },
             });
             controller.close();
           },
@@ -164,13 +153,7 @@ describe("interrupt", () => {
   it("settles aborted when a running tool does not cooperate with abort", async () => {
     const agent = createAgent({
       model: createToolCallModel(),
-      tools: [
-        {
-          name: "hang",
-          inputSchema: z.object({}),
-          execute: async () => new Promise(() => undefined),
-        } as never,
-      ],
+      tools: [{ name: "hang", inputSchema: z.object({}), execute: async () => new Promise(() => undefined) } as never],
     });
     const events: string[] = [];
     agent.channel.subscribe("internal", (event) => {

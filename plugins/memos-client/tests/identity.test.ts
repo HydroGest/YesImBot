@@ -3,21 +3,11 @@ import { describe, expect, it } from "vitest";
 import { deriveMemosIdentity, deriveMemosImportChunkIdentity } from "../src/identity.js";
 
 describe("MemOS identity", () => {
-  const channelScope = {
-    platform: "onebot",
-    selfId: "bot",
-    channelId: "group",
-    type: "shared",
-  } as const;
+  const channelScope = { platform: "onebot", selfId: "bot", channelId: "group", type: "shared" } as const;
 
   it("uses the caller-provided Core channel identity as channel_hash", () => {
     const identity = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "10000",
-        channelId: "123456",
-        type: "shared",
-      },
+      channelScope: { platform: "onebot", selfId: "10000", channelId: "123456", type: "shared" },
       channelHash: "a5vnf2ijd75c2ibyo2s5czdir4",
       channelType: "group",
       authorId: "user-1",
@@ -31,24 +21,14 @@ describe("MemOS identity", () => {
 
   it("produces same channel_hash across shared scope with different selfId", () => {
     const botA = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "10000",
-        channelId: "123456",
-        type: "shared",
-      },
+      channelScope: { platform: "onebot", selfId: "10000", channelId: "123456", type: "shared" },
       channelHash: "a5vnf2ijd75c2ibyo2s5czdir4",
       channelType: "group",
       authorId: "user-1",
       turnId: "turn-1",
     });
     const botB = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "20000",
-        channelId: "123456",
-        type: "shared",
-      },
+      channelScope: { platform: "onebot", selfId: "20000", channelId: "123456", type: "shared" },
       channelHash: "a5vnf2ijd75c2ibyo2s5czdir4",
       channelType: "group",
       authorId: "user-1",
@@ -64,24 +44,14 @@ describe("MemOS identity", () => {
 
   it("isolates direct scope channel_hash per selfId", () => {
     const botA = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "10000",
-        channelId: "123456",
-        type: "direct",
-      },
+      channelScope: { platform: "onebot", selfId: "10000", channelId: "123456", type: "direct" },
       channelHash: "ymdz53gzamgvzjzrtf6vesoal4",
       channelType: "private",
       authorId: "user-1",
       turnId: "turn-1",
     });
     const botB = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "other-bot",
-        channelId: "123456",
-        type: "direct",
-      },
+      channelScope: { platform: "onebot", selfId: "other-bot", channelId: "123456", type: "direct" },
       channelHash: "de52upe373ixjr6dmt54sadbxu",
       channelType: "private",
       authorId: "user-1",
@@ -157,12 +127,7 @@ describe("MemOS identity", () => {
 
   it("uses subject-scoped user ids for private chats", () => {
     const identity = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "bot",
-        channelId: "private",
-        type: "direct",
-      },
+      channelScope: { platform: "onebot", selfId: "bot", channelId: "private", type: "direct" },
       channelHash: "avh4rqo2rempfq2gs2ehxe7bnm",
       channelType: "private",
       authorId: "user",
@@ -170,12 +135,7 @@ describe("MemOS identity", () => {
       turnId: "turn",
     });
     const otherBotIdentity = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "other-bot",
-        channelId: "private",
-        type: "direct",
-      },
+      channelScope: { platform: "onebot", selfId: "other-bot", channelId: "private", type: "direct" },
       channelHash: "g5lqg6ysfyc5vovopasee2uzle",
       channelType: "private",
       authorId: "user",
@@ -205,12 +165,7 @@ describe("MemOS identity", () => {
 
   it("allows forcing channel scoped memory in private chats", () => {
     const identity = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "bot",
-        channelId: "private",
-        type: "direct",
-      },
+      channelScope: { platform: "onebot", selfId: "bot", channelId: "private", type: "direct" },
       channelHash: "avh4rqo2rempfq2gs2ehxe7bnm",
       channelType: "private",
       authorId: "user",
@@ -233,12 +188,7 @@ describe("MemOS identity", () => {
       includeRawIdentityInfo: true,
     });
 
-    expect(identity.info).toMatchObject({
-      raw_channel_id: "group",
-      raw_author_id: "user",
-      raw_self_id: "bot",
-      raw_message_id: "msg",
-    });
+    expect(identity.info).toMatchObject({ raw_channel_id: "group", raw_author_id: "user", raw_self_id: "bot", raw_message_id: "msg" });
   });
 
   it("uses the Core channel identity for imported history", () => {

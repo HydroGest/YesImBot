@@ -20,11 +20,7 @@ describe("session-live input resources", () => {
           },
         }),
       })),
-      {
-        head: vi.fn(async () => ({
-          get: (name: string) => ({ "content-type": "image/png", "content-length": "4" })[name] ?? null,
-        })),
-      },
+      { head: vi.fn(async () => ({ get: (name: string) => ({ "content-type": "image/png", "content-length": "4" })[name] ?? null })) },
     );
     const resources = { assets: { put: vi.fn(async () => id) } };
 

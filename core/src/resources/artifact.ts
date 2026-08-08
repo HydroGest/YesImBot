@@ -86,11 +86,7 @@ function parseMetadata(value: unknown, byteLength: number): { filename?: string;
   if (mediaType !== undefined && (typeof mediaType !== "string" || !SAFE_MEDIA_TYPE.test(mediaType))) throw new Error("Invalid artifact media type");
   if (metadata.byteLength !== byteLength || !Number.isSafeInteger(metadata.byteLength) || metadata.byteLength < 0)
     throw new Error("Artifact metadata byte length mismatch");
-  return {
-    ...(filename === undefined ? {} : { filename }),
-    ...(mediaType === undefined ? {} : { mediaType }),
-    byteLength,
-  };
+  return { ...(filename === undefined ? {} : { filename }), ...(mediaType === undefined ? {} : { mediaType }), byteLength };
 }
 
 function isSafeBasename(filename: string): boolean {

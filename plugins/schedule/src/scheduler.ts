@@ -128,11 +128,6 @@ function buildDueEvent(row: Schedule, occurrenceAt: string): EventRecord<"schedu
     timestamp: Date.now(),
     channel: { id: row.channelId, type: toUniversalChannelType(row.type) },
     text: `Schedule "${row.title}" is due.\n${row.prompt}`,
-    schedule: {
-      id: row.id,
-      title: row.title,
-      kind: row.kind,
-      scheduledFor: occurrenceAt,
-    },
+    schedule: { id: row.id, title: row.title, kind: row.kind, scheduledFor: occurrenceAt },
   };
 }

@@ -7,14 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-const state = vi.hoisted(() => ({
-  active: null as string | null,
-  append: vi.fn(),
-  send: vi.fn(),
-  run: vi.fn(),
-  decide: vi.fn(),
-  observe: vi.fn(),
-}));
+const state = vi.hoisted(() => ({ active: null as string | null, append: vi.fn(), send: vi.fn(), run: vi.fn(), decide: vi.fn(), observe: vi.fn() }));
 vi.mock("@yesimbot/agent-runtime", async (original) => {
   const actual = await original<typeof import("@yesimbot/agent-runtime")>();
   return {
@@ -46,10 +39,7 @@ const config: Config = {
   imageInput: false,
   resourceReadTimeoutMs: 1000,
   reply: { pacing: { charactersPerSecond: 1, maxTotalDelayMs: 1 }, customInnerThought: false },
-  session: {
-    compact: { threshold: 1, charTokenRatio: 1, minMessages: 1, maxFailures: 1, model: undefined },
-    idle: { timeout: 1 },
-  },
+  session: { compact: { threshold: 1, charTokenRatio: 1, minMessages: 1, maxFailures: 1, model: undefined }, idle: { timeout: 1 } },
 };
 const event = {
   eventType: "delivery.failed",
@@ -115,11 +105,7 @@ describe("ChannelRuntime scheduling", () => {
     state.active = "active";
     const { value, root } = await runtime();
     try {
-      await expect(value.post(event, { ifBusy: "join" })).resolves.toEqual({
-        kind: "join",
-        eventId: expect.any(String),
-        turnId: "active",
-      });
+      await expect(value.post(event, { ifBusy: "join" })).resolves.toEqual({ kind: "join", eventId: expect.any(String), turnId: "active" });
       expect(state.send).toHaveBeenCalledOnce();
       expect(state.run).not.toHaveBeenCalled();
     } finally {
@@ -130,11 +116,7 @@ describe("ChannelRuntime scheduling", () => {
   it("runs an active post through one filtered output stream without Will", async () => {
     state.run.mockReturnValue(
       (async function* () {
-        yield {
-          type: "message.appended",
-          turnId: "turn-1",
-          message: { role: "assistant", id: "message-1", content: "reply" },
-        };
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "reply" } };
       })(),
     );
     const { value, root } = await runtime();
@@ -143,11 +125,7 @@ describe("ChannelRuntime scheduling", () => {
       expect(result.kind).toBe("run");
       if (result.kind === "run") {
         await expect(Array.fromAsync(result.output)).resolves.toEqual([
-          {
-            turnId: "turn-1",
-            messageId: "message-1",
-            segments: [[expect.objectContaining({ type: "text", attrs: { content: "reply" } })]],
-          },
+          { turnId: "turn-1", messageId: "message-1", segments: [[expect.objectContaining({ type: "text", attrs: { content: "reply" } })]] },
         ]);
       }
       expect(state.decide).not.toHaveBeenCalled();
@@ -162,11 +140,7 @@ describe("ChannelRuntime scheduling", () => {
     state.decide.mockResolvedValue("trigger");
     state.run.mockReturnValue(
       (async function* () {
-        yield {
-          type: "message.appended",
-          turnId: "turn-1",
-          message: { role: "assistant", id: "message-1", content: "reply" },
-        };
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "reply" } };
       })(),
     );
     const { value, root } = await runtime();
@@ -188,10 +162,7 @@ describe("ChannelRuntime scheduling", () => {
       await value.fail("event-1", new Error("offline"));
       expect(state.append).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            eventType: "delivery.failed",
-            delivery: expect.objectContaining({ messageId: "event-1" }),
-          }),
+          data: expect.objectContaining({ eventType: "delivery.failed", delivery: expect.objectContaining({ messageId: "event-1" }) }),
         }),
       );
     } finally {

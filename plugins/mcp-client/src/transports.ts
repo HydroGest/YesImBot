@@ -41,11 +41,7 @@ async function connectToStdioServer(ctx: Context, name: string, server: McpStdio
   const env = typeof server.env === "string" ? parseKeyValueString(server.env) : server.env;
   ctx.logger.debug(`环境变量: ${JSON.stringify(env)}`);
 
-  const transport = new StdioClientTransport({
-    command: server.command,
-    args: server.args,
-    env,
-  });
+  const transport = new StdioClientTransport({ command: server.command, args: server.args, env });
   const client = new Client({ name, version: "1.0.0" });
   await client.connect(transport);
 
@@ -71,11 +67,7 @@ async function connectToRemoteServer<TTransport extends StreamableHTTPClientTran
   const headers = typeof server.headers === "string" ? parseKeyValueString(server.headers) : server.headers || {};
   ctx.logger.debug(`HTTP 请求头: ${JSON.stringify(headers)}`);
 
-  const transport = new Transport(new URL(server.url), {
-    requestInit: {
-      headers,
-    },
-  });
+  const transport = new Transport(new URL(server.url), { requestInit: { headers } });
   const client = new Client({ name, version: "1.0.0" });
   await client.connect(transport);
 

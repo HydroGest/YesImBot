@@ -42,11 +42,7 @@ export default class RoleplayPlugin {
     const card = await loadCharacterCard(resolve(this.ctx.baseDir, this.config.characterCard));
     const greeting = selectGreeting(card, this.config.useRandomGreeting ?? false);
     this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope }) =>
-      createRoleplayPlugin({
-        card,
-        greeting,
-        userName: scope.type === "direct" ? scope.channelId : "User",
-      }),
+      createRoleplayPlugin({ card, greeting, userName: scope.type === "direct" ? scope.channelId : "User" }),
     );
   }
 

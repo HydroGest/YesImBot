@@ -113,11 +113,7 @@ export class ScheduleStore {
             ? { kind: input.kind ?? row.kind, at: input.at }
             : input.cron !== undefined
               ? { kind: input.kind ?? row.kind, cron: input.cron }
-              : {
-                  kind: input.kind ?? row.kind,
-                  at: row.at ?? undefined,
-                  cron: row.cron ?? undefined,
-                };
+              : { kind: input.kind ?? row.kind, at: row.at ?? undefined, cron: row.cron ?? undefined };
         validateRule(rule, now);
         kind = rule.kind;
         at = rule.kind === "once" ? rule.at : null;
@@ -126,16 +122,7 @@ export class ScheduleStore {
       }
       const updatedAt = new Date(Date.now()).toISOString();
       await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { title, prompt, kind, at, cron, nextRunAt: next, updatedAt });
-      return toSchedule({
-        ...row,
-        title,
-        prompt,
-        kind,
-        at,
-        cron,
-        nextRunAt: next,
-        updatedAt,
-      });
+      return toSchedule({ ...row, title, prompt, kind, at, cron, nextRunAt: next, updatedAt });
     });
   }
 
@@ -145,12 +132,7 @@ export class ScheduleStore {
       if (row.state !== "enabled") throw new Error(`schedule ${id} is not enabled`);
       const updatedAt = new Date(Date.now()).toISOString();
       await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { state: "paused", nextRunAt: null, updatedAt });
-      return toSchedule({
-        ...row,
-        state: "paused",
-        nextRunAt: null,
-        updatedAt,
-      });
+      return toSchedule({ ...row, state: "paused", nextRunAt: null, updatedAt });
     });
   }
 
@@ -167,12 +149,7 @@ export class ScheduleStore {
       const next = nextRunAt(rule, now);
       const updatedAt = new Date(Date.now()).toISOString();
       await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { state: "enabled", nextRunAt: next, updatedAt });
-      return toSchedule({
-        ...row,
-        state: "enabled",
-        nextRunAt: next,
-        updatedAt,
-      });
+      return toSchedule({ ...row, state: "enabled", nextRunAt: next, updatedAt });
     });
   }
 
@@ -184,12 +161,7 @@ export class ScheduleStore {
       }
       const updatedAt = new Date(Date.now()).toISOString();
       await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { state: "cancelled", nextRunAt: null, updatedAt });
-      return toSchedule({
-        ...row,
-        state: "cancelled",
-        nextRunAt: null,
-        updatedAt,
-      });
+      return toSchedule({ ...row, state: "cancelled", nextRunAt: null, updatedAt });
     });
   }
 
@@ -218,19 +190,10 @@ export class ScheduleStore {
       const rule = ruleOfRow(row);
       const state: ScheduleState = rule.kind === "once" ? "completed" : "enabled";
       const next = rule.kind === "once" ? null : nextRunAt(rule, now);
-      const lastResult: ScheduleLastResult = {
-        occurrenceAt,
-        status: "submitting",
-      };
+      const lastResult: ScheduleLastResult = { occurrenceAt, status: "submitting" };
       const updatedAt = now.toISOString();
       await this.model.set(SCHEDULE_TABLE, { id }, { state, nextRunAt: next, lastResult, updatedAt });
-      return toSchedule({
-        ...row,
-        state,
-        nextRunAt: next,
-        lastResult,
-        updatedAt,
-      });
+      return toSchedule({ ...row, state, nextRunAt: next, lastResult, updatedAt });
     });
   }
 
@@ -254,11 +217,7 @@ export class ScheduleStore {
       const result = row?.lastResult;
       if (!row || result?.status !== "submitting" || result.occurrenceAt !== occurrenceAt) return null;
       const now = new Date(Date.now());
-      const lastResult: ScheduleLastResult = {
-        ...result,
-        status,
-        finishedAt: now.toISOString(),
-      };
+      const lastResult: ScheduleLastResult = { ...result, status, finishedAt: now.toISOString() };
       if (error !== undefined) lastResult.error = error;
       const updatedAt = now.toISOString();
       await this.model.set(SCHEDULE_TABLE, { id }, { lastResult, updatedAt });
@@ -281,44 +240,20 @@ export class ScheduleStore {
       for (const row of rows) {
         const result = row.lastResult;
         if (result?.status === "submitting" && Date.parse(result.occurrenceAt) < nowMs) {
-          const lastResult: ScheduleLastResult = {
-            ...result,
-            status: "interrupted",
-            finishedAt: updatedAt,
-          };
+          const lastResult: ScheduleLastResult = { ...result, status: "interrupted", finishedAt: updatedAt };
           if (row.state === "enabled" && row.nextRunAt !== null && Date.parse(row.nextRunAt) < nowMs) {
-            await this.model.set(
-              SCHEDULE_TABLE,
-              { id: row.id },
-              {
-                nextRunAt: nextRunAt(ruleOfRow(row), now),
-                lastResult,
-                updatedAt,
-              },
-            );
+            await this.model.set(SCHEDULE_TABLE, { id: row.id }, { nextRunAt: nextRunAt(ruleOfRow(row), now), lastResult, updatedAt });
           } else {
             await this.model.set(SCHEDULE_TABLE, { id: row.id }, { lastResult, updatedAt });
           }
           continue;
         }
         if (row.state !== "enabled" || row.nextRunAt === null || Date.parse(row.nextRunAt) >= nowMs) continue;
-        const lastResult: ScheduleLastResult = {
-          occurrenceAt: row.nextRunAt,
-          status: "missed",
-          finishedAt: updatedAt,
-        };
+        const lastResult: ScheduleLastResult = { occurrenceAt: row.nextRunAt, status: "missed", finishedAt: updatedAt };
         if (row.kind === "once") {
           await this.model.set(SCHEDULE_TABLE, { id: row.id }, { state: "completed", nextRunAt: null, lastResult, updatedAt });
         } else {
-          await this.model.set(
-            SCHEDULE_TABLE,
-            { id: row.id },
-            {
-              nextRunAt: nextRunAt(ruleOfRow(row), now),
-              lastResult,
-              updatedAt,
-            },
-          );
+          await this.model.set(SCHEDULE_TABLE, { id: row.id }, { nextRunAt: nextRunAt(ruleOfRow(row), now), lastResult, updatedAt });
         }
       }
     });
@@ -334,20 +269,14 @@ export class ScheduleStore {
   }
 
   private async assertEnabledCapacity(scope: ChannelScope): Promise<void> {
-    const enabled = await this.model.get(SCHEDULE_TABLE, {
-      ...scopeQuery(scope),
-      state: "enabled",
-    });
+    const enabled = await this.model.get(SCHEDULE_TABLE, { ...scopeQuery(scope), state: "enabled" });
     if (enabled.length >= MAX_ENABLED_SCHEDULES) {
       throw new Error(`channel already has ${MAX_ENABLED_SCHEDULES} enabled schedules`);
     }
   }
 
   private async fetchRow(scope: ChannelScope, id: string): Promise<ScheduleRow> {
-    const rows = await this.model.get(SCHEDULE_TABLE, {
-      ...scopeQuery(scope),
-      id,
-    });
+    const rows = await this.model.get(SCHEDULE_TABLE, { ...scopeQuery(scope), id });
     if (!rows.length) throw new Error(`schedule ${id} not found`);
     return rows[0];
   }
@@ -355,19 +284,11 @@ export class ScheduleStore {
 
 /** Registers the plugin-owned single table; called once from the plugin initialization path. */
 export function registerScheduleModel(model: ScheduleModel): void {
-  model.extend(SCHEDULE_TABLE, SCHEDULE_FIELDS, {
-    primary: "id",
-    autoInc: false,
-  });
+  model.extend(SCHEDULE_TABLE, SCHEDULE_FIELDS, { primary: "id", autoInc: false });
 }
 
 function scopeQuery(scope: ChannelScope) {
-  return {
-    type: scope.type,
-    platform: scope.platform,
-    selfId: scope.selfId,
-    channelId: scope.channelId,
-  };
+  return { type: scope.type, platform: scope.platform, selfId: scope.selfId, channelId: scope.channelId };
 }
 
 function ruleOfRow(row: ScheduleRow): ScheduleRule {

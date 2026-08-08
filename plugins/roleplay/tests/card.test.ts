@@ -37,17 +37,7 @@ describe("character-card loader", () => {
   it("prefers a ccv3 chunk over a chara chunk", async () => {
     const path = await createCardFile(
       createPng([
-        {
-          key: "chara",
-          value: {
-            name: "V1",
-            description: "old",
-            personality: "old",
-            scenario: "old",
-            first_mes: "old",
-            mes_example: "",
-          },
-        },
+        { key: "chara", value: { name: "V1", description: "old", personality: "old", scenario: "old", first_mes: "old", mes_example: "" } },
         {
           key: "ccv3",
           value: {
@@ -77,9 +67,6 @@ describe("character-card loader", () => {
 
     const card = await loadCharacterCard(path);
 
-    expect(card).toMatchObject({
-      spec: "chara_card_v3",
-      data: { name: "V3" },
-    });
+    expect(card).toMatchObject({ spec: "chara_card_v3", data: { name: "V3" } });
   });
 });

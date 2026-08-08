@@ -101,10 +101,7 @@ describe("loadSkills", () => {
     await mkdir(good, { recursive: true });
     await writeFile(join(good, "SKILL.md"), "---\nname: good\ndescription: Good\n---\n# Good");
 
-    const result = await loadSkills({
-      skillPaths: [join(basePath, "missing"), good],
-      cwd: basePath,
-    });
+    const result = await loadSkills({ skillPaths: [join(basePath, "missing"), good], cwd: basePath });
     expect(result.skills.map((item) => item.name)).toEqual(["good"]);
     expect(result.diagnostics.some((item) => item.message.includes("does not exist"))).toBe(true);
   });

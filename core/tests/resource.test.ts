@@ -113,10 +113,7 @@ describe("read tool resource errors", () => {
     resources.use(reader("abort", "abort", async () => Promise.withResolvers<{ bytes: Uint8Array }>().promise));
     const tool = createReadTool(resources, false);
     const controller = new AbortController();
-    const pending = tool.execute({ uri: "abort:///file" }, {
-      toolCallId: "c",
-      abortSignal: controller.signal,
-    } as never);
+    const pending = tool.execute({ uri: "abort:///file" }, { toolCallId: "c", abortSignal: controller.signal } as never);
     controller.abort();
     await expect(pending).resolves.toMatchObject({ error: expect.any(String) });
   });
@@ -168,9 +165,7 @@ describe("read tool resource errors", () => {
       "asset://SHORT",
       "asset://a6e2b32e1d9d64b2e906ac5c3216d18f/extra",
     ]) {
-      await expect(tool.execute({ uri }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({
-        error: "invalid_resource_uri",
-      });
+      await expect(tool.execute({ uri }, { toolCallId: "c", abortSignal: undefined } as never)).resolves.toMatchObject({ error: "invalid_resource_uri" });
     }
   });
 });
@@ -186,11 +181,7 @@ describe("prepareOutputSegments", () => {
   }
 
   it("resolves a workspace image source to a data URL before delivery", async () => {
-    const resources = await resourcesWith(async () => ({
-      bytes: PNG_BYTES,
-      mediaType: "image/png",
-      filename: "chart.png",
-    }));
+    const resources = await resourcesWith(async () => ({ bytes: PNG_BYTES, mediaType: "image/png", filename: "chart.png" }));
 
     const prepared = await prepareOutputSegments(
       [
@@ -226,11 +217,7 @@ describe("prepareOutputSegments", () => {
       [
         [
           { type: "text", attrs: { content: "keep" }, children: [] },
-          {
-            type: "img",
-            attrs: { src: "artifact://mcp_screenshot/019d3b7e-1bd0-7e4f-9c5d-5bf3fd41f1d4" },
-            children: [],
-          },
+          { type: "img", attrs: { src: "artifact://mcp_screenshot/019d3b7e-1bd0-7e4f-9c5d-5bf3fd41f1d4" }, children: [] },
         ],
       ],
       resources,
@@ -274,15 +261,7 @@ describe("prepareOutputSegments", () => {
     const resources = await resourcesWith(async () => undefined);
 
     const prepared = await prepareOutputSegments(
-      [
-        [
-          {
-            type: "img",
-            attrs: { src: "artifact://missing/019d3b7e-1bd0-7e4f-9c5d-5bf3fd41f1d4" },
-            children: [],
-          },
-        ],
-      ],
+      [[{ type: "img", attrs: { src: "artifact://missing/019d3b7e-1bd0-7e4f-9c5d-5bf3fd41f1d4" }, children: [] }]],
       resources,
     );
 
@@ -322,10 +301,7 @@ describe("read tool model projection", () => {
   ): Promise<{ tool: ReadTool; resources: ChannelResources }> {
     const resources = await createResources();
     const budget = overrides.imageBudget === undefined ? null : overrides.imageBudget;
-    return {
-      tool: createReadTool(new ChannelResources(resources.path, budget), overrides.imageCapable ?? false),
-      resources,
-    };
+    return { tool: createReadTool(new ChannelResources(resources.path, budget), overrides.imageCapable ?? false), resources };
   }
 
   async function readAndProject(tool: ReadTool, uri: string, toolCallId = "call-1") {
@@ -353,10 +329,7 @@ describe("read tool model projection", () => {
     const id = await resources.assets.put(PNG_BYTES);
     expect((await readAndProject(tool, `asset://${id}`)).output.type).toBe("json");
 
-    const { tool: budgetless, resources: budgetlessResources } = await createTool({
-      imageCapable: true,
-      imageBudget: null,
-    });
+    const { tool: budgetless, resources: budgetlessResources } = await createTool({ imageCapable: true, imageBudget: null });
     const id2 = await budgetlessResources.assets.put(PNG_BYTES);
     expect((await readAndProject(budgetless, `asset://${id2}`)).output.type).toBe("json");
   });

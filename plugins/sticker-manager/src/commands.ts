@@ -80,16 +80,7 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
       const scope = scopeOf(session);
       if (!scope) return "无法获取当前频道信息";
       if (!category || !file) return "请提供分类和文件路径";
-      const stats = await importImageFile(
-        {
-          ctx,
-          store,
-          scopeKey: scopeKeyFor(scope, config),
-          maxImportFileBytes: config.maxImportFileBytes,
-        },
-        file,
-        category,
-      );
+      const stats = await importImageFile({ ctx, store, scopeKey: scopeKeyFor(scope, config), maxImportFileBytes: config.maxImportFileBytes }, file, category);
       return formatImportStats(stats);
     }),
   );
@@ -100,15 +91,7 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
       if (!scope) return "无法获取当前频道信息";
       if (!sourceDir) return "请提供源文件夹路径";
       try {
-        const stats = await importDirectory(
-          {
-            ctx,
-            store,
-            scopeKey: scopeKeyFor(scope, config),
-            maxImportFileBytes: config.maxImportFileBytes,
-          },
-          sourceDir,
-        );
+        const stats = await importDirectory({ ctx, store, scopeKey: scopeKeyFor(scope, config), maxImportFileBytes: config.maxImportFileBytes }, sourceDir);
         return formatImportStats(stats);
       } catch (cause) {
         return `导入失败: ${messageOf(cause)}`;
@@ -118,21 +101,14 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
 
   track(
     ctx
-      .command("yesimbot.sticker.import.emojihub <category> <filePath>", "导入 emojihub-bili 格式 TXT", {
-        authority: 4,
-      })
+      .command("yesimbot.sticker.import.emojihub <category> <filePath>", "导入 emojihub-bili 格式 TXT", { authority: 4 })
       .action(async ({ session }, category, filePath) => {
         const scope = scopeOf(session);
         if (!scope) return "无法获取当前频道信息";
         if (!category || !filePath) return "请提供分类名称和 TXT 文件路径";
         try {
           const stats = await importEmojiHubTxt(
-            {
-              ctx,
-              store,
-              scopeKey: scopeKeyFor(scope, config),
-              maxImportFileBytes: config.maxImportFileBytes,
-            },
+            { ctx, store, scopeKey: scopeKeyFor(scope, config), maxImportFileBytes: config.maxImportFileBytes },
             filePath,
             category,
           );
@@ -213,12 +189,7 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
         for (const sticker of targets) {
           try {
             const bytes = await store.readBytes(sticker);
-            const result = await classifier.classify({
-              bytes,
-              mediaType: sticker.mime,
-              categories,
-              signal: undefined,
-            });
+            const result = await classifier.classify({ bytes, mediaType: sticker.mime, categories, signal: undefined });
             const classified = result?.category;
             if (!classified) {
               if (clear) {
@@ -367,12 +338,7 @@ async function sendSticker(session: Session, scopeKey: string, store: StickerSto
 
 function scopeOf(session: Session | undefined): ChannelScope | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
-  return {
-    type: session.isDirect ? "direct" : "shared",
-    platform: session.platform,
-    selfId: session.selfId,
-    channelId: session.channelId,
-  };
+  return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId };
 }
 
 function resolveScopeOption(value: unknown, scope: ChannelScope, currentScopeKey: string): string {

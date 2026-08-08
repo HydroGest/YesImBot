@@ -15,19 +15,8 @@ vi.mock("koishi", () => {
   return {
     Context: class {},
     Logger: class {},
-    Schema: {
-      object: chain,
-      union: chain,
-      const: chain,
-      dynamic: chain,
-      string: chain,
-      boolean: chain,
-      path: chain,
-      number: chain,
-    },
-    h: {
-      image: (src: string) => ({ type: "img", attrs: { src } }),
-    },
+    Schema: { object: chain, union: chain, const: chain, dynamic: chain, string: chain, boolean: chain, path: chain, number: chain },
+    h: { image: (src: string) => ({ type: "img", attrs: { src } }) },
   };
 });
 
@@ -45,10 +34,7 @@ interface CommandRecord {
 function createCommandMock() {
   const commands: CommandRecord[] = [];
   const command = vi.fn((def: string) => {
-    const record: CommandRecord = {
-      name: def.split(/\s+/, 1)[0] ?? def,
-      disposed: false,
-    };
+    const record: CommandRecord = { name: def.split(/\s+/, 1)[0] ?? def, disposed: false };
     commands.push(record);
     const api = {
       option: () => api,
@@ -94,13 +80,7 @@ describe("StickerManagerPlugin", () => {
     const { commands, command } = createCommandMock();
     const ctx = {
       baseDir: process.cwd(),
-      logger: () => ({
-        info: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-      }),
+      logger: () => ({ info: vi.fn(), success: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
       on: vi.fn((event: string, callback: () => Promise<void> | void) => {
         if (event === "ready") ready.push(callback);
         if (event === "dispose") dispose.push(callback);
@@ -113,17 +93,8 @@ describe("StickerManagerPlugin", () => {
           disposeFactory = vi.fn();
           return disposeFactory;
         }),
-        assets: {
-          createStore: () => ({
-            get: vi.fn(),
-            put: vi.fn(),
-            clear: vi.fn(),
-          }),
-        },
-        model: {
-          getDefaultChatModelId: vi.fn(),
-          resolveChatModel: vi.fn(),
-        },
+        assets: { createStore: () => ({ get: vi.fn(), put: vi.fn(), clear: vi.fn() }) },
+        model: { getDefaultChatModelId: vi.fn(), resolveChatModel: vi.fn() },
       },
     };
 
@@ -136,10 +107,7 @@ describe("StickerManagerPlugin", () => {
     expect(commands.length).toBeGreaterThan(0);
     expect(commands.map((record) => record.name)).toContain("yesimbot.sticker.reclassify");
 
-    const agentPlugin = factories[0]!({
-      scope: { type: "shared", platform: "test", selfId: "bot", channelId: "room" },
-      bot: {},
-    });
+    const agentPlugin = factories[0]!({ scope: { type: "shared", platform: "test", selfId: "bot", channelId: "room" }, bot: {} });
     const tools = typeof agentPlugin.tools === "function" ? ((await agentPlugin.tools({} as never)) ?? []) : [];
     expect(tools.map((tool) => tool.name)).toEqual(["sticker_steal", "sticker_send", "sticker_categories", "sticker_search"]);
 

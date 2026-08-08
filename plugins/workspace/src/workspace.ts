@@ -26,13 +26,7 @@ export interface SandboxWorkspaceConfig {
     cwd: string;
     env?: Record<string, string>;
     timeoutMs?: number;
-    executionLimits?: {
-      maxCallDepth?: number;
-      maxCommandCount?: number;
-      maxLoopIterations?: number;
-      maxAwkIterations?: number;
-      maxSedIterations?: number;
-    };
+    executionLimits?: { maxCallDepth?: number; maxCommandCount?: number; maxLoopIterations?: number; maxAwkIterations?: number; maxSedIterations?: number };
     network?: NetworkConfig;
     python?: boolean;
     javascript?: boolean;
@@ -82,10 +76,7 @@ export class Workspace {
     };
   }
 
-  private buildFilesystem(jb: JustBash): {
-    fs: MountableFs;
-    mounts: WorkspaceMountSummary[];
-  } {
+  private buildFilesystem(jb: JustBash): { fs: MountableFs; mounts: WorkspaceMountSummary[] } {
     const root = resolve(this.config.root);
     const mounts = assertValidMountConfig(this.config.filesystem ?? {});
     const initialFiles = this.config.filesystem?.initialFiles ?? {};
@@ -100,45 +91,23 @@ export class Workspace {
       fs: new jb.MountableFs({
         base: createDefaultBaseFilesystem(memoryFiles, jb),
         mounts: [
-          {
-            mountPoint: DEFAULT_WORKSPACE_MOUNT,
-            filesystem: new jb.ReadWriteFs({ root }),
-          },
-          ...Object.entries(mounts.persistPaths).map(([mountPoint, hostPath]) => ({
-            mountPoint,
-            filesystem: new jb.ReadWriteFs({ root: resolve(hostPath) }),
-          })),
+          { mountPoint: DEFAULT_WORKSPACE_MOUNT, filesystem: new jb.ReadWriteFs({ root }) },
+          ...Object.entries(mounts.persistPaths).map(([mountPoint, hostPath]) => ({ mountPoint, filesystem: new jb.ReadWriteFs({ root: resolve(hostPath) }) })),
           ...Object.entries(mounts.readOnlyPaths).map(([mountPoint, hostPath]) => ({
             mountPoint,
-            filesystem: new jb.OverlayFs({
-              root: resolve(hostPath),
-              mountPoint: "/",
-              readOnly: true,
-            }),
+            filesystem: new jb.OverlayFs({ root: resolve(hostPath), mountPoint: "/", readOnly: true }),
           })),
           ...Object.entries(mounts.overlayPaths).map(([mountPoint, hostPath]) => ({
             mountPoint,
-            filesystem: new jb.OverlayFs({
-              root: resolve(hostPath),
-              mountPoint: "/",
-            }),
+            filesystem: new jb.OverlayFs({ root: resolve(hostPath), mountPoint: "/" }),
           })),
         ],
       }),
       mounts: [
         { path: DEFAULT_WORKSPACE_MOUNT, kind: "persistent" },
-        ...Object.keys(mounts.persistPaths).map((path) => ({
-          path,
-          kind: "persistent" as const,
-        })),
-        ...Object.keys(mounts.readOnlyPaths).map((path) => ({
-          path,
-          kind: "read-only" as const,
-        })),
-        ...Object.keys(mounts.overlayPaths).map((path) => ({
-          path,
-          kind: "overlay" as const,
-        })),
+        ...Object.keys(mounts.persistPaths).map((path) => ({ path, kind: "persistent" as const })),
+        ...Object.keys(mounts.readOnlyPaths).map((path) => ({ path, kind: "read-only" as const })),
+        ...Object.keys(mounts.overlayPaths).map((path) => ({ path, kind: "overlay" as const })),
       ],
     };
   }
@@ -155,30 +124,15 @@ export class Workspace {
     try {
       const timeoutSignal = AbortSignal.timeout(this.defaultTimeoutMs);
       const signal = options?.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
-      const result = await this.bash.exec(command, {
-        cwd: options?.cwd ?? this.config.bash.cwd,
-        signal,
-      });
+      const result = await this.bash.exec(command, { cwd: options?.cwd ?? this.config.bash.cwd, signal });
 
-      return {
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode,
-      };
+      return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
     } catch (error) {
       if (error instanceof Error && error.name === "TimeoutError") {
-        return {
-          stdout: "",
-          stderr: `Command timed out after ${this.defaultTimeoutMs}ms`,
-          exitCode: 124,
-        };
+        return { stdout: "", stderr: `Command timed out after ${this.defaultTimeoutMs}ms`, exitCode: 124 };
       }
 
-      return {
-        stdout: "",
-        stderr: error instanceof Error ? error.message : String(error),
-        exitCode: 1,
-      };
+      return { stdout: "", stderr: error instanceof Error ? error.message : String(error), exitCode: 1 };
     }
   }
 

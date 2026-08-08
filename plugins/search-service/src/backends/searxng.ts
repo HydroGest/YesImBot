@@ -19,32 +19,12 @@ const searchInputSchema = jsonSchema<SearXNGSearchInput>({
   type: "object",
   properties: {
     query: { type: "string", minLength: 1, description: "Search query." },
-    limit: {
-      type: "number",
-      minimum: 1,
-      description: "Maximum number of results.",
-    },
-    engines: {
-      type: "array",
-      items: { type: "string" },
-      description: "Search engines to use.",
-    },
+    limit: { type: "number", minimum: 1, description: "Maximum number of results." },
+    engines: { type: "array", items: { type: "string" }, description: "Search engines to use." },
     language: { type: "string", description: "Search language." },
-    categories: {
-      type: "array",
-      items: { type: "string" },
-      description: "Search categories.",
-    },
-    timeRange: {
-      type: "string",
-      enum: ["day", "month", "year"],
-      description: "Time range for search.",
-    },
-    safeSearch: {
-      type: "number",
-      enum: [0, 1, 2],
-      description: "Safe search level.",
-    },
+    categories: { type: "array", items: { type: "string" }, description: "Search categories." },
+    timeRange: { type: "string", enum: ["day", "month", "year"], description: "Time range for search." },
+    safeSearch: { type: "number", enum: [0, 1, 2], description: "Safe search level." },
   },
   required: ["query"],
 });
@@ -130,21 +110,14 @@ class SearXNGBackend implements SearchBackend {
     }
 
     try {
-      const response = await this.ctx.http.get<SearXNGResponse>(normalizeSearchUrl(this.config.endpoint), {
-        params,
-        headers,
-        timeout: this.config.timeoutMs,
-      });
+      const response = await this.ctx.http.get<SearXNGResponse>(normalizeSearchUrl(this.config.endpoint), { params, headers, timeout: this.config.timeoutMs });
       const rawResults = Array.isArray(response.results) ? response.results : [];
       const mapped = rawResults.map((result) => ({
         title: result.title ?? "",
         url: result.url ?? "",
         snippet: result.content ?? "",
         score: result.score,
-        metadata: {
-          ...(result.engine ? { engine: result.engine } : {}),
-          ...(result.category ? { category: result.category } : {}),
-        },
+        metadata: { ...(result.engine ? { engine: result.engine } : {}), ...(result.category ? { category: result.category } : {}) },
       }));
       const filtered = filterBlockedResults(mapped, this.blacklist);
       const deduped = dedupeByUrl(filtered).slice(0, limit);
@@ -153,12 +126,7 @@ class SearXNGBackend implements SearchBackend {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[SearXNGBackend] Search failed: ${message}`);
-      return {
-        provider: this.name,
-        query: input.query,
-        results: [],
-        error: { message, code: "request_failed" },
-      };
+      return { provider: this.name, query: input.query, results: [], error: { message, code: "request_failed" } };
     }
   }
 }

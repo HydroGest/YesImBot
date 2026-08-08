@@ -32,43 +32,25 @@ export function createAddMessageTool(options: AddMessageToolOptions): AgentTool<
     description: "Write a durable long-term memory candidate to MemOS.",
     inputSchema: jsonSchema<AddMessageToolInput>({
       type: "object",
-      properties: {
-        content: {
-          type: "string",
-          minLength: 1,
-          description: "Durable memory content to remember.",
-        },
-      },
+      properties: { content: { type: "string", minLength: 1, description: "Durable memory content to remember." } },
       required: ["content"],
       additionalProperties: false,
     }),
     execute: async ({ content }, context) => {
       try {
         const identity = options.resolveIdentity(context.turnId);
-        const response = await options.client.addMessage<{
-          task_id?: string;
-          status?: string;
-        }>({
+        const response = await options.client.addMessage<{ task_id?: string; status?: string }>({
           user_id: identity.userId,
           conversation_id: identity.conversationId,
           agent_id: identity.agentId,
-          messages: [
-            {
-              role: "user",
-              content,
-              chat_time: formatChatTime(options.now()),
-            },
-          ],
+          messages: [{ role: "user", content, chat_time: formatChatTime(options.now()) }],
           tags: options.config.tags,
           info: { ...identity.info },
           async_mode: options.config.asyncMode,
           source: "yesimbot",
         });
 
-        return {
-          outcome: options.config.asyncMode ? "accepted" : "persisted",
-          taskId: response.data?.task_id,
-        };
+        return { outcome: options.config.asyncMode ? "accepted" : "persisted", taskId: response.data?.task_id };
       } catch (error) {
         const message = sanitizeErrorMessage(error, options.config.apiKey);
         options.logger?.warn(`MemOS add message failed: ${message}`);

@@ -8,12 +8,6 @@
     "vitest/require-to-throw-message": "off",
     "vitest/no-conditional-expect": "off"
   },
-  "settings": {
-    "vitest": {
-      "typecheck": true
-    }
-  },
-  "env": {
-    "builtin": true
-  }
+  "settings": { "vitest": { "typecheck": true } },
+  "env": { "builtin": true }
 }

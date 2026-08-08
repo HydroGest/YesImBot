@@ -21,12 +21,7 @@ const MCP_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const MCP_IMAGE_MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const MCP_MAX_OUTPUT_CHARS = 30_000;
 const MCP_MAX_BLOCK_TYPE_CHARS = 64;
-const SUPPORTED_IMAGE_MIMES: Record<string, true> = {
-  "image/jpeg": true,
-  "image/png": true,
-  "image/gif": true,
-  "image/webp": true,
-};
+const SUPPORTED_IMAGE_MIMES: Record<string, true> = { "image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true };
 
 const MCP_ARTIFACT_GUIDANCE =
   "MCP 工具可能返回 artifact:// 媒体引用。这些是工具产生的不可变工件，不是内联媒体；" +
@@ -39,10 +34,7 @@ export default class McpClientPlugin {
   public static Config: Schema<McpClientConfig> = Schema.object({
     mcpServers: Schema.dict(
       Schema.intersect([
-        Schema.object({
-          enable: Schema.boolean().default(true).description("是否启用"),
-          type: Schema.union(["stdio", "http", "sse"]),
-        }),
+        Schema.object({ enable: Schema.boolean().default(true).description("是否启用"), type: Schema.union(["stdio", "http", "sse"]) }),
         Schema.union([
           Schema.object({
             type: Schema.const("stdio").required(),
@@ -119,11 +111,7 @@ export default class McpClientPlugin {
       this.disposeAgentPlugin?.();
       this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin((context) => {
         const channelTools = registeredTools.map((tool) => wrapToolWithArtifacts(tool, context.artifacts));
-        return {
-          name: "mcp-client",
-          tools: channelTools,
-          appendSystemPrompt: () => MCP_ARTIFACT_GUIDANCE,
-        };
+        return { name: "mcp-client", tools: channelTools, appendSystemPrompt: () => MCP_ARTIFACT_GUIDANCE };
       });
     };
 
@@ -139,10 +127,7 @@ export default class McpClientPlugin {
           inputSchema: jsonSchema(tool.inputSchema),
           execute: async (params: unknown) => {
             try {
-              const result = await client.callTool({
-                name: tool.name,
-                arguments: structuredClone(params as Record<string, unknown>),
-              });
+              const result = await client.callTool({ name: tool.name, arguments: structuredClone(params as Record<string, unknown>) });
               return result.content as Array<McpToolOutputBlock>;
             } catch (error) {
               this.ctx.logger.error(`调用工具 ${tool.name} 失败: ${(error as Error).message}`);
@@ -233,10 +218,7 @@ function wrapToolWithArtifacts(tool: AgentTool, artifacts: ArtifactStore): Agent
             continue;
           }
           try {
-            const uri = await writer.put(bytes, {
-              mediaType,
-              filename: "mcp-image",
-            });
+            const uri = await writer.put(bytes, { mediaType, filename: "mcp-image" });
             imageCount += 1;
             imageBytes += bytes.byteLength;
             lines.push(`[图片：${uri}（${mediaType}，${formatBytes(bytes.byteLength)}）]`);

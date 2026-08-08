@@ -44,10 +44,7 @@ export const Config: Schema<Config> = Schema.object({
 });
 
 export function apply(ctx: Context, config: Config) {
-  const client = createDeepSeek({
-    apiKey: config.apiKey,
-    baseURL: config.baseURL,
-  });
+  const client = createDeepSeek({ apiKey: config.apiKey, baseURL: config.baseURL });
   const dispose = ctx.yesimbot.model.register({
     id: config.id,
     capabilities: { chat: true, embedding: false },
@@ -73,13 +70,7 @@ export function apply(ctx: Context, config: Config) {
             : { thinking: { type: "enabled" }, reasoningEffort: level };
       return wrapLanguageModel({
         model: client.chat(actualId),
-        middleware: [
-          defaultSettingsMiddleware({
-            settings: {
-              providerOptions: { deepseek: opts },
-            },
-          }),
-        ],
+        middleware: [defaultSettingsMiddleware({ settings: { providerOptions: { deepseek: opts } } })],
       });
     },
     embedding: () => {

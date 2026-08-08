@@ -47,11 +47,7 @@ type RiskTag =
   | "unknown-command"
   | "write";
 
-type WalkState = {
-  readonly riskTags: Set<RiskTag>;
-  readonly commands: string[];
-  commandCount: number;
-};
+type WalkState = { readonly riskTags: Set<RiskTag>; readonly commands: string[]; commandCount: number };
 
 type RecordValue = Record<string, unknown>;
 
@@ -179,10 +175,7 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
-function normalizeRules(value: readonly HostChannelRule[] | undefined): {
-  readonly rules: readonly HostChannelRule[];
-  readonly valid: boolean;
-} {
+function normalizeRules(value: readonly HostChannelRule[] | undefined): { readonly rules: readonly HostChannelRule[]; readonly valid: boolean } {
   if (!Array.isArray(value) || value.length === 0) return { rules: [], valid: false };
 
   let valid = true;
@@ -207,12 +200,7 @@ function normalizeRules(value: readonly HostChannelRule[] | undefined): {
       valid = false;
       continue;
     }
-    rules.push({
-      platform,
-      channelId,
-      ...(type === undefined ? {} : { type }),
-      ...(selfId === undefined ? {} : { selfId }),
-    });
+    rules.push({ platform, channelId, ...(type === undefined ? {} : { type }), ...(selfId === undefined ? {} : { selfId }) });
   }
   return { rules, valid: valid && rules.length > 0 };
 }
@@ -285,12 +273,7 @@ function originalBytesForFingerprint(input: unknown): string {
 }
 
 function makeFingerprint(scope: ChannelScope, toolName: string, cwd: string, policyRevision: string, originalCommand: string): string {
-  const normalizedScope = {
-    type: scope.type,
-    platform: scope.platform,
-    channelId: scope.channelId,
-    selfId: scope.selfId ?? null,
-  };
+  const normalizedScope = { type: scope.type, platform: scope.platform, channelId: scope.channelId, selfId: scope.selfId ?? null };
   return createHash("sha256")
     .update(JSON.stringify({ scope: normalizedScope, toolName, cwd, policyRevision }), "utf8")
     .update("\0", "utf8")
@@ -825,11 +808,7 @@ export interface HostApprovalBrokerOptions {
   readonly audit?: (event: HostApprovalAuditEvent) => void;
 }
 
-type ApprovalWaiter = {
-  readonly resolve: (result: "approved" | "rejected" | "expired") => void;
-  readonly signal?: AbortSignal;
-  readonly onAbort?: () => void;
-};
+type ApprovalWaiter = { readonly resolve: (result: "approved" | "rejected" | "expired") => void; readonly signal?: AbortSignal; readonly onAbort?: () => void };
 
 type ApprovalEntry = {
   record: HostApprovalRecord;
@@ -956,12 +935,7 @@ export function createHostApprovalBroker(options: HostApprovalBrokerOptions = {}
     }
 
     const record = approvalRecord(input, uniqueRequestId(), now, "pending");
-    const entry: ApprovalEntry = {
-      record,
-      notify: input.notify,
-      timer: setTimeout(() => expire(entry), HOST_APPROVAL_TTL_MS),
-      waiters: [],
-    };
+    const entry: ApprovalEntry = { record, notify: input.notify, timer: setTimeout(() => expire(entry), HOST_APPROVAL_TTL_MS), waiters: [] };
     entries.set(record.requestId, entry);
     emit(auditEvent(record, "pending"));
     if (input.notify) {

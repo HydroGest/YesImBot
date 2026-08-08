@@ -102,47 +102,8 @@ export interface CoreSystemPromptOptions {
   readonly logger?: Logger;
 }
 
-async function readPromptFile(basePath: string, fileName: "AGENTS.md" | "PERSONA.md", logger?: Logger): Promise<string | undefined> {
-  try {
-    const content = (await readFile(join(basePath, fileName), "utf8")).trim();
-    return content.length > 0 ? content : undefined;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      logger?.debug(`Prompt file ${fileName} not found under ${basePath}`);
-      return undefined;
-    }
-    logger?.warn(`Unable to read prompt file ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
-    throw error;
-  }
-}
-
 export async function readPersona(basePath: string, logger?: Logger): Promise<string> {
   return (await readPromptFile(basePath, "PERSONA.md", logger)) ?? DEFAULT_PERSONA;
-}
-
-function escapeXml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
-}
-
-function wrap(tag: "agents" | "persona", content: string): SystemModelMessage {
-  return {
-    role: "system",
-    content: `<${tag}>\n${content}\n</${tag}>`,
-  };
-}
-
-function formatRuntimeContext(channel: ChannelScope, selfId: string): SystemModelMessage {
-  return {
-    role: "system",
-    content: [
-      "<runtime_context>",
-      `  <platform>${escapeXml(channel.platform)}</platform>`,
-      `  <selfId>${escapeXml(selfId)}</selfId>`,
-      `  <channelId>${escapeXml(channel.channelId)}</channelId>`,
-      `  <type>${channel.type}</type>`,
-      "</runtime_context>",
-    ].join("\n"),
-  };
 }
 
 export async function buildCoreSystemPrompt(options: CoreSystemPromptOptions): Promise<SystemModelMessage[]> {
@@ -171,4 +132,40 @@ export async function ensureAgentsFile(basePath: string): Promise<void> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
+}
+
+async function readPromptFile(basePath: string, fileName: "AGENTS.md" | "PERSONA.md", logger?: Logger): Promise<string | undefined> {
+  try {
+    const content = (await readFile(join(basePath, fileName), "utf8")).trim();
+    return content.length > 0 ? content : undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      logger?.debug(`Prompt file ${fileName} not found under ${basePath}`);
+      return undefined;
+    }
+    logger?.warn(`Unable to read prompt file ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
+  }
+}
+
+function escapeXml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
+}
+
+function wrap(tag: "agents" | "persona", content: string): SystemModelMessage {
+  return { role: "system", content: `<${tag}>\n${content}\n</${tag}>` };
+}
+
+function formatRuntimeContext(channel: ChannelScope, selfId: string): SystemModelMessage {
+  return {
+    role: "system",
+    content: [
+      "<runtime_context>",
+      `  <platform>${escapeXml(channel.platform)}</platform>`,
+      `  <selfId>${escapeXml(selfId)}</selfId>`,
+      `  <channelId>${escapeXml(channel.channelId)}</channelId>`,
+      `  <type>${channel.type}</type>`,
+      "</runtime_context>",
+    ].join("\n"),
+  };
 }

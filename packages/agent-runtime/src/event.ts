@@ -63,15 +63,7 @@ export interface TurnAbortedEvent extends TurnScoped {
   reason?: string;
 }
 
-export type MessageAppendedEvent =
-  | {
-      type: "message.appended";
-      message: AgentMessage;
-    }
-  | ({
-      type: "message.appended";
-      message: AgentMessage;
-    } & TurnScoped);
+export type MessageAppendedEvent = { type: "message.appended"; message: AgentMessage } | ({ type: "message.appended"; message: AgentMessage } & TurnScoped);
 
 export interface ToolStartEvent extends TurnScoped {
   type: "tool.start";
@@ -156,23 +148,12 @@ function formatDiagnosticCause(cause: unknown): string | undefined {
 
 export function createDiagnostic(error: unknown): AgentDiagnostic {
   if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      cause: formatDiagnosticCause(error.cause),
-    };
+    return { name: error.name, message: error.message, cause: formatDiagnosticCause(error.cause) };
   }
 
-  return {
-    name: "UnknownError",
-    message: String(error),
-  };
+  return { name: "UnknownError", message: String(error) };
 }
 
 export function createInternalEvent<T extends AgentInternalEventInit>(event: T): AgentInternalEvent<T> {
-  return {
-    id: createRandomId(),
-    timestamp: Date.now(),
-    ...event,
-  };
+  return { id: createRandomId(), timestamp: Date.now(), ...event };
 }

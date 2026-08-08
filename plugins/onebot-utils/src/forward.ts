@@ -50,30 +50,17 @@ interface OneBotForwardNode {
 
 interface OneBotTextSegment {
   type: "text";
-  data: {
-    text: string;
-  };
+  data: { text: string };
 }
 
 interface OneBotImageSegment {
   type: "image";
-  data: {
-    summary: string;
-    file: string;
-    file_size?: string;
-    src?: string;
-    url?: string;
-    sub_type?: unknown;
-    subType?: unknown;
-  };
+  data: { summary: string; file: string; file_size?: string; src?: string; url?: string; sub_type?: unknown; subType?: unknown };
 }
 
 interface OneBotNestedForwardSegment {
   type: "forward";
-  data: {
-    id: string;
-    content?: readonly OneBotForwardNode[];
-  };
+  data: { id: string; content?: readonly OneBotForwardNode[] };
 }
 
 interface OneBotRecordSegment {
@@ -182,15 +169,7 @@ function normalizeSegments(
       }
       case "image": {
         const data = segment.data as
-          | {
-              summary?: unknown;
-              file?: unknown;
-              file_size?: unknown;
-              src?: unknown;
-              url?: unknown;
-              sub_type?: unknown;
-              subType?: unknown;
-            }
+          | { summary?: unknown; file?: unknown; file_size?: unknown; src?: unknown; url?: unknown; sub_type?: unknown; subType?: unknown }
           | undefined;
         if (typeof data?.summary !== "string" || typeof data.file !== "string") {
           appendString(parts, "[未知消息段]");
@@ -201,12 +180,7 @@ function normalizeSegments(
         } else {
           appendString(
             parts,
-            isAnimatedImage(data)
-              ? formatAnimatedImageLabel({
-                  attachImageSummary: config.attachImageSummary,
-                  summary: data.summary,
-                })
-              : "[图片]",
+            isAnimatedImage(data) ? formatAnimatedImageLabel({ attachImageSummary: config.attachImageSummary, summary: data.summary }) : "[图片]",
           );
         }
         break;
@@ -272,11 +246,7 @@ function collectImageRequests(records: readonly (readonly ForwardMessage[])[], i
         const [summary, file] = part.image;
         if (!requests.has(file)) {
           const url = imageUrls.get(file);
-          requests.set(file, {
-            file,
-            summary,
-            ...(url === undefined ? {} : { url }),
-          });
+          requests.set(file, { file, summary, ...(url === undefined ? {} : { url }) });
         }
       }
     }
@@ -325,11 +295,7 @@ function page(records: readonly ForwardMessage[], start: number, limit: number, 
     const recordChars = record[2].reduce((total, part) => total + (typeof part === "string" ? part.length : 0), 0);
 
     if (messages.length === 0 && recordChars > budget) {
-      return {
-        messages: [record],
-        ...continuation(index + 1, records.length),
-        overLimit: true,
-      };
+      return { messages: [record], ...continuation(index + 1, records.length), overLimit: true };
     }
     if (chars + recordChars > budget) break;
 
@@ -338,16 +304,10 @@ function page(records: readonly ForwardMessage[], start: number, limit: number, 
     index += 1;
   }
 
-  return {
-    messages,
-    ...continuation(index, records.length),
-  };
+  return { messages, ...continuation(index, records.length) };
 }
 function continuation(nextOffset: number, totalRecords: number) {
   if (nextOffset >= totalRecords) return {};
 
-  return {
-    nextOffset,
-    tips: `还有 ${totalRecords - nextOffset} 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset ${nextOffset}。`,
-  };
+  return { nextOffset, tips: `还有 ${totalRecords - nextOffset} 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset ${nextOffset}。` };
 }

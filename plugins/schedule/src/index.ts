@@ -205,12 +205,7 @@ export default class SchedulePlugin {
 /** Builds the current ChannelScope from the live Session fields only. */
 function scopeOf(session: Session | undefined): ChannelScope | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
-  return {
-    type: session.isDirect ? "direct" : "shared",
-    platform: session.platform,
-    selfId: session.selfId,
-    channelId: session.channelId,
-  };
+  return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId };
 }
 
 function formatSchedule(schedule: Schedule): string {

@@ -39,10 +39,7 @@ const config: Config = {
   imageInput: false,
   resourceReadTimeoutMs: 1000,
   reply: { pacing: { charactersPerSecond: 1, maxTotalDelayMs: 1 }, customInnerThought: false },
-  session: {
-    compact: { threshold: 1, charTokenRatio: 1, minMessages: 20, maxFailures: 1, model: undefined },
-    idle: { timeout: 10 },
-  },
+  session: { compact: { threshold: 1, charTokenRatio: 1, minMessages: 20, maxFailures: 1, model: undefined }, idle: { timeout: 10 } },
 };
 const event = {
   eventType: "delivery.failed",

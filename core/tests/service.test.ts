@@ -18,14 +18,8 @@ const config: Config = {
   allowedChannels: [],
   imageInput: false,
   resourceReadTimeoutMs: 30_000,
-  reply: {
-    pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
-    customInnerThought: false,
-  },
-  session: {
-    compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined },
-    idle: { timeout: 0 },
-  },
+  reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 }, customInnerThought: false },
+  session: { compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined }, idle: { timeout: 0 } },
 };
 
 describe("YesImBotService facade", () => {
@@ -33,10 +27,7 @@ describe("YesImBotService facade", () => {
     const ctx = new Context();
     ctx.baseDir = tmpdir();
     Object.assign(ctx, { "yesimbot.model": {}, database: { get: vi.fn() } });
-    const service = new YesImBotService(ctx as never, {
-      ...config,
-      basePath: join(tmpdir(), `yesimbot-service-${randomUUID()}`),
-    });
+    const service = new YesImBotService(ctx as never, { ...config, basePath: join(tmpdir(), `yesimbot-service-${randomUUID()}`) });
 
     expect(service.model).toBeDefined();
     expect(service.messenger).toMatchObject({ use: expect.any(Function), post: expect.any(Function) });

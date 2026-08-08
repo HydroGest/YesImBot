@@ -45,9 +45,7 @@ const registeredModels = new WeakSet<object>();
 export function registerStickerModel(model: StoreModel): void {
   if (registeredModels.has(model)) return;
   registeredModels.add(model);
-  model.extend(STICKER_TABLE, STICKER_FIELDS, {
-    primary: "id",
-  });
+  model.extend(STICKER_TABLE, STICKER_FIELDS, { primary: "id" });
 }
 
 export class StickerStore {
@@ -214,15 +212,7 @@ export class StickerStore {
       const row = await this.findRow(scopeKey, contentId);
       if (!row) throw new Error("未找到该表情包");
       const target = normalizeCategory(category) || "未分类";
-      await this.model.set(
-        STICKER_TABLE,
-        { scopeKey, contentId },
-        {
-          category: target,
-          tags: normalizeTags(tags),
-          updatedAt: new Date().toISOString(),
-        },
-      );
+      await this.model.set(STICKER_TABLE, { scopeKey, contentId }, { category: target, tags: normalizeTags(tags), updatedAt: new Date().toISOString() });
     });
   }
 
@@ -267,10 +257,7 @@ export class StickerStore {
       mediaType: row.mime,
       category: row.category,
       tags: row.tags ?? [],
-      source: {
-        ...row.source,
-        kind: "migrate",
-      },
+      source: { ...row.source, kind: "migrate" },
     });
   }
 

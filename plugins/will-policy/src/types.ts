@@ -44,16 +44,7 @@ export interface WillPolicyConfig {
 }
 
 export function defaultRoutingConfig(): PolicyRoutingConfig {
-  return {
-    direct: "trigger",
-    mention: "trigger",
-    mentionAll: "wait",
-    mentionHere: "wait",
-    quote: "wait",
-    image: "wait",
-    poke: "wait",
-    group: "wait",
-  };
+  return { direct: "trigger", mention: "trigger", mentionAll: "wait", mentionHere: "wait", quote: "wait", image: "wait", poke: "wait", group: "wait" };
 }
 
 export function defaultWillingnessConfig(): PolicyWillingnessConfig {

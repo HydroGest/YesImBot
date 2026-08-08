@@ -34,14 +34,7 @@ describe("firstFrameToPng", () => {
   });
 
   it("converts a static JPEG to a single-frame GIF", () => {
-    const jpeg = encodeJpeg(
-      {
-        width: 1,
-        height: 1,
-        data: Buffer.from([255, 0, 0, 255]),
-      },
-      90,
-    );
+    const jpeg = encodeJpeg({ width: 1, height: 1, data: Buffer.from([255, 0, 0, 255]) }, 90);
     const result = staticToGif(new Uint8Array(jpeg.data), "image/jpeg");
 
     expect(result?.mediaType).toBe("image/gif");

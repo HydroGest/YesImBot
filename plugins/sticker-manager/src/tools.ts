@@ -52,10 +52,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
     ].join("\n"),
     inputSchema: jsonSchema<StealStickerInput>({
       type: "object",
-      properties: {
-        asset_id: { type: "string", description: "当前消息图片的 32 位 asset id" },
-        category: { type: "string", description: "可选分类名" },
-      },
+      properties: { asset_id: { type: "string", description: "当前消息图片的 32 位 asset id" }, category: { type: "string", description: "可选分类名" } },
       required: ["asset_id"],
       additionalProperties: false,
     }),
@@ -84,14 +81,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
       }
 
       const categories = (await store.listCategories(scopeKey)).map((item) => item.category);
-      const autoClassified = category
-        ? undefined
-        : await classifier.classify({
-            bytes,
-            mediaType,
-            categories,
-            signal: execution.abortSignal,
-          });
+      const autoClassified = category ? undefined : await classifier.classify({ bytes, mediaType, categories, signal: execution.abortSignal });
       const classified = category ? normalizeCategory(category) : (autoClassified?.category ?? "未分类");
 
       const saved = await store.save({
@@ -100,11 +90,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
         mediaType,
         category: classified,
         tags: config.tagMode ? normalizeTags([classified, ...(autoClassified?.tags ?? [])]) : undefined,
-        source: {
-          kind: "steal",
-          platform: scope.platform,
-          channelId: scope.channelId,
-        },
+        source: { kind: "steal", platform: scope.platform, channelId: scope.channelId },
       });
       return {
         ok: true,
@@ -188,10 +174,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
   const categoriesTool: AgentTool<Record<string, never>, ToolResult> = {
     name: "sticker_categories",
     description: "列出当前可见的表情包分类和每类数量，用于选择 sticker_steal 或 sticker_send 的分类。",
-    inputSchema: jsonSchema<Record<string, never>>({
-      type: "object",
-      additionalProperties: false,
-    }),
+    inputSchema: jsonSchema<Record<string, never>>({ type: "object", additionalProperties: false }),
     execute: async () => {
       const categories = await store.listCategories(scopeKey);
       return { ok: true, categories, message: categories.length ? "已返回分类列表" : "暂无分类" };
@@ -202,10 +185,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
     ? ({
         name: "sticker_tags",
         description: "实验性：列出当前可见表情包的标签和数量，用于 sticker_send 按标签发送。",
-        inputSchema: jsonSchema<Record<string, never>>({
-          type: "object",
-          additionalProperties: false,
-        }),
+        inputSchema: jsonSchema<Record<string, never>>({ type: "object", additionalProperties: false }),
         execute: async () => {
           const tags = await store.listTags(scopeKey);
           return { ok: true, tags, message: tags.length ? "已返回标签列表" : "暂无标签" };
@@ -226,16 +206,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
       properties: {
         category: { type: "string", description: "按分类过滤" },
         keyword: { type: "string", description: "按分类名或 id 关键词过滤" },
-        ...(config.tagMode
-          ? {
-              tags: {
-                type: "array",
-                items: { type: "string" },
-                maxItems: 5,
-                description: "实验性标签列表，匹配任一标签即可",
-              },
-            }
-          : {}),
+        ...(config.tagMode ? { tags: { type: "array", items: { type: "string" }, maxItems: 5, description: "实验性标签列表，匹配任一标签即可" } } : {}),
         limit: { type: "integer", minimum: 1, maximum: 50, description: "返回数量上限" },
       },
       additionalProperties: false,

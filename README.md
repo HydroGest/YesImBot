@@ -87,13 +87,7 @@ allowedChannels:
 3. 在 `chat` 对象下添加该模型的覆盖项：
 
 ```json
-{
-  "chat": {
-    "openai:gpt-4o": {
-      "modalities": { "input": ["image"] }
-    }
-  }
-}
+{ "chat": { "openai:gpt-4o": { "modalities": { "input": ["image"] } } } }
 ```
 
 4. 保存并重启 Koishi，或等对应 Runtime 被替换。活动 Runtime 在创建时快照模型能力，不会热更新。

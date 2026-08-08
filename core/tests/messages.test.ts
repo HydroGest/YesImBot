@@ -27,18 +27,13 @@ type Input = Message | Event;
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
-    "test.variant": {
-      channel: { id: string };
-      test: { value: number };
-    };
+    "test.variant": { channel: { id: string }; test: { value: number } };
   }
 }
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
-    "formatter.variant": {
-      extra: { secret: string };
-    };
+    "formatter.variant": { extra: { secret: string } };
   }
 }
 
@@ -74,13 +69,7 @@ function deliveryFailureRecord(overrides: { timestamp?: number } = {}): EventRec
     platform: "test",
     selfId: "bot-1",
     channel: { id: "channel-1", type: Universal.Channel.Type.TEXT },
-    delivery: {
-      turnId: "turn-1",
-      messageId: "assistant-1",
-      segmentIndex: 1,
-      segmentTotal: 1,
-      error: { name: "Error", message: "offline" },
-    },
+    delivery: { turnId: "turn-1", messageId: "assistant-1", segmentIndex: 1, segmentTotal: 1, error: { name: "Error", message: "offline" } },
     text: "failed",
     timestamp: overrides.timestamp ?? 5678,
   };
@@ -89,23 +78,14 @@ function deliveryFailureRecord(overrides: { timestamp?: number } = {}): EventRec
 describe("Event", () => {
   it("creates yesimbot.message without payload timestamp", () => {
     const message = createMessage(messageRecord({ timestamp: 1234 }));
-    expect(message).toMatchObject({
-      role: "custom",
-      type: "yesimbot.message",
-      timestamp: 1234,
-      data: { messageId: "m1" },
-    });
+    expect(message).toMatchObject({ role: "custom", type: "yesimbot.message", timestamp: 1234, data: { messageId: "m1" } });
     expect("timestamp" in message.data).toBe(false);
     expect(message.data).not.toHaveProperty("schemaVersion");
   });
 
   it("creates eventType-discriminated yesimbot.event", () => {
     const event = createEvent(deliveryFailureRecord({ timestamp: 5678 }));
-    expect(event).toMatchObject({
-      type: "yesimbot.event",
-      timestamp: 5678,
-      data: { eventType: "delivery.failed" },
-    });
+    expect(event).toMatchObject({ type: "yesimbot.event", timestamp: 5678, data: { eventType: "delivery.failed" } });
     expect("timestamp" in event.data).toBe(false);
     expect(event.data).not.toHaveProperty("schemaVersion");
   });
@@ -117,13 +97,7 @@ describe("Event", () => {
 
   it("recognizes yesimbot.message custom messages as Message", () => {
     const message = createMessage(messageRecord());
-    const nonMessage: AgentMessage = {
-      id: "x",
-      timestamp: 0,
-      role: "custom",
-      type: "other",
-      data: {},
-    } as AgentMessage;
+    const nonMessage: AgentMessage = { id: "x", timestamp: 0, role: "custom", type: "other", data: {} } as AgentMessage;
 
     expect(isMessage(message)).toBe(true);
     expect(isMessage(nonMessage)).toBe(false);
@@ -132,13 +106,7 @@ describe("Event", () => {
 
   it("recognizes yesimbot.event custom messages as Event", () => {
     const event = createEvent(deliveryFailureRecord());
-    const nonEvent: AgentMessage = {
-      id: "x",
-      timestamp: 0,
-      role: "custom",
-      type: "other",
-      data: {},
-    } as AgentMessage;
+    const nonEvent: AgentMessage = { id: "x", timestamp: 0, role: "custom", type: "other", data: {} } as AgentMessage;
 
     expect(isEvent(event)).toBe(true);
     expect(isEvent(nonEvent)).toBe(false);
@@ -146,20 +114,8 @@ describe("Event", () => {
   });
 
   it("recognizes custom discriminators without re-validating their payloads", () => {
-    const badMessage = {
-      id: "x",
-      timestamp: 0,
-      role: "custom",
-      type: "yesimbot.message",
-      data: { messageId: "m1", text: "hello" },
-    } as AgentMessage;
-    const badEvent = {
-      id: "y",
-      timestamp: 0,
-      role: "custom",
-      type: "yesimbot.event",
-      data: { eventType: "delivery.failed", text: "failed" },
-    } as AgentMessage;
+    const badMessage = { id: "x", timestamp: 0, role: "custom", type: "yesimbot.message", data: { messageId: "m1", text: "hello" } } as AgentMessage;
+    const badEvent = { id: "y", timestamp: 0, role: "custom", type: "yesimbot.event", data: { eventType: "delivery.failed", text: "failed" } } as AgentMessage;
 
     expect(isMessage(badMessage)).toBe(true);
     expect(isEvent(badEvent)).toBe(true);
@@ -198,11 +154,7 @@ describe("Event", () => {
   });
 
   it("assembles events from RecordBase without copying user", () => {
-    const event = assembleEvent(recordBase(), {
-      eventType: "test.variant",
-      text: "variant",
-      test: { value: 42 },
-    });
+    const event = assembleEvent(recordBase(), { eventType: "test.variant", text: "variant", test: { value: 42 } });
 
     expect(event).toMatchObject({
       platform: "test",
@@ -219,13 +171,7 @@ describe("Event", () => {
     const event = assembleEvent(recordBase(), {
       eventType: "delivery.failed",
       text: "Delivery failed",
-      delivery: {
-        turnId: "turn-1",
-        messageId: "assistant-1",
-        segmentIndex: 1,
-        segmentTotal: 1,
-        error: { name: "Error", message: "offline" },
-      },
+      delivery: { turnId: "turn-1", messageId: "assistant-1", segmentIndex: 1, segmentTotal: 1, error: { name: "Error", message: "offline" } },
     });
 
     expect(event).toMatchObject({
@@ -312,10 +258,7 @@ function miMessageRecord(overrides: { timestamp?: number } = {}): MessageRecord 
 }
 
 function miMessageRecordWithText(text: string, overrides: { timestamp?: number } = {}): MessageRecord {
-  return {
-    ...miMessageRecord(overrides),
-    elements: h.parse(text),
-  };
+  return { ...miMessageRecord(overrides), elements: h.parse(text) };
 }
 
 function miDeliveryFailureRecord(): EventRecord<"delivery.failed"> {
@@ -324,13 +267,7 @@ function miDeliveryFailureRecord(): EventRecord<"delivery.failed"> {
     platform: scope.platform,
     selfId: scope.selfId,
     channel: { id: scope.channelId },
-    delivery: {
-      turnId: "turn-1",
-      messageId: "assistant-1",
-      segmentIndex: 1,
-      segmentTotal: 1,
-      error: { name: "Error", message: "offline" },
-    },
+    delivery: { turnId: "turn-1", messageId: "assistant-1", segmentIndex: 1, segmentTotal: 1, error: { name: "Error", message: "offline" } },
     text: "failed",
     timestamp: Date.parse("2026-07-18T12:34:00.000Z"),
   };
@@ -414,10 +351,7 @@ describe("modelInputPlugin", () => {
   });
 
   it("keeps nested image elements discoverable in document order", async () => {
-    const input = createMessage({
-      ...miMessageRecord(),
-      elements: [h("p", {}, [h("span", {}, [h("img", { id: "11111111111111111111111111111111" })])])],
-    });
+    const input = createMessage({ ...miMessageRecord(), elements: [h("p", {}, [h("span", {}, [h("img", { id: "11111111111111111111111111111111" })])])] });
     const result = await project(input, context([input]), plugin());
 
     expect(result.content).toContain("[图片：asset://11111111111111111111111111111111]");

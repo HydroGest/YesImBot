@@ -1,4 +1,5 @@
 import { Schema } from "koishi";
+
 export interface ChannelAllowRule {
   readonly platform: string;
   readonly channelId: string;
@@ -11,13 +12,7 @@ export interface ImageBudget {
   readonly maxTotalBytes: number;
 }
 
-export type ImageInputConfig =
-  | false
-  | {
-      readonly maxCount?: number;
-      readonly maxBytesPerImage?: number;
-      readonly maxTotalBytes?: number;
-    };
+export type ImageInputConfig = false | { readonly maxCount?: number; readonly maxBytesPerImage?: number; readonly maxTotalBytes?: number };
 
 export interface PacingConfig {
   charactersPerSecond: number;
@@ -49,10 +44,7 @@ export interface Config {
   allowedChannels: ChannelAllowRule[];
   imageInput: ImageInputConfig;
   resourceReadTimeoutMs: number;
-  reply: {
-    pacing: PacingConfig;
-    customInnerThought: boolean;
-  };
+  reply: { pacing: PacingConfig; customInnerThought: boolean };
   session: SessionConfig;
 }
 
@@ -69,13 +61,7 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(2).description("Info"),
       Schema.const(3).description("Debug"),
     ]).default(2) as Schema<number>,
-    allowedChannels: Schema.array(
-      Schema.object({
-        platform: Schema.string(),
-        channelId: Schema.string(),
-        isDirect: Schema.boolean(),
-      }),
-    )
+    allowedChannels: Schema.array(Schema.object({ platform: Schema.string(), channelId: Schema.string(), isDirect: Schema.boolean() }))
       .role("table")
       .default([]),
   }).description("基础配置"),
@@ -92,10 +78,7 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description("模型图片输入"),
   Schema.object({
     reply: Schema.object({
-      pacing: Schema.object({
-        charactersPerSecond: Schema.number().min(1).default(8),
-        maxTotalDelayMs: Schema.number().min(1).default(60_000),
-      }),
+      pacing: Schema.object({ charactersPerSecond: Schema.number().min(1).default(8), maxTotalDelayMs: Schema.number().min(1).default(60_000) }),
       customInnerThought: Schema.boolean().description("在系统提示中加入 Core 自定义 <inner_thought> 内心独白协议").default(false),
     }),
   }).description("回复分段与节奏"),
@@ -108,9 +91,7 @@ export const Config: Schema<Config> = Schema.intersect([
         maxFailures: Schema.number().min(1).default(3),
         model: Schema.dynamic("registry.chatModels"),
       }),
-      idle: Schema.object({
-        timeout: Schema.number().min(0).default(7_200_000).description("空闲压缩触发时长(ms)，0 = 禁用"),
-      }),
+      idle: Schema.object({ timeout: Schema.number().min(0).default(7_200_000).description("空闲压缩触发时长(ms)，0 = 禁用") }),
     }),
   }).description("会话管理"),
 ]) as Schema<Config>;

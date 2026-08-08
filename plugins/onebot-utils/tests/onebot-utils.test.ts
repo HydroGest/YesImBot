@@ -32,11 +32,7 @@ vi.mock("koishi", () => {
     Context: class Context {},
     Logger: class Logger {},
     Schema: mocks.schema,
-    h: vi.fn((type: string, attrs: Record<string, unknown> = {}, children: unknown[] = []) => ({
-      type,
-      attrs,
-      children,
-    })),
+    h: vi.fn((type: string, attrs: Record<string, unknown> = {}, children: unknown[] = []) => ({ type, attrs, children })),
   };
 });
 
@@ -44,12 +40,7 @@ import OnebotUtilsPlugin from "../src/index";
 import type { OneBotInternal } from "../src/onebot.js";
 
 function createLogger() {
-  return {
-    error: vi.fn<() => void>(),
-    info: vi.fn<() => void>(),
-    success: vi.fn<() => void>(),
-    warn: vi.fn<() => void>(),
-  };
+  return { error: vi.fn<() => void>(), info: vi.fn<() => void>(), success: vi.fn<() => void>(), warn: vi.fn<() => void>() };
 }
 
 function createMemoryAssets() {
@@ -73,9 +64,7 @@ function createContext() {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      assets: {
-        createStore: vi.fn<() => ReturnType<typeof createMemoryAssets>>(() => createMemoryAssets()),
-      },
+      assets: { createStore: vi.fn<() => ReturnType<typeof createMemoryAssets>>(() => createMemoryAssets()) },
       registerChannelPlugin: vi.fn((factory: ChannelPluginFactory) => {
         factories.push(factory);
         return dispose;
@@ -87,13 +76,7 @@ function createContext() {
 }
 
 function createChannelScope(overrides: Record<string, unknown> = {}) {
-  return {
-    type: "shared",
-    platform: "onebot",
-    selfId: "bot",
-    channelId: "group",
-    ...overrides,
-  };
+  return { type: "shared", platform: "onebot", selfId: "bot", channelId: "group", ...overrides };
 }
 
 async function getTools(plugin: AgentPlugin): Promise<AgentTool[]> {
@@ -113,10 +96,7 @@ async function createRuntime(
   const runtimePlugin = await factories[0]!({ scope: createChannelScope(), bot } as never);
   const tools = await getTools(runtimePlugin);
 
-  return {
-    getForwardTool: () => tools.find((tool) => tool.name === "onebot_get_forward_message")!,
-    getTools: async () => tools,
-  };
+  return { getForwardTool: () => tools.find((tool) => tool.name === "onebot_get_forward_message")!, getTools: async () => tools };
 }
 
 const message = (segments: unknown[], overrides: Record<string, unknown> = {}) => ({
@@ -217,9 +197,7 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({ internal: { getForwardMsg } });
     const tool = runtime.getForwardTool();
 
-    await expect(tool.execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({
-      messages: [["Alice (1)", expect.any(String), ["hello[图片]"]]],
-    });
+    await expect(tool.execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({ messages: [["Alice (1)", expect.any(String), ["hello[图片]"]]] });
     expect(tool.description).toContain("nextOffset");
     expect(tool.description).toContain("tips");
     expect(tool.description).toContain("forwardId");
@@ -253,12 +231,7 @@ describe("onebot-utils plugin", () => {
   it("persists more than four forward images across bounded batches", async () => {
     const dataUrl = `data:image/png;base64,${Buffer.from([1, 2, 3, 4]).toString("base64")}`;
     const getForwardMsg = vi.fn(async () => [
-      message(
-        Array.from({ length: 5 }, (_, index) => ({
-          type: "image",
-          data: { summary: `img-${index}`, file: `${index}.png`, url: dataUrl },
-        })),
-      ),
+      message(Array.from({ length: 5 }, (_, index) => ({ type: "image", data: { summary: `img-${index}`, file: `${index}.png`, url: dataUrl } }))),
     ]);
     const runtime = await createRuntime({ internal: { getForwardMsg } }, { parseImages: true, maxForwardPageChars: 6000 });
     const imagesJoined = Array.from({ length: 5 }, (_, index) => `[图片：asset://asset-${index + 1}]`).join("");
@@ -273,10 +246,7 @@ describe("onebot-utils plugin", () => {
       message(
         [
           { type: "text", data: { text: "hello" } },
-          {
-            type: "image",
-            data: { summary: "cover", file: "cover.jpg", url: "https://cdn.test/cover.jpg", file_size: "1000" },
-          },
+          { type: "image", data: { summary: "cover", file: "cover.jpg", url: "https://cdn.test/cover.jpg", file_size: "1000" } },
         ],
         { time: 123 },
       ),
@@ -285,10 +255,7 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({ internal: { getForwardMsg, sendGroupForwardMsg } }, { enabledTools: ["onebot_send_forward_message"] });
     const tool = (await runtime.getTools()).find((item) => item.name === "onebot_send_forward_message")!;
 
-    await expect(tool.execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({
-      ok: true,
-      messageId: "42",
-    });
+    await expect(tool.execute?.({ forwardId: "forward" }, {} as never)).resolves.toEqual({ ok: true, messageId: "42" });
     expect(sendGroupForwardMsg).toHaveBeenCalledWith("group", [
       {
         type: "node",
@@ -324,15 +291,7 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({
       internal: {
         getForwardMsg: vi.fn(async () => [
-          message([
-            {
-              type: "forward",
-              data: {
-                id: "child",
-                content: [message([{ type: "text", data: { text: "hidden" } }])],
-              },
-            },
-          ]),
+          message([{ type: "forward", data: { id: "child", content: [message([{ type: "text", data: { text: "hidden" } }])] } }]),
         ]),
       },
     });
@@ -368,9 +327,7 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({ internal: { _request: request } });
     const tool = (await runtime.getTools()).find((item) => item.name === "onebot_create_reaction")!;
 
-    await expect(tool.execute?.({ messageId: "message-id", emojiId: "128077" }, {} as never)).resolves.toEqual({
-      status: "ok",
-    });
+    await expect(tool.execute?.({ messageId: "message-id", emojiId: "128077" }, {} as never)).resolves.toEqual({ status: "ok" });
   });
 
   it("fails essence calls when OneBot internals are unavailable", async () => {
@@ -385,9 +342,7 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({ internal: { setEssenceMsg } });
     const tool = (await runtime.getTools()).find((item) => item.name === "onebot_set_essence")!;
 
-    await expect(tool.execute?.({ messageId: "message-id" }, {} as never)).resolves.toEqual({
-      success: true,
-    });
+    await expect(tool.execute?.({ messageId: "message-id" }, {} as never)).resolves.toEqual({ success: true });
   });
 
   it("hides group management tools unless selected", async () => {
@@ -406,23 +361,11 @@ describe("onebot-utils plugin", () => {
     const banTool = tools.find((tool) => tool.name === "onebot_ban_user")!;
     const unbanTool = tools.find((tool) => tool.name === "onebot_unban_user")!;
 
-    await expect(banTool.execute?.({ userId: "123", duration: 60 }, {} as never)).resolves.toEqual({
-      success: true,
-    });
-    await expect(unbanTool.execute?.({ userId: "123" }, {} as never)).resolves.toEqual({
-      success: true,
-    });
+    await expect(banTool.execute?.({ userId: "123", duration: 60 }, {} as never)).resolves.toEqual({ success: true });
+    await expect(unbanTool.execute?.({ userId: "123" }, {} as never)).resolves.toEqual({ success: true });
 
-    expect(request).toHaveBeenNthCalledWith(1, "set_group_ban", {
-      group_id: Number("group"),
-      user_id: 123,
-      duration: 60,
-    });
-    expect(request).toHaveBeenNthCalledWith(2, "set_group_ban", {
-      group_id: Number("group"),
-      user_id: 123,
-      duration: 0,
-    });
+    expect(request).toHaveBeenNthCalledWith(1, "set_group_ban", { group_id: Number("group"), user_id: 123, duration: 60 });
+    expect(request).toHaveBeenNthCalledWith(2, "set_group_ban", { group_id: Number("group"), user_id: 123, duration: 0 });
   });
 
   it("kicks members through OneBot request internals", async () => {
@@ -430,13 +373,7 @@ describe("onebot-utils plugin", () => {
     const runtime = await createRuntime({ internal: { _request: request } }, { enabledTools: ["onebot_kick_user"] });
     const tool = (await runtime.getTools()).find((item) => item.name === "onebot_kick_user")!;
 
-    await expect(tool.execute?.({ userId: "123", rejectAddRequest: true }, {} as never)).resolves.toEqual({
-      success: true,
-    });
-    expect(request).toHaveBeenCalledWith("set_group_kick", {
-      group_id: Number("group"),
-      user_id: 123,
-      reject_add_request: true,
-    });
+    await expect(tool.execute?.({ userId: "123", rejectAddRequest: true }, {} as never)).resolves.toEqual({ success: true });
+    expect(request).toHaveBeenCalledWith("set_group_kick", { group_id: Number("group"), user_id: 123, reject_add_request: true });
   });
 });

@@ -34,9 +34,7 @@ export interface GlobalBrainStoreOptions {
   readonly maxBlobBytes?: number;
   readonly now?: () => number;
   readonly createId?: () => string;
-  readonly logger?: {
-    warn(message: string, context?: Record<string, unknown>): void;
-  };
+  readonly logger?: { warn(message: string, context?: Record<string, unknown>): void };
 }
 
 export interface BrainDepositInput {
@@ -161,10 +159,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
           const record = parseRecord(JSON.parse(line) as unknown);
           if (record) applyRecord(record);
         } catch (cause) {
-          warn("global_brain.invalid_record", {
-            line: index + 1,
-            cause: cause instanceof Error ? cause.message : String(cause),
-          });
+          warn("global_brain.invalid_record", { line: index + 1, cause: cause instanceof Error ? cause.message : String(cause) });
         }
       }
     } catch (cause) {
@@ -288,11 +283,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
           throw new BrainStoreError("resolve_forbidden", "Only the source session can resolve this thread");
         }
         if (thread.status === "resolved") return { ...thread, tags: [...thread.tags] };
-        const updated: BrainThread = {
-          ...thread,
-          status: "resolved" satisfies BrainStatus,
-          resolvedAt: now(),
-        };
+        const updated: BrainThread = { ...thread, status: "resolved" satisfies BrainStatus, resolvedAt: now() };
         threads.set(updated.id, updated);
         await appendRecord({ type: "thread", data: updated });
         return { ...updated, tags: [...updated.tags] };
@@ -306,10 +297,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
         return [...threads.values()]
           .filter((thread) => scopeKey(thread.sourceScope) === key)
           .sort((left, right) => right.createdAt - left.createdAt)
-          .map((thread) => ({
-            thread: { ...thread, tags: [...thread.tags] },
-            replyCount: readReplies(thread.id).length,
-          }));
+          .map((thread) => ({ thread: { ...thread, tags: [...thread.tags] }, replyCount: readReplies(thread.id).length }));
       });
     },
 
@@ -352,10 +340,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
         }
         return {
           threads: threadItems.map((thread) => ({ ...thread, tags: [...thread.tags] })),
-          replies: replyItems.map((item) => ({
-            thread: { ...item.thread, tags: [...item.thread.tags] },
-            replies: item.replies,
-          })),
+          replies: replyItems.map((item) => ({ thread: { ...item.thread, tags: [...item.thread.tags] }, replies: item.replies })),
         };
       });
     },

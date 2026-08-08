@@ -6,12 +6,7 @@ import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  schema: {
-    string: vi.fn<() => unknown>(),
-    number: vi.fn<() => unknown>(),
-    boolean: vi.fn<() => unknown>(),
-    object: vi.fn<() => unknown>(),
-  },
+  schema: { string: vi.fn<() => unknown>(), number: vi.fn<() => unknown>(), boolean: vi.fn<() => unknown>(), object: vi.fn<() => unknown>() },
 }));
 
 vi.mock("koishi", () => {
@@ -25,22 +20,13 @@ vi.mock("koishi", () => {
   for (const key of Object.keys(mocks.schema) as Array<keyof typeof mocks.schema>) {
     mocks.schema[key].mockImplementation(chain);
   }
-  return {
-    Context: class Context {},
-    Logger: class Logger {},
-    Schema: mocks.schema,
-  };
+  return { Context: class Context {}, Logger: class Logger {}, Schema: mocks.schema };
 });
 
 import GlobalBrainPlugin from "../src/index.js";
 
 function createLogger() {
-  return {
-    debug: vi.fn<() => void>(),
-    error: vi.fn<() => void>(),
-    info: vi.fn<() => void>(),
-    warn: vi.fn<() => void>(),
-  };
+  return { debug: vi.fn<() => void>(), error: vi.fn<() => void>(), info: vi.fn<() => void>(), warn: vi.fn<() => void>() };
 }
 
 function createMemoryAssets() {
@@ -75,9 +61,7 @@ function createContext(baseDir: string) {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      assets: {
-        createStore: vi.fn<() => ReturnType<typeof createMemoryAssets>>(() => createMemoryAssets()),
-      },
+      assets: { createStore: vi.fn<() => ReturnType<typeof createMemoryAssets>>(() => createMemoryAssets()) },
       registerChannelPlugin: vi.fn<(factory: ChannelPluginFactoryMock) => () => void>((factory) => {
         factories.push(factory);
         return dispose;
@@ -90,15 +74,7 @@ function createContext(baseDir: string) {
 }
 
 function channelContext(channelId: string) {
-  return {
-    scope: {
-      type: "shared",
-      platform: "onebot",
-      selfId: "bot-a",
-      channelId,
-    },
-    artifacts: createMemoryArtifacts(),
-  };
+  return { scope: { type: "shared", platform: "onebot", selfId: "bot-a", channelId }, artifacts: createMemoryArtifacts() };
 }
 
 async function getTools(plugin: AgentPlugin) {
@@ -169,17 +145,11 @@ describe("GlobalBrainPlugin", () => {
 
       const pluginB = factories[0]!(channelContext("group-b") as never);
       const messages = [{ role: "user" as const, content: "hello" }];
-      const prepared = await pluginB.prepareStep?.(messages, {
-        turnId: "turn-b",
-        stepNumber: 0,
-      } as never);
+      const prepared = await pluginB.prepareStep?.(messages, { turnId: "turn-b", stepNumber: 0 } as never);
       expect(JSON.stringify(prepared)).toContain("全局脑");
       expect(JSON.stringify(prepared)).toContain(created.thread.id);
 
-      const preparedAgain = await pluginB.prepareStep?.(messages, {
-        turnId: "turn-b",
-        stepNumber: 1,
-      } as never);
+      const preparedAgain = await pluginB.prepareStep?.(messages, { turnId: "turn-b", stepNumber: 1 } as never);
       expect(preparedAgain).toHaveLength(messages.length);
 
       await plugin.stop();
@@ -208,11 +178,7 @@ describe("GlobalBrainPlugin", () => {
 
       await Promise.resolve();
       expect(trigger).toHaveBeenCalledTimes(1);
-      const event = trigger.mock.calls[0]?.[0] as {
-        eventType: string;
-        channel: { id: string };
-        thread: { id: string; content: string };
-      };
+      const event = trigger.mock.calls[0]?.[0] as { eventType: string; channel: { id: string }; thread: { id: string; content: string } };
       expect(event.eventType).toBe("global-brain.immediate");
       expect(event.channel.id).toBe("group-b");
       expect(event.thread.id).toBe(created.thread.id);

@@ -8,10 +8,7 @@ describe("transformEntries hook", () => {
   it("plugin can filter entries before model context is built", async () => {
     const transformFn = vi.fn((entries: readonly AgentEntry[]) => entries.filter((entry) => entry.type === "message"));
 
-    const plugin: AgentPlugin = {
-      name: "test-transform",
-      transformEntries: transformFn,
-    };
+    const plugin: AgentPlugin = { name: "test-transform", transformEntries: transformFn };
 
     const storage = createMemoryStorage([
       createEntry("message", { role: "user", id: "m1", timestamp: 1, content: "hello" } as AgentMessage),
@@ -20,22 +17,13 @@ describe("transformEntries hook", () => {
     ]);
 
     const mockModel = {
-      doGenerate: vi.fn().mockResolvedValue({
-        text: "response",
-        finishReason: "stop",
-        usage: { promptTokens: 10, completionTokens: 5 },
-      }),
+      doGenerate: vi.fn().mockResolvedValue({ text: "response", finishReason: "stop", usage: { promptTokens: 10, completionTokens: 5 } }),
       provider: "mock",
       modelId: "mock-model",
       specificationVersion: "v1",
     } as unknown as LanguageModel;
 
-    const agent = createAgent({
-      model: mockModel,
-      storage,
-      plugins: [plugin],
-      systemPrompt: "test",
-    });
+    const agent = createAgent({ model: mockModel, storage, plugins: [plugin], systemPrompt: "test" });
 
     await agent.init();
     expect(transformFn).not.toHaveBeenCalled();
@@ -76,12 +64,7 @@ describe("transformEntries hook", () => {
       }),
     } as unknown as LanguageModel;
 
-    const agent = createAgent({
-      model: mockModel,
-      storage,
-      plugins: [filterPlugin],
-      systemPrompt: "test",
-    });
+    const agent = createAgent({ model: mockModel, storage, plugins: [filterPlugin], systemPrompt: "test" });
 
     await agent.wait();
 

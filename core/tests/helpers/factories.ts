@@ -29,11 +29,7 @@ export function deferred<T = void>() {
 
 export function outputs(...content: string[]) {
   return (async function* () {
-    yield {
-      turnId: "turn-1",
-      messageId: "assistant-1",
-      segments: content.map((text) => [h.text(text)]),
-    };
+    yield { turnId: "turn-1", messageId: "assistant-1", segments: content.map((text) => [h.text(text)]) };
   })();
 }
 

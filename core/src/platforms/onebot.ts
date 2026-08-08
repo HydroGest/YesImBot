@@ -10,10 +10,7 @@ type OneBotEventType = "notice.poke";
 
 declare module "../messages/index.js" {
   interface EventMap {
-    "notice.poke": {
-      targetId: string;
-      action: string;
-    };
+    "notice.poke": { targetId: string; action: string };
   }
 }
 
@@ -44,11 +41,7 @@ export function translateOneBotEvent(base: RecordBase, session: Session): EventR
 export async function translateOneBotMessage(ctx: Context, base: RecordBase, session: Session, resources: ChannelResources): Promise<MessageRecord | null> {
   if (session.type !== "message-created" || !Array.isArray(session.elements)) return null;
   if (typeof session.messageId !== "string" || session.messageId.length === 0) return null;
-  return {
-    ...base,
-    messageId: session.messageId,
-    elements: await persistElements(ctx, session.elements, resources),
-  };
+  return { ...base, messageId: session.messageId, elements: await persistElements(ctx, session.elements, resources) };
 }
 
 function recordBase(session: Session): RecordBase {

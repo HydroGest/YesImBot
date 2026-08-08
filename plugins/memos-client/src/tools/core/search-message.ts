@@ -16,11 +16,7 @@ export interface SearchMemoryItem {
   tags?: string[];
   confidence?: number;
   relativity?: number;
-  source?: {
-    type?: string;
-    conversationId?: string;
-    tags?: string[];
-  };
+  source?: { type?: string; conversationId?: string; tags?: string[] };
 }
 
 export type SearchMessageToolOutput =
@@ -48,11 +44,7 @@ interface SearchMemoryData {
     preference?: string;
     conversation_id?: string;
     tags?: string[];
-    source?: {
-      type?: string;
-      conversation_id?: string;
-      tags?: string[];
-    };
+    source?: { type?: string; conversation_id?: string; tags?: string[] };
   }>;
 }
 
@@ -111,16 +103,7 @@ async function searchWithIdentity(options: SearchMessageToolOptions, identity: M
     ...(response.data?.preference_detail_list ?? []).map((item) => ({
       content: item.preference ?? "",
       type: "preference" as const,
-      source: item.source
-        ? {
-            type: item.source.type,
-            tags: item.source.tags ?? item.tags,
-          }
-        : item.tags
-          ? {
-              tags: item.tags,
-            }
-          : undefined,
+      source: item.source ? { type: item.source.type, tags: item.source.tags ?? item.tags } : item.tags ? { tags: item.tags } : undefined,
     })),
   ].filter((item) => item.content.trim().length > 0);
 
@@ -133,13 +116,7 @@ export function createSearchMessageTool(options: SearchMessageToolOptions): Agen
     description: "Search relevant long-term memory before answering.",
     inputSchema: jsonSchema<SearchMessageToolInput>({
       type: "object",
-      properties: {
-        query: {
-          type: "string",
-          minLength: 1,
-          description: "Memory search query.",
-        },
-      },
+      properties: { query: { type: "string", minLength: 1, description: "Memory search query." } },
       required: ["query"],
       additionalProperties: false,
     }),

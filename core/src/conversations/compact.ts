@@ -9,10 +9,7 @@ export function filterEntriesForCompression(entries: readonly AgentEntry[]): str
     const message = entry.data as AgentMessage;
     if (message.role === "tool") continue;
     if (message.role === "custom") {
-      const custom = message as AgentMessage & {
-        type?: string;
-        data?: { user?: { id?: string; name?: string }; elements?: Element[]; text?: string };
-      };
+      const custom = message as AgentMessage & { type?: string; data?: { user?: { id?: string; name?: string }; elements?: Element[]; text?: string } };
       if (custom.type === "yesimbot.message") {
         const text = elementsText(custom.data?.elements);
         if (text) lines.push(`[${custom.data?.user?.name ?? custom.data?.user?.id ?? "user"}]: ${text}`);

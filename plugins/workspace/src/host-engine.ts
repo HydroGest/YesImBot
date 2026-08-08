@@ -48,10 +48,7 @@ type QueueEntry = {
   terminate?: (reason: TerminationReason) => void;
 };
 
-type BoundedBuffer = {
-  append(chunk: Buffer | string): void;
-  toString(): string;
-};
+type BoundedBuffer = { append(chunk: Buffer | string): void; toString(): string };
 
 function createBoundedBuffer(maxBytes: number): BoundedBuffer {
   const chunks: Buffer[] = [];
@@ -142,13 +139,7 @@ class HostRunnerImpl implements HostRunner {
     if (input.signal.aborted) return Promise.resolve(cancellationResult("abort", this.timeoutMs));
 
     return new Promise<HostCommandResult>((resolve, reject) => {
-      const entry: QueueEntry = {
-        input,
-        resolve,
-        reject,
-        state: "queued",
-        onAbort: () => this.cancel(entry, "abort"),
-      };
+      const entry: QueueEntry = { input, resolve, reject, state: "queued", onAbort: () => this.cancel(entry, "abort") };
       input.signal.addEventListener("abort", entry.onAbort, { once: true });
       this.queue.push(entry);
       this.startPump();

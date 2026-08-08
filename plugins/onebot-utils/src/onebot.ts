@@ -11,12 +11,7 @@ export interface OneBotCQCode {
 
 export interface OneBotForwardSendNode {
   readonly type: "node";
-  readonly data: {
-    readonly name: string;
-    readonly uin: string;
-    readonly content: readonly OneBotCQCode[];
-    readonly time: string;
-  };
+  readonly data: { readonly name: string; readonly uin: string; readonly content: readonly OneBotCQCode[]; readonly time: string };
 }
 
 export interface OneBotInternal {

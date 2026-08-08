@@ -80,11 +80,7 @@ export function validateRule(rule: ScheduleRuleShape, now: Date): asserts rule i
 function verifyMinCronInterval(cron: string, now: Date): void {
   let interval: CronExpression;
   try {
-    interval = CronExpressionParser.parse(cron, {
-      currentDate: now,
-      tz: SCHEDULE_TIME_ZONE,
-      strict: false,
-    });
+    interval = CronExpressionParser.parse(cron, { currentDate: now, tz: SCHEDULE_TIME_ZONE, strict: false });
   } catch {
     throw new Error("invalid cron expression");
   }

@@ -74,19 +74,8 @@ export default class MemosClientPlugin {
       };
 
       const tools: AgentTool[] = [
-        createSearchMessageTool({
-          client,
-          config: this.config,
-          resolveIdentity,
-          logger: this.logger,
-        }),
-        createAddMessageTool({
-          client,
-          config: this.config,
-          resolveIdentity,
-          now: () => new Date(),
-          logger: this.logger,
-        }),
+        createSearchMessageTool({ client, config: this.config, resolveIdentity, logger: this.logger }),
+        createAddMessageTool({ client, config: this.config, resolveIdentity, now: () => new Date(), logger: this.logger }),
       ];
 
       return {

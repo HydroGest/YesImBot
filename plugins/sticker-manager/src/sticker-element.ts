@@ -124,10 +124,9 @@ async function replaceElement(element: Element, options: StickerElementOptions):
       if (!sticker) return undefined;
       const bytes = await options.store.readBytes(sticker);
       const prepared = prepareStaticGif(bytes, sticker.mime, options.config.sendStaticAsGif);
-      const uri = await options.artifacts.forTool("sticker").put(prepared.bytes, {
-        mediaType: prepared.mediaType,
-        filename: `${sticker.id}.${extensionOf(prepared.mediaType)}`,
-      });
+      const uri = await options.artifacts
+        .forTool("sticker")
+        .put(prepared.bytes, { mediaType: prepared.mediaType, filename: `${sticker.id}.${extensionOf(prepared.mediaType)}` });
       options.artifactIds?.set(uri, sticker.id);
       await options.store.markUsed(options.scopeKey, sticker.id);
       return h("img", { src: uri });

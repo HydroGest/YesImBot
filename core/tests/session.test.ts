@@ -18,12 +18,7 @@ describe("session commands", () => {
     const commands = new Map<string, { action: Mock }>();
     const ctx = {
       command: vi.fn((name: string) => {
-        const command = {
-          subcommand: (child: string) => ctx.command(`${name}${child}`),
-          option: () => command,
-          action: vi.fn(),
-          dispose: vi.fn(),
-        };
+        const command = { subcommand: (child: string) => ctx.command(`${name}${child}`), option: () => command, action: vi.fn(), dispose: vi.fn() };
         commands.set(name, command);
         return command;
       }),
@@ -57,10 +52,7 @@ describe("session commands", () => {
     await conversation.switch(first.filename);
     expect((await conversation.status()).active?.filename).toBe(first.filename);
     expect(await conversation.storage.read()).toHaveLength(1);
-    expect((await conversation.storage.read())[0]).toMatchObject({
-      type: "message",
-      data: expect.objectContaining({ content: "hello" }),
-    });
+    expect((await conversation.storage.read())[0]).toMatchObject({ type: "message", data: expect.objectContaining({ content: "hello" }) });
   });
 
   it("rejects invalid session identifiers without changing active storage", async () => {

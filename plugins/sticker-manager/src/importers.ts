@@ -96,13 +96,7 @@ export async function importEmojiHubTxt(options: ImporterOptions, filePath: stri
       }
       const mediaType = detectImageMediaType(bytes) ?? normalizeMediaType(response.type);
       if (!mediaType) throw new Error("unsupported image");
-      const result = await options.store.save({
-        scopeKey: options.scopeKey,
-        bytes,
-        mediaType,
-        category,
-        source: { kind: "import" },
-      });
+      const result = await options.store.save({ scopeKey: options.scopeKey, bytes, mediaType, category, source: { kind: "import" } });
       if (result.status === "created") stats.success += 1;
       else stats.duplicate += 1;
     } catch (cause) {

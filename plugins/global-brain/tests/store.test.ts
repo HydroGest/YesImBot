@@ -6,19 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createGlobalBrainStore, type GlobalBrainStore } from "../src/store.js";
 
-const scopeA = {
-  type: "shared",
-  platform: "onebot",
-  selfId: "bot-a",
-  channelId: "group-a",
-};
+const scopeA = { type: "shared", platform: "onebot", selfId: "bot-a", channelId: "group-a" };
 
-const scopeB = {
-  type: "shared",
-  platform: "onebot",
-  selfId: "bot-a",
-  channelId: "group-b",
-};
+const scopeB = { type: "shared", platform: "onebot", selfId: "bot-a", channelId: "group-b" };
 
 async function makeStore(dir: string, now = 1_000): Promise<GlobalBrainStore> {
   const store = createGlobalBrainStore({
@@ -50,12 +40,7 @@ describe("GlobalBrainStore", () => {
   it("persists threads and replies and supports resolving", async () => {
     await withTempDir(async (dir) => {
       const store = await makeStore(dir);
-      const thread = await store.deposit({
-        kind: "question",
-        sourceScope: scopeA as never,
-        content: "谁手上有 XX 相关的资料？",
-        tags: ["search"],
-      });
+      const thread = await store.deposit({ kind: "question", sourceScope: scopeA as never, content: "谁手上有 XX 相关的资料？", tags: ["search"] });
 
       expect(thread.status).toBe("open");
       await expect(store.resolve(thread.id, scopeB as never)).rejects.toThrow(/source session/i);
@@ -83,23 +68,10 @@ describe("GlobalBrainStore", () => {
   it("reloads persisted threads and replies", async () => {
     await withTempDir(async (dir) => {
       const first = await makeStore(dir);
-      const thread = await first.deposit({
-        kind: "share",
-        sourceScope: scopeA as never,
-        content: "一张很对味的梗图",
-        tags: ["meme"],
-      });
-      await first.reply({
-        threadId: thread.id,
-        sourceScope: scopeB as never,
-        content: "这个确实可以发。",
-      });
+      const thread = await first.deposit({ kind: "share", sourceScope: scopeA as never, content: "一张很对味的梗图", tags: ["meme"] });
+      await first.reply({ threadId: thread.id, sourceScope: scopeB as never, content: "这个确实可以发。" });
 
-      const reopened = createGlobalBrainStore({
-        filePath: join(dir, "brain.jsonl"),
-        maxDigestThreads: 5,
-        maxDigestReplies: 5,
-      });
+      const reopened = createGlobalBrainStore({ filePath: join(dir, "brain.jsonl"), maxDigestThreads: 5, maxDigestReplies: 5 });
       await reopened.init();
 
       const view = await reopened.read(thread.id);
@@ -111,17 +83,8 @@ describe("GlobalBrainStore", () => {
   it("lists participant scopes from threads and replies", async () => {
     await withTempDir(async (dir) => {
       const store = await makeStore(dir);
-      const thread = await store.deposit({
-        kind: "share",
-        sourceScope: scopeA as never,
-        content: "shared item",
-        tags: [],
-      });
-      await store.reply({
-        threadId: thread.id,
-        sourceScope: scopeB as never,
-        content: "answer",
-      });
+      const thread = await store.deposit({ kind: "share", sourceScope: scopeA as never, content: "shared item", tags: [] });
+      await store.reply({ threadId: thread.id, sourceScope: scopeB as never, content: "answer" });
 
       const scopes = await store.participantScopes();
       expect(scopes).toEqual(expect.arrayContaining([expect.objectContaining({ channelId: "group-a" }), expect.objectContaining({ channelId: "group-b" })]));
@@ -144,12 +107,7 @@ describe("GlobalBrainStore", () => {
   it("digests new threads once and exposes replies to the source session", async () => {
     await withTempDir(async (dir) => {
       const store = await makeStore(dir);
-      const thread = await store.deposit({
-        kind: "question",
-        sourceScope: scopeA as never,
-        content: "谁有 XX 的资料？",
-        tags: ["search"],
-      });
+      const thread = await store.deposit({ kind: "question", sourceScope: scopeA as never, content: "谁有 XX 的资料？", tags: ["search"] });
 
       const firstDigest = await store.digest(scopeB as never);
       expect(firstDigest.threads.map((item) => item.id)).toEqual([thread.id]);
@@ -158,11 +116,7 @@ describe("GlobalBrainStore", () => {
       const secondDigest = await store.digest(scopeB as never);
       expect(secondDigest.threads).toHaveLength(0);
 
-      await store.reply({
-        threadId: thread.id,
-        sourceScope: scopeB as never,
-        content: "我有。",
-      });
+      await store.reply({ threadId: thread.id, sourceScope: scopeB as never, content: "我有。" });
 
       const sourceDigest = await store.digest(scopeA as never);
       expect(sourceDigest.threads).toHaveLength(0);
@@ -177,19 +131,10 @@ describe("GlobalBrainStore", () => {
   it("persists seen state across reloads", async () => {
     await withTempDir(async (dir) => {
       const store = await makeStore(dir);
-      const thread = await store.deposit({
-        kind: "share",
-        sourceScope: scopeA as never,
-        content: "一张梗图",
-        tags: ["meme"],
-      });
+      const thread = await store.deposit({ kind: "share", sourceScope: scopeA as never, content: "一张梗图", tags: ["meme"] });
       await store.digest(scopeB as never);
 
-      const reopened = createGlobalBrainStore({
-        filePath: join(dir, "brain.jsonl"),
-        maxDigestThreads: 5,
-        maxDigestReplies: 5,
-      });
+      const reopened = createGlobalBrainStore({ filePath: join(dir, "brain.jsonl"), maxDigestThreads: 5, maxDigestReplies: 5 });
       await reopened.init();
 
       const digest = await reopened.digest(scopeB as never);
@@ -202,12 +147,7 @@ describe("GlobalBrainStore", () => {
       const filePath = join(dir, "brain.jsonl");
       const warn = vi.fn<() => void>();
       await writeFile(filePath, "not-json\n", "utf8");
-      const store = createGlobalBrainStore({
-        filePath,
-        maxDigestThreads: 5,
-        maxDigestReplies: 5,
-        logger: { warn },
-      });
+      const store = createGlobalBrainStore({ filePath, maxDigestThreads: 5, maxDigestReplies: 5, logger: { warn } });
 
       await store.init();
 

@@ -9,18 +9,9 @@ import { type Will, WillPlugin } from "../src/agents/will.js";
 import type { ChannelScope } from "../src/channels/index.js";
 import { createMessage, type MessageRecord } from "../src/messages/index.js";
 
-const scope: ChannelScope = {
-  type: "shared",
-  platform: "test",
-  channelId: "room-1",
-};
+const scope: ChannelScope = { type: "shared", platform: "test", channelId: "room-1" };
 
-const directScope: ChannelScope = {
-  type: "direct",
-  platform: "test",
-  selfId: "bot-1",
-  channelId: "room-1",
-};
+const directScope: ChannelScope = { type: "direct", platform: "test", selfId: "bot-1", channelId: "room-1" };
 
 function message(channelType: Universal.Channel.Type, elements = [h.text("hello")]) {
   return createMessage({

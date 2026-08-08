@@ -17,74 +17,12 @@ const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const RESOURCE_TIMEOUT_MS = 10_000;
 
 /** Cheap pre-filter so a large binary is never downloaded; the UTF-8 check after download is authoritative. */
-const TEXT_FILE_EXTENSIONS: readonly string[] = [
-  "txt",
-  "md",
-  "markdown",
-  "rst",
-  "log",
-  "csv",
-  "tsv",
-  "json",
-  "jsonc",
-  "yaml",
-  "yml",
-  "toml",
-  "ini",
-  "conf",
-  "env",
-  "properties",
-  "xml",
-  "html",
-  "htm",
-  "css",
-  "svg",
-  "js",
-  "mjs",
-  "cjs",
-  "jsx",
-  "ts",
-  "mts",
-  "cts",
-  "tsx",
-  "vue",
-  "svelte",
-  "py",
-  "rb",
-  "rs",
-  "go",
-  "java",
-  "kt",
-  "kts",
-  "scala",
-  "swift",
-  "c",
-  "h",
-  "cpp",
-  "cc",
-  "hpp",
-  "cs",
-  "php",
-  "lua",
-  "pl",
-  "r",
-  "m",
-  "sh",
-  "bash",
-  "zsh",
-  "fish",
-  "ps1",
-  "bat",
-  "sql",
-  "graphql",
-  "proto",
-  "patch",
-  "diff",
-];
+/* prettier-ignore */
+const TEXT_FILE_EXTENSIONS: readonly string[] = [ "txt", "md", "markdown", "rst", "log", "csv", "tsv", "json", "jsonc", "yaml", "yml", "toml", "ini", "conf", "env", "properties", "xml", "html", "htm", "css", "svg", "js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "vue", "svelte", "py", "rb", "rs", "go", "java", "kt", "kts", "scala", "swift", "c", "h", "cpp", "cc", "hpp", "cs", "php", "lua", "pl", "r", "m", "sh", "bash", "zsh", "fish", "ps1", "bat", "sql", "graphql", "proto", "patch", "diff" ] as const;
 
 /** Content types that carry no signal about the real payload; the post-download checks stay authoritative. */
 const AMBIGUOUS_TYPES: readonly string[] = ["application/octet-stream", "binary/octet-stream", "application/unknown"];
-const BINARY_KINDS = ["image", "audio", "video", "font"] as const;
+const BINARY_KINDS: readonly string[] = ["image", "audio", "video", "font"] as const;
 
 interface ResourceBudget {
   images: number;
@@ -92,12 +30,12 @@ interface ResourceBudget {
   bytes: number;
 }
 
-type ResourceKind = "image" | "text";
-
 interface ResourceProbe {
   length: number | null;
   type: string | null;
 }
+
+type ResourceKind = "image" | "text";
 
 /** Persists inbound image and restricted text-file elements while the Session is live. */
 export async function persistElements(ctx: Context, elements: readonly Element[], resources: ChannelResources): Promise<Element[]> {

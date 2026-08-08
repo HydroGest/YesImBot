@@ -10,12 +10,7 @@ import type { StickerStore } from "../src/store.js";
 import { createStickerTools } from "../src/tools.js";
 import type { StickerConfig, StickerProjection } from "../src/types.js";
 
-const scope: ChannelScope = {
-  type: "shared",
-  platform: "test",
-  selfId: "bot-1",
-  channelId: "room-1",
-};
+const scope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
 
 const config: StickerConfig = {
   scope: "global",
@@ -52,10 +47,7 @@ function createDeps(overrides: Partial<StickerConfig> = {}) {
   const store = {
     listCategories: vi.fn(async () => []),
     listTags: vi.fn(async () => []),
-    save: vi.fn(async (input: { tags?: readonly string[] }) => ({
-      status: "created",
-      sticker: projection({ tags: [...(input.tags ?? [])] }),
-    })),
+    save: vi.fn(async (input: { tags?: readonly string[] }) => ({ status: "created", sticker: projection({ tags: [...(input.tags ?? [])] }) })),
     get: vi.fn(async () => null),
     search: vi.fn(async () => [projection()]),
     listByScopeKey: vi.fn(async () => [projection()]),
@@ -63,23 +55,10 @@ function createDeps(overrides: Partial<StickerConfig> = {}) {
     readBytes: vi.fn(async () => pngBytes),
     markUsed: vi.fn(async () => projection({ usageCount: 1 })),
   };
-  const classifier: StickerClassifier = {
-    classify: vi.fn(async () => ({ category: "meme", tags: ["搞笑"] })),
-  };
+  const classifier: StickerClassifier = { classify: vi.fn(async () => ({ category: "meme", tags: ["搞笑"] })) };
   const sender: StickerSender = { send: vi.fn(async () => undefined) };
-  const assets: AssetStore = {
-    put: vi.fn(async () => "a".repeat(32)),
-    get: vi.fn(async () => pngBytes),
-    clear: vi.fn(async () => undefined),
-  };
-  const tools = createStickerTools({
-    store: store as unknown as StickerStore,
-    classifier,
-    sender,
-    assets,
-    scope,
-    config: effectiveConfig,
-  });
+  const assets: AssetStore = { put: vi.fn(async () => "a".repeat(32)), get: vi.fn(async () => pngBytes), clear: vi.fn(async () => undefined) };
+  const tools = createStickerTools({ store: store as unknown as StickerStore, classifier, sender, assets, scope, config: effectiveConfig });
   return { store, classifier, sender, assets, tools };
 }
 
@@ -107,13 +86,7 @@ describe("sticker agent tools", () => {
     const result = await execute(tool, { asset_id: "a".repeat(32) });
     expect(deps.assets.get).toHaveBeenCalledWith("a".repeat(32));
     expect(deps.classifier.classify).toHaveBeenCalled();
-    expect(deps.store.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        scopeKey: "global",
-        category: "meme",
-        mediaType: "image/png",
-      }),
-    );
+    expect(deps.store.save).toHaveBeenCalledWith(expect.objectContaining({ scopeKey: "global", category: "meme", mediaType: "image/png" }));
     expect(result).toMatchObject({ ok: true, status: "created", id: "a".repeat(64) });
   });
 
@@ -213,10 +186,7 @@ describe("sticker agent tools", () => {
 
     await execute(sendTool, { sticker_id: "a".repeat(64) });
 
-    expect(deps.sender.send).toHaveBeenCalledWith({
-      bytes: expect.any(Uint8Array),
-      mediaType: "image/gif",
-    });
+    expect(deps.sender.send).toHaveBeenCalledWith({ bytes: expect.any(Uint8Array), mediaType: "image/gif" });
   });
 
   it("sticker_categories returns category summaries", async () => {

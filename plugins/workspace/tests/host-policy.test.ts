@@ -15,24 +15,9 @@ import {
 } from "../src/host-policy";
 
 const scopes = {
-  shared: {
-    type: "shared",
-    platform: "onebot",
-    selfId: "bot-1",
-    channelId: "room-1",
-  } satisfies ChannelScope,
-  other: {
-    type: "shared",
-    platform: "onebot",
-    selfId: "bot-1",
-    channelId: "room-2",
-  } satisfies ChannelScope,
-  direct: {
-    type: "direct",
-    platform: "onebot",
-    selfId: "bot-1",
-    channelId: "room-1",
-  } satisfies ChannelScope,
+  shared: { type: "shared", platform: "onebot", selfId: "bot-1", channelId: "room-1" } satisfies ChannelScope,
+  other: { type: "shared", platform: "onebot", selfId: "bot-1", channelId: "room-2" } satisfies ChannelScope,
+  direct: { type: "direct", platform: "onebot", selfId: "bot-1", channelId: "room-1" } satisfies ChannelScope,
 };
 
 const directories: string[] = [];
@@ -92,19 +77,15 @@ describe("HostPolicy channel admission", () => {
         workspaceRoot: root,
       }).checkChannel(matchingScope),
     ).toBe(false);
+    expect(createHostPolicy({ allowedChannels: [{ platform: "onebot" } as never], hostRoots: [], workspaceRoot: root }).checkChannel(matchingScope)).toBe(
+      false,
+    );
     expect(
-      createHostPolicy({
-        allowedChannels: [{ platform: "onebot" } as never],
-        hostRoots: [],
-        workspaceRoot: root,
-      }).checkChannel(matchingScope),
-    ).toBe(false);
-    expect(
-      createHostPolicy({
-        allowedChannels: [{ platform: "onebot", channelId: "room-1", selfId: "bot-1" }],
-        hostRoots: [],
-        workspaceRoot: root,
-      }).checkChannel({ type: "shared", platform: "onebot", channelId: "room-1" } as never),
+      createHostPolicy({ allowedChannels: [{ platform: "onebot", channelId: "room-1", selfId: "bot-1" }], hostRoots: [], workspaceRoot: root }).checkChannel({
+        type: "shared",
+        platform: "onebot",
+        channelId: "room-1",
+      } as never),
     ).toBe(false);
   });
 });

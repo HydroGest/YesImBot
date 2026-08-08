@@ -33,10 +33,7 @@ export interface BrainReply {
   readonly threadId: string;
   readonly sourceScope: ChannelScope;
   readonly replySource: BrainReplySource;
-  readonly author?: {
-    readonly id: string;
-    readonly name?: string;
-  };
+  readonly author?: { readonly id: string; readonly name?: string };
   readonly content: string;
   readonly createdAt: number;
 }
@@ -45,10 +42,7 @@ export interface BrainThreadView {
   readonly thread: BrainThread;
   readonly replies: readonly BrainReply[];
   readonly localAssetUri?: string;
-  readonly localForward?: {
-    readonly forwardId: string;
-    readonly sendTool: string;
-  };
+  readonly localForward?: { readonly forwardId: string; readonly sendTool: string };
 }
 
 export interface BrainImmediateShare {
@@ -80,9 +74,7 @@ export interface GlobalBrainConfig {
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
-    "global-brain.immediate": {
-      thread: BrainImmediateShare;
-    };
+    "global-brain.immediate": { thread: BrainImmediateShare };
   }
 }
 
@@ -93,17 +85,9 @@ export function buildImmediateShareEvent(scope: ChannelScope, thread: BrainThrea
     platform: scope.platform,
     selfId: scope.selfId,
     timestamp: Date.now(),
-    channel: {
-      id: scope.channelId,
-      type: scope.type === "direct" ? DIRECT_CHANNEL_TYPE : TEXT_CHANNEL_TYPE,
-    },
+    channel: { id: scope.channelId, type: scope.type === "direct" ? DIRECT_CHANNEL_TYPE : TEXT_CHANNEL_TYPE },
     text: `Global brain immediate share [${thread.kind}] ${thread.id}: ${summary}`,
-    thread: {
-      id: thread.id,
-      kind: thread.kind,
-      content: thread.content,
-      tags: [...thread.tags],
-    },
+    thread: { id: thread.id, kind: thread.kind, content: thread.content, tags: [...thread.tags] },
   };
 }
 

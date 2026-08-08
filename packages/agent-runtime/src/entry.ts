@@ -19,13 +19,7 @@ export interface AgentCustomEntries {
 export type AgentCustomEntryData<T extends keyof AgentCustomEntries = keyof AgentCustomEntries> = AgentCustomEntries[T];
 
 export type AgentEntry<T extends keyof AgentCustomEntries = keyof AgentCustomEntries> = T extends keyof AgentCustomEntries
-  ? {
-      data: AgentCustomEntryData<T>;
-      id: string;
-      parentId?: string;
-      timestamp: number;
-      type: T;
-    }
+  ? { data: AgentCustomEntryData<T>; id: string; parentId?: string; timestamp: number; type: T }
   : never;
 
 export interface CreateEntryOptions {
@@ -35,13 +29,7 @@ export interface CreateEntryOptions {
 }
 
 export function createEntry<T extends keyof AgentCustomEntries>(type: T, data: AgentCustomEntryData<T>, options: CreateEntryOptions = {}): AgentEntry<T> {
-  return {
-    id: options.id ?? createRandomId(),
-    type,
-    data,
-    timestamp: options.timestamp ?? Date.now(),
-    parentId: options.parentId,
-  } as AgentEntry<T>;
+  return { id: options.id ?? createRandomId(), type, data, timestamp: options.timestamp ?? Date.now(), parentId: options.parentId } as AgentEntry<T>;
 }
 
 export function createMessageEntry(message: AgentMessage, options: CreateEntryOptions = {}): AgentEntry<"message"> {

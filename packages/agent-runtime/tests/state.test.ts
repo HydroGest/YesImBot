@@ -28,10 +28,7 @@ describe("state manager", () => {
     const entries = await storage.read();
 
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      type: "state",
-      data: { version: 2 },
-    });
+    expect(entries[0]).toMatchObject({ type: "state", data: { version: 2 } });
     expect(entries[0].id).toMatch(UUID_REGEX);
     expect(entries[0].parentId).toBeUndefined();
   });

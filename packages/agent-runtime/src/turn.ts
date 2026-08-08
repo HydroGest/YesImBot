@@ -78,12 +78,7 @@ function createAbortError(): DOMException {
 
 export function createTurnQueue(options: TurnQueueOptions) {
   const queue: QueuedTurn[] = [];
-  const idleWaiters = new Set<{
-    resolve: () => void;
-    reject: (error: unknown) => void;
-    signal?: AbortSignal;
-    onAbort?: () => void;
-  }>();
+  const idleWaiters = new Set<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal; onAbort?: () => void }>();
 
   let active: QueuedTurn | undefined;
   let activeDone: Promise<void> | undefined;
@@ -169,16 +164,7 @@ export function createTurnQueue(options: TurnQueueOptions) {
       }
 
       return new Promise<void>((resolve, reject) => {
-        const waiter: {
-          resolve: () => void;
-          reject: (error: unknown) => void;
-          signal?: AbortSignal;
-          onAbort?: () => void;
-        } = {
-          resolve,
-          reject,
-          signal,
-        };
+        const waiter: { resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal; onAbort?: () => void } = { resolve, reject, signal };
 
         waiter.onAbort = () => {
           idleWaiters.delete(waiter);

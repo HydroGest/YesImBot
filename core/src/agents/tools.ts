@@ -7,21 +7,14 @@ import { parseReply } from "../runtimes/output.js";
 
 const READ_MAX_TEXT_CHARS = 30_000;
 
-export interface DescribeImageInput {
-  uri: string;
-  question: string;
-}
+type ResourceReadInput = { uri: string };
+type ResourceReadResult = { uri: string; filename?: string; mediaType?: string; text?: string; error?: string };
+type DescribeImageInput = { uri: string; question: string };
+type DescribeImageOutput = { text: string } | { error: string };
+type SendMessageInput = { channelId: string; content: string };
+type SendMessageOutput = { ok: true; messageIds: string[] } | { ok: false; error: { name: string; message: string } };
 
-interface SendMessageInput {
-  readonly channelId: string;
-  readonly content: string;
-}
-
-export type ResourceReadResult = { uri: string; filename?: string; mediaType?: string; text?: string; error?: string };
-export type DescribeImageOutput = { text: string } | { error: string };
-type SendMessageResult = { ok: true; messageIds: string[] } | { ok: false; error: { name: string; message: string } };
-
-export function createSendMessageTool(bot: Bot): AgentTool<SendMessageInput, SendMessageResult> {
+export function createSendMessageTool(bot: Bot): AgentTool<SendMessageInput, SendMessageOutput> {
   return {
     name: "sendMessage",
     description: "向指定频道发送一条消息。回复当前频道请直接输出文本即可。",
@@ -47,7 +40,7 @@ export function createReadTool(resources: ChannelResources, imageOutputSupported
   return {
     name: "read",
     description: readDescription(resources, imageOutputSupported),
-    inputSchema: jsonSchema<{ uri: string }>({ type: "object", properties: { uri: { type: "string", description: "要读取的资源 URI" } }, required: ["uri"] }),
+    inputSchema: jsonSchema<ResourceReadInput>({ type: "object", properties: { uri: { type: "string", description: "要读取的资源 URI" } }, required: ["uri"] }),
     execute: async ({ uri }, execution) => {
       let opened: Awaited<ReturnType<ChannelResources["openStrict"]>>;
       try {

@@ -83,11 +83,7 @@ export default class WillPolicyPlugin {
       create: ({ session }: WillEngineFactoryContext) => {
         if (session && !this.ctx.filter(session)) return;
         const resolved = resolvePolicy(this.config);
-        this.logger.debug("resolve_will_policy", {
-          engine: resolved.engine,
-          routing: resolved.routing,
-          willingness: resolved.willingness,
-        });
+        this.logger.debug("resolve_will_policy", { engine: resolved.engine, routing: resolved.routing, willingness: resolved.willingness });
         return resolved.engine === "routing" ? new PolicyRoutingEngine(resolved.routing) : new PolicyWillingnessEngine(resolved.willingness);
       },
     };

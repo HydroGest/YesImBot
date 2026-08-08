@@ -56,29 +56,12 @@ describe("Schedule domain types", () => {
     expect(schedule.channelId).toBe("room-1");
 
     // The raw fields map directly onto Core's ChannelScope vocabulary.
-    const scope: ChannelScope = {
-      type: schedule.type,
-      platform: schedule.platform,
-      selfId: schedule.selfId,
-      channelId: schedule.channelId,
-    };
-    expect(scope).toEqual({
-      type: "shared",
-      platform: "test",
-      selfId: "bot-1",
-      channelId: "room-1",
-    });
+    const scope: ChannelScope = { type: schedule.type, platform: schedule.platform, selfId: schedule.selfId, channelId: schedule.channelId };
+    expect(scope).toEqual({ type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" });
   });
 
   it("limits the due extension to schedule metadata", () => {
-    const due: EventMap["schedule.due"] = {
-      schedule: {
-        id: "schedule-1",
-        title: "Standup",
-        kind: "once",
-        scheduledFor: "2026-08-01T01:00:00.000Z",
-      },
-    };
+    const due: EventMap["schedule.due"] = { schedule: { id: "schedule-1", title: "Standup", kind: "once", scheduledFor: "2026-08-01T01:00:00.000Z" } };
 
     expect(Object.keys(due)).toEqual(["schedule"]);
     expect(due.schedule.id).toBe("schedule-1");
@@ -87,10 +70,7 @@ describe("Schedule domain types", () => {
 
   it("keeps the state and result unions narrow", () => {
     const states: readonly ScheduleState[] = ["enabled", "paused", "cancelled", "completed"];
-    const result: ScheduleLastResult = {
-      occurrenceAt: "2026-08-01T01:00:00.000Z",
-      status: "accepted",
-    };
+    const result: ScheduleLastResult = { occurrenceAt: "2026-08-01T01:00:00.000Z", status: "accepted" };
 
     expect(states).toContain("enabled");
     expect(result.status).toBe("accepted");

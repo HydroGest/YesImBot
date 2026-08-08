@@ -26,20 +26,11 @@ const MODEL_INPUT_PLUGIN: AgentPlugin = {
   enforce: "pre",
   toModelMessages: async (message) => (isMessage(message) || isEvent(message) ? [formatInput(message)] : []),
 };
-export type ChannelOutput = {
-  readonly turnId: string;
-  readonly messageId: string;
-  readonly segments: readonly Element[][];
-};
+export type ChannelOutput = { readonly turnId: string; readonly messageId: string; readonly segments: readonly Element[][] };
 export type RuntimeResult =
   | { readonly kind: "wait"; readonly eventId: string }
   | { readonly kind: "join"; readonly eventId: string; readonly turnId: string }
-  | {
-      readonly kind: "run";
-      readonly eventId: string;
-      readonly output: AsyncIterable<ChannelOutput>;
-      readonly signal: AbortSignal;
-    };
+  | { readonly kind: "run"; readonly eventId: string; readonly output: AsyncIterable<ChannelOutput>; readonly signal: AbortSignal };
 export type PostOptions = { readonly trigger?: boolean; readonly ifBusy?: "defer" | "join" | "reject" };
 
 export interface ChannelRuntimeOptions {
@@ -138,10 +129,7 @@ export class ChannelRuntime {
           messageId: eventId,
           segmentIndex: 0,
           segmentTotal: 0,
-          error: {
-            name: cause instanceof Error ? cause.name : "Error",
-            message: cause instanceof Error ? cause.message : String(cause),
-          },
+          error: { name: cause instanceof Error ? cause.name : "Error", message: cause instanceof Error ? cause.message : String(cause) },
         },
       });
       await this.agent.append(input);
@@ -154,13 +142,7 @@ export class ChannelRuntime {
   }
 
   public compact(reason: "auto" | "idle" | "manual"): Promise<unknown> {
-    return this.schedule(() =>
-      this.options.channel.conversation.compact(reason, {
-        model: this.options.model,
-        personaName: "Athena",
-        persona: this.persona,
-      }),
-    );
+    return this.schedule(() => this.options.channel.conversation.compact(reason, { model: this.options.model, personaName: "Athena", persona: this.persona }));
   }
 
   public stop(): Promise<void> {
@@ -238,6 +220,7 @@ export class ChannelRuntime {
   private state(): WillState {
     return { activeTurnId: this.agent.getActiveTurnId() };
   }
+
   private schedule<T>(task: () => Promise<T>): Promise<T> {
     const result = this.tail.then(task, task);
     this.tail = result.then(
@@ -246,9 +229,11 @@ export class ChannelRuntime {
     );
     return result;
   }
+
   private assertOpen(): void {
     if (this.stopped) throw new Error("Channel runtime is stopped");
   }
+
   private resetIdleTimer(): void {
     this.clearIdleTimer();
     if (this.stopped || !this.options.idleTimeout) return;
@@ -257,6 +242,7 @@ export class ChannelRuntime {
       if (this.agent.getActiveTurnId() === null) void this.compact("idle");
     }, this.options.idleTimeout);
   }
+
   private clearIdleTimer(): void {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);

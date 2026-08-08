@@ -25,12 +25,7 @@ vi.mock("koishi", () => {
   for (const key of Object.keys(mocks.schema) as Array<keyof typeof mocks.schema>) {
     mocks.schema[key].mockImplementation(chain);
   }
-  return {
-    Context: class Context {},
-    Logger: class Logger {},
-    Schema: mocks.schema,
-    Universal: { Channel: { Type: { DIRECT: 1 } } },
-  };
+  return { Context: class Context {}, Logger: class Logger {}, Schema: mocks.schema, Universal: { Channel: { Type: { DIRECT: 1 } } } };
 });
 
 vi.mock("koishi-plugin-yesimbot", () => ({
@@ -67,12 +62,7 @@ const config: MemosClientConfig = {
 };
 
 function createLogger() {
-  return {
-    debug: vi.fn<() => void>(),
-    error: vi.fn<() => void>(),
-    info: vi.fn<() => void>(),
-    warn: vi.fn<() => void>(),
-  };
+  return { debug: vi.fn<() => void>(), error: vi.fn<() => void>(), info: vi.fn<() => void>(), warn: vi.fn<() => void>() };
 }
 
 function createContext() {
@@ -104,25 +94,11 @@ function createContext() {
 }
 
 function channelContext() {
-  return {
-    scope: {
-      platform: "onebot",
-      selfId: "bot-raw",
-      channelId: "group-raw",
-      type: "shared",
-    },
-  };
+  return { scope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw", type: "shared" } };
 }
 
 function toolContext(turnId = "turn-real"): AgentToolExecuteContext {
-  return {
-    runtime: { id: "runtime" },
-    channel: {} as never,
-    state: {} as never,
-    storage: {} as never,
-    turnId,
-    toolCallId: "tool-call",
-  };
+  return { runtime: { id: "runtime" }, channel: {} as never, state: {} as never, storage: {} as never, turnId, toolCallId: "tool-call" };
 }
 
 async function getTools(plugin: AgentPlugin) {
@@ -186,33 +162,14 @@ describe("MemosClientPlugin", () => {
         text: "hello",
       },
     };
-    await runtimePlugin.onAppend?.(
-      [
-        {
-          id: "entry-message",
-          type: "message",
-          timestamp: message.timestamp,
-          data: message,
-        },
-      ],
-      {} as never,
-    );
+    await runtimePlugin.onAppend?.([{ id: "entry-message", type: "message", timestamp: message.timestamp, data: message }], {} as never);
     const addTool = (await getTools(runtimePlugin)).find((tool) => tool.name === "add_message");
 
     await addTool?.execute?.({ content: "Ada 偏好简洁回答。" }, toolContext("turn-real"));
 
-    const body = post.mock.calls[0]?.[1] as {
-      user_id: string;
-      conversation_id: string;
-      info: Record<string, unknown>;
-    };
+    const body = post.mock.calls[0]?.[1] as { user_id: string; conversation_id: string; info: Record<string, unknown> };
     const groupIdentity = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "bot-raw",
-        channelId: "group-raw",
-        type: "shared",
-      },
+      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw", type: "shared" },
       channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
       channelType: "group",
       authorId: "author-raw",
@@ -235,23 +192,13 @@ describe("MemosClientPlugin", () => {
 
     const directMessage = {
       ...message,
-      data: {
-        ...message.data,
-        channel: { id: "direct-raw", type: 1 },
-        user: { id: "direct-author" },
-        messageId: "direct-message",
-      },
+      data: { ...message.data, channel: { id: "direct-raw", type: 1 }, user: { id: "direct-author" }, messageId: "direct-message" },
     };
     await runtimePlugin.toModelMessages?.(directMessage as never, {} as never);
     await addTool?.execute?.({ content: "私聊偏好" }, toolContext("turn-direct"));
 
     const directIdentity = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "bot-raw",
-        channelId: "group-raw",
-        type: "shared",
-      },
+      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw", type: "shared" },
       channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
       channelType: "group",
       authorId: "direct-author",
@@ -261,10 +208,7 @@ describe("MemosClientPlugin", () => {
       includeRawIdentityInfo: false,
     });
     const directBody = post.mock.calls[1]?.[1] as { user_id: string; conversation_id: string };
-    expect(directBody).toMatchObject({
-      user_id: directIdentity.userId,
-      conversation_id: directIdentity.conversationId,
-    });
+    expect(directBody).toMatchObject({ user_id: directIdentity.userId, conversation_id: directIdentity.conversationId });
   });
 
   it("ignores events, unsupported schemas, and ordinary Agent messages", async () => {
@@ -290,17 +234,7 @@ describe("MemosClientPlugin", () => {
         text: "hello",
       },
     };
-    await runtimePlugin.onAppend?.(
-      [
-        {
-          id: "entry-message",
-          type: "message",
-          timestamp: message.timestamp,
-          data: message,
-        },
-      ],
-      {} as never,
-    );
+    await runtimePlugin.onAppend?.([{ id: "entry-message", type: "message", timestamp: message.timestamp, data: message }], {} as never);
     await runtimePlugin.toModelMessages?.(
       {
         ...message,
@@ -311,11 +245,7 @@ describe("MemosClientPlugin", () => {
           platform: "onebot",
           selfId: "bot-raw",
           channel: { id: "group-raw", type: 0 },
-          delivery: {
-            turnId: "turn-failed",
-            messageId: "assistant-message",
-            error: { name: "Error", message: "offline" },
-          },
+          delivery: { turnId: "turn-failed", messageId: "assistant-message", error: { name: "Error", message: "offline" } },
         },
       } as never,
       {} as never,
@@ -328,12 +258,7 @@ describe("MemosClientPlugin", () => {
     await addTool?.execute?.({ content: "仍归属原作者" }, toolContext("turn-real"));
 
     const expected = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "bot-raw",
-        channelId: "group-raw",
-        type: "shared",
-      },
+      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw", type: "shared" },
       channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
       channelType: "group",
       authorId: "author-raw",
@@ -342,15 +267,8 @@ describe("MemosClientPlugin", () => {
       memoryScope: "auto",
       includeRawIdentityInfo: false,
     });
-    const body = post.mock.calls[0]?.[1] as {
-      user_id: string;
-      conversation_id: string;
-      info: Record<string, unknown>;
-    };
-    expect(body).toMatchObject({
-      user_id: expected.userId,
-      conversation_id: expected.conversationId,
-    });
+    const body = post.mock.calls[0]?.[1] as { user_id: string; conversation_id: string; info: Record<string, unknown> };
+    expect(body).toMatchObject({ user_id: expected.userId, conversation_id: expected.conversationId });
     expect(body.info.author_hash).toBe(expected.info.author_hash);
     expect(body.info.message_hash).toBe(expected.info.message_hash);
   });

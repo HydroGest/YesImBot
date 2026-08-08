@@ -41,10 +41,7 @@ describe("createDescribeImageTool", () => {
     } as never);
     const tool = createDescribeImageTool({} as never, resources);
 
-    const result = await tool.execute({ uri: `asset://${id}`, question: "图片里有什么？" }, {
-      toolCallId: "call",
-      abortSignal: undefined,
-    } as never);
+    const result = await tool.execute({ uri: `asset://${id}`, question: "图片里有什么？" }, { toolCallId: "call", abortSignal: undefined } as never);
 
     expect(result).toEqual({ text: "一只猫在沙发上" });
     const options = vi.mocked(generateText).mock.calls[0]![0] as {
@@ -65,12 +62,9 @@ describe("createDescribeImageTool", () => {
     await expect(tool.execute({ uri: "asset://SHORT", question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({
       error: "invalid_uri",
     });
-    await expect(
-      tool.execute({ uri: "artifact://mcp/x", question: "什么" }, {
-        toolCallId: "call",
-        abortSignal: undefined,
-      } as never),
-    ).resolves.toEqual({ error: "invalid_uri" });
+    await expect(tool.execute({ uri: "artifact://mcp/x", question: "什么" }, { toolCallId: "call", abortSignal: undefined } as never)).resolves.toEqual({
+      error: "invalid_uri",
+    });
     expect(get).not.toHaveBeenCalled();
   });
 
