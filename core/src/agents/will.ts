@@ -8,7 +8,7 @@ export interface WillState {
   readonly activeTurnId: string | null;
 }
 
-export interface Will {
+export interface WillEngine {
   decide(input: Message | Event, state: WillState): Awaitable<"wait" | "trigger">;
   observe?(result: TurnResult): Awaitable<void>;
 }
@@ -16,10 +16,10 @@ export interface Will {
 export interface WillPlugin {
   readonly priority: number;
   match(session: Session): boolean;
-  init(scope: ChannelScope): Awaitable<Will>;
+  setup(scope: ChannelScope): Awaitable<WillEngine>;
 }
 
-export const defaultWill: Will = {
+export const defaultWillEngine: WillEngine = {
   decide(input: Message | Event, _state: WillState): "wait" | "trigger" {
     if (!isMessage(input)) return "wait";
     if (input.data.channel.type === (1 satisfies Universal.Channel.Type)) return "trigger";

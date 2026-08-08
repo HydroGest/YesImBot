@@ -1,6 +1,8 @@
-import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
-import { Context, h, Logger, Schema, type Bot, type Element } from "koishi";
-import { persistElements, type AssetStore, type ChannelPluginContext, type ChannelPluginFactory, type ChannelScope } from "koishi-plugin-yesimbot";
+import type { ReadableStream } from "node:stream/web";
+
+import { jsonSchema, type AgentPlugin, type AgentTool } from "@yesimbot/agent-runtime";
+import { Context, Logger, Schema, type Bot } from "koishi";
+import type { ChannelResources, ChannelScope } from "koishi-plugin-yesimbot";
 
 import { projectAnimatedImages } from "./animated-image.js";
 import { createForwardReader, type ForwardImageRequest, type ForwardResult, type ForwardToolInput } from "./forward.js";
@@ -8,6 +10,8 @@ import type { OneBotCQCode, OneBotForwardSendNode, OneBotInternal, OneBotSenderI
 
 const ONEBOT_INTERNAL_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 协议内部接口";
 const ONEBOT_REQUEST_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 请求接口";
+const MAX_FORWARD_IMAGE_BYTES = 5 * 1024 * 1024;
+const FORWARD_IMAGE_TIMEOUT_MS = 10_000;
 const MAX_FORWARD_IMAGES_PER_PERSIST_BATCH = 4;
 const TOOLS = {
   GET_FORWARD_MESSAGE: "onebot_get_forward_message",
@@ -76,7 +80,18 @@ export default class OnebotUtilsPlugin {
   }
 
   public async start(): Promise<void> {
-    this.dispose = this.ctx.yesimbot.registerChannelPlugin(createOneBotPluginFactory(this.ctx, this.config));
+    this.dispose = this.ctx.yesimbot.agent.use(this);
+  }
+
+  public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin | null> {
+    if (scope.platform !== "onebot") return null;
+    const resources = await this.ctx.yesimbot.resource.get(scope);
+    return {
+      name: "onebot-utils",
+      tools: createOneBotTools(this.ctx, bot, this.config, scope, resources),
+      onAppend: (entries) => projectAnimatedImages(entries, { attachImageSummary: this.config.attachImageSummary }),
+      transformEntries: (entries) => projectAnimatedImages(entries, { attachImageSummary: this.config.attachImageSummary }),
+    } satisfies AgentPlugin;
   }
 
   public async stop(): Promise<void> {
@@ -141,7 +156,7 @@ function directChannelId(channelId: string): string {
 async function persistForwardImages(
   ctx: Context,
   internal: OneBotInternal,
-  assets: AssetStore,
+  resources: ChannelResources,
   images: readonly ForwardImageRequest[],
 ): Promise<ReadonlyMap<string, string>> {
   const resolved = await Promise.all(
@@ -157,26 +172,63 @@ async function persistForwardImages(
   const assetIds = new Map<string, string>();
   for (let offset = 0; offset < resolved.length; offset += MAX_FORWARD_IMAGES_PER_PERSIST_BATCH) {
     const batch = resolved.slice(offset, offset + MAX_FORWARD_IMAGES_PER_PERSIST_BATCH);
-    const elements = batch.filter((item): item is { file: string; url: string } => item !== undefined).map(({ url }) => h("img", { src: url }));
-    if (elements.length === 0) continue;
-    let persisted: Element[];
-    try {
-      persisted = await persistElements(ctx, elements, assets);
-    } catch {
-      continue;
-    }
-    let index = 0;
-    for (const item of batch) {
-      if (!item) continue;
-      const element = persisted[index++];
-      const id = element?.attrs.id;
-      if (typeof id === "string") assetIds.set(item.file, id);
-    }
+    await Promise.all(
+      batch.map(async (item) => {
+        if (!item) return;
+        try {
+          assetIds.set(item.file, await resources.assets.put(await downloadForwardImage(ctx, item.url)));
+        } catch {}
+      }),
+    );
   }
   return assetIds;
 }
 
-function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsConfig>, scope: ChannelScope, assets: AssetStore): AgentTool[] {
+async function downloadForwardImage(ctx: Context, url: string): Promise<Uint8Array> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("Forward image download timed out")), FORWARD_IMAGE_TIMEOUT_MS);
+  try {
+    const headers = await ctx.http.head(url, { timeout: FORWARD_IMAGE_TIMEOUT_MS }).catch(() => undefined);
+    const length = headers?.get("content-length");
+    if (length && /^\d+$/.test(length) && Number(length) > MAX_FORWARD_IMAGE_BYTES) throw new Error("Forward image exceeds byte limit");
+    const type = headers?.get("content-type")?.split(";", 1)[0]?.toLowerCase();
+    if (type && !type.startsWith("image/") && type !== "application/octet-stream") throw new Error("Forward resource is not an image");
+    const response = await ctx.http(url, { responseType: "stream", signal: controller.signal });
+    return readForwardImage(response.data, controller.signal);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readForwardImage(stream: ReadableStream<Uint8Array>, signal: AbortSignal): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      signal.throwIfAborted();
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > MAX_FORWARD_IMAGE_BYTES) {
+        await reader.cancel(new Error("Forward image exceeds byte limit"));
+        throw new Error("Forward image exceeds byte limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsConfig>, scope: ChannelScope, resources: ChannelResources): AgentTool[] {
   let forwardReader: ReturnType<typeof createForwardReader> | undefined;
 
   const isGroupScope = scope.type === "shared";
@@ -196,7 +248,7 @@ function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsC
     }),
     execute: async (input) => {
       const internal = getOneBotInternal(bot);
-      forwardReader ??= createForwardReader(internal, { ...config, persistImages: (images) => persistForwardImages(ctx, internal, assets, images) });
+      forwardReader ??= createForwardReader(internal, { ...config, persistImages: (images) => persistForwardImages(ctx, internal, resources, images) });
       return forwardReader(input);
     },
   };
@@ -397,16 +449,4 @@ function toOneBotUserId(userId: string): number {
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
-}
-
-function createOneBotPluginFactory(ctx: Context, config: OnebotUtilsConfig): ChannelPluginFactory {
-  return async ({ scope, bot }: ChannelPluginContext) => {
-    if (scope.platform !== "onebot") return null;
-    return {
-      name: "onebot-utils",
-      tools: createOneBotTools(ctx, bot, config, scope, ctx.yesimbot.assets.createStore(scope)),
-      onAppend: (entries) => projectAnimatedImages(entries, { attachImageSummary: config.attachImageSummary }),
-      transformEntries: (entries) => projectAnimatedImages(entries, { attachImageSummary: config.attachImageSummary }),
-    };
-  };
 }

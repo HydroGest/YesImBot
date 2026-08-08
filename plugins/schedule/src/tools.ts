@@ -1,7 +1,6 @@
 import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
 
-import type { ScheduleStore } from "./store.js";
+import type { ScheduleStore, ScheduleScope } from "./store.js";
 import type { Schedule, ScheduleCreateInput, ScheduleProjection, ScheduleUpdateInput } from "./types.js";
 
 const CREATE_SCHEMA = jsonSchema<CreateToolInput>({
@@ -61,7 +60,7 @@ function toProjection(schedule: Schedule): ScheduleProjection {
   return { id: schedule.id, title: schedule.title, kind: schedule.kind, state: schedule.state, nextRunAt: schedule.nextRunAt, lastResult: schedule.lastResult };
 }
 
-function createTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<CreateToolInput, ScheduleProjection> {
+function createTool(scope: ScheduleScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<CreateToolInput, ScheduleProjection> {
   return {
     name: "schedule_create",
     description:
@@ -79,7 +78,7 @@ function createTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Pro
   };
 }
 
-function listTool(scope: ChannelScope, store: ScheduleStore): AgentTool<Record<string, never>, ScheduleProjection[]> {
+function listTool(scope: ScheduleScope, store: ScheduleStore): AgentTool<Record<string, never>, ScheduleProjection[]> {
   return {
     name: "schedule_list",
     description: "列出当前频道的全部定时任务，返回每个任务的紧凑信息：id、标题、类型（once/cron）、状态、下次执行时间和最近结果。",
@@ -88,7 +87,7 @@ function listTool(scope: ChannelScope, store: ScheduleStore): AgentTool<Record<s
   };
 }
 
-function updateTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<UpdateToolInput, ScheduleProjection> {
+function updateTool(scope: ScheduleScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<UpdateToolInput, ScheduleProjection> {
   return {
     name: "schedule_update",
     description: "更新当前频道一个定时任务的标题、提示词或执行规则。规则替换时 at 与 cron 至多提供一个；未提供的字段保持不变。",
@@ -106,7 +105,7 @@ function updateTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Pro
   };
 }
 
-function pauseTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<IdToolInput, ScheduleProjection> {
+function pauseTool(scope: ScheduleScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<IdToolInput, ScheduleProjection> {
   return {
     name: "schedule_pause",
     description: "暂停当前频道一个启用的定时任务：保留规则与最近结果，不再触发。",
@@ -119,7 +118,7 @@ function pauseTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Prom
   };
 }
 
-function resumeTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<IdToolInput, ScheduleProjection> {
+function resumeTool(scope: ScheduleScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<IdToolInput, ScheduleProjection> {
   return {
     name: "schedule_resume",
     description: "恢复当前频道一个已暂停的定时任务，并计算其下一个未来执行时刻。",
@@ -132,7 +131,7 @@ function resumeTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Pro
   };
 }
 
-function cancelTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<IdToolInput, ScheduleProjection> {
+function cancelTool(scope: ScheduleScope, store: ScheduleStore, rearm: (() => Promise<void>) | undefined): AgentTool<IdToolInput, ScheduleProjection> {
   return {
     name: "schedule_cancel",
     description: "取消当前频道一个启用或暂停的定时任务：本次及以后都不会再触发，记录保留为已取消。",
@@ -151,7 +150,7 @@ function cancelTool(scope: ChannelScope, store: ScheduleStore, rearm: (() => Pro
  * no schema accepts a scope, channel, or Session parameter, and every Store
  * call passes the captured scope.
  */
-export function createScheduleTools(scope: ChannelScope, store: ScheduleStore, rearm?: () => Promise<void>): AgentTool[] {
+export function createScheduleTools(scope: ScheduleScope, store: ScheduleStore, rearm?: () => Promise<void>): AgentTool[] {
   return [
     createTool(scope, store, rearm),
     listTool(scope, store),

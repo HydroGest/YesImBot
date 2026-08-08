@@ -1,9 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
-import { AgentTool, jsonSchema } from "@yesimbot/agent-runtime";
-import { Context, Logger, Schema } from "koishi";
-import type { ArtifactStore } from "koishi-plugin-yesimbot";
-import type {} from "koishi-plugin-yesimbot";
+import { jsonSchema, type AgentPlugin, type AgentTool } from "@yesimbot/agent-runtime";
+import { Context, Logger, Schema, type Bot } from "koishi";
+import type { ArtifactStore, ChannelScope } from "koishi-plugin-yesimbot";
 
 import { connectMcpServer } from "./transports.js";
 import type { McpClientConfig, McpClientTransport } from "./types.js";
@@ -72,13 +71,20 @@ export default class McpClientPlugin {
 
   private transports: Map<string, McpClientTransport> = new Map();
   private clients: Map<string, Client> = new Map();
+  private registeredTools: AgentTool[] = [];
   private disposeAgentPlugin?: () => void;
-  constructor(ctx: Context, config: McpClientConfig) {
+  public constructor(ctx: Context, config: McpClientConfig) {
     this.ctx = ctx;
     this.config = config;
     this.logger = ctx.logger("mcp-client");
     ctx.on("ready", this.start.bind(this));
     ctx.on("dispose", this.stop.bind(this));
+  }
+
+  public async setup(scope: ChannelScope, _bot: Bot): Promise<AgentPlugin> {
+    const resources = await this.ctx.yesimbot.resource.get(scope);
+    const channelTools = this.registeredTools.map((tool) => wrapToolWithArtifacts(tool, resources.artifacts));
+    return { name: "mcp-client", tools: channelTools, appendSystemPrompt: () => MCP_ARTIFACT_GUIDANCE } satisfies AgentPlugin;
   }
 
   public async start(): Promise<void> {
@@ -99,20 +105,16 @@ export default class McpClientPlugin {
     }
 
     const registry = new Map<string, { client: Client; tools: Record<string, AgentTool> }>();
-    let registeredTools: AgentTool[] = [];
 
     const publishAgentPlugin = () => {
-      registeredTools = [...registry.values()].flatMap(({ tools }) => Object.values(tools)).sort((left, right) => left.name.localeCompare(right.name));
+      this.registeredTools = [...registry.values()].flatMap(({ tools }) => Object.values(tools)).sort((left, right) => left.name.localeCompare(right.name));
 
-      for (const tool of registeredTools) {
+      for (const tool of this.registeredTools) {
         this.logger.info(`注册工具 ${tool.name}`);
       }
 
       this.disposeAgentPlugin?.();
-      this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin((context) => {
-        const channelTools = registeredTools.map((tool) => wrapToolWithArtifacts(tool, context.artifacts));
-        return { name: "mcp-client", tools: channelTools, appendSystemPrompt: () => MCP_ARTIFACT_GUIDANCE };
-      });
+      this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
     };
 
     const refreshServerTools = async (name: string, client: Client) => {

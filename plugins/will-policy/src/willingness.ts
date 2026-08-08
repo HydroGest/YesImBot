@@ -15,7 +15,7 @@ export class PolicyWillingnessEngine implements WillEngine {
     this.score = config.initialScore;
   }
 
-  public async decide(input: Message | Event, _state: WillEngine.State): Promise<WillEngine.Decision> {
+  public async decide(input: Message | Event, _state: Parameters<WillEngine["decide"]>[1]): Promise<"wait" | "trigger"> {
     if (!isMessage(input)) {
       return isPokeEvent(input) ? this.decidePoke() : "wait";
     }
@@ -34,7 +34,7 @@ export class PolicyWillingnessEngine implements WillEngine {
     return Math.random() < probability ? "trigger" : "wait";
   }
 
-  private decidePoke(): WillEngine.Decision {
+  private decidePoke(): "wait" | "trigger" {
     const now = Date.now();
     const decayed =
       this.lastDecayAt === null || this.lastMessageAt === null ? this.score : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.config);

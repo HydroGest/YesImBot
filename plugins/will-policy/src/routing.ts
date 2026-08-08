@@ -9,7 +9,7 @@ const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 export class PolicyRoutingEngine implements WillEngine {
   public constructor(private readonly config: PolicyRoutingConfig) {}
 
-  public async decide(input: Message | Event, _state: WillEngine.State): Promise<WillEngine.Decision> {
+  public async decide(input: Message | Event, _state: Parameters<WillEngine["decide"]>[1]): Promise<"wait" | "trigger"> {
     if (!isMessage(input)) {
       return isPokeEvent(input) ? this.config.poke : "wait";
     }

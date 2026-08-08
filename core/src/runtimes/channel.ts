@@ -3,7 +3,7 @@ import type { AssistantContent, LanguageModel } from "ai";
 import { type Bot, type Context, type Element, type Logger } from "koishi";
 
 import { createDescribeImageTool, createReadTool, createSendMessageTool } from "../agents/tools.js";
-import type { Will, WillState } from "../agents/will.js";
+import type { WillEngine, WillState } from "../agents/will.js";
 import type { Channel } from "../channels/index.js";
 import type { Config } from "../config.js";
 import {
@@ -36,7 +36,7 @@ export type PostOptions = { readonly trigger?: boolean; readonly ifBusy?: "defer
 export interface ChannelRuntimeOptions {
   readonly channel: Channel;
   readonly bot: Bot;
-  readonly will: Will;
+  readonly will: WillEngine;
   readonly model: LanguageModel;
   readonly visionModel?: LanguageModel;
   readonly imageOutputSupported: boolean;

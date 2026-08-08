@@ -71,7 +71,7 @@ function createContext() {
     vi.fn<() => ReturnType<typeof createLogger>>(() => scopedLogger),
     createLogger(),
   );
-  const factories: Array<(context: any) => AgentPlugin> = [];
+  const plugins: Array<{ init: (scope: unknown, bot: unknown) => AgentPlugin | null | Promise<AgentPlugin | null> }> = [];
   const dispose = vi.fn<() => void>();
   const post = vi.fn<() => Promise<{ code: number; data: { task_id: string }; message: string }>>(async () => ({
     code: 0,
@@ -83,14 +83,17 @@ function createContext() {
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      registerChannelPlugin: vi.fn<(factory: (context: any) => AgentPlugin) => () => void>((factory) => {
-        factories.push(factory);
-        return dispose;
-      }),
+      agent: {
+        use: vi.fn((plugin: (typeof plugins)[number]) => {
+          plugins.push(plugin);
+          return dispose;
+        }),
+      },
+      resource: { get: vi.fn(async () => ({ path: "/tmp", assets: {}, artifacts: {} })) },
     },
   };
 
-  return { ctx, dispose, factories, post, scopedLogger };
+  return { ctx, dispose, plugins, post, scopedLogger };
 }
 
 function channelContext() {
@@ -112,18 +115,18 @@ describe("MemosClientPlugin", () => {
 
     await plugin.start();
 
-    expect(ctx.yesimbot.registerChannelPlugin).not.toHaveBeenCalled();
+    expect(ctx.yesimbot.agent.use).not.toHaveBeenCalled();
     expect(scopedLogger.warn).toHaveBeenCalledWith("MemOS client plugin disabled: apiKey is required.");
   });
 
   it("registers exactly search_message and add_message and extends prompt policy", async () => {
-    const { ctx, factories, dispose } = createContext();
+    const { ctx, plugins, dispose } = createContext();
     const plugin = new MemosClientPlugin(ctx as never, config);
 
     await plugin.start();
 
-    expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledOnce();
-    const runtimePlugin = factories[0]!(channelContext() as never);
+    expect(ctx.yesimbot.agent.use).toHaveBeenCalledOnce();
+    const runtimePlugin = await plugins[0]!.setup(channelContext().scope, {});
     const tools = await getTools(runtimePlugin);
 
     expect(tools.map((tool) => tool.name)).toEqual(["search_message", "add_message"]);
@@ -140,12 +143,12 @@ describe("MemosClientPlugin", () => {
   });
 
   it("updates identity from supported yesimbot messages appended before model projection", async () => {
-    const { ctx, factories, post } = createContext();
+    const { ctx, plugins, post } = createContext();
     const plugin = new MemosClientPlugin(ctx as never, config);
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!(channelContext() as never);
+    const runtimePlugin = await plugins[0]!.setup(channelContext().scope, {});
     const message = {
       role: "custom",
       type: "yesimbot.message",
@@ -212,12 +215,12 @@ describe("MemosClientPlugin", () => {
   });
 
   it("ignores events, unsupported schemas, and ordinary Agent messages", async () => {
-    const { ctx, factories, post } = createContext();
+    const { ctx, plugins, post } = createContext();
     const plugin = new MemosClientPlugin(ctx as never, config);
 
     await plugin.start();
 
-    const runtimePlugin = factories[0]!(channelContext() as never);
+    const runtimePlugin = await plugins[0]!.setup(channelContext().scope, {});
     const message = {
       role: "custom",
       type: "yesimbot.message",

@@ -150,11 +150,9 @@ class MemoryDriver extends Driver<Record<string, never>> {
     delete this.indexes[table][name];
   }
 }
-
 /**
- * Creates a fixture that mocks `ctx.yesimbot` as a minimal facade with only
- * `trigger` and `registerChannelPlugin`, avoiding any dependency on the real
- * Core service, RuntimeManager, or ChannelRuntime.
+ * Creates a fixture with the current Messenger.post facade, avoiding any dependency
+ * on the real Core RuntimeManager or ChannelRuntime.
  */
 async function createFixture(): Promise<Fixture> {
   const basePath = await mkdtemp(join(tmpdir(), "yesimbot-schedule-int-"));
@@ -170,7 +168,11 @@ async function createFixture(): Promise<Fixture> {
   vi.spyOn(ctx, "middleware").mockReturnValue(vi.fn() as never);
 
   const trigger = vi.fn(async () => undefined) as Mock<(event: EventRecord) => Promise<void>>;
-  const yesimbot = { trigger, registerChannelPlugin: vi.fn(() => () => undefined) };
+  const yesimbot = {
+    agent: { use: vi.fn(() => () => undefined) },
+    resource: { get: vi.fn(async () => ({ path: basePath, assets: {}, artifacts: {} })) },
+    messenger: { post: trigger },
+  };
   Object.assign(ctx, { yesimbot });
 
   const plugin = new SchedulePlugin(ctx as never);

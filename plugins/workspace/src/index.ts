@@ -2,10 +2,11 @@ import { spawn } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import { access, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { URL } from "node:url";
 
 import type { AgentPlugin, ToolCallContext, ToolHookContext, ToolResultContext } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelResources, ChannelScope, ResourceReader } from "koishi-plugin-yesimbot";
 
 import { createBashToolSet, type WorkspaceBashBackend } from "./bash-tool";
 import { createHostRunner, type HostRunner } from "./host-engine";
@@ -77,9 +78,11 @@ export default class WorkspacePlugin {
 
   private workspaces = new Map<string, Workspace>();
   private skills: Skill[] = [];
+  private skillCatalog: readonly Skill[] = [];
+  private sandbox?: BashConfig;
   private normalizedMounts?: readonly NormalizedMountSpec[];
   private disposeAgentPlugin?: () => void;
-  private disposeSchemes: Array<() => void> = [];
+  private disposeReaders: Array<() => void> = [];
   private disposeCommands: Array<() => void> = [];
   private hostApprovalBroker?: HostApprovalBroker;
   private hostRunner?: HostRunner;
@@ -100,7 +103,7 @@ export default class WorkspacePlugin {
     await this.stopHostRunner();
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
-    for (const dispose of this.disposeSchemes.splice(0)) dispose();
+    for (const dispose of this.disposeReaders.splice(0)) dispose();
     for (const dispose of this.disposeCommands.splice(0)) dispose();
 
     const sandbox = this.getSandboxConfig();
@@ -131,35 +134,47 @@ export default class WorkspacePlugin {
       this.normalizedMounts = undefined;
     }
 
+    this.skillCatalog = skillCatalog;
+    this.sandbox = sandbox;
+    const owner = this;
     if (skillCatalog.length > 0) {
-      this.disposeSchemes.push(
-        this.ctx.yesimbot.registerResourceScheme("skill", SKILL_SCHEME_PROMPT, (scope, uri, options) =>
-          this.openSkillFromCatalog(skillCatalog, scope, uri, options),
-        ),
-      );
+      const skillReader: ResourceReader = {
+        scheme: "skill",
+        prompt: SKILL_SCHEME_PROMPT,
+        setup(resources, uri, options) {
+          return owner.openSkillFromCatalog(skillCatalog, resources, uri, options);
+        },
+      };
+      this.disposeReaders.push(this.ctx.yesimbot.resource.use(skillReader));
     }
-    this.disposeSchemes.push(this.ctx.yesimbot.registerResourceScheme("workspace", WORKSPACE_SCHEME_PROMPT, this.openWorkspace.bind(this)));
-
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope, bot }) => {
-      const runtimeSkills = skillCatalog.map((skill) => ({ ...skill }));
-      if (sandbox.mode === "host") {
-        return this.createHostAgentPlugin(scope, bot, runtimeSkills, sandbox);
-      }
-      const runtimeMounts = this.normalizedMounts;
-      return {
-        name: "workspace",
-        tools: async () => {
-          const workspace = await this.getOrCreateWorkspace(scope, sandbox, runtimeMounts);
-          return createBashToolSet(workspace);
-        },
-        appendSystemPrompt: async () => {
-          const workspace = await this.getOrCreateWorkspace(scope, sandbox, runtimeMounts);
-          return [formatWorkspacePrompt(workspace), formatSkillsForPrompt(runtimeSkills)].filter(Boolean);
-        },
-      } satisfies AgentPlugin;
-    });
+    const workspaceReader: ResourceReader = {
+      scheme: "workspace",
+      prompt: WORKSPACE_SCHEME_PROMPT,
+      setup(resources, uri, options) {
+        return owner.openWorkspace(resources, uri, options);
+      },
+    };
+    this.disposeReaders.push(this.ctx.yesimbot.resource.use(workspaceReader));
+    this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
 
     this.logger.success("Workspace plugin started");
+  }
+
+  public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin | null> {
+    const sandbox = this.sandbox;
+    if (!sandbox) return null;
+    const resources = await this.ctx.yesimbot.resource.get(scope);
+    const runtimeSkills = this.skillCatalog.map((skill) => ({ ...skill }));
+    if (sandbox.mode === "host") return this.createHostAgentPlugin(scope, bot, resources, runtimeSkills, sandbox);
+    const runtimeMounts = this.normalizedMounts;
+    return {
+      name: "workspace",
+      tools: async () => createBashToolSet(await this.getOrCreateWorkspace(scope, resources, sandbox, runtimeMounts)),
+      appendSystemPrompt: async () => {
+        const workspace = await this.getOrCreateWorkspace(scope, resources, sandbox, runtimeMounts);
+        return [formatWorkspacePrompt(workspace), formatSkillsForPrompt(runtimeSkills)].filter(Boolean);
+      },
+    } satisfies AgentPlugin;
   }
 
   public async stop(): Promise<void> {
@@ -168,11 +183,11 @@ export default class WorkspacePlugin {
     await this.stopHostRunner();
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
-    for (const dispose of this.disposeSchemes.splice(0)) dispose();
+    for (const dispose of this.disposeReaders.splice(0)) dispose();
     for (const dispose of this.disposeCommands.splice(0)) dispose();
     this.workspaces.clear();
-    this.skills.splice(0);
-    this.normalizedMounts = undefined;
+    this.skillCatalog = [];
+    this.sandbox = undefined;
     this.logger.info("Workspace plugin stopped");
   }
 
@@ -222,8 +237,8 @@ export default class WorkspacePlugin {
       return broker.reject(record.requestId, record.fingerprint, actor) ? "已拒绝" : "审批请求已失效";
     });
   }
-  private async getHostWorkspaceDir(scope: ChannelScope): Promise<string> {
-    const workspaceDir = join(await this.ctx.yesimbot.getStoragePath(scope), "workspace");
+  private async getHostWorkspaceDir(resources: ChannelResources): Promise<string> {
+    const workspaceDir = join(resources.path, "workspace");
     await mkdir(workspaceDir, { recursive: true });
     return realpath(workspaceDir);
   }
@@ -231,6 +246,7 @@ export default class WorkspacePlugin {
   private async createHostAgentPlugin(
     scope: ChannelScope,
     bot: Bot,
+    resources: ChannelResources,
     runtimeSkills: Skill[],
     config: Extract<BashConfig, { mode: "host" }>,
   ): Promise<AgentPlugin> {
@@ -239,10 +255,10 @@ export default class WorkspacePlugin {
     if (!broker) return createBlockedHostAgentPlugin("host-approval-unavailable");
     if (!admission.checkChannel(scope)) return createBlockedHostAgentPlugin("host-channel-not-allowed");
 
-    const resources = await this.createHostResources(scope, config);
-    if (!resources) return createBlockedHostAgentPlugin("host-runtime-unavailable");
+    const resourcesState = await this.createHostResources(scope, resources, config);
+    if (!resourcesState) return createBlockedHostAgentPlugin("host-runtime-unavailable");
 
-    const { workspaceDir, policy, runner } = resources;
+    const { workspaceDir, policy, runner } = resourcesState;
     const backend = createHostBackend({ scope, workspaceDir, policy, runner, identity: config.identity });
     let toolsPromise: ReturnType<typeof createBashToolSet> | undefined;
     const approvedCalls = new Map<string, { request: HostApprovalRecord; startedAt: number }>();
@@ -303,6 +319,7 @@ export default class WorkspacePlugin {
 
   private async createHostResources(
     scope: ChannelScope,
+    resources: ChannelResources,
     config: Extract<BashConfig, { mode: "host" }>,
   ): Promise<{ workspaceDir: string; policy: ReturnType<typeof createHostPolicy>; runner: HostRunner } | undefined> {
     if (!(await hostExecutionPrerequisites(config.identity))) return undefined;
@@ -310,7 +327,7 @@ export default class WorkspacePlugin {
 
     let workspaceDir: string;
     try {
-      workspaceDir = await this.getHostWorkspaceDir(scope);
+      workspaceDir = await this.getHostWorkspaceDir(resources);
     } catch {
       return undefined;
     }
@@ -337,6 +354,7 @@ export default class WorkspacePlugin {
 
   private async getOrCreateWorkspace(
     channel: ChannelScope,
+    resources: ChannelResources,
     sandbox: SandboxBashConfig,
     mounts: readonly NormalizedMountSpec[] | undefined,
   ): Promise<Workspace> {
@@ -350,7 +368,7 @@ export default class WorkspacePlugin {
       throw new Error("Workspace plugin has not been started");
     }
 
-    const workspaceRoot = join(await this.ctx.yesimbot.getStoragePath(channel), "workspace");
+    const workspaceRoot = join(resources.path, "workspace");
     await mkdir(workspaceRoot, { recursive: true });
 
     const workspace = await Workspace.create(this.createWorkspaceConfig(workspaceRoot, sandbox, mounts));
@@ -396,11 +414,11 @@ export default class WorkspacePlugin {
 
   private async openSkillFromCatalog(
     skills: readonly Skill[],
-    _scope: ChannelScope,
-    uri: string,
+    _resources: ChannelResources,
+    uri: URL,
     options: { signal: AbortSignal; maxBytes: number },
   ): Promise<{ bytes: Uint8Array; mediaType?: string; filename?: string }> {
-    const parsed = parseSkillUri(uri);
+    const parsed = parseSkillUri(uri.href);
     if (!parsed) throw new Error("Invalid skill URI");
     const skill = skills.find((candidate) => candidate.name === parsed.name);
     if (!skill) throw new Error("Skill not found");
@@ -418,13 +436,13 @@ export default class WorkspacePlugin {
   }
 
   private async openWorkspace(
-    scope: ChannelScope,
-    uri: string,
+    resources: ChannelResources,
+    uri: URL,
     options: { signal: AbortSignal; maxBytes: number },
   ): Promise<{ bytes: Uint8Array; mediaType?: string; filename?: string }> {
-    const relativePath = parseWorkspaceUri(uri);
+    const relativePath = parseWorkspaceUri(uri.href);
     if (!relativePath) throw new Error("Invalid workspace URI");
-    const root = join(await this.ctx.yesimbot.getStoragePath(scope), "workspace");
+    const root = join(resources.path, "workspace");
     const resolved = resolve(root, relativePath);
     if (!isPathContained(root, resolved)) {
       throw new Error("Workspace path escapes its root");

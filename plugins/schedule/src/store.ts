@@ -15,6 +15,8 @@ import {
 } from "./time.js";
 import type { Schedule, ScheduleCreateInput, ScheduleLastResult, ScheduleRow, ScheduleState, ScheduleUpdateInput } from "./types.js";
 
+export type ScheduleScope = ChannelScope & { readonly selfId: string };
+
 export const SCHEDULE_TABLE = "yesimbot_schedule";
 
 const SCHEDULE_FIELDS = {
@@ -52,7 +54,7 @@ export class ScheduleStore {
     this.model = model;
   }
 
-  public create(scope: ChannelScope, input: ScheduleCreateInput): Promise<Schedule> {
+  public create(scope: ScheduleScope, input: ScheduleCreateInput): Promise<Schedule> {
     return this.mutate(async () => {
       const now = new Date(Date.now());
       validateCreate(input, now);
@@ -80,14 +82,14 @@ export class ScheduleStore {
     });
   }
 
-  public list(scope: ChannelScope): Promise<Schedule[]> {
+  public list(scope: ScheduleScope): Promise<Schedule[]> {
     return this.mutate(async () => {
       const rows = await this.model.get(SCHEDULE_TABLE, scopeQuery(scope));
       return rows.map(toSchedule).sort(compareByNextRun);
     });
   }
 
-  public update(scope: ChannelScope, id: string, input: ScheduleUpdateInput): Promise<Schedule> {
+  public update(scope: ScheduleScope, id: string, input: ScheduleUpdateInput): Promise<Schedule> {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       const ruleChanged = input.kind !== undefined || input.at !== undefined || input.cron !== undefined;
@@ -126,7 +128,7 @@ export class ScheduleStore {
     });
   }
 
-  public pause(scope: ChannelScope, id: string): Promise<Schedule> {
+  public pause(scope: ScheduleScope, id: string): Promise<Schedule> {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       if (row.state !== "enabled") throw new Error(`schedule ${id} is not enabled`);
@@ -136,7 +138,7 @@ export class ScheduleStore {
     });
   }
 
-  public resume(scope: ChannelScope, id: string): Promise<Schedule> {
+  public resume(scope: ScheduleScope, id: string): Promise<Schedule> {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       if (row.state !== "paused") throw new Error(`schedule ${id} is not paused`);
@@ -153,7 +155,7 @@ export class ScheduleStore {
     });
   }
 
-  public cancel(scope: ChannelScope, id: string): Promise<Schedule> {
+  public cancel(scope: ScheduleScope, id: string): Promise<Schedule> {
     return this.mutate(async () => {
       const row = await this.fetchRow(scope, id);
       if (row.state !== "enabled" && row.state !== "paused") {
@@ -268,14 +270,14 @@ export class ScheduleStore {
     return next;
   }
 
-  private async assertEnabledCapacity(scope: ChannelScope): Promise<void> {
+  private async assertEnabledCapacity(scope: ScheduleScope): Promise<void> {
     const enabled = await this.model.get(SCHEDULE_TABLE, { ...scopeQuery(scope), state: "enabled" });
     if (enabled.length >= MAX_ENABLED_SCHEDULES) {
       throw new Error(`channel already has ${MAX_ENABLED_SCHEDULES} enabled schedules`);
     }
   }
 
-  private async fetchRow(scope: ChannelScope, id: string): Promise<ScheduleRow> {
+  private async fetchRow(scope: ScheduleScope, id: string): Promise<ScheduleRow> {
     const rows = await this.model.get(SCHEDULE_TABLE, { ...scopeQuery(scope), id });
     if (!rows.length) throw new Error(`schedule ${id} not found`);
     return rows[0];
@@ -287,7 +289,7 @@ export function registerScheduleModel(model: ScheduleModel): void {
   model.extend(SCHEDULE_TABLE, SCHEDULE_FIELDS, { primary: "id", autoInc: false });
 }
 
-function scopeQuery(scope: ChannelScope) {
+function scopeQuery(scope: ScheduleScope) {
   return { type: scope.type, platform: scope.platform, selfId: scope.selfId, channelId: scope.channelId };
 }
 

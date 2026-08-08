@@ -423,13 +423,9 @@ function isReply(value: unknown): value is BrainReply {
 
 function isScope(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
-  const scope = value as Partial<ChannelScope>;
-  return (
-    (scope.type === "shared" || scope.type === "direct") &&
-    typeof scope.platform === "string" &&
-    typeof scope.selfId === "string" &&
-    typeof scope.channelId === "string"
-  );
+  const scope = value as Record<string, unknown>;
+  if (scope.type === "shared") return typeof scope.platform === "string" && typeof scope.channelId === "string";
+  return scope.type === "direct" && typeof scope.platform === "string" && typeof scope.selfId === "string" && typeof scope.channelId === "string";
 }
 
 function requireContent(content: string): string {

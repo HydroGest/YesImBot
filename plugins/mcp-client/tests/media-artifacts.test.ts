@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   connectMcpServer: vi.fn<() => Promise<unknown>>(),
   schema: {
     array: vi.fn<() => unknown>(),
+    boolean: vi.fn<() => unknown>(),
     const: vi.fn<() => unknown>(),
     dict: vi.fn<() => unknown>(),
     intersect: vi.fn<() => unknown>(),
@@ -34,7 +35,7 @@ import McpClientPlugin from "../src/index";
 
 const PNG_BASE64 = "iVBORw0KGgo="; // decodes to a tiny PNG header
 
-type AgentPluginContext = { scope: object; bot: object; artifacts: { forTool: (toolName: string) => { put: ReturnType<typeof vi.fn> } } };
+type ArtifactWriter = { readonly put: ReturnType<typeof vi.fn> };
 
 function createContext() {
   const scopedLogger = { debug: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn(), warn: vi.fn() };
@@ -42,7 +43,7 @@ function createContext() {
     vi.fn(() => scopedLogger),
     scopedLogger,
   );
-  const factories: Array<(context: AgentPluginContext) => AgentPlugin> = [];
+  const plugins: AgentPlugin[] = [];
   const disposers: Array<() => void> = [];
   const artifactPut = vi.fn(async (bytes: Uint8Array, metadata: { mediaType?: string; filename?: string }) => {
     void bytes;
@@ -54,15 +55,18 @@ function createContext() {
     logger: rootLogger,
     on: vi.fn(),
     yesimbot: {
-      registerChannelPlugin: vi.fn((factory: (context: AgentPluginContext) => AgentPlugin) => {
-        factories.push(factory);
-        const dispose = vi.fn();
-        disposers.push(dispose);
-        return dispose;
-      }),
+      agent: {
+        use: vi.fn((plugin: AgentPlugin) => {
+          plugins.push(plugin);
+          const dispose = vi.fn();
+          disposers.push(dispose);
+          return dispose;
+        }),
+      },
+      resource: { get: vi.fn(async () => ({ path: "/tmp", assets: {}, artifacts: { forTool: artifactForTool } })) },
     },
   };
-  return { ctx, disposers, factories, artifactForTool, artifactPut };
+  return { ctx, disposers, plugins, artifactForTool, artifactPut };
 }
 
 function createClient() {
@@ -75,12 +79,13 @@ function createClient() {
 }
 
 async function buildPlugin() {
-  const { ctx, factories, artifactForTool, artifactPut } = createContext();
+  const { ctx, plugins, artifactForTool, artifactPut } = createContext();
   const client = createClient();
   mocks.connectMcpServer.mockResolvedValueOnce({ client, transport: { close: vi.fn(async () => undefined) } });
   const plugin = new McpClientPlugin(ctx as never, { mcpServers: { tools: { type: "http", url: "https://example.test/mcp" } } });
   await plugin.start();
-  const agentPlugin = factories[0]!({ scope: {}, bot: {}, artifacts: { forTool: artifactForTool } });
+  const agentPlugin = await plugins[0]!.setup({ type: "shared", platform: "test", channelId: "room" } as never, {} as never);
+  if (!agentPlugin) throw new Error("MCP runtime plugin was not created");
   return { client, agentPlugin, artifactForTool, artifactPut };
 }
 

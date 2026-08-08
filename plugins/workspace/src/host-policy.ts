@@ -218,7 +218,8 @@ function matchesRule(scope: ChannelScope, rule: HostChannelRule): boolean {
   if (scope.platform !== rule.platform && rule.platform !== "*") return false;
   if (scope.channelId !== rule.channelId && rule.channelId !== "*") return false;
   if (rule.type !== undefined && scope.type !== rule.type) return false;
-  if (rule.selfId !== undefined && (scope.selfId === undefined || (scope.selfId !== rule.selfId && rule.selfId !== "*"))) {
+  const selfId = scope.type === "direct" ? scope.selfId : undefined;
+  if (rule.selfId !== undefined && (selfId === undefined || (selfId !== rule.selfId && rule.selfId !== "*"))) {
     return false;
   }
   return true;
@@ -273,7 +274,7 @@ function originalBytesForFingerprint(input: unknown): string {
 }
 
 function makeFingerprint(scope: ChannelScope, toolName: string, cwd: string, policyRevision: string, originalCommand: string): string {
-  const normalizedScope = { type: scope.type, platform: scope.platform, channelId: scope.channelId, selfId: scope.selfId ?? null };
+  const normalizedScope = { type: scope.type, platform: scope.platform, channelId: scope.channelId, selfId: scope.type === "direct" ? scope.selfId : null };
   return createHash("sha256")
     .update(JSON.stringify({ scope: normalizedScope, toolName, cwd, policyRevision }), "utf8")
     .update("\0", "utf8")

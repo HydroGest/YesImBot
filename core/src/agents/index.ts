@@ -2,12 +2,12 @@ import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { Awaitable, Bot, Session } from "koishi";
 
 import type { ChannelScope } from "../channels/index.js";
-import { defaultWill, type Will, type WillPlugin } from "./will.js";
+import { defaultWillEngine, type WillEngine, type WillPlugin } from "./will.js";
 
 export type Disposer = () => void;
 
 export interface ChannelPlugin {
-  init(scope: ChannelScope, bot: Bot): Awaitable<AgentPlugin | null>;
+  setup(scope: ChannelScope, bot: Bot): Awaitable<AgentPlugin | null>;
 }
 
 export class Agents {
@@ -24,11 +24,11 @@ export class Agents {
     return () => this.willPlugins.delete(plugin);
   }
 
-  public async init(scope: ChannelScope, bot: Bot): Promise<AgentPlugin[]> {
+  public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin[]> {
     const initialized: AgentPlugin[] = [];
     try {
       for (const plugin of this.plugins) {
-        const result = await plugin.init(scope, bot);
+        const result = await plugin.setup(scope, bot);
         if (result) initialized.push(result);
       }
       return initialized;
@@ -42,15 +42,15 @@ export class Agents {
     }
   }
 
-  public async initWill(scope: ChannelScope, session?: Session): Promise<Will> {
-    if (!session) return defaultWill;
+  public async setupWill(scope: ChannelScope, session?: Session): Promise<WillEngine> {
+    if (!session) return defaultWillEngine;
     const plugins = [...this.willPlugins].map((plugin, index) => ({ plugin, index }));
     plugins.sort((left, right) => left.plugin.priority - right.plugin.priority || left.index - right.index);
     for (const { plugin } of plugins) {
-      if (plugin.match(session)) return plugin.init(scope);
+      if (plugin.match(session)) return plugin.setup(scope);
     }
-    return defaultWill;
+    return defaultWillEngine;
   }
 }
 
-export type { Will, WillPlugin } from "./will.js";
+export type { WillEngine, WillPlugin } from "./will.js";

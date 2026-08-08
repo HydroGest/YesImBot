@@ -20,8 +20,8 @@ async function tempRoot(prefix = "yesimbot-resource-"): Promise<string> {
   return root;
 }
 
-function reader(scheme: string, prompt: string, init: ResourceReader["init"]): ResourceReader {
-  return { scheme, prompt, init };
+function reader(scheme: string, prompt: string, setup: ResourceReader["setup"]): ResourceReader {
+  return { scheme, prompt, setup };
 }
 
 async function createResources(overrides: { readTimeoutMs?: number } = {}): Promise<ChannelResources> {
@@ -39,8 +39,8 @@ describe("ChannelResources raw open", () => {
     const resources = await createResources();
     const id = await resources.assets.put(new Uint8Array([1, 2, 3]));
     await expect(resources.open(`asset://${id}`)).resolves.toMatchObject({ bytes: new Uint8Array([1, 2, 3]) });
-    const init = vi.fn(async () => ({ bytes: new Uint8Array([4]), filename: "ok.txt" }));
-    resources.use({ scheme: "test", prompt: "test reader", init });
+    const setup = vi.fn(async () => ({ bytes: new Uint8Array([4]), filename: "ok.txt" }));
+    resources.use({ scheme: "test", prompt: "test reader", setup });
     await expect(resources.open("test://host/file")).resolves.toMatchObject({ filename: "ok.txt" });
     expect(resources.listReaders()).toHaveLength(1);
   });
@@ -171,7 +171,7 @@ describe("read tool resource errors", () => {
 });
 
 describe("prepareOutputSegments", () => {
-  async function resourcesWith(open: ResourceReader["init"], registrations: Map<string, ResourceReader> = new Map()): Promise<ChannelResources> {
+  async function resourcesWith(open: ResourceReader["setup"], registrations: Map<string, ResourceReader> = new Map()): Promise<ChannelResources> {
     const resources = await createResources();
     for (const [_scheme, r] of registrations) resources.use(r);
     if (!registrations.has("workspace")) {

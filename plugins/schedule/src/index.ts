@@ -1,10 +1,9 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
-import { Context, Logger } from "koishi";
-import type { Command, Session } from "koishi";
+import { Context, Logger, type Bot, type Command, type Session } from "koishi";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 
 import { ScheduleScheduler } from "./scheduler.js";
-import { registerScheduleModel, ScheduleStore } from "./store.js";
+import { registerScheduleModel, ScheduleStore, type ScheduleScope } from "./store.js";
 import { createScheduleTools } from "./tools.js";
 import type { Schedule, ScheduleCreateInput, ScheduleUpdateInput } from "./types.js";
 
@@ -44,14 +43,9 @@ export default class SchedulePlugin {
     if (this.started) return;
     this.started = true;
     try {
-      this.scheduler = new ScheduleScheduler(this.store, (event) => this.ctx.yesimbot.trigger(event));
+      this.scheduler = new ScheduleScheduler(this.store, this.ctx);
       await this.scheduler.start();
-      this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope }) => {
-        return {
-          name: "schedule",
-          tools: () => createScheduleTools(scope, this.store, () => this.scheduler?.rearm() ?? Promise.resolve()),
-        } satisfies AgentPlugin;
-      });
+      this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
       this.registerCommands();
       this.logger.success("Schedule plugin started");
     } catch (cause) {
@@ -62,11 +56,20 @@ export default class SchedulePlugin {
     }
   }
 
+  public setup(scope: ChannelScope, bot: Bot): AgentPlugin | null {
+    if (!this.scheduler) return null;
+    const scheduleScope = { ...scope, selfId: bot.selfId } as ScheduleScope;
+    return {
+      name: "schedule",
+      tools: () => createScheduleTools(scheduleScope, this.store, () => this.scheduler?.rearm() ?? Promise.resolve()),
+    } satisfies AgentPlugin;
+  }
   public async stop(): Promise<void> {
     this.started = false;
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
     this.scheduler?.stop();
+
     this.scheduler = undefined;
     for (const dispose of this.commandDisposers) {
       try {
@@ -179,7 +182,7 @@ export default class SchedulePlugin {
   private async stateAction(
     okPrefix: string,
     errorPrefix: string,
-    scope: ChannelScope | null,
+    scope: ScheduleScope | null,
     id: unknown,
     operation: "pause" | "resume" | "cancel",
   ): Promise<string> {
@@ -194,7 +197,7 @@ export default class SchedulePlugin {
     }
   }
 
-  private async listText(scope: ChannelScope | null): Promise<string> {
+  private async listText(scope: ScheduleScope | null): Promise<string> {
     if (!scope) return "无法获取当前频道信息";
     const schedules = await this.store.list(scope);
     if (!schedules.length) return "当前频道没有定时任务";
@@ -203,9 +206,9 @@ export default class SchedulePlugin {
 }
 
 /** Builds the current ChannelScope from the live Session fields only. */
-function scopeOf(session: Session | undefined): ChannelScope | null {
+function scopeOf(session: Session | undefined): ScheduleScope | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
-  return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId };
+  return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId } as ScheduleScope;
 }
 
 function formatSchedule(schedule: Schedule): string {

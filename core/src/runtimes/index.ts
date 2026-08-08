@@ -36,12 +36,12 @@ export class Runtimes {
       const runtime = new ChannelRuntime(this.ctx, {
         channel,
         bot,
-        will: await this.agents.initWill(channel.scope, session),
+        will: await this.agents.setupWill(channel.scope, session),
         model: chat.model,
         visionModel: vision,
         imageOutputSupported: chat.entry.modalities?.input?.includes("image") ?? false,
         config: this.config,
-        plugins: await this.agents.init(channel.scope, bot),
+        plugins: await this.agents.setup(channel.scope, bot),
         idleTimeout: this.config.session.idle.timeout,
       });
       try {

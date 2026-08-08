@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { Context, Logger, Schema, type Command } from "koishi";
-import type { WillEngineFactory, WillEngineFactoryContext } from "koishi-plugin-yesimbot";
+import { Context, Logger, Schema, type Command, type Session } from "koishi";
+import type { ChannelScope, WillEngine } from "koishi-plugin-yesimbot";
 
 import { resolvePolicy } from "./policy.js";
 import { PolicyRoutingEngine } from "./routing.js";
@@ -52,44 +52,48 @@ export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.object({
     quoteForce: Schema.boolean().default(false).description("引用时强制触发"),
     directForce: Schema.boolean().default(false).description("私聊强制触发"),
   }).description("意愿值引擎配置；仅在 engine 为 willingness 时生效"),
-  factoryPriority: Schema.number().default(1000).description("WillEngineFactory 优先级，数值小者先执行"),
-}).description("Will 与 routing 精细化策略插件");
+  priority: Schema.number().default(1000).description("WillEngine 优先级，数值小者先执行"),
+}).description("WillEngine 与 routing 精细化策略插件");
 
 export default class WillPolicyPlugin {
   public static readonly name = "yesimbot-will-policy";
   public static readonly reusable = true;
   public static readonly inject = ["yesimbot"];
-  public static readonly usage = "提供可克隆、可筛选、可组合的 Will 与 routing 策略";
+  public static readonly usage = "提供可克隆、可筛选、可组合的 WillEngine 与 routing 策略";
   public static readonly Config: Schema<WillPolicyConfig> = WillPolicyConfigSchema;
 
   public readonly ctx: Context;
   public readonly config: WillPolicyConfig;
   public readonly logger: Logger;
-  private readonly instanceId = randomUUID();
+  public readonly priority: number;
 
-  private disposeFactory?: () => void;
+  private readonly instanceId = randomUUID();
+  private disposeWillPlugin?: () => void;
 
   public constructor(ctx: Context, config: WillPolicyConfig) {
     this.ctx = ctx;
     this.config = config;
+    this.priority = config.priority ?? 1000;
     this.logger = ctx.logger("yesimbot.will-policy");
     ctx.on("ready", this.start.bind(this));
     ctx.on("dispose", this.stop.bind(this));
   }
 
   public async start(): Promise<void> {
-    const factory: WillEngineFactory = {
-      priority: this.config.factoryPriority,
-      create: ({ session }: WillEngineFactoryContext) => {
-        if (session && !this.ctx.filter(session)) return;
-        const resolved = resolvePolicy(this.config);
-        this.logger.debug("resolve_will_policy", { engine: resolved.engine, routing: resolved.routing, willingness: resolved.willingness });
-        return resolved.engine === "routing" ? new PolicyRoutingEngine(resolved.routing) : new PolicyWillingnessEngine(resolved.willingness);
-      },
-    };
-    this.disposeFactory = this.ctx.yesimbot.registerWillEngineFactory(factory);
+    this.disposeWillPlugin?.();
+    this.disposeWillPlugin = this.ctx.yesimbot.agent.will(this);
     this.registerDebugProbe();
     this.logger.success("Will policy plugin started", { instanceId: this.instanceId });
+  }
+
+  public match(session: Session): boolean {
+    return this.ctx.filter(session);
+  }
+
+  public setup(_scope: ChannelScope): WillEngine {
+    const resolved = resolvePolicy(this.config);
+    this.logger.debug("resolve_will_policy", { engine: resolved.engine, routing: resolved.routing, willingness: resolved.willingness });
+    return resolved.engine === "routing" ? new PolicyRoutingEngine(resolved.routing) : new PolicyWillingnessEngine(resolved.willingness);
   }
 
   public async stop(): Promise<void> {
@@ -101,8 +105,8 @@ export default class WillPolicyPlugin {
       DEBUG_COMMANDS.delete(root);
       DEBUG_PROBES.delete(root);
     }
-    this.disposeFactory?.();
-    this.disposeFactory = undefined;
+    this.disposeWillPlugin?.();
+    this.disposeWillPlugin = undefined;
   }
 
   private registerDebugProbe(): void {
@@ -113,7 +117,7 @@ export default class WillPolicyPlugin {
 
     let command = DEBUG_COMMANDS.get(root);
     if (!command) {
-      command = root.command(DEBUG_COMMAND_NAME, "检查当前 Will 策略实例", { authority: 4 });
+      command = root.command(DEBUG_COMMAND_NAME, "检查当前 WillEngine 策略实例", { authority: 4 });
       DEBUG_COMMANDS.set(root, command);
     }
     const debugCommand = command as DebugCommand;
@@ -128,7 +132,7 @@ export default class WillPolicyPlugin {
   }
 
   private instanceDescription(): string {
-    return [`WillPolicy[${this.instanceId.slice(0, 8)}]`, `engine=${this.config.engine}`, `priority=${this.config.factoryPriority ?? 1000}`].join(" ");
+    return [`WillPolicy[${this.instanceId.slice(0, 8)}]`, `engine=${this.config.engine}`, `priority=${this.priority}`].join(" ");
   }
 }
 

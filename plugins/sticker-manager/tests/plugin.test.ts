@@ -64,15 +64,15 @@ const config: StickerConfig = {
 describe("StickerManagerPlugin", () => {
   let ready: Array<() => Promise<void> | void> = [];
   let dispose: Array<() => Promise<void> | void> = [];
-  let factories: Factory[] = [];
-  let disposeFactory: () => void;
+  let plugins: StickerManagerPlugin[] = [];
+  let disposeAgent: () => void;
 
   afterEach(() => {
     vi.restoreAllMocks();
     ready = [];
     dispose = [];
-    factories = [];
-    disposeFactory = vi.fn();
+    plugins = [];
+    disposeAgent = vi.fn();
   });
 
   it("registers the model, AgentPlugin factory and commands on ready", async () => {
@@ -88,12 +88,20 @@ describe("StickerManagerPlugin", () => {
       model,
       command,
       yesimbot: {
-        registerChannelPlugin: vi.fn((factory: Factory) => {
-          factories.push(factory);
-          disposeFactory = vi.fn();
-          return disposeFactory;
-        }),
-        assets: { createStore: () => ({ get: vi.fn(), put: vi.fn(), clear: vi.fn() }) },
+        agent: {
+          use: vi.fn((plugin: StickerManagerPlugin) => {
+            plugins.push(plugin);
+            disposeAgent = vi.fn();
+            return disposeAgent;
+          }),
+        },
+        resource: {
+          get: vi.fn(async () => ({
+            path: process.cwd(),
+            assets: { get: vi.fn(), put: vi.fn(), clear: vi.fn() },
+            artifacts: { forTool: vi.fn(() => ({ put: vi.fn() })) },
+          })),
+        },
         model: { getDefaultChatModelId: vi.fn(), resolveChatModel: vi.fn() },
       },
     };
@@ -103,16 +111,16 @@ describe("StickerManagerPlugin", () => {
     expect(commands).toHaveLength(0);
     await ready[0]?.();
 
-    expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledOnce();
+    expect(ctx.yesimbot.agent.use).toHaveBeenCalledOnce();
     expect(commands.length).toBeGreaterThan(0);
     expect(commands.map((record) => record.name)).toContain("yesimbot.sticker.reclassify");
 
-    const agentPlugin = factories[0]!({ scope: { type: "shared", platform: "test", selfId: "bot", channelId: "room" }, bot: {} });
-    const tools = typeof agentPlugin.tools === "function" ? ((await agentPlugin.tools({} as never)) ?? []) : [];
+    const agentPlugin = await plugins[0]!.setup({ type: "shared", platform: "test", channelId: "room" }, { selfId: "bot" } as never);
+    const tools = typeof agentPlugin?.tools === "function" ? ((await agentPlugin.tools({} as never)) ?? []) : [];
     expect(tools.map((tool) => tool.name)).toEqual(["sticker_steal", "sticker_send", "sticker_categories", "sticker_search"]);
 
     await dispose[0]?.();
-    expect(disposeFactory).toHaveBeenCalledOnce();
+    expect(disposeAgent).toHaveBeenCalledOnce();
     expect(commands.every((record) => record.disposed)).toBe(true);
     void plugin;
   });

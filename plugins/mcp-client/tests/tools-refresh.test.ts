@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   connectMcpServer: vi.fn<() => Promise<unknown>>(),
   schema: {
     array: vi.fn<() => unknown>(),
+    boolean: vi.fn<() => unknown>(),
     const: vi.fn<() => unknown>(),
     dict: vi.fn<() => unknown>(),
     intersect: vi.fn<() => unknown>(),
@@ -44,23 +45,26 @@ function createContext() {
     vi.fn<() => ReturnType<typeof createLogger>>(() => scopedLogger),
     createLogger(),
   );
-  const factories: Array<() => AgentPlugin> = [];
+  const plugins: AgentPlugin[] = [];
   const disposers: Array<ReturnType<typeof vi.fn<() => void>>> = [];
   const artifactWriter = { put: vi.fn(async () => "artifact://test-tool/019d3b7e-1bd0-7e4f-9c5d-5bf3fd41f1d4") };
   const ctx = {
     logger: rootLogger,
     on: vi.fn<() => void>(),
     yesimbot: {
-      registerChannelPlugin: vi.fn<(factory: () => AgentPlugin) => () => void>((factory) => {
-        factories.push(factory);
-        const dispose = vi.fn<() => void>();
-        disposers.push(dispose);
-        return dispose;
-      }),
+      agent: {
+        use: vi.fn((plugin: AgentPlugin) => {
+          plugins.push(plugin);
+          const dispose = vi.fn<() => void>();
+          disposers.push(dispose);
+          return dispose;
+        }),
+      },
+      resource: { get: vi.fn(async () => ({ path: "/tmp", assets: {}, artifacts: { forTool: vi.fn(() => artifactWriter) } })) },
     },
   };
 
-  return { ctx, disposers, factories, artifactWriter };
+  return { ctx, disposers, plugins, artifactWriter };
 }
 
 function createClient(toolBatches: string[][]) {
@@ -97,22 +101,23 @@ async function resolveToolNames(plugin: AgentPlugin): Promise<string[]> {
 describe("mcp-client tool registry", () => {
   it("refreshes stable tools when a server reports tool list changes", async () => {
     const { client, emitToolListChanged } = createClient([["beta", "alpha"], ["gamma"]]);
-    const { ctx, disposers, factories } = createContext();
+    const { ctx, disposers, plugins } = createContext();
     mocks.connectMcpServer.mockResolvedValueOnce({ client, transport: { close: vi.fn<() => Promise<void>>() } });
 
     const plugin = new McpClientPlugin(ctx as never, { mcpServers: { docs: { type: "http", url: "https://example.test/mcp" } } });
 
     await plugin.start();
 
-    const channelContext = { scope: {}, bot: {}, artifacts: { forTool: vi.fn(() => ({ put: vi.fn() })) } } as never;
+    const channelScope = { type: "shared", platform: "test", channelId: "room" } as never;
+    const runtimePlugin = await plugins[0]!.setup(channelScope, {} as never);
     expect(client.setNotificationHandler).toHaveBeenCalledOnce();
-    expect(await resolveToolNames(factories[0]!(channelContext))).toEqual(["docs-alpha", "docs-beta"]);
+    expect(await resolveToolNames(runtimePlugin!)).toEqual(["docs-alpha", "docs-beta"]);
 
     await emitToolListChanged();
 
     expect(client.listTools).toHaveBeenCalledTimes(2);
     expect(disposers[0]).toHaveBeenCalledOnce();
-    expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledTimes(2);
-    expect(await resolveToolNames(factories[1]!(channelContext))).toEqual(["docs-gamma"]);
+    expect(ctx.yesimbot.agent.use).toHaveBeenCalledTimes(2);
+    expect(await resolveToolNames(await plugins[1]!.setup(channelScope, {} as never))).toEqual(["docs-gamma"]);
   });
 });

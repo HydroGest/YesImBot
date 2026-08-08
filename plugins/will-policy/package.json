@@ -38,8 +38,8 @@
   },
   "koishi": {
     "description": {
-      "zh": "Will 与 routing 精细化策略插件",
-      "en": "Fine-grained Will and routing policy plugin"
+      "zh": "WillEngine 与 routing 精细化策略插件",
+      "en": "Fine-grained WillEngine and routing policy plugin"
     }
   }
 }

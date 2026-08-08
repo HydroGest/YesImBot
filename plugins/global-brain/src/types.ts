@@ -78,12 +78,12 @@ declare module "koishi-plugin-yesimbot" {
   }
 }
 
-export function buildImmediateShareEvent(scope: ChannelScope, thread: BrainThread): EventRecord<"global-brain.immediate"> {
+export function buildImmediateShareEvent(scope: ChannelScope, selfId: string, thread: BrainThread): EventRecord<"global-brain.immediate"> {
   const summary = thread.content.length > 160 ? `${thread.content.slice(0, 160)}...` : thread.content;
   return {
     eventType: "global-brain.immediate",
     platform: scope.platform,
-    selfId: scope.selfId,
+    selfId,
     timestamp: Date.now(),
     channel: { id: scope.channelId, type: scope.type === "direct" ? DIRECT_CHANNEL_TYPE : TEXT_CHANNEL_TYPE },
     text: `Global brain immediate share [${thread.kind}] ${thread.id}: ${summary}`,
@@ -92,5 +92,5 @@ export function buildImmediateShareEvent(scope: ChannelScope, thread: BrainThrea
 }
 
 export function scopeKey(scope: ChannelScope): string {
-  return `${scope.type}:${scope.platform}:${scope.selfId}:${scope.channelId}`;
+  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
 }

@@ -167,7 +167,7 @@ describe("ScheduleScheduler", () => {
     registerScheduleModel(model);
     store = new ScheduleStore(model);
     trigger = vi.fn(async (_event: EventRecord) => {});
-    scheduler = new ScheduleScheduler(store, trigger);
+    scheduler = new ScheduleScheduler(store, { yesimbot: { messenger: { post: trigger } } } as never);
     vi.useFakeTimers();
     vi.setSystemTime(new Date(T0));
   });

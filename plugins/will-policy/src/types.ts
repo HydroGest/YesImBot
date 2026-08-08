@@ -40,7 +40,7 @@ export interface WillPolicyConfig {
   readonly engine: "routing" | "willingness";
   readonly routing: PolicyRoutingConfig;
   readonly willingness: PolicyWillingnessConfig;
-  readonly factoryPriority?: number;
+  readonly priority?: number;
 }
 
 export function defaultRoutingConfig(): PolicyRoutingConfig {

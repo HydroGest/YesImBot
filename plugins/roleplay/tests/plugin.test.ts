@@ -72,16 +72,19 @@ afterEach(async () => {
 describe("RoleplayPlugin", () => {
   it("chooses one random greeting for the card snapshot and renders scope-specific users", async () => {
     const path = await createCardFile();
-    const factories: Array<(context: { scope: { type: "direct" | "shared"; channelId: string } }) => unknown> = [];
+    const plugins: RoleplayPlugin[] = [];
+    const dispose = vi.fn();
     const ctx = {
       baseDir: join(path, ".."),
       logger: vi.fn(() => ({ error: vi.fn(), info: vi.fn(), success: vi.fn() })),
       on: vi.fn(),
       yesimbot: {
-        registerChannelPlugin: vi.fn((factory) => {
-          factories.push(factory);
-          return vi.fn();
-        }),
+        agent: {
+          use: vi.fn((entry: RoleplayPlugin) => {
+            plugins.push(entry);
+            return dispose;
+          }),
+        },
       },
     } as unknown as Context;
     vi.spyOn(Math, "random").mockReturnValue(0.99);
@@ -89,8 +92,8 @@ describe("RoleplayPlugin", () => {
 
     await plugin.start();
 
-    const direct = await factories[0]!({ scope: { type: "direct", channelId: "direct-user" } });
-    const shared = await factories[0]!({ scope: { type: "shared", channelId: "group" } });
+    const direct = await plugins[0]!.setup({ type: "direct", platform: "test", selfId: "bot", channelId: "direct-user" }, {} as never);
+    const shared = await plugins[0]!.setup({ type: "shared", platform: "test", channelId: "group" }, {} as never);
 
     await expect(greeting(direct as never)).resolves.toBe("Alternate direct-user");
     await expect(greeting(shared as never)).resolves.toBe("Alternate User");

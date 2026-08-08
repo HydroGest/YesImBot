@@ -37,7 +37,7 @@ describe("MemOS identity", () => {
 
     expect(botA.info.channel_hash).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
     expect(botB.info.channel_hash).toBe("a5vnf2ijd75c2ibyo2s5czdir4");
-    expect(botA.agentId).not.toBe(botB.agentId);
+    expect(botA.agentId).toBe(botB.agentId);
     expect(botA.userId).toBe(botB.userId);
     expect(botA.conversationId).toBe(botB.conversationId);
   });
@@ -84,7 +84,7 @@ describe("MemOS identity", () => {
 
     expect(identity.userId).toMatch(/^yb_subject_[A-Za-z0-9_-]{22}$/);
     expect(otherBotIdentity.userId).toBe(identity.userId);
-    expect(otherBotIdentity.agentId).not.toBe(identity.agentId);
+    expect(otherBotIdentity.agentId).toBe(identity.agentId);
     expect(identity.conversationId).toMatch(/^yb_conv_[A-Za-z0-9_-]{22}$/);
     expect(identity.agentId).toMatch(/^yb_agent_[A-Za-z0-9_-]{22}$/);
     expect(identity.info.memory_scope).toBe("channel");
@@ -188,7 +188,7 @@ describe("MemOS identity", () => {
       includeRawIdentityInfo: true,
     });
 
-    expect(identity.info).toMatchObject({ raw_channel_id: "group", raw_author_id: "user", raw_self_id: "bot", raw_message_id: "msg" });
+    expect(identity.info).toMatchObject({ raw_channel_id: "group", raw_author_id: "user", raw_self_id: "shared", raw_message_id: "msg" });
   });
 
   it("uses the Core channel identity for imported history", () => {

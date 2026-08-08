@@ -34,7 +34,7 @@ export interface ResourceOpenResult {
 export interface ResourceReader {
   readonly scheme: string;
   readonly prompt: string;
-  init(resources: ChannelResources, uri: URL, options: ResourceOpenOptions): Promise<ResourceOpenResult>;
+  setup(resources: ChannelResources, uri: URL, options: ResourceOpenOptions): Promise<ResourceOpenResult>;
 }
 
 export interface Resources {
@@ -139,7 +139,7 @@ export class ChannelResources {
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     try {
-      const result = await Promise.race([reader.init(this, uri, { signal: controller.signal, maxBytes: READ_MAX_BYTES }), timed, cancelled]);
+      const result = await Promise.race([reader.setup(this, uri, { signal: controller.signal, maxBytes: READ_MAX_BYTES }), timed, cancelled]);
       if (signal?.aborted) throw new ResourceReadError("resource_read_aborted");
       return normalize(result);
     } catch (cause) {

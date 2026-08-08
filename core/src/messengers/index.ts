@@ -39,11 +39,11 @@ export class Messenger {
         await next();
       }
     });
-    if (typeof middleware === "function") this.disposers.push(middleware as () => unknown);
+    if (typeof middleware === "function") this.disposers.push(middleware);
     const internal = ctx.on("internal/session", (session) => {
       if (session.type !== "message-created") void this.handle(session);
     });
-    if (typeof internal === "function") this.disposers.push(internal as () => unknown);
+    if (typeof internal === "function") this.disposers.push(internal);
   }
 
   public use(translator: Translator): () => void {

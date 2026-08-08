@@ -1,5 +1,5 @@
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
-import type { ChannelPluginFactory } from "koishi-plugin-yesimbot";
+import type { ChannelPlugin } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -58,25 +58,40 @@ function createContext() {
     vi.fn<() => ReturnType<typeof createLogger>>(() => scopedLogger),
     createLogger(),
   );
-  const factories: ChannelPluginFactory[] = [];
+  const plugins: ChannelPlugin[] = [];
   const dispose = vi.fn<() => void>();
+  const assets = createMemoryAssets();
+  const http = Object.assign(
+    vi.fn(async () => ({
+      data: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1]));
+          controller.close();
+        },
+      }),
+    })),
+    { head: vi.fn(async () => new Headers({ "content-type": "image/png", "content-length": "1" })) },
+  );
   const ctx = {
+    http,
     logger: rootLogger,
     on: vi.fn<(event: string, handler: () => unknown) => void>(),
     yesimbot: {
-      assets: { createStore: vi.fn<() => ReturnType<typeof createMemoryAssets>>(() => createMemoryAssets()) },
-      registerChannelPlugin: vi.fn((factory: ChannelPluginFactory) => {
-        factories.push(factory);
-        return dispose;
-      }),
+      agent: {
+        use: vi.fn((plugin: ChannelPlugin) => {
+          plugins.push(plugin);
+          return dispose;
+        }),
+      },
+      resource: { get: vi.fn(async () => ({ path: "/tmp", assets, artifacts: {} })) },
     },
   };
 
-  return { ctx, dispose, factories };
+  return { ctx, dispose, plugins };
 }
 
 function createChannelScope(overrides: Record<string, unknown> = {}) {
-  return { type: "shared", platform: "onebot", selfId: "bot", channelId: "group", ...overrides };
+  return { type: "shared", platform: "onebot", channelId: "group", ...overrides };
 }
 
 async function getTools(plugin: AgentPlugin): Promise<AgentTool[]> {
@@ -90,10 +105,11 @@ async function createRuntime(
   bot: unknown,
   config: Record<string, unknown> = {},
 ): Promise<{ getForwardTool: () => AgentTool; getTools: () => Promise<AgentTool[]> }> {
-  const { ctx, factories } = createContext();
+  const { ctx, plugins } = createContext();
   const plugin = new OnebotUtilsPlugin(ctx as never, { enabledTools: DEFAULT_ENABLED_TOOLS, ...config } as never);
   await plugin.start();
-  const runtimePlugin = await factories[0]!({ scope: createChannelScope(), bot } as never);
+  const runtimePlugin = await plugins[0]!.setup(createChannelScope() as never, bot as never);
+  if (!runtimePlugin) throw new Error("OneBot runtime plugin was not created");
   const tools = await getTools(runtimePlugin);
 
   return { getForwardTool: () => tools.find((tool) => tool.name === "onebot_get_forward_message")!, getTools: async () => tools };
@@ -108,20 +124,20 @@ const message = (segments: unknown[], overrides: Record<string, unknown> = {}) =
 });
 
 describe("onebot-utils plugin", () => {
-  it("registers exactly one factory and disposes it on stop", async () => {
-    const { ctx, dispose } = createContext();
+  it("registers exactly one named plugin and disposes it on stop", async () => {
+    const { ctx, dispose, plugins } = createContext();
     const plugin = new OnebotUtilsPlugin(ctx as never, {});
 
     await plugin.start();
     await plugin.stop();
 
-    expect(ctx.yesimbot.registerChannelPlugin).toHaveBeenCalledOnce();
+    expect(ctx.yesimbot.agent.use).toHaveBeenCalledOnce();
+    expect(plugins).toHaveLength(1);
     expect(dispose).toHaveBeenCalledOnce();
   });
 
   it("declares the enabled-tool configuration fields", () => {
     const fields = mocks.schema.object.mock.calls[0]?.[0] as Record<string, unknown>;
-
     expect(Object.keys(fields)).toEqual(["enabledTools", "parseImages", "attachImageSummary", "maxForwardPageChars"]);
     expect(mocks.schema.array).toHaveBeenCalledOnce();
     expect(mocks.schema.union).toHaveBeenCalledOnce();
@@ -131,15 +147,15 @@ describe("onebot-utils plugin", () => {
   });
 
   it("returns null for non-OneBot channels", async () => {
-    const { ctx, factories } = createContext();
+    const { ctx, plugins } = createContext();
     const plugin = new OnebotUtilsPlugin(ctx as never, {});
     await plugin.start();
 
-    await expect(factories[0]!({ scope: { platform: "discord", selfId: "bot", channelId: "channel" } } as never)).resolves.toBeNull();
+    await expect(plugins[0]!.setup({ type: "shared", platform: "discord", channelId: "channel" } as never, {} as never)).resolves.toBeNull();
   });
 
   it("exposes the migrated OneBot tools", async () => {
-    const { ctx, factories } = createContext();
+    const { ctx, plugins } = createContext();
     const plugin = new OnebotUtilsPlugin(
       ctx as never,
       {
@@ -159,11 +175,10 @@ describe("onebot-utils plugin", () => {
     );
     await plugin.start();
 
-    const runtimePlugin = await factories[0]!({ scope: createChannelScope() } as never);
+    const runtimePlugin = await plugins[0]!.setup(createChannelScope() as never, {} as never);
+    if (!runtimePlugin) throw new Error("OneBot runtime plugin was not created");
     const tools = await getTools(runtimePlugin);
-
     const names = tools.map((tool) => tool.name);
-
     expect(names).toHaveLength(10);
     expect(names).toEqual(
       expect.arrayContaining([
@@ -180,7 +195,9 @@ describe("onebot-utils plugin", () => {
       ]),
     );
   });
+});
 
+describe("onebot-utils behavior", () => {
   it("fails forward requests when OneBot internals are unavailable", async () => {
     const runtime = await createRuntime({});
 
