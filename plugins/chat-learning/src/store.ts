@@ -7,6 +7,7 @@ export interface ChatLearningStore {
   init(): Promise<void>;
   read(): ChatLearningState | undefined;
   update(next: ChatLearningState): Promise<void>;
+  clear(): Promise<void>;
 }
 
 export function createChatLearningStore(filePath: string): ChatLearningStore {
@@ -27,9 +28,10 @@ export function createChatLearningStore(filePath: string): ChatLearningStore {
       await serialize(async () => {
         try {
           const content = await readFile(filePath, "utf8");
-          state = JSON.parse(content) as ChatLearningState;
+          state = content.trim().length > 0 ? (JSON.parse(content) as ChatLearningState) : undefined;
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+          state = undefined;
         }
       });
     },
@@ -47,6 +49,12 @@ export function createChatLearningStore(filePath: string): ChatLearningStore {
         } finally {
           await rm(temporary, { force: true });
         }
+      });
+    },
+    clear() {
+      return serialize(async () => {
+        state = undefined;
+        await rm(filePath, { force: true });
       });
     },
   };

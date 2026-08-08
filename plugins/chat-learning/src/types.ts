@@ -22,6 +22,19 @@ export interface MessageLink {
   readonly evidence: readonly string[];
 }
 
+export type LinkCorrectionAction = "add" | "remove";
+
+export interface LinkCorrection {
+  readonly id: string;
+  readonly action: LinkCorrectionAction;
+  readonly from: string;
+  readonly to: string | null;
+  readonly kind: LinkKind | "*";
+  readonly confidence: number;
+  readonly createdAt: number;
+  readonly note: string | undefined;
+}
+
 export interface ConversationSegment {
   readonly id: string;
   readonly startTime: number;
@@ -46,6 +59,29 @@ export interface InitiationPattern {
   readonly sampleIds: readonly string[];
 }
 
+export type GlobalPatternKind = "response" | "initiation";
+
+export interface GlobalChannelStat {
+  readonly key: string;
+  readonly frequency: number;
+  readonly lastSeenAt: number;
+}
+
+export interface GlobalPattern {
+  readonly kind: GlobalPatternKind;
+  readonly intent: string;
+  readonly phrase: string;
+  readonly channels: readonly GlobalChannelStat[];
+  readonly firstSeenAt: number;
+  readonly lastSeenAt: number;
+}
+
+export interface GlobalRuleBank {
+  readonly version: number;
+  readonly updatedAt: number;
+  readonly patterns: readonly GlobalPattern[];
+}
+
 export interface ChatLearningState {
   readonly lastEntryId: string | undefined;
   readonly builtAt: number;
@@ -67,6 +103,11 @@ export interface ChatLearningConfig {
   readonly blockedUserIds: string[];
   readonly blockedUserPatterns: string[];
   readonly autoBlockBotNames: boolean;
+  readonly observeAllChannels: boolean;
+  readonly globalRulePath: string | undefined;
+  readonly globalSyncIntervalMinutes: number;
+  readonly minGlobalChannels: number;
+  readonly maxGlobalPatterns: number;
   readonly summaryModel: string | undefined;
 }
 

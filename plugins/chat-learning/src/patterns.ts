@@ -1,5 +1,6 @@
 import { generateText, type LanguageModel } from "ai";
 
+import { patternPhrase, sanitizeForDisplay } from "./text.js";
 import type {
   ConversationSegment,
   InitiationIntent,
@@ -28,7 +29,7 @@ export function extractPatterns(segments: readonly ConversationSegment[]): Patte
       const current = turns[index]!;
       if (current.timestamp - previous.timestamp > 120_000) continue;
       const intent = classifyResponseIntent(previous, current);
-      const phrase = extractPhrase(current.text);
+      const phrase = patternPhrase(current.text);
       if (phrase.length === 0) continue;
       const key = `${intent}:${phrase}`;
       const existing = responseCounts.get(key);
@@ -42,7 +43,7 @@ export function extractPatterns(segments: readonly ConversationSegment[]): Patte
     const starter = segment.turns[0];
     if (starter && isInitiation(starter)) {
       const intent = classifyInitiationIntent(starter);
-      const phrase = extractPhrase(starter.text);
+      const phrase = patternPhrase(starter.text);
       if (phrase.length > 0) {
         const key = `${intent}:${phrase}`;
         const existing = initiationCounts.get(key);
@@ -75,22 +76,48 @@ export function extractPatterns(segments: readonly ConversationSegment[]): Patte
   };
 }
 
-export async function enrichPatternsWithModel(
+export async function classifyPatternsWithModel(
   model: LanguageModel,
   turns: readonly MessageTurn[],
-  base: PatternSnapshot,
-): Promise<PatternSnapshot> {
-  const sampled = turns.slice(-60);
-  if (sampled.length < 6) return base;
+  segments: readonly ConversationSegment[],
+): Promise<PatternSnapshot | undefined> {
+  const sampled = turns.slice(-80);
+  if (sampled.length < 4) return undefined;
 
-  const conversation = sampled
-    .map((turn, index) => `[${index}] ${turn.userName ?? turn.userId}: ${turn.text}`)
-    .join("\n");
+  const responsePairs: Array<{ previous: MessageTurn; current: MessageTurn }> = [];
+  for (const segment of segments) {
+    for (let index = 1; index < segment.turns.length; index += 1) {
+      const previous = segment.turns[index - 1]!;
+      const current = segment.turns[index]!;
+      if (current.timestamp - previous.timestamp <= 120_000) {
+        responsePairs.push({ previous, current });
+      }
+    }
+  }
+  const initiators = segments
+    .map((segment) => segment.turns[0])
+    .filter((turn): turn is MessageTurn => turn !== undefined && !turn.quoteId)
+    .slice(0, 30);
+
+  if (responsePairs.length === 0 && initiators.length === 0) return undefined;
+
+  const conversation = [
+    "## response pairs",
+    ...responsePairs
+      .slice(0, 40)
+      .map(
+        (pair, index) =>
+          `[pair ${index}]\nA: ${sanitizeForDisplay(pair.previous.text)}\nB: ${sanitizeForDisplay(pair.current.text)}`,
+      ),
+    "## initiation messages",
+    ...initiators.map((turn, index) => `[init ${index}] ${sanitizeForDisplay(turn.text)}`),
+  ].join("\n");
   const system = [
     "你是一个群聊规律分析器。",
     "只能从给出的真实群聊消息中提取 exact phrase，禁止发明或改写。",
+    "根据上下文为每条消息选择一个最合适的 intent。",
     "返回 JSON，不要输出其他内容。",
-    '格式：{"responsePatterns":[{"intent":"agree|ack|question|joke|roast|empathy|refuse","phrase":"确实"}],"initiationPatterns":[{"intent":"share|question|react|recall|opinion","phrase":"你们看到"} ]}',
+    '格式：{"responsePatterns":[{"intent":"agree|ack|question|joke|roast|empathy|refuse","phrase":"确实"}],"initiationPatterns":[{"intent":"share|question|react|recall|opinion","phrase":"有人试过吗"}]}',
   ].join("\n");
 
   try {
@@ -101,12 +128,10 @@ export async function enrichPatternsWithModel(
       temperature: 0.1,
     });
     const parsed = parseModelPatterns(text, sampled);
-    return {
-      responsePatterns: mergePatterns(base.responsePatterns, parsed.responsePatterns),
-      initiationPatterns: mergePatterns(base.initiationPatterns, parsed.initiationPatterns),
-    };
+    if (parsed.responsePatterns.length === 0 && parsed.initiationPatterns.length === 0) return undefined;
+    return parsed;
   } catch {
-    return base;
+    return undefined;
   }
 }
 
@@ -133,26 +158,11 @@ function isInitiation(turn: MessageTurn): boolean {
   return !turn.quoteId;
 }
 
-function extractPhrase(text: string): string {
-  const cleaned = text
-    .trim()
-    .replace(/[。！!？?，,～~]+$/g, "")
-    .trim();
-  if (cleaned.length === 0) return "";
-  if (cleaned.length <= 12) return cleaned;
-  const firstClause = cleaned.split(/[，,。！!？?；;：:\n]/)[0]?.trim() ?? "";
-  if (firstClause.length >= 2 && firstClause.length <= 12) return firstClause;
-  return cleaned.slice(0, 12);
-}
-
 function byFrequency(left: { readonly frequency: number }, right: { readonly frequency: number }): number {
   return right.frequency - left.frequency;
 }
 
-function parseModelPatterns(
-  text: string,
-  sampled: readonly MessageTurn[],
-): { responsePatterns: readonly ResponsePattern[]; initiationPatterns: readonly InitiationPattern[] } {
+function parseModelPatterns(text: string, sampled: readonly MessageTurn[]): PatternSnapshot {
   const cleaned = text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -168,10 +178,10 @@ function parseModelPatterns(
     return { responsePatterns: [], initiationPatterns: [] };
   }
 
-  const seenTexts = sampled.map((turn) => turn.text);
+  const seenTexts = sampled.map((turn) => sanitizeForDisplay(turn.text));
   const isSeen = (phrase: string) => phrase.length > 0 && seenTexts.some((text) => text.includes(phrase));
 
-  const responsePatterns: ResponsePattern[] = [];
+  const responseCounts = new Map<string, { intent: ResponseIntent; phrase: string; count: number }>();
   const rawResponses = (parsed as { responsePatterns?: unknown }).responsePatterns;
   if (Array.isArray(rawResponses)) {
     for (const item of rawResponses) {
@@ -179,11 +189,13 @@ function parseModelPatterns(
       if (!isSeen(phrase)) continue;
       const intent = RESPONSE_INTENTS.find((candidate) => candidate === item?.intent);
       if (!intent) continue;
-      responsePatterns.push({ intent, phrase, frequency: 1, sampleIds: [] });
+      const key = `${intent}:${phrase}`;
+      const existing = responseCounts.get(key);
+      responseCounts.set(key, { intent, phrase, count: (existing?.count ?? 0) + 1 });
     }
   }
 
-  const initiationPatterns: InitiationPattern[] = [];
+  const initiationCounts = new Map<string, { intent: InitiationIntent; phrase: string; count: number }>();
   const rawInitiations = (parsed as { initiationPatterns?: unknown }).initiationPatterns;
   if (Array.isArray(rawInitiations)) {
     for (const item of rawInitiations) {
@@ -191,29 +203,18 @@ function parseModelPatterns(
       if (!isSeen(phrase)) continue;
       const intent = INITIATION_INTENTS.find((candidate) => candidate === item?.intent);
       if (!intent) continue;
-      initiationPatterns.push({ intent, phrase, frequency: 1, sampleIds: [] });
+      const key = `${intent}:${phrase}`;
+      const existing = initiationCounts.get(key);
+      initiationCounts.set(key, { intent, phrase, count: (existing?.count ?? 0) + 1 });
     }
   }
 
-  return { responsePatterns, initiationPatterns };
-}
-
-function mergePatterns<T extends { readonly intent: string; readonly phrase: string }>(
-  base: readonly T[],
-  model: readonly T[],
-): readonly T[] {
-  const byKey = new Map<string, T & { frequency: number }>();
-  for (const item of base) {
-    const key = `${item.intent}:${item.phrase}`;
-    byKey.set(key, { ...item, frequency: "frequency" in item ? Number(item.frequency) : 1 });
-  }
-  for (const item of model) {
-    const key = `${item.intent}:${item.phrase}`;
-    const existing = byKey.get(key);
-    byKey.set(key, {
-      ...item,
-      frequency: (existing?.frequency ?? 0) + ("frequency" in item ? Number(item.frequency) : 1),
-    });
-  }
-  return [...byKey.values()].sort((left, right) => right.frequency - left.frequency);
+  return {
+    responsePatterns: [...responseCounts.values()]
+      .map((item) => ({ intent: item.intent, phrase: item.phrase, frequency: item.count, sampleIds: [] }))
+      .sort(byFrequency),
+    initiationPatterns: [...initiationCounts.values()]
+      .map((item) => ({ intent: item.intent, phrase: item.phrase, frequency: item.count, sampleIds: [] }))
+      .sort(byFrequency),
+  };
 }

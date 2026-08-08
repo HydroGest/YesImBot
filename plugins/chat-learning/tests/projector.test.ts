@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPromptBlock, estimateTokens } from "../src/projector.js";
-import type { ChatLearningConfig, ChatLearningState, MessageLink, MessageTurn } from "../src/types.js";
+import { buildPromptBlock, escapePromptText, estimateTokens } from "../src/projector.js";
+import type { ChatLearningConfig, ChatLearningState, GlobalPattern, MessageLink, MessageTurn } from "../src/types.js";
 
 const config: ChatLearningConfig = {
   maxExamples: 2,
@@ -14,6 +14,11 @@ const config: ChatLearningConfig = {
   blockedUserIds: [],
   blockedUserPatterns: [],
   autoBlockBotNames: false,
+  observeAllChannels: false,
+  globalRulePath: undefined,
+  globalSyncIntervalMinutes: 60,
+  minGlobalChannels: 2,
+  maxGlobalPatterns: 3,
   summaryModel: undefined,
 };
 
@@ -60,6 +65,9 @@ describe("buildPromptBlock", () => {
 
     expect(block).toBeDefined();
     expect(block).toContain("<message_links>");
+    expect(block).toContain("<chat_learning_guide>");
+    expect(block).toContain("few-shot 风格样本");
+    expect(block).toContain("模仿样本中的表达节奏");
     expect(block).toContain("<local_patterns>");
     expect(block).toContain("<group_examples>");
     expect(estimateTokens(block!)).toBeLessThanOrEqual(config.maxPromptTokens);
@@ -70,5 +78,32 @@ describe("buildPromptBlock", () => {
 
     expect(block).toContain("<event_context>");
     expect(block).toContain('kind="initiation"');
+  });
+
+  it("injects cross-group global patterns when they pass the channel threshold", () => {
+    const globalPatterns: GlobalPattern[] = [
+      {
+        kind: "response",
+        intent: "agree",
+        phrase: "确实",
+        channels: [
+          { key: "a", frequency: 3, lastSeenAt: 1 },
+          { key: "b", frequency: 2, lastSeenAt: 1 },
+        ],
+        firstSeenAt: 1,
+        lastSeenAt: 1,
+      },
+    ];
+
+    const block = buildPromptBlock(state(), undefined, config, globalPatterns);
+
+    expect(block).toContain("<global_patterns>");
+    expect(block).toContain('kind="global:response"');
+  });
+
+  it("escapes prompt tags for chat preview output", () => {
+    expect(escapePromptText("<message_links>\n<edge/></message_links>")).toBe(
+      "&lt;message_links&gt;\n&lt;edge/&gt;&lt;/message_links&gt;",
+    );
   });
 });
