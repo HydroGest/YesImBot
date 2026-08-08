@@ -50,7 +50,7 @@
 
 模型标注时会把完整对话线程交给模型，由模型结合上下文逐条标注 role/intent，而不是单独标注单条消息；线程数、消息总数和字符数都有上限，避免无限消耗额度。
 
-配置 `reflectionModel` 后，插件会在 bot 的最终发言成功发送后，用该模型基于同一份群聊 few-shot 即时生成 2-3 句可执行反思，并追加到下一次提示词末尾；留空则不调用，也不会产生额外额度消耗。
+配置 `reflectionModel` 后，插件会在 bot 的最终发言成功发送后，用该模型基于同一份群聊 few-shot 即时生成 2-3 句可执行反思，并追加到下一次提示词末尾。反思按频道串行异步生成，不阻塞下一次发言；连续发送时只会保留最新消息的反思结果。留空则不调用，也不会产生额外额度消耗。
 
 启用 `observeAllChannels` 后，插件会在未开启 yesimbot 的频道采集真实消息，写入全局历史，并按频道聚合到 `chat-learning-global.json`。原始全局历史会在聚合成功后清空，避免无限增长。
 
@@ -70,12 +70,12 @@ yesimbot.chat-learning.sync
 yesimbot.chat-learning.reset
 yesimbot.chat-learning.link <from> <to> <kind> [--confidence 0-1]
 yesimbot.chat-learning.unlink <from> <to> [kind]
-yesimbot.chat-learning.reflect <score> [note]
+yesimbot.chat-learning.reflect [note] --score -1|0|1
 ```
 
 `kind` 支持 `quote`、`reply`、`at`、`adjacent`、`entity` 和 `*`。`unlink` 不传 kind 时默认移除两消息之间的全部关系。
 
-`reflect` 用于人工标注 bot 的最终发言：先引用 bot 的一条已发送消息，再运行 `yesimbot.chat-learning.reflect 1 保持` 或 `-1 太长太正式`；`score` 支持 `-1|0|1`。人工反思会持久化到 `chat-learning-reflections.jsonl`，并优先于自动反思注入。
+`reflect` 用于人工标注 bot 的最终发言：先引用 bot 的一条已发送消息，再运行 `yesimbot.chat-learning.reflect 保持 --score=1` 或 `yesimbot.chat-learning.reflect 太长太正式 --score=-1`；`score` 支持 `-1|0|1`。人工反思会持久化到 `chat-learning-reflections.jsonl`，并优先于自动反思注入。
 
 `global` 查看跨群全局规则库，包含高频短语和跨群回复链结构；`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<message_links>`、`<local_patterns>`、`<global_patterns>`、`<global_chains>` 等 prompt 块，配置 `reflectionModel` 时还会在末尾显示 `<reflection>`。预览头部会显示 `globalPatterns=选中数/全局库总数`，方便区分“没有全局数据”和“未达到 `minGlobalChannels`”。`<active_chain>` 和 `<group_examples>` 会标注 `chain` 路径，便于审计样本来自哪条回复链。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
 

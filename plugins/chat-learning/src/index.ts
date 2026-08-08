@@ -112,6 +112,9 @@ export default class ChatLearningPlugin {
   private readonly reflectHooks = new Map<string, (payload: DeliveredPayload) => Promise<void>>();
   private readonly reflectionStores = new Map<string, ReflectionStore>();
   private readonly reflectionOverrides = new Map<string, string>();
+  private readonly reflectionQueues = new Map<string, Promise<void>>();
+  private readonly reflectionPending = new Map<string, DeliveredPayload>();
+  private readonly reflectionLatestMessage = new Map<string, string>();
   private readonly globalStores = new Map<string, GlobalRuleStore>();
   private readonly globalBanks = new Map<string, ReturnType<typeof createEmptyGlobalRuleBank>>();
   private globalHistoryStore: ChatHistoryStore | undefined;
@@ -192,6 +195,9 @@ export default class ChatLearningPlugin {
     this.reflectHooks.clear();
     this.reflectionStores.clear();
     this.reflectionOverrides.clear();
+    this.reflectionQueues.clear();
+    this.reflectionPending.clear();
+    this.reflectionLatestMessage.clear();
     this.globalStores.clear();
     this.globalBanks.clear();
     this.globalHistoryStore = undefined;
@@ -365,34 +371,50 @@ export default class ChatLearningPlugin {
     this.reflectHooks.set(key, async (payload) => {
       const modelId = config.reflectionModel?.trim();
       if (!modelId) return;
-      const styleBlock = buildPromptBlock(state, undefined, config, globalPatterns, globalChains);
-      if (!styleBlock) return;
-      try {
-        const ref = ctx.yesimbot.model.resolveChatModel(modelId);
-        const next = await reflectOnSentMessage(ref.model, styleBlock, payload.text);
-        if (next) {
-          await reflectionStore.append({
-            source: "auto",
-            text: payload.text,
-            reflection: next,
-            score: undefined,
-            annotation: undefined,
-            messageId: payload.messageId,
-            turnId: payload.turnId,
-          });
-          reflection = next;
-          logger.debug("chat_learning.reflection_saved", {
-            scope,
-            model: modelId,
-            messageId: payload.messageId,
-          });
+      this.reflectionLatestMessage.set(key, payload.messageId);
+      this.reflectionPending.set(key, payload);
+      const existing = this.reflectionQueues.get(key);
+      if (existing) return;
+
+      const task = (async () => {
+        while (true) {
+          const current = this.reflectionPending.get(key);
+          if (!current) break;
+          this.reflectionPending.delete(key);
+          if (this.reflectionLatestMessage.get(key) !== current.messageId) continue;
+          const styleBlock = buildPromptBlock(state, undefined, config, globalPatterns, globalChains);
+          if (!styleBlock) continue;
+          try {
+            const ref = ctx.yesimbot.model.resolveChatModel(modelId);
+            const next = await reflectOnSentMessage(ref.model, styleBlock, current.text);
+            if (next) {
+              await reflectionStore.append({
+                source: "auto",
+                text: current.text,
+                reflection: next,
+                score: undefined,
+                annotation: undefined,
+                messageId: current.messageId,
+                turnId: current.turnId,
+              });
+              reflection = next;
+              logger.debug("chat_learning.reflection_saved", {
+                scope,
+                model: modelId,
+                messageId: current.messageId,
+              });
+            }
+          } catch (cause) {
+            logger.warn("chat_learning.reflection_failed", {
+              model: modelId,
+              cause: cause instanceof Error ? cause.message : String(cause),
+            });
+          }
         }
-      } catch (cause) {
-        logger.warn("chat_learning.reflection_failed", {
-          model: modelId,
-          cause: cause instanceof Error ? cause.message : String(cause),
-        });
-      }
+      })().finally(() => {
+        this.reflectionQueues.delete(key);
+      });
+      this.reflectionQueues.set(key, task);
     });
 
     return {
@@ -777,13 +799,14 @@ export default class ChatLearningPlugin {
 
     track(
       this.ctx
-        .command("yesimbot.chat-learning.reflect <score> [note]", "人工标注 bot 的最终发言反思", { authority: 4 })
-        .action(async ({ session }, score, note) => {
+        .command("yesimbot.chat-learning.reflect [note]", "人工标注 bot 的最终发言反思", { authority: 4 })
+        .option("score", "<score> -1|0|1")
+        .action(async ({ session, options }, note) => {
           const scope = scopeOf(session);
           if (!scope) return "无法获取当前频道信息";
           const text = quoteText(session?.quote);
           if (text.length === 0) return "请引用 bot 的一条最终发言后再运行";
-          const parsedScore = parseReflectionScore(score);
+          const parsedScore = parseReflectionScore(options?.score);
           if (parsedScore === undefined) return "score 必须是 -1|0|1";
           const store = await this.reflectionStoreFor(scope);
           const record = await store.append({
@@ -1126,6 +1149,7 @@ function quoteText(quote: Session["quote"] | undefined): string {
 }
 
 function parseReflectionScore(value: unknown): ReflectionScore | undefined {
+  if (typeof value === "number") return value === -1 || value === 0 || value === 1 ? value : undefined;
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().toLowerCase();
   if (["1", "good", "好", "像"].includes(normalized)) return 1;
