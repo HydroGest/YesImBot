@@ -1,8 +1,8 @@
 import { h } from "koishi";
 
 import type { Config } from "../../src/config.js";
-import type { EventRecord, MessageRecord } from "../../src/messages.js";
-import type { ChannelScope } from "../../src/runtime/storage.js";
+import type { EventRecord, MessageRecord } from "../../src/messages/index.js";
+import type { ChannelScope } from "../../src/channels/index.js";
 
 export const scope: ChannelScope = {
   type: "shared",

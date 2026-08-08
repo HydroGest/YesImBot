@@ -1,4 +1,3 @@
-import { Context } from "@koishijs/core";
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { type Bot, h, type Session, type Universal } from "koishi";
 import { describe, expect, it, vi } from "vitest";
@@ -8,7 +7,7 @@ vi.mock("koishi", async () => import("@koishijs/core"));
 import { Agents, ChannelPlugin } from "../src/agents/index.js";
 import { type Will, WillPlugin } from "../src/agents/will.js";
 import type { ChannelScope } from "../src/channels/index.js";
-import { createMessage, type MessageRecord } from "../src/messages.js";
+import { createMessage, type MessageRecord } from "../src/messages/index.js";
 
 const scope: ChannelScope = {
   type: "shared",

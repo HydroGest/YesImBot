@@ -7,7 +7,6 @@ import { ArtifactService } from "./artifact.js";
 import { AssetService } from "./asset.js";
 import { registerSessionCommands } from "./commands/session.js";
 import { Config } from "./config.js";
-import { deliverOutput } from "./delivery.js";
 import { Gateway } from "./gateway/index.js";
 import { createOneBotTranslator } from "./gateway/onebot.js";
 import type { PlatformTranslator } from "./gateway/types.js";

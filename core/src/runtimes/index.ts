@@ -42,7 +42,6 @@ export class Runtimes {
         config: this.config,
         plugins: await this.agents.init(channel.scope, bot),
         idleTimeout: this.config.session.idle.timeout,
-        compact: async () => { await channel.conversation.compact("idle"); },
       });
       try { await runtime.init(); } catch (cause) { await runtime.stop().catch(() => undefined); throw cause; }
       this.runtimes.set(key, runtime);
@@ -82,7 +81,9 @@ export class Runtimes {
   }
 
   public async compact(scope: ChannelScope): Promise<string> {
-    const result = await (await this.channels.resolve(scope)).conversation.compact("manual");
+    const runtime = this.runtimes.get(runtimeKey(scope));
+    if (!runtime) throw new Error("No active Runtime is available to compact this conversation");
+    const result = await runtime.compact("manual") as { compacted: boolean };
     return result.compacted ? "已压缩当前会话。" : "消息不足，未压缩。";
   }
 

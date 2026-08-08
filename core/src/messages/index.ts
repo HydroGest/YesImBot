@@ -110,6 +110,14 @@ export function isEvent(message: AgentMessage): message is Event {
   return message.role === "custom" && message.type === "yesimbot.event";
 }
 
+export function modelInputPlugin(): import("@yesimbot/agent-runtime").AgentPlugin {
+  return {
+    name: "core.model-input",
+    enforce: "pre",
+    toModelMessages: async (message) => isMessage(message) || isEvent(message) ? [formatInput(message)] : [],
+  };
+}
+
 export function formatInput(input: Message | Event): UserModelMessage {
   if (isMessage(input)) {
     const time = new Intl.DateTimeFormat("zh-CN", {

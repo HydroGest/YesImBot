@@ -37,4 +37,62 @@ describe("Runtimes identity", () => {
       await runtimes.stop();
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+  it("keeps direct runtimes isolated by selfId", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-runtimes-"));
+    try {
+      const ctx = new Context();
+      const channels = new Channels(ctx, { basePath: root });
+      const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
+      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
+      const scopeOne = { type: "direct", platform: "test", selfId: "one", channelId: "room" } as const;
+      const scopeTwo = { type: "direct", platform: "test", selfId: "two", channelId: "room" } as const;
+      const [first, second] = await Promise.all([
+        runtimes.get(await channels.resolve(scopeOne), { platform: "test", selfId: "one" } as never),
+        runtimes.get(await channels.resolve(scopeTwo), { platform: "test", selfId: "two" } as never),
+      ]);
+      expect(first).not.toBe(second);
+      expect(first.scope).toEqual(scopeOne);
+      expect(second.scope).toEqual(scopeTwo);
+      await runtimes.stop();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("recreates a runtime after reset and rejects new admission after stop", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-runtimes-"));
+    try {
+      const ctx = new Context();
+      const channels = new Channels(ctx, { basePath: root });
+      const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
+      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
+      const scope = { type: "shared", platform: "test", channelId: "room" } as const;
+      const bot = { platform: "test", selfId: "one" };
+      const first = await runtimes.get(await channels.resolve(scope), bot as never);
+      await runtimes.reset(scope);
+      const second = await runtimes.get(await channels.resolve(scope), bot as never);
+      expect(second).not.toBe(first);
+      await runtimes.stop();
+      await expect(runtimes.get(await channels.resolve(scope), bot as never)).rejects.toThrow("stopped");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("keeps different shared channel identities isolated", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-runtimes-"));
+    try {
+      const ctx = new Context();
+      const channels = new Channels(ctx, { basePath: root });
+      const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
+      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
+      const one = { type: "shared", platform: "test", channelId: "one" } as const;
+      const two = { type: "shared", platform: "test", channelId: "two" } as const;
+      const first = await runtimes.get(await channels.resolve(one), { platform: "test", selfId: "bot" } as never);
+      const second = await runtimes.get(await channels.resolve(two), { platform: "test", selfId: "bot" } as never);
+      expect(first).not.toBe(second);
+      expect(first.scope).toEqual(one);
+      expect(second.scope).toEqual(two);
+      await runtimes.stop();
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
 });

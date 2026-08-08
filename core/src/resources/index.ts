@@ -5,8 +5,19 @@ import { ChannelArtifactStore, type ArtifactStore } from "./artifact.js";
 import { ChannelAssetStore, type AssetStore } from "./asset.js";
 
 const READ_MAX_BYTES = 5 * 1024 * 1024;
+const COMPLETE_ASSET_ID = /^[a-f0-9]{32}$/;
+const URI_SHAPE = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#]*)(?:\/([^?#]*))?$/;
 
 export type Disposer = () => void;
+
+export type ResourceReadErrorCode =
+  | "invalid_resource_uri"
+  | "resource_unavailable"
+  | "resource_not_found"
+  | "timeout"
+  | "resource_read_aborted"
+  | "resource_too_large"
+  | "resource_read_failed";
 
 export interface ResourceOpenOptions {
   readonly signal: AbortSignal;
@@ -25,6 +36,12 @@ export interface ResourceReader {
   init(resources: ChannelResources, uri: URL, options: ResourceOpenOptions): Promise<ResourceOpenResult>;
 }
 
+export class ResourceReadError extends Error {
+  public constructor(public readonly code: ResourceReadErrorCode) {
+    super(code);
+  }
+}
+
 export class ChannelResources {
   public readonly assets: AssetStore;
   public readonly artifacts: ArtifactStore;
@@ -41,22 +58,45 @@ export class ChannelResources {
   }
 
   public async open(uri: string, signal?: AbortSignal): Promise<ResourceOpenResult | undefined> {
+    try {
+      return await this.openStrict(uri, signal);
+    } catch (cause) {
+      if (cause instanceof ResourceReadError) return undefined;
+      throw cause;
+    }
+  }
+
+  /** Strict raw-open used by tool factories: throws a typed error instead of collapsing to undefined. */
+  public async openStrict(uri: string, signal?: AbortSignal): Promise<ResourceOpenResult> {
     const parsed = parseUri(uri);
-    if (!parsed) return undefined;
+    if (!parsed) throw new ResourceReadError("invalid_resource_uri");
+
     try {
       if (parsed.protocol === "asset:") {
-        if (!/^[a-f0-9]{32}$/.test(parsed.hostname) || parsed.pathname !== "") return undefined;
-        return normalize({ bytes: await this.assets.get(parsed.hostname) });
+        if (!COMPLETE_ASSET_ID.test(parsed.hostname) || parsed.pathname !== "") throw new ResourceReadError("invalid_resource_uri");
+        try {
+          return normalize({ bytes: await this.assets.get(parsed.hostname) });
+        } catch {
+          throw new ResourceReadError("resource_not_found");
+        }
       }
       if (parsed.protocol === "artifact:") {
-        if (!parsed.hostname || parsed.pathname === "/") return undefined;
-        return normalize(await this.artifacts.open(uri));
+        if (!parsed.hostname || parsed.pathname === "/") throw new ResourceReadError("invalid_resource_uri");
+        try {
+          return normalize(await this.artifacts.open(uri));
+        } catch {
+          throw new ResourceReadError("resource_not_found");
+        }
       }
+      if (parsed.protocol === "workspace:" && parsed.hostname) throw new ResourceReadError("invalid_resource_uri");
+      if (parsed.pathname === "" || parsed.pathname === "/") throw new ResourceReadError("invalid_resource_uri");
+
       const reader = this.readers.get(parsed.protocol.slice(0, -1));
-      if (!reader) return undefined;
+      if (!reader) throw new ResourceReadError("resource_unavailable");
       return await this.openReader(reader, parsed, signal);
-    } catch {
-      return undefined;
+    } catch (cause) {
+      if (cause instanceof ResourceReadError) throw cause;
+      throw new ResourceReadError("resource_read_failed");
     }
   }
 
@@ -74,41 +114,70 @@ export class ChannelResources {
   }
 
   private async openReader(reader: ResourceReader, uri: URL, signal?: AbortSignal): Promise<ResourceOpenResult> {
-    if (signal?.aborted) throw signal.reason;
+    if (signal?.aborted) throw new ResourceReadError("resource_read_aborted");
     const controller = new AbortController();
-    const abort = () => controller.abort(signal?.reason);
-    signal?.addEventListener("abort", abort, { once: true });
     let timeout: NodeJS.Timeout | undefined;
     const timed = new Promise<never>((_, reject) => {
       timeout = setTimeout(() => {
         controller.abort(new Error("Resource read timed out"));
-        reject(new Error("Resource read timed out"));
+        reject(new ResourceReadError("timeout"));
       }, this.readTimeoutMs);
     });
+    let rejectAborted!: (reason?: unknown) => void;
+    const cancelled = new Promise<never>((_, reject) => {
+      rejectAborted = reject;
+    });
+    const onAbort = () => {
+      controller.abort(signal?.reason);
+      rejectAborted(new ResourceReadError("resource_read_aborted"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
     try {
-      return normalize(await Promise.race([reader.init(this, uri, { signal: controller.signal, maxBytes: READ_MAX_BYTES }), timed]));
+      const result = await Promise.race([
+        reader.init(this, uri, { signal: controller.signal, maxBytes: READ_MAX_BYTES }),
+        timed,
+        cancelled,
+      ]);
+      if (signal?.aborted) throw new ResourceReadError("resource_read_aborted");
+      return normalize(result);
+    } catch (cause) {
+      if (cause instanceof ResourceReadError) throw cause;
+      if (signal?.aborted) throw new ResourceReadError("resource_read_aborted");
+      throw new ResourceReadError("resource_read_failed");
     } finally {
       clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
+      signal?.removeEventListener("abort", onAbort);
     }
   }
 }
 
 function parseUri(value: string): URL | undefined {
-  try {
-    const uri = new URL(value);
-    if (uri.search || uri.hash || uri.username || uri.password || uri.port || uri.pathname.includes("%")) return undefined;
-    if (uri.pathname.split("/").some((part) => part === "." || part === "..")) return undefined;
-    return uri;
-  } catch {
+  const match = URI_SHAPE.exec(value);
+  if (!match) return undefined;
+  const scheme = match[1]!.toLowerCase();
+  const authority = match[2] ?? "";
+  const rawPath = match[3] ?? "";
+  if (
+    value.includes("?") ||
+    value.includes("#") ||
+    authority.includes("@") ||
+    authority.includes(":") ||
+    rawPath.includes("%") ||
+    rawPath.split("/").some((segment) => segment === "." || segment === "..")
+  ) {
     return undefined;
   }
+  const uri = new URL(`${scheme}://${authority}${rawPath ? `/${rawPath}` : ""}`);
+  if (uri.search || uri.hash || uri.username || uri.password || uri.port) return undefined;
+  if (uri.pathname.split("/").some((part) => part === "." || part === "..")) return undefined;
+  return uri;
 }
 
 function normalize(value: unknown): ResourceOpenResult {
   if (!value || typeof value !== "object" || !("bytes" in value)) throw new Error("Invalid resource result");
   const result = value as Partial<ResourceOpenResult>;
-  if (!(result.bytes instanceof Uint8Array) || result.bytes.byteLength > READ_MAX_BYTES) throw new Error("Invalid resource bytes");
+  if (!(result.bytes instanceof Uint8Array)) throw new Error("Invalid resource bytes");
+  if (result.bytes.byteLength > READ_MAX_BYTES) throw new ResourceReadError("resource_too_large");
   if (result.mediaType !== undefined && !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(result.mediaType)) throw new Error("Invalid resource media type");
   if (result.filename !== undefined && (result.filename.length === 0 || /[\\/\0]/.test(result.filename))) throw new Error("Invalid resource filename");
   return result as ResourceOpenResult;

@@ -9,9 +9,8 @@ import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { h, type Session } from "koishi";
+import type { RecordBase } from "../src/messages/index.js";
 
-import { type RecordBase, type EventRecord } from "../src/messages.js";
-import { DEFAULT_PERSONA } from "../src/runtime/prompt.js";
 
 const state = vi.hoisted(() => ({
   runtime: undefined as
@@ -23,7 +22,7 @@ const state = vi.hoisted(() => ({
         status: Mock;
         list: Mock;
         stop: Mock;
-        trigger: Mock;
+        post: Mock;
         agent: unknown;
       }
     | undefined,
@@ -38,8 +37,8 @@ type RegisteredCommand = {
   readonly option: Mock;
 };
 
-vi.mock("../src/runtime/manager.js", () => ({
-  RuntimeManager: class {
+vi.mock("../src/runtimes/index.js", () => ({
+  Runtimes: class {
     public reset = vi.fn(async () => undefined);
     public compact = vi.fn(async () => "");
     public archive = vi.fn(async () => "");
@@ -47,7 +46,7 @@ vi.mock("../src/runtime/manager.js", () => ({
     public status = vi.fn(async () => "");
     public list = vi.fn(async () => "");
     public stop = vi.fn(async () => undefined);
-    public trigger = vi.fn(async () => undefined);
+    public post = vi.fn(async () => ({ kind: "wait", eventId: "event-1" }));
 
     constructor(
       _ctx: unknown,
@@ -66,7 +65,8 @@ vi.mock("../src/runtime/manager.js", () => ({
 import { ChannelPlugin, WillPlugin } from "../src/agents/index.js";
 import type { Config } from "../src/config.js";
 import { Gateway } from "../src/gateway/index.js";
-import YesImBotService from "../src/index.js";
+import { DEFAULT_PERSONA } from "../src/runtimes/prompt.js";
+import YesImBotService, { EventRecord } from "../src/index.js";
 
 const config: Config = {
   basePath: "/tmp/yesimbot-service/data/yesimbot-service",
@@ -210,23 +210,18 @@ describe("YesImBotService facade", () => {
     const wrongSelfId = { platform: "test", selfId: "bot-9", sendMessage: vi.fn(async () => []) };
     const exact = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
     ctx.bots.push(wrongPlatform as never, wrongSelfId as never, exact as never);
-    state.runtime?.trigger.mockResolvedValue({
+    state.runtime?.post.mockResolvedValue({
       kind: "run",
       eventId: "event-1",
-      turnId: "turn-1",
       output: (async function* () {
         yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("reply")]] };
       })(),
-      delivery: {
-        signal: new AbortController().signal,
-        onDelivered: vi.fn(),
-        fail: vi.fn(),
-      },
+      signal: new AbortController().signal,
     });
 
     await service.trigger(event);
 
-    expect(state.runtime?.trigger).toHaveBeenCalledWith(event);
+    expect(state.runtime?.post).toHaveBeenCalledWith(event, exact);
     expect(exact.sendMessage).toHaveBeenCalledWith("room-1", [h.text("reply")]);
     expect(wrongPlatform.sendMessage).not.toHaveBeenCalled();
     expect(wrongSelfId.sendMessage).not.toHaveBeenCalled();
@@ -243,7 +238,7 @@ describe("YesImBotService facade", () => {
     ctx.bots.push(wrongPlatform as never, wrongSelfId as never);
 
     await expect(service.trigger(event)).rejects.toThrow("No Bot is available for test:bot-1");
-    expect(state.runtime?.trigger).not.toHaveBeenCalled();
+    expect(state.runtime?.post).not.toHaveBeenCalled();
     expect(wrongPlatform.sendMessage).not.toHaveBeenCalled();
     expect(wrongSelfId.sendMessage).not.toHaveBeenCalled();
   });
@@ -264,21 +259,13 @@ describe("YesImBotService facade", () => {
       return [];
     });
     ctx.bots.push({ platform: "test", selfId: "bot-1", sendMessage } as never);
-    const onDelivered = vi.fn(async () => {
-      expect(stopSettled).toBe(false);
-    });
-    state.runtime?.trigger.mockResolvedValue({
+    state.runtime?.post.mockResolvedValue({
       kind: "run",
       eventId: "event-1",
-      turnId: "turn-1",
       output: (async function* () {
         yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("reply")]] };
       })(),
-      delivery: {
-        signal: new AbortController().signal,
-        onDelivered,
-        fail: vi.fn(async () => undefined),
-      },
+      signal: new AbortController().signal,
     });
 
     let triggerSettled = false;
@@ -299,10 +286,9 @@ describe("YesImBotService facade", () => {
     await triggering;
     expect(triggerSettled).toBe(true);
     expect(stopSettled).toBe(true);
-    expect(onDelivered).toHaveBeenCalledOnce();
 
     await expect(service.trigger(event)).resolves.toBeUndefined();
-    expect(state.runtime?.trigger).toHaveBeenCalledTimes(1);
+    expect(state.runtime?.post).toHaveBeenCalledTimes(1);
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -310,7 +296,7 @@ describe("YesImBotService facade", () => {
     const { service } = createService();
 
     await expect(service.trigger(event)).rejects.toThrow("No Bot is available for test:bot-1");
-    expect(state.runtime?.trigger).not.toHaveBeenCalled();
+    expect(state.runtime?.post).not.toHaveBeenCalled();
   });
 
   it("delegates reset registration to the composed boundary", async () => {
@@ -363,7 +349,9 @@ describe("YesImBotService facade", () => {
         elements: input.elements ?? [],
       })),
     };
-    const runtime = { route: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
+    const channel = { handle: vi.fn(async () => ({ kind: "wait", eventId: "event-1" })) };
+    const runtime = { get: vi.fn(async () => channel) };
+    const channels = { resolve: vi.fn(async () => ({}) ) };
     const assets = { createStore: vi.fn(() => ({ get: vi.fn(), put: vi.fn(), clear: vi.fn() })) };
     const gateway = new Gateway(
       ctx as never,
@@ -372,9 +360,10 @@ describe("YesImBotService facade", () => {
         pacing: config.reply.pacing,
         logLevel: config.logLevel,
       },
-      { runtime: runtime as never, assets: assets as never, ready: () => ready },
+      { runtime: runtime as never, channels: channels as never, assets: assets as never, ready: () => ready },
     );
     gateway.registerTranslator(translator);
+    ctx.bots.push({ platform: "test", selfId: "bot-1" } as never);
     const handling = gateway.handle({
       type: "message-created",
       platform: "test",
@@ -390,12 +379,12 @@ describe("YesImBotService facade", () => {
 
     await Promise.resolve();
     expect(translator.translate).not.toHaveBeenCalled();
-    expect(runtime.route).not.toHaveBeenCalled();
+    expect(runtime.get).not.toHaveBeenCalled();
     expect(assets.createStore).not.toHaveBeenCalled();
     release();
     await handling;
-    expect(translator.translate).toHaveBeenCalledOnce();
-    expect(runtime.route).toHaveBeenCalledOnce();
+    expect(runtime.get).toHaveBeenCalledOnce();
+    expect(channel.handle).toHaveBeenCalledOnce();
   });
 
   it("registers and disposes class-based agent plugins", async () => {

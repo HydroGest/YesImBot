@@ -45,4 +45,86 @@ describe("ChannelRuntime scheduling", () => {
     const { value, root } = await runtime();
     try { await expect(value.post(event, { ifBusy: "join" })).resolves.toEqual({ kind: "join", eventId: expect.any(String), turnId: "active" }); expect(state.send).toHaveBeenCalledOnce(); expect(state.run).not.toHaveBeenCalled(); } finally { await value.stop(); await rm(root, { recursive: true, force: true }); }
   });
+  it("runs an active post through one filtered output stream without Will", async () => {
+    state.run.mockReturnValue(
+      (async function* () {
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "reply" } };
+      })(),
+    );
+    const { value, root } = await runtime();
+    try {
+      const result = await value.post(event);
+      expect(result.kind).toBe("run");
+      if (result.kind === "run") {
+        await expect(Array.fromAsync(result.output)).resolves.toEqual([
+          { turnId: "turn-1", messageId: "message-1", segments: [[expect.objectContaining({ type: "text", attrs: { content: "reply" } })]] },
+        ]);
+      }
+      expect(state.decide).not.toHaveBeenCalled();
+      expect(state.run).toHaveBeenCalledOnce();
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("runs passive trigger and observes only after the output stream ends", async () => {
+    state.decide.mockResolvedValue("trigger");
+    state.run.mockReturnValue(
+      (async function* () {
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "reply" } };
+      })(),
+    );
+    const { value, root } = await runtime();
+    try {
+      const result = await value.handle(event);
+      expect(result.kind).toBe("run");
+      if (result.kind === "run") await Array.fromAsync(result.output);
+      expect(state.decide).toHaveBeenCalledOnce();
+      expect(state.observe).toHaveBeenCalledWith(expect.objectContaining({ turnId: "turn-1", status: "done" }));
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("records delivery failure through the same Runtime FIFO", async () => {
+    const { value, root } = await runtime();
+    try {
+      await value.fail("event-1", new Error("offline"));
+      expect(state.append).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: "delivery.failed", delivery: expect.objectContaining({ messageId: "event-1" }) }) }));
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("returns wait without running the Agent when passive Will waits", async () => {
+    const { value, root } = await runtime();
+    try {
+      await expect(value.handle(event)).resolves.toMatchObject({ kind: "wait" });
+      expect(state.run).not.toHaveBeenCalled();
+      expect(state.observe).not.toHaveBeenCalled();
+    } finally { await value.stop(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("continues FIFO work after a rejected busy operation", async () => {
+    state.active = "active";
+    const { value, root } = await runtime();
+    try {
+      await expect(value.post(event, { ifBusy: "reject" })).rejects.toThrow();
+      state.active = null;
+      state.run.mockReturnValue((async function* () {})());
+      await expect(value.post(event)).resolves.toMatchObject({ kind: "run" });
+      expect(state.append).toHaveBeenCalledOnce();
+    } finally { await value.stop(); await rm(root, { recursive: true, force: true }); }
+  });
+
+  it("keeps one output consumer for a joined active turn", async () => {
+    state.active = "active";
+    const { value, root } = await runtime();
+    try {
+      await expect(value.post(event, { ifBusy: "join" })).resolves.toMatchObject({ kind: "join", turnId: "active" });
+      expect(state.run).not.toHaveBeenCalled();
+    } finally { await value.stop(); await rm(root, { recursive: true, force: true }); }
+  });
 });
