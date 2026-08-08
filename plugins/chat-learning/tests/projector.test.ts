@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { buildPromptBlock, escapePromptText, estimateTokens } from "../src/projector.js";
-import type { ChatLearningConfig, ChatLearningState, GlobalPattern, MessageLink, MessageTurn } from "../src/types.js";
+import type {
+  ChatLearningConfig,
+  ChatLearningState,
+  GlobalChainPattern,
+  GlobalPattern,
+  MessageLink,
+  MessageTurn,
+} from "../src/types.js";
 
 const config: ChatLearningConfig = {
   maxExamples: 2,
@@ -20,6 +27,13 @@ const config: ChatLearningConfig = {
   minGlobalChannels: 2,
   maxGlobalPatterns: 3,
   summaryModel: undefined,
+  embeddingModel: undefined,
+  embeddingSimilarity: 0.92,
+  maxModelThreads: 3,
+  maxModelThreadMessages: 30,
+  reflectionModel: undefined,
+  maxReflectionMessages: 5,
+  reflectionIntervalMinutes: 30,
 };
 
 function turn(id: string, messageId: string, timestamp: number, text: string): MessageTurn {
@@ -70,6 +84,7 @@ describe("buildPromptBlock", () => {
     expect(block).toContain("模仿样本中的表达节奏");
     expect(block).toContain("<local_patterns>");
     expect(block).toContain("<group_examples>");
+    expect(block).toContain('chain="t1 -&gt; t2"');
     expect(estimateTokens(block!)).toBeLessThanOrEqual(config.maxPromptTokens);
   });
 
@@ -96,6 +111,46 @@ describe("buildPromptBlock", () => {
     ];
 
     const block = buildPromptBlock(state(), undefined, config, globalPatterns);
+
+    expect(block).toContain("<global_patterns>");
+    expect(block).toContain('kind="global:response"');
+  });
+
+  it("injects cross-group chain structures", () => {
+    const globalChains: GlobalChainPattern[] = [
+      {
+        chain: ["question", "agree"],
+        channels: [
+          { key: "a", frequency: 2, lastSeenAt: 1 },
+          { key: "b", frequency: 1, lastSeenAt: 1 },
+        ],
+        firstSeenAt: 1,
+        lastSeenAt: 1,
+      },
+    ];
+
+    const block = buildPromptBlock(state(), undefined, config, [], globalChains);
+
+    expect(block).toContain("<global_chains>");
+    expect(block).toContain('steps="question -&gt; agree"');
+  });
+
+  it("shows global content even when there is no local state", () => {
+    const globalPatterns: GlobalPattern[] = [
+      {
+        kind: "response",
+        intent: "agree",
+        phrase: "确实",
+        channels: [
+          { key: "a", frequency: 2, lastSeenAt: 1 },
+          { key: "b", frequency: 1, lastSeenAt: 1 },
+        ],
+        firstSeenAt: 1,
+        lastSeenAt: 1,
+      },
+    ];
+
+    const block = buildPromptBlock(undefined, undefined, config, globalPatterns, []);
 
     expect(block).toContain("<global_patterns>");
     expect(block).toContain('kind="global:response"');

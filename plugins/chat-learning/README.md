@@ -21,9 +21,18 @@
 | `globalSyncIntervalMinutes` | `60`    | 跨群全局规律同步最小间隔分钟数                                             |
 | `minGlobalChannels`         | `2`     | 全局规律至少出现的频道数                                                   |
 | `maxGlobalPatterns`         | `8`     | 每轮最多注入的全局规律数                                                   |
-| `summaryModel`              | 留空    | 使用 Core 注册的模型 ID；留空则只使用确定性统计规律                        |
+| `summaryModel`              | 留空    | 使用 Core 注册的模型 ID；留空则使用默认 chat 模型进行意图分类              |
+| `embeddingModel`            | 留空    | 可选 embedding 模型；配置后用于语义归并全局规律，留空则精确匹配             |
+| `embeddingSimilarity`       | `0.92`  | embedding 语义归并阈值，越高要求越相似                                      |
+| `maxModelThreads`           | `3`     | 每次模型标注最多使用几条完整对话线程                                        |
+| `maxModelThreadMessages`    | `30`    | 每条线程最多送入模型的消息数                                                |
+| `reflectionModel`           | 留空    | 可选独立模型；用于评价 bot 最近发言并生成风格反思，留空则关闭                 |
+| `maxReflectionMessages`     | `5`     | 每次反思最多取 bot 最近几条发言                                             |
+| `reflectionIntervalMinutes` | `30`    | 反思生成的最小间隔分钟数                                                    |
 
-`summaryModel` 使用与 Core `chatModel` 相同的 `registry.chatModels` schema，可以直接填 `provider:model`。
+`summaryModel` 使用与 Core `chatModel` 相同的 `registry.chatModels` schema，可以直接填 `provider:model`；没有可用模型时不生成 `local_patterns`。
+
+`embeddingModel` 使用与 Core 一致的 `registry.embeddingModels` schema，可以直接填 `provider:model`；留空时不调用 embedding，避免产生额外成本和 provider 依赖。
 
 群里存在其他 bot 时，建议把它们的 user id 填进 `blockedUserIds`；`blockedUserPatterns` 适合按昵称规则过滤，`autoBlockBotNames` 则启用内置的 bot/机器人/小助手/官方/客服/通知/公告名称匹配。
 
@@ -34,8 +43,16 @@
 - 独立的 `chat-learning-history.jsonl`，与 Core session 归档/清空解耦；
 - quote/reply/@/相邻/实体关系的置信度图；
 - 本地回应规律和话题发起规律；
-- 可选的模型规律提炼；
-- 有界 `<message_links>`、`<active_chain>`、`<local_patterns>`、`<group_examples>` 注入。
+- 模型驱动的响应/发起意图分类，并按真实样本频率聚合规律；
+- 有界 `<message_links>`、`<active_chain>`、`<local_patterns>`、`<global_patterns>`、`<global_chains>`、`<group_examples>` 注入。
+
+响应规律只从图中有明确边或处于同一回复链的消息对提取；仅时间相邻但没有关系边的消息不会进入 response pattern。
+
+配置 `embeddingModel` 后，全局规律会按 embedding 相似度把语义相近的短语归并到同一跨群规律；不配置则保持精确短语匹配。
+
+模型标注时会把完整对话线程交给模型，由模型结合上下文逐条标注 role/intent，而不是单独标注单条消息；线程数、消息总数和字符数都有上限，避免无限消耗额度。
+
+配置 `reflectionModel` 后，插件会用该模型基于同一份群聊 few-shot 评价 bot 最近几次发言，生成 2-3 句可执行反思，并追加到下一次提示词末尾；留空则不调用，也不会产生额外额度消耗。
 
 启用 `observeAllChannels` 后，插件会在未开启 yesimbot 的频道采集真实消息，写入全局历史，并按频道聚合到 `chat-learning-global.json`。原始全局历史会在聚合成功后清空，避免无限增长。
 
@@ -49,7 +66,9 @@
 
 ```text
 yesimbot.chat-learning.status
+yesimbot.chat-learning.global [--limit 20]
 yesimbot.chat-learning.preview [--event global-brain|schedule|chat-learning]
+yesimbot.chat-learning.sync
 yesimbot.chat-learning.reset
 yesimbot.chat-learning.link <from> <to> <kind> [--confidence 0-1]
 yesimbot.chat-learning.unlink <from> <to> [kind]
@@ -57,15 +76,17 @@ yesimbot.chat-learning.unlink <from> <to> [kind]
 
 `kind` 支持 `quote`、`reply`、`at`、`adjacent`、`entity` 和 `*`。`unlink` 不传 kind 时默认移除两消息之间的全部关系。
 
-`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<message_links>`、`<local_patterns>` 等 prompt 块。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
+`global` 查看跨群全局规则库，包含高频短语和跨群回复链结构；`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<message_links>`、`<local_patterns>`、`<global_patterns>`、`<global_chains>` 等 prompt 块，配置 `reflectionModel` 时还会在末尾显示 `<reflection>`。预览头部会显示 `globalPatterns=选中数/全局库总数`，方便区分“没有全局数据”和“未达到 `minGlobalChannels`”。`<active_chain>` 和 `<group_examples>` 会标注 `chain` 路径，便于审计样本来自哪条回复链。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
 
 `status` 和 `preview` 的长回复在 OneBot 适配器支持时使用合并转发发送，避免长文本直接刷屏；适配器不支持时回退为普通文本。
 
 `reset` 只清空当前频道的 `chat-learning.json`、`chat-learning-history.jsonl` 和 `chat-learning-feedback.jsonl`，不会归档或清空 Core session。
 
+`sync` 会忽略 `refreshIntervalMinutes` 和 `globalSyncIntervalMinutes`，立即重建本地学习、触发模型规律提炼，并同步全局历史、全局规则库与全局图链。
+
 媒体占位符、URL、@提及、纯 hashtag 和常见 bot 状态文本不会进入 `local_patterns`；预览里的长链接和资源引用也会被压缩，降低 token 占用。
 
-调试日志统一使用 `yesimbot.chat-learning` logger 的 debug 级别，覆盖插件启动、频道 Runtime 创建、数据重建、事件识别、prompt 注入和纠错命令。
+调试日志统一使用 `yesimbot.chat-learning` logger 的 debug 级别，并跟随 Core `logLevel`；Core 设为 `3` 时即可在控制台看到。日志覆盖插件启动、频道 Runtime 创建、数据重建、事件识别、prompt 注入和纠错命令。
 
 ## 当前边界
 

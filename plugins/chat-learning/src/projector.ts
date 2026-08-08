@@ -1,8 +1,11 @@
+import { buildIntentByTurnId } from "./chains.js";
+import { buildConversationChains } from "./links.js";
 import { sanitizeForDisplay } from "./text.js";
 import type {
   ChatLearningConfig,
   ChatLearningState,
   ConversationSegment,
+  GlobalChainPattern,
   GlobalPattern,
   MessageLink,
   MessageTurn,
@@ -23,8 +26,10 @@ export function buildPromptBlock(
   eventKind: ProactiveEventKind | undefined,
   config: ChatLearningConfig,
   globalPatterns: readonly GlobalPattern[] = [],
+  globalChains: readonly GlobalChainPattern[] = [],
 ): string | undefined {
-  if (!state || state.turns.length === 0) return undefined;
+  if (!state && globalPatterns.length === 0 && globalChains.length === 0) return undefined;
+  if (state && state.turns.length === 0 && globalPatterns.length === 0 && globalChains.length === 0) return undefined;
 
   const parts: string[] = [];
   const push = (part: string | undefined) => {
@@ -35,11 +40,14 @@ export function buildPromptBlock(
 
   push(CHAT_LEARNING_GUIDE);
   push(renderEventContext(eventKind));
-  push(renderLinks(state.links, state.turns.slice(-config.maxMessagesPerExample * 4)));
-  push(renderActiveChain(state.turns.slice(-config.maxMessagesPerExample * 4), config));
-  push(renderPatterns(state, eventKind));
   push(renderGlobalPatterns(globalPatterns, eventKind, config));
-  push(renderExamples(selectExamples(state.segments, config), config));
+  push(renderGlobalChains(globalChains, config));
+  if (state) {
+    push(renderLinks(state.links, state.turns.slice(-config.maxMessagesPerExample * 4)));
+    push(renderActiveChain(state, config));
+    push(renderPatterns(state, eventKind));
+    push(renderExamples(selectExamples(state, config), config));
+  }
 
   return parts.length > 0 ? parts.join("\n\n") : undefined;
 }
@@ -83,12 +91,20 @@ function renderLinks(links: readonly MessageLink[], recentTurns: readonly Messag
   return `<message_links>\n${lines.join("\n")}\n</message_links>`;
 }
 
-function renderActiveChain(turns: readonly MessageTurn[], config: ChatLearningConfig): string | undefined {
+function renderActiveChain(state: ChatLearningState, config: ChatLearningConfig): string | undefined {
+  const recentLimit = config.maxMessagesPerExample * 4;
+  const chains = buildConversationChains(state.segments, state.links);
+  const latestTurn = state.turns.at(-1);
+  const activeChain = latestTurn
+    ? chains.find((chain) => chain.turns.some((turn) => turn.id === latestTurn.id))
+    : undefined;
+  const turns = activeChain?.turns ?? state.turns.slice(-recentLimit);
   if (turns.length === 0) return undefined;
+  const chainAttribute = activeChain ? ` chain="${escapeXml(chainPath(activeChain.turns))}"` : "";
   const lines = turns.map(
     (turn, index) => `m${index + 1}: ${displayName(turn, config)}: ${sanitizeForDisplay(turn.text)}`,
   );
-  return `<active_chain>\n${lines.join("\n")}\n</active_chain>`;
+  return `<active_chain${chainAttribute}>\n${lines.join("\n")}\n</active_chain>`;
 }
 
 function renderPatterns(state: ChatLearningState, eventKind: ProactiveEventKind | undefined): string | undefined {
@@ -128,18 +144,80 @@ function renderGlobalPatterns(
   return `<global_patterns>\n${lines.join("\n")}\n</global_patterns>`;
 }
 
+function renderGlobalChains(
+  chains: readonly GlobalChainPattern[],
+  config: ChatLearningConfig,
+): string | undefined {
+  const relevant = chains
+    .filter((chain) => chain.channels.length >= config.minGlobalChannels)
+    .sort((left, right) => chainScore(right) - chainScore(left))
+    .slice(0, config.maxGlobalPatterns);
+  if (relevant.length === 0) return undefined;
+
+  const lines = relevant.map(
+    (chain) =>
+      `<chain channels="${chain.channels.length}" steps="${escapeXml(chain.chain.join(" -> "))}"/>`,
+  );
+  return `<global_chains>\n${lines.join("\n")}\n</global_chains>`;
+}
+
 function globalScore(pattern: GlobalPattern): number {
   return pattern.channels.reduce((total, channel) => total + channel.frequency, 0) * pattern.channels.length;
 }
 
+function chainScore(chain: GlobalChainPattern): number {
+  return chain.channels.reduce((total, channel) => total + channel.frequency, 0) * chain.channels.length;
+}
+
 function selectExamples(
-  segments: readonly ConversationSegment[],
+  state: ChatLearningState,
   config: ChatLearningConfig,
 ): readonly ConversationSegment[] {
-  return segments
-    .filter((segment) => segment.turns.length >= 2)
-    .slice(-config.maxExamples)
-    .reverse();
+  const intentByTurnId = buildIntentByTurnId(state.responsePatterns, state.initiationPatterns);
+  const candidates = buildConversationChains(state.segments, state.links)
+    .map((chain) => ({ chain, score: scoreChain(chain.turns, intentByTurnId, config) }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, config.maxExamples);
+
+  if (candidates.length === 0) {
+    return state.segments
+      .filter((segment) => segment.turns.length >= 2)
+      .slice(-config.maxExamples)
+      .reverse();
+  }
+
+  return candidates
+    .map((chain) => ({
+      id: chain.chain.id,
+      startTime: chain.chain.turns[0]?.timestamp ?? 0,
+      endTime: chain.chain.turns.at(-1)?.timestamp ?? 0,
+      turns: chain.chain.turns,
+    }));
+}
+
+function scoreChain(
+  turns: readonly MessageTurn[],
+  intentByTurnId: ReadonlyMap<string, string>,
+  config: ChatLearningConfig,
+): number {
+  const selected = turns.slice(-config.maxMessagesPerExample);
+  const texts = selected
+    .map((turn) => sanitizeForDisplay(turn.text).trim())
+    .filter((text) => text.length > 0);
+  if (texts.length < 2) return 0;
+
+  const userIds = new Set(selected.map((turn) => turn.userId));
+  const uniqueTexts = new Set(texts);
+  const repetitionRatio = uniqueTexts.size / texts.length;
+  const intents = new Set(
+    selected.map((turn) => intentByTurnId.get(turn.id)).filter((intent): intent is string => intent !== undefined),
+  );
+
+  let score = texts.length + intents.size * 2;
+  if (userIds.size < 2) score *= 0.4;
+  if (repetitionRatio < 0.5) return 0;
+  return score;
 }
 
 function renderExamples(segments: readonly ConversationSegment[], config: ChatLearningConfig): string | undefined {
@@ -151,9 +229,19 @@ function renderExamples(segments: readonly ConversationSegment[], config: ChatLe
 
 function renderExample(segment: ConversationSegment, config: ChatLearningConfig): string | undefined {
   const turns = segment.turns.slice(-config.maxMessagesPerExample);
-  const lines = turns.map((turn) => `${displayName(turn, config)}: ${sanitizeForDisplay(turn.text)}`);
+  const lines = turns
+    .map((turn) => {
+      const text = sanitizeForDisplay(turn.text).trim();
+      const display = text.length > 0 ? text : turn.hasImage ? "[媒体]" : undefined;
+      return display ? `${displayName(turn, config)}: ${display}` : undefined;
+    })
+    .filter((line): line is string => line !== undefined);
   if (lines.length < 2) return undefined;
-  return `<example>\n${lines.join("\n")}\n</example>`;
+  return `<example chain="${escapeXml(chainPath(turns))}">\n${lines.join("\n")}\n</example>`;
+}
+
+function chainPath(turns: readonly MessageTurn[]): string {
+  return turns.map((turn) => shortId(turn.id)).join(" -> ");
 }
 
 function displayName(turn: MessageTurn, config: ChatLearningConfig): string {

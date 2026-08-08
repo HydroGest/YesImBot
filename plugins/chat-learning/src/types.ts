@@ -59,6 +59,11 @@ export interface InitiationPattern {
   readonly sampleIds: readonly string[];
 }
 
+export interface LocalChainPattern {
+  readonly chain: readonly string[];
+  readonly frequency: number;
+}
+
 export type GlobalPatternKind = "response" | "initiation";
 
 export interface GlobalChannelStat {
@@ -74,12 +79,21 @@ export interface GlobalPattern {
   readonly channels: readonly GlobalChannelStat[];
   readonly firstSeenAt: number;
   readonly lastSeenAt: number;
+  readonly embedding?: readonly number[];
+}
+
+export interface GlobalChainPattern {
+  readonly chain: readonly string[];
+  readonly channels: readonly GlobalChannelStat[];
+  readonly firstSeenAt: number;
+  readonly lastSeenAt: number;
 }
 
 export interface GlobalRuleBank {
   readonly version: number;
   readonly updatedAt: number;
   readonly patterns: readonly GlobalPattern[];
+  readonly chains: readonly GlobalChainPattern[];
 }
 
 export interface ChatLearningState {
@@ -109,6 +123,13 @@ export interface ChatLearningConfig {
   readonly minGlobalChannels: number;
   readonly maxGlobalPatterns: number;
   readonly summaryModel: string | undefined;
+  readonly embeddingModel: string | undefined;
+  readonly embeddingSimilarity: number;
+  readonly maxModelThreads: number;
+  readonly maxModelThreadMessages: number;
+  readonly reflectionModel: string | undefined;
+  readonly maxReflectionMessages: number;
+  readonly reflectionIntervalMinutes: number;
 }
 
 export type ProactiveEventKind = "global-brain" | "schedule" | "chat-learning";

@@ -8,6 +8,7 @@ import {
   createEmptyGlobalRuleBank,
   createGlobalRuleStore,
   mergeLocalPatterns,
+  selectGlobalChains,
   selectGlobalPatterns,
 } from "../src/global-store.js";
 import type { InitiationPattern, ResponsePattern } from "../src/types.js";
@@ -26,9 +27,9 @@ describe("mergeLocalPatterns", () => {
       frequency: 2,
       sampleIds: ["a"],
     };
-    const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [response], [], "channel-a", 1000);
-    const second = mergeLocalPatterns(bank, [response], [], "channel-b", 2000);
-    const sameChannel = mergeLocalPatterns(second, [response], [], "channel-a", 3000);
+    const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [response], [], [], "channel-a", 1000);
+    const second = mergeLocalPatterns(bank, [response], [], [], "channel-b", 2000);
+    const sameChannel = mergeLocalPatterns(second, [response], [], [], "channel-a", 3000);
     const pattern = sameChannel.patterns[0]!;
 
     expect(pattern.channels).toHaveLength(2);
@@ -43,10 +44,10 @@ describe("mergeLocalPatterns", () => {
       frequency: 1,
       sampleIds: ["a"],
     };
-    const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [response], [], "channel-a", 1000);
+    const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [response], [], [], "channel-a", 1000);
 
     expect(selectGlobalPatterns(bank, "response", 2, 8)).toHaveLength(0);
-    const crossed = mergeLocalPatterns(bank, [response], [], "channel-b", 2000);
+    const crossed = mergeLocalPatterns(bank, [response], [], [], "channel-b", 2000);
     expect(selectGlobalPatterns(crossed, "response", 2, 8)).toHaveLength(1);
   });
 
@@ -62,7 +63,7 @@ describe("mergeLocalPatterns", () => {
     };
     const first = createGlobalRuleStore(path);
     await first.init();
-    const merged = mergeLocalPatterns(first.read(), [response], [], "channel-a", 1000);
+    const merged = mergeLocalPatterns(first.read(), [response], [], [], "channel-a", 1000);
     await first.update(merged);
 
     const second = createGlobalRuleStore(path);
@@ -80,8 +81,64 @@ describe("initiation patterns", () => {
       frequency: 1,
       sampleIds: ["a"],
     };
-    const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [], [initiation], "channel-a", 1000);
+    const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [], [initiation], [], "channel-a", 1000);
 
     expect(selectGlobalPatterns(bank, "initiation", 1, 8)).toHaveLength(1);
+  });
+});
+
+describe("global chains", () => {
+  it("aggregates the same chain structure across channels", () => {
+    const bank = mergeLocalPatterns(
+      createEmptyGlobalRuleBank(),
+      [],
+      [],
+      [{ chain: ["question", "agree"], frequency: 2 }],
+      "channel-a",
+      1000,
+    );
+    const crossed = mergeLocalPatterns(
+      bank,
+      [],
+      [],
+      [{ chain: ["question", "agree"], frequency: 1 }],
+      "channel-b",
+      2000,
+    );
+
+    expect(selectGlobalChains(crossed, 2, 8)).toHaveLength(1);
+    expect(crossed.chains[0]?.channels[0]).toMatchObject({ frequency: 2 });
+  });
+});
+
+describe("embedding-based pattern merge", () => {
+  it("merges a similar local phrase into the existing global pattern", () => {
+    const bank = {
+      version: 1,
+      updatedAt: 1,
+      patterns: [
+        {
+          kind: "response" as const,
+          intent: "agree",
+          phrase: "没错",
+          channels: [{ key: "old", frequency: 1, lastSeenAt: 1 }],
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+          embedding: [1, 0],
+        },
+      ],
+      chains: [],
+    };
+    const response: ResponsePattern = { intent: "agree", phrase: "确实", frequency: 2, sampleIds: ["m2"] };
+    const localEmbeddings = new Map([["response:agree:确实", [0.99, 0.01]]]);
+
+    const merged = mergeLocalPatterns(bank, [response], [], [], "channel-new", 2, {
+      localEmbeddings,
+      embeddingSimilarity: 0.9,
+    });
+
+    expect(merged.patterns).toHaveLength(1);
+    expect(merged.patterns[0]?.phrase).toBe("没错");
+    expect(merged.patterns[0]?.channels).toHaveLength(2);
   });
 });

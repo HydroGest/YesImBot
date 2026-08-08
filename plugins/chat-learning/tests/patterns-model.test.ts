@@ -9,7 +9,7 @@ vi.mock("ai", () => ({
 }));
 
 import { classifyPatternsWithModel } from "../src/patterns.js";
-import type { ConversationSegment, MessageTurn } from "../src/types.js";
+import type { ConversationSegment, MessageLink, MessageTurn } from "../src/types.js";
 
 function turn(id: string, timestamp: number, text: string): MessageTurn {
   return {
@@ -36,12 +36,16 @@ function segment(id: string, turns: readonly MessageTurn[]): ConversationSegment
   };
 }
 
+function replyLink(from: string, to: string): MessageLink {
+  return { from, to, kind: "reply", confidence: 1, evidence: [] };
+}
+
 afterEach(() => {
   mocks.generateText.mockReset();
 });
 
 describe("classifyPatternsWithModel", () => {
-  it("uses model intents instead of deterministic regex", async () => {
+  it("uses per-message model intents and aggregates real frequency", async () => {
     const turns = [
       turn("m1", 1000, "这个方案靠谱吗"),
       turn("m2", 2000, "确实"),
@@ -49,19 +53,63 @@ describe("classifyPatternsWithModel", () => {
       turn("m4", 4000, "确实"),
     ];
     const segments = [segment("s1", turns)];
+    const links = [replyLink("m2", "m1"), replyLink("m3", "m2"), replyLink("m4", "m3")];
     mocks.generateText.mockResolvedValue({
       text: JSON.stringify({
-        responsePatterns: [{ phrase: "确实", intent: "agree" }],
-        initiationPatterns: [{ phrase: "这个方案靠谱吗", intent: "question" }],
+        messages: [
+          { id: "t0-m0", role: "initiation", intent: "question" },
+          { id: "t0-m1", role: "response", intent: "agree" },
+          { id: "t0-m2", role: "response", intent: "joke" },
+          { id: "t0-m3", role: "response", intent: "agree" },
+        ],
       }),
     });
 
-    const patterns = await classifyPatternsWithModel({} as never, turns, segments);
+    const patterns = await classifyPatternsWithModel({} as never, turns, segments, links);
 
-    expect(patterns?.responsePatterns).toContainEqual(expect.objectContaining({ phrase: "确实", intent: "agree" }));
-    expect(patterns?.initiationPatterns).toContainEqual(
-      expect.objectContaining({ phrase: "这个方案靠谱吗", intent: "question" }),
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("## conversation thread 0"),
+      }),
     );
+    expect(patterns?.responsePatterns).toContainEqual(
+      expect.objectContaining({ phrase: "确实", intent: "agree", frequency: 2, sampleIds: ["m2", "m4"] }),
+    );
+    expect(patterns?.responsePatterns).toContainEqual(
+      expect.objectContaining({ phrase: "笑死", intent: "joke", frequency: 1, sampleIds: ["m3"] }),
+    );
+    expect(patterns?.initiationPatterns).toContainEqual(
+      expect.objectContaining({ phrase: "这个方案靠谱吗", intent: "question", frequency: 1, sampleIds: ["m1"] }),
+    );
+  });
+
+  it("filters noise labels and unknown ids", async () => {
+    const turns = [
+      turn("m1", 1000, "这个方案靠谱吗"),
+      turn("m2", 2000, "确实"),
+      turn("m3", 3000, "机器人状态通知"),
+      turn("m4", 4000, "确实"),
+    ];
+    const segments = [segment("s1", turns)];
+    const links = [replyLink("m2", "m1"), replyLink("m3", "m2"), replyLink("m4", "m3")];
+    mocks.generateText.mockResolvedValue({
+      text: JSON.stringify({
+        messages: [
+          { id: "t0-m0", role: "noise", intent: "noise" },
+          { id: "t0-m1", role: "noise", intent: "noise" },
+          { id: "t0-m2", role: "noise", intent: "noise" },
+          { id: "t0-m3", role: "response", intent: "agree" },
+          { id: "unknown", role: "response", intent: "agree" },
+        ],
+      }),
+    });
+
+    const patterns = await classifyPatternsWithModel({} as never, turns, segments, links);
+
+    expect(patterns?.responsePatterns).toEqual([
+      expect.objectContaining({ phrase: "确实", intent: "agree", frequency: 1, sampleIds: ["m4"] }),
+    ]);
+    expect(patterns?.initiationPatterns).toEqual([]);
   });
 
   it("returns undefined when the model output is empty", async () => {
@@ -72,10 +120,29 @@ describe("classifyPatternsWithModel", () => {
       turn("m4", 4000, "确实"),
     ];
     const segments = [segment("s1", turns)];
+    const links = [replyLink("m2", "m1"), replyLink("m3", "m2"), replyLink("m4", "m3")];
     mocks.generateText.mockResolvedValue({ text: "{}" });
 
-    const patterns = await classifyPatternsWithModel({} as never, turns, segments);
+    const patterns = await classifyPatternsWithModel({} as never, turns, segments, links);
 
     expect(patterns).toBeUndefined();
+  });
+
+  it("accepts explicit empty labels instead of falling back to regex", async () => {
+    const turns = [
+      turn("m1", 1000, "这个方案靠谱吗"),
+      turn("m2", 2000, "确实"),
+      turn("m3", 3000, "笑死"),
+      turn("m4", 4000, "确实"),
+    ];
+    const segments = [segment("s1", turns)];
+    const links = [replyLink("m2", "m1"), replyLink("m3", "m2"), replyLink("m4", "m3")];
+    mocks.generateText.mockResolvedValue({
+      text: JSON.stringify({ messages: [] }),
+    });
+
+    const patterns = await classifyPatternsWithModel({} as never, turns, segments, links);
+
+    expect(patterns).toEqual({ responsePatterns: [], initiationPatterns: [] });
   });
 });

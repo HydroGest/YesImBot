@@ -10,27 +10,33 @@ import type {
 import { createMessageEntry } from "@yesimbot/agent-runtime";
 import type { ModelMessage } from "ai";
 import { Context, Logger, Schema, Universal, type Command, type Session } from "koishi";
-import { createMessage, isEvent, isMessage, type ChannelScope } from "koishi-plugin-yesimbot";
+import { createMessage, isMessage, type ChannelScope } from "koishi-plugin-yesimbot";
 
+import { buildLocalChainPatterns } from "./chains.js";
 import { collectTurns, segmentTurns } from "./collector.js";
 import { applyCorrections } from "./corrections.js";
 import { createFeedbackStore, type FeedbackStore } from "./feedback.js";
 import { sendChatLearningForward } from "./forward.js";
+import { buildPatternEmbeddingMap } from "./embedding.js";
 import {
   createEmptyGlobalRuleBank,
   createGlobalRuleStore,
   mergeLocalPatterns,
+  selectGlobalChains,
   selectGlobalPatterns,
   type GlobalRuleStore,
 } from "./global-store.js";
 import { createChatHistoryStore, type ChatHistoryStore } from "./history.js";
 import { buildLinks } from "./links.js";
-import { classifyPatternsWithModel, extractPatterns } from "./patterns.js";
+import { classifyPatternsWithModel } from "./patterns.js";
+import { detectProactiveEvent } from "./proactive.js";
 import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.js";
+import { generateReflection } from "./reflection.js";
 import { createChatLearningStore } from "./store.js";
 import type {
   ChatLearningConfig,
   ChatLearningState,
+  GlobalChainPattern,
   GlobalPattern,
   LinkCorrection,
   LinkKind,
@@ -59,7 +65,40 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
   globalSyncIntervalMinutes: Schema.number().min(1).max(1440).default(60).description("跨群规则同步最小间隔分钟数"),
   minGlobalChannels: Schema.number().min(1).max(100).default(2).description("全局规则至少出现的频道数"),
   maxGlobalPatterns: Schema.number().min(1).max(50).default(8).description("每轮最多注入的全局规律数"),
-  summaryModel: Schema.dynamic("registry.chatModels").description("用于提炼本群规律的模型；留空则只使用确定性统计规律"),
+  summaryModel: Schema.dynamic("registry.chatModels").description(
+    "用于提炼本群规律的模型；留空则使用 Core 默认 chat 模型，没有可用模型时不生成 local_patterns",
+  ),
+  embeddingModel: Schema.dynamic("registry.embeddingModels")
+    .default("")
+    .description("用于语义归并全局规律的 embedding 模型；留空则不使用 embedding"),
+  embeddingSimilarity: Schema.number()
+    .min(0)
+    .max(1)
+    .default(0.92)
+    .description("embedding 语义归并阈值，越高要求越相似"),
+  maxModelThreads: Schema.number()
+    .min(1)
+    .max(10)
+    .default(3)
+    .description("每次模型标注最多使用几条完整对话线程"),
+  maxModelThreadMessages: Schema.number()
+    .min(4)
+    .max(100)
+    .default(30)
+    .description("每条线程最多送入模型的消息数"),
+  reflectionModel: Schema.dynamic("registry.chatModels")
+    .default("")
+    .description("可选：用独立模型评价 bot 最近发言并生成风格反思；留空则关闭"),
+  maxReflectionMessages: Schema.number()
+    .min(1)
+    .max(20)
+    .default(5)
+    .description("每次反思最多取 bot 最近几条发言"),
+  reflectionIntervalMinutes: Schema.number()
+    .min(1)
+    .max(1440)
+    .default(30)
+    .description("反思生成的最小间隔分钟数"),
 });
 
 export default class ChatLearningPlugin {
@@ -78,6 +117,7 @@ export default class ChatLearningPlugin {
   private readonly historyStores = new Map<string, ChatHistoryStore>();
   private readonly rebuildHooks = new Map<string, () => void>();
   private readonly resetHooks = new Map<string, () => void>();
+  private readonly syncHooks = new Map<string, () => Promise<void>>();
   private readonly globalStores = new Map<string, GlobalRuleStore>();
   private readonly globalBanks = new Map<string, ReturnType<typeof createEmptyGlobalRuleBank>>();
   private globalHistoryStore: ChatHistoryStore | undefined;
@@ -88,6 +128,7 @@ export default class ChatLearningPlugin {
     this.ctx = ctx;
     this.config = config;
     this.logger = ctx.logger("yesimbot.chat-learning");
+    this.logger.level = ctx.yesimbot.config.logLevel ?? 2;
     ctx.on("ready", this.start.bind(this));
     ctx.on("dispose", this.stop.bind(this));
   }
@@ -135,6 +176,7 @@ export default class ChatLearningPlugin {
     this.historyStores.clear();
     this.rebuildHooks.clear();
     this.resetHooks.clear();
+    this.syncHooks.clear();
     this.globalStores.clear();
     this.globalBanks.clear();
     this.globalHistoryStore = undefined;
@@ -151,17 +193,22 @@ export default class ChatLearningPlugin {
     const key = scopeKey(scope);
     const config = this.config;
     const logger = this.logger;
+    const ctx = this.ctx;
 
     let runtimeStorage: AgentStorage<AgentEntry> | undefined;
     let state = store.read();
     let learnedEntries: readonly AgentEntry[] = [];
     let globalPatterns: readonly GlobalPattern[] = [];
+    let globalChains: readonly GlobalChainPattern[] = [];
     let lastGlobalSyncAt = 0;
     let dirty = true;
     let building: Promise<void> | undefined;
     let injectedTurn: string | undefined;
     let currentEvent: ProactiveEventKind | undefined;
     let lastModelEnrichAt = state?.builtAt ?? 0;
+    let reflection: string | undefined;
+    let lastReflectionAt = 0;
+    let lastReflectedEntryId: string | undefined;
 
     logger.debug("chat_learning.channel_plugin_created", {
       scope,
@@ -174,62 +221,99 @@ export default class ChatLearningPlugin {
       if (building) return building;
       const task = (async () => {
         if (!runtimeStorage) return;
-        const entries = learnedEntries;
-        const corrections = feedbackStore.read();
-        logger.debug("chat_learning.rebuild_start", {
-          scope,
-          allowModel,
-          entries: entries.length,
-          corrections: corrections.length,
-        });
-        const next = buildSnapshot(entries, config, scope, corrections);
-        logger.debug("chat_learning.rebuild_done", {
-          scope,
-          turns: next.turns.length,
-          links: next.links.length,
-          segments: next.segments.length,
-          responsePatterns: next.responsePatterns.length,
-          initiationPatterns: next.initiationPatterns.length,
-        });
-        const refreshMs = config.refreshIntervalMinutes * 60 * 1000;
-        const shouldEnrich =
-          allowModel && config.summaryModel !== undefined && Date.now() - lastModelEnrichAt >= refreshMs;
-        state = next;
-        dirty = false;
-        await store.update(next);
-        const globalSyncMs = config.globalSyncIntervalMinutes * 60 * 1000;
-        if (Date.now() - lastGlobalSyncAt >= globalSyncMs) {
-          await this.syncGlobalFromHistory(globalPath, globalStore, config);
-          const currentBank = this.globalBanks.get(globalPath) ?? globalStore.read();
-          const mergedBank = mergeLocalPatterns(
-            currentBank,
-            next.responsePatterns,
-            next.initiationPatterns,
-            key,
-            Date.now(),
-          );
-          await globalStore.update(mergedBank);
-          this.globalBanks.set(globalPath, mergedBank);
-          globalPatterns = [
-            ...selectGlobalPatterns(mergedBank, "response", config.minGlobalChannels, config.maxGlobalPatterns),
-          ];
-          lastGlobalSyncAt = Date.now();
-          logger.debug("chat_learning.global_sync", {
+        const historyAgeMs = config.maxHistoryAgeDays * 24 * 60 * 60 * 1000;
+        while (true) {
+          dirty = false;
+          const entries = learnedEntries;
+          const corrections = feedbackStore.read();
+          logger.debug("chat_learning.rebuild_start", {
             scope,
-            globalPath,
-            globalPatterns: mergedBank.patterns.length,
+            allowModel,
+            entries: entries.length,
+            corrections: corrections.length,
           });
+          const next = buildSnapshot(entries, config, scope, corrections);
+          logger.debug("chat_learning.rebuild_done", {
+            scope,
+            turns: next.turns.length,
+            links: next.links.length,
+            segments: next.segments.length,
+            responsePatterns: next.responsePatterns.length,
+            initiationPatterns: next.initiationPatterns.length,
+          });
+          const refreshMs = config.refreshIntervalMinutes * 60 * 1000;
+          const shouldEnrich =
+            allowModel &&
+            resolveChatLearningModelId(this.ctx, config) !== undefined &&
+            Date.now() - lastModelEnrichAt >= refreshMs;
+          let current = next;
+          if (shouldEnrich) {
+            current = await enrichWithModel(next, config, this.ctx, logger);
+            lastModelEnrichAt = Date.now();
+          } else if (state) {
+            current = {
+              ...next,
+              responsePatterns: state.responsePatterns,
+              initiationPatterns: state.initiationPatterns,
+            };
+          }
+          state = current;
+          await store.update(current);
+          const retained = await historyStore.trim(historyAgeMs, config.maxScanMessages);
+          if (!dirty) learnedEntries = retained;
+          const globalSyncMs = config.globalSyncIntervalMinutes * 60 * 1000;
+          if (Date.now() - lastGlobalSyncAt >= globalSyncMs) {
+            await this.syncGlobalFromHistory(globalPath, globalStore, config);
+            const currentBank = this.globalBanks.get(globalPath) ?? globalStore.read();
+            const chainPatterns = buildLocalChainPatterns(
+              current.segments,
+              current.links,
+              current.responsePatterns,
+              current.initiationPatterns,
+            );
+            const localEmbeddings = await buildPatternEmbeddingMap(
+              this.ctx,
+              config,
+              current.responsePatterns,
+              current.initiationPatterns,
+            );
+            const mergedBank = mergeLocalPatterns(
+              currentBank,
+              current.responsePatterns,
+              current.initiationPatterns,
+              chainPatterns,
+              key,
+              Date.now(),
+              {
+                localEmbeddings,
+                embeddingSimilarity: config.embeddingSimilarity,
+              },
+            );
+            await globalStore.update(mergedBank);
+            this.globalBanks.set(globalPath, mergedBank);
+            globalPatterns = [
+              ...selectGlobalPatterns(mergedBank, "response", config.minGlobalChannels, config.maxGlobalPatterns),
+            ];
+            globalChains = [
+              ...selectGlobalChains(mergedBank, config.minGlobalChannels, config.maxGlobalPatterns),
+            ];
+            lastGlobalSyncAt = Date.now();
+            logger.debug("chat_learning.global_sync", {
+              scope,
+              globalPath,
+              globalPatterns: mergedBank.patterns.length,
+              globalChains: mergedBank.chains.length,
+            });
+          }
+          if (shouldEnrich) {
+            logger.debug("chat_learning.model_enrich_done", {
+              scope,
+              responsePatterns: current.responsePatterns.length,
+              initiationPatterns: current.initiationPatterns.length,
+            });
+          }
+          if (!dirty) break;
         }
-        if (!shouldEnrich) return;
-        const enriched = await enrichWithModel(next, config, this.ctx, logger);
-        if (shouldEnrich) lastModelEnrichAt = Date.now();
-        state = enriched;
-        await store.update(enriched);
-        logger.debug("chat_learning.model_enrich_done", {
-          scope,
-          responsePatterns: enriched.responsePatterns.length,
-          initiationPatterns: enriched.initiationPatterns.length,
-        });
       })().finally(() => {
         building = undefined;
       });
@@ -247,6 +331,12 @@ export default class ChatLearningPlugin {
       });
     };
     this.rebuildHooks.set(key, scheduleRebuild);
+    this.syncHooks.set(key, async () => {
+      lastModelEnrichAt = 0;
+      lastGlobalSyncAt = 0;
+      await rebuild(true);
+      logger.debug("chat_learning.sync_forced", { scope, globalPath });
+    });
     this.resetHooks.set(key, () => {
       learnedEntries = [];
       dirty = true;
@@ -258,6 +348,38 @@ export default class ChatLearningPlugin {
       });
     });
 
+    const refreshReflection = async (styleBlock: string | undefined): Promise<string | undefined> => {
+      const modelId = config.reflectionModel?.trim();
+      if (!modelId || !styleBlock) return reflection;
+      const intervalMs = config.reflectionIntervalMinutes * 60 * 1000;
+      const lastAssistantId = lastAssistantEntryId(learnedEntries);
+      if (reflection && Date.now() - lastReflectionAt < intervalMs && lastAssistantId === lastReflectedEntryId) {
+        return reflection;
+      }
+      try {
+        const ref = ctx.yesimbot.model.resolveChatModel(modelId);
+        const next = await generateReflection(ref.model, styleBlock, learnedEntries, {
+          maxMessages: config.maxReflectionMessages,
+        });
+        if (next) {
+          reflection = next;
+          lastReflectionAt = Date.now();
+          lastReflectedEntryId = lastAssistantId;
+        }
+        logger.debug("chat_learning.reflection", {
+          scope,
+          model: modelId,
+          hasReflection: next !== undefined,
+        });
+      } catch (cause) {
+        logger.warn("chat_learning.reflection_failed", {
+          model: modelId,
+          cause: cause instanceof Error ? cause.message : String(cause),
+        });
+      }
+      return reflection;
+    };
+
     return {
       name: "chat-learning",
       async init(runtime: AgentPluginRuntime) {
@@ -267,20 +389,27 @@ export default class ChatLearningPlugin {
           learnedEntries = await runtimeStorage.read();
           await historyStore.append(learnedEntries);
         }
+        learnedEntries = await historyStore.trim(
+          config.maxHistoryAgeDays * 24 * 60 * 60 * 1000,
+          config.maxScanMessages,
+        );
         await rebuild(false);
         logger.debug("chat_learning.runtime_init", {
           scope,
           turns: state?.turns.length ?? 0,
           links: state?.links.length ?? 0,
         });
-        if (config.summaryModel !== undefined) {
+        if (resolveChatLearningModelId(ctx, config) !== undefined) {
           void rebuild(true);
         }
       },
       async onAppend(entries: readonly AgentEntry[]) {
+        const eventKind = detectProactiveEvent(entries);
+        currentEvent = eventKind;
         logger.debug("chat_learning.on_append", {
           scope,
           entries: entries.length,
+          eventKind,
         });
         learnedEntries = [...learnedEntries, ...entries];
         await historyStore.append(entries);
@@ -288,46 +417,47 @@ export default class ChatLearningPlugin {
         scheduleRebuild();
         return [...entries];
       },
-      toModelMessages(message) {
-        if (isEvent(message)) {
-          currentEvent = proactiveEventKind(message.data.eventType);
-          logger.debug("chat_learning.event_seen", {
-            scope,
-            eventType: message.data.eventType,
-            kind: currentEvent,
-          });
-        }
-        return undefined;
-      },
       prepareStep: async (messages: readonly ModelMessage[], context: PrepareStepContext) => {
         if (injectedTurn === context.turnId) return messages;
         injectedTurn = context.turnId;
         if (dirty) await rebuild(false);
+        const eventKind = currentEvent;
+        currentEvent = undefined;
         const bank = this.globalBanks.get(globalPath) ?? globalStore.read();
         globalPatterns = [
           ...selectGlobalPatterns(
             bank,
-            currentEvent ? "initiation" : "response",
+            eventKind ? "initiation" : "response",
             config.minGlobalChannels,
             config.maxGlobalPatterns,
           ),
         ];
-        const block = buildPromptBlock(state, currentEvent, config, globalPatterns);
+        globalChains = [...selectGlobalChains(bank, config.minGlobalChannels, config.maxGlobalPatterns)];
+        const block = buildPromptBlock(state, eventKind, config, globalPatterns, globalChains);
         logger.debug("chat_learning.prepare_step", {
           scope,
           turnId: context.turnId,
           step: context.stepNumber,
           dirty,
-          eventKind: currentEvent,
+          eventKind,
           stateTurns: state?.turns.length ?? 0,
           stateLinks: state?.links.length ?? 0,
           blockLength: block?.length ?? 0,
         });
-        return block ? [{ role: "system", content: block }, ...messages] : messages;
+        const prepared: ModelMessage[] = block
+          ? [{ role: "system", content: block }, ...messages]
+          : [...messages];
+        const reflectionBlock = await refreshReflection(block);
+        if (reflectionBlock) {
+          const reflectionMessage: ModelMessage = { role: "system", content: reflectionBlock };
+          return [...prepared, reflectionMessage];
+        }
+        return prepared;
       },
       stop: () => {
         this.rebuildHooks.delete(key);
         this.resetHooks.delete(key);
+        this.syncHooks.delete(key);
         logger.debug("chat_learning.channel_plugin_stop", { scope });
       },
     } satisfies AgentPlugin;
@@ -354,7 +484,9 @@ export default class ChatLearningPlugin {
             const feedback = await this.feedbackStoreFor(scope);
             const corrections = feedback.read();
             const global = await this.globalStoreFor(storagePath);
-            const globalPatterns = global.store.read().patterns.length;
+            const globalBank = global.store.read();
+            const globalPatterns = globalBank.patterns.length;
+            const globalChains = globalBank.chains.length;
             this.logger.debug("chat_learning.status", {
               scope,
               turns: state?.turns.length ?? 0,
@@ -363,6 +495,7 @@ export default class ChatLearningPlugin {
               initiationPatterns: state?.initiationPatterns.length ?? 0,
               corrections: corrections.length,
               globalPatterns,
+              globalChains,
             });
             const text = [
               `chat-learning ${scope.platform}:${scope.channelId}`,
@@ -372,6 +505,7 @@ export default class ChatLearningPlugin {
               `initiationPatterns=${state?.initiationPatterns.length ?? 0}`,
               `corrections=${corrections.length}`,
               `globalPatterns=${globalPatterns}`,
+              `globalChains=${globalChains}`,
               `state=${join(storagePath, "chat-learning.json")}`,
             ].join("\n");
             return await this.replyLong(session, text, text);
@@ -380,6 +514,62 @@ export default class ChatLearningPlugin {
               cause: cause instanceof Error ? cause.message : String(cause),
             });
             return `status 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+          }
+        }),
+    );
+
+    track(
+      this.ctx
+        .command("yesimbot.chat-learning.global", "查看跨群全局学习规则", { authority: 4 })
+        .option("limit", "<limit> 最多显示条数")
+        .action(async ({ session, options }) => {
+          try {
+            const scope = scopeOf(session);
+            if (!scope) return "无法获取当前频道信息";
+            const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+            const { store, path } = await this.globalStoreFor(storagePath);
+            const bank = this.globalBanks.get(path) ?? store.read();
+            const limit = parsePositiveInt(options?.limit, 20);
+            const responsePatterns = bank.patterns
+              .filter((pattern) => pattern.kind === "response")
+              .slice(0, limit);
+            const initiationPatterns = bank.patterns
+              .filter((pattern) => pattern.kind === "initiation")
+              .slice(0, limit);
+            const chainPatterns = bank.chains.slice(0, limit);
+            const lines = [
+              `global rules ${path}`,
+              `patterns=${bank.patterns.length}`,
+              `chains=${bank.chains.length}`,
+              `response=${responsePatterns.length}`,
+              `initiation=${initiationPatterns.length}`,
+            ];
+            if (responsePatterns.length > 0) {
+              lines.push("", "response:");
+              lines.push(...responsePatterns.map(formatGlobalPattern));
+            }
+            if (initiationPatterns.length > 0) {
+              lines.push("", "initiation:");
+              lines.push(...initiationPatterns.map(formatGlobalPattern));
+            }
+            if (chainPatterns.length > 0) {
+              lines.push("", "chains:");
+              lines.push(...chainPatterns.map(formatGlobalChain));
+            }
+            const text = lines.join("\n");
+            this.logger.debug("chat_learning.global_preview", {
+              scope,
+              path,
+              patterns: bank.patterns.length,
+              chains: bank.chains.length,
+              limit,
+            });
+            return await this.replyLong(session, text, text);
+          } catch (cause) {
+            this.logger.warn("chat_learning.global_preview_failed", {
+              cause: cause instanceof Error ? cause.message : String(cause),
+            });
+            return `global 失败：${cause instanceof Error ? cause.message : String(cause)}`;
           }
         }),
     );
@@ -401,22 +591,98 @@ export default class ChatLearningPlugin {
             const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
             await stateStore.init();
             const state = stateStore.read();
-            const block = buildPromptBlock(state, eventKind, this.config);
+            const { store: globalStore, path: globalPath } = await this.globalStoreFor(storagePath);
+            const bank = this.globalBanks.get(globalPath) ?? globalStore.read();
+            const globalPatterns = selectGlobalPatterns(
+              bank,
+              eventKind ? "initiation" : "response",
+              this.config.minGlobalChannels,
+              this.config.maxGlobalPatterns,
+            );
+            const globalChains = selectGlobalChains(
+              bank,
+              this.config.minGlobalChannels,
+              this.config.maxGlobalPatterns,
+            );
+            const block = buildPromptBlock(state, eventKind, this.config, globalPatterns, globalChains);
+            const reflection = await this.reflectionForPreview(scope, block);
             if (!block) return "当前没有可注入的学习上下文";
             this.logger.debug("chat_learning.preview", {
               scope,
               eventKind,
+              globalPatterns: globalPatterns.length,
+              globalChains: globalChains.length,
+              globalBankPatterns: bank.patterns.length,
+              globalBankChains: bank.chains.length,
+              reflection: reflection !== undefined,
               tokens: estimateTokens(block),
               blockLength: block.length,
             });
-            const rawText = `token≈${estimateTokens(block)}\n\n${block}`;
-            const fallbackText = `token≈${estimateTokens(block)}\n\n${escapePromptText(block)}`;
+            const prefix =
+              `token≈${estimateTokens(block)} ` +
+              `globalPatterns=${globalPatterns.length}/${bank.patterns.length} ` +
+              `globalChains=${globalChains.length}/${bank.chains.length}`;
+            const reflectionBlock = reflection ? `\n\n<reflection>\n${reflection}\n</reflection>` : "";
+            const fallbackReflection = reflection
+              ? `\n\n&lt;reflection&gt;\n${escapePromptText(reflection)}\n&lt;/reflection&gt;`
+              : "";
+            const rawText = `${prefix}\n\n${block}${reflectionBlock}`;
+            const fallbackText = `${prefix}\n\n${escapePromptText(block)}${fallbackReflection}`;
             return await this.replyLong(session, rawText, fallbackText);
           } catch (cause) {
             this.logger.warn("chat_learning.preview_failed", {
               cause: cause instanceof Error ? cause.message : String(cause),
             });
             return `preview 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+          }
+        }),
+    );
+
+    track(
+      this.ctx
+        .command("yesimbot.chat-learning.sync", "立即触发学习总结与跨群同步", { authority: 4 })
+        .action(async ({ session }) => {
+          try {
+            const scope = scopeOf(session);
+            if (!scope) return "无法获取当前频道信息";
+            const key = scopeKey(scope);
+            const hook = this.syncHooks.get(key);
+            if (hook) {
+              await hook();
+            } else {
+              await this.syncGlobalHistoryOnly();
+            }
+            const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+            const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
+            await stateStore.init();
+            const state = stateStore.read();
+            const global = await this.globalStoreFor(storagePath);
+            const globalBank = global.store.read();
+            const globalPatterns = globalBank.patterns.length;
+            const globalChains = globalBank.chains.length;
+            this.logger.debug("chat_learning.sync_done", {
+              scope,
+              turns: state?.turns.length ?? 0,
+              links: state?.links.length ?? 0,
+              responsePatterns: state?.responsePatterns.length ?? 0,
+              initiationPatterns: state?.initiationPatterns.length ?? 0,
+              globalPatterns,
+              globalChains,
+            });
+            return [
+              "已触发学习总结",
+              `turns=${state?.turns.length ?? 0}`,
+              `links=${state?.links.length ?? 0}`,
+              `responsePatterns=${state?.responsePatterns.length ?? 0}`,
+              `initiationPatterns=${state?.initiationPatterns.length ?? 0}`,
+              `globalPatterns=${globalPatterns}`,
+              `globalChains=${globalChains}`,
+            ].join("\n");
+          } catch (cause) {
+            this.logger.warn("chat_learning.sync_failed", {
+              cause: cause instanceof Error ? cause.message : String(cause),
+            });
+            return `sync 失败：${cause instanceof Error ? cause.message : String(cause)}`;
           }
         }),
     );
@@ -521,6 +787,28 @@ export default class ChatLearningPlugin {
     return store;
   }
 
+  private async reflectionForPreview(
+    scope: ChannelScope,
+    styleBlock: string | undefined,
+  ): Promise<string | undefined> {
+    const modelId = this.config.reflectionModel?.trim();
+    if (!modelId || !styleBlock) return undefined;
+    try {
+      const ref = this.ctx.yesimbot.model.resolveChatModel(modelId);
+      const history = await this.historyStoreFor(scope);
+      const entries = await history.read();
+      return await generateReflection(ref.model, styleBlock, entries, {
+        maxMessages: this.config.maxReflectionMessages,
+      });
+    } catch (cause) {
+      this.logger.warn("chat_learning.reflection_preview_failed", {
+        model: modelId,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      });
+      return undefined;
+    }
+  }
+
   private async globalStoreFor(_storagePath: string): Promise<{ store: GlobalRuleStore; path: string }> {
     const path = this.defaultGlobalPath();
     const existing = this.globalStores.get(path);
@@ -621,13 +909,51 @@ export default class ChatLearningPlugin {
         autoBlockBotNames: config.autoBlockBotNames,
       });
       const segments = segmentTurns(turns);
-      const patterns = extractPatterns(segments);
+      const links = buildLinks(turns);
+      const modelId = resolveChatLearningModelId(this.ctx, config);
+      const patterns = modelId
+          ? await classifyPatternsWithModel(
+              this.ctx.yesimbot.model.resolveChatModel(modelId).model,
+              turns,
+              segments,
+              links,
+              {
+                maxThreads: config.maxModelThreads,
+                maxThreadMessages: config.maxModelThreadMessages,
+              },
+            ).catch((cause) => {
+            this.logger.warn("chat_learning.global_classify_failed", {
+              model: modelId,
+              cause: cause instanceof Error ? cause.message : String(cause),
+            });
+            return undefined;
+          })
+        : undefined;
+      const responsePatterns = patterns?.responsePatterns ?? [];
+      const initiationPatterns = patterns?.initiationPatterns ?? [];
+      const chainPatterns = buildLocalChainPatterns(
+        segments,
+        links,
+        responsePatterns,
+        initiationPatterns,
+      );
+      const localEmbeddings = await buildPatternEmbeddingMap(
+        this.ctx,
+        config,
+        responsePatterns,
+        initiationPatterns,
+      );
       bank = mergeLocalPatterns(
         bank,
-        patterns.responsePatterns,
-        patterns.initiationPatterns,
+        responsePatterns,
+        initiationPatterns,
+        chainPatterns,
         scopeKeyValue,
         Date.now(),
+        {
+          localEmbeddings,
+          embeddingSimilarity: config.embeddingSimilarity,
+        },
       );
     }
 
@@ -639,6 +965,7 @@ export default class ChatLearningPlugin {
       groups: groups.size,
       entries: entries.length,
       globalPatterns: bank.patterns.length,
+      globalChains: bank.chains.length,
     });
   }
 
@@ -682,7 +1009,6 @@ function buildSnapshot(
   });
   const segments = segmentTurns(turns);
   const links = applyCorrections(buildLinks(turns, { selfId: scope.selfId }), turns, corrections);
-  const patterns = extractPatterns(segments);
   const lastEntry = [...entries].reverse().find((entry) => entry.type === "message");
   return {
     lastEntryId: lastEntry?.id,
@@ -690,8 +1016,8 @@ function buildSnapshot(
     turns,
     links,
     segments,
-    responsePatterns: patterns.responsePatterns,
-    initiationPatterns: patterns.initiationPatterns,
+    responsePatterns: [],
+    initiationPatterns: [],
   };
 }
 
@@ -701,10 +1027,14 @@ async function enrichWithModel(
   ctx: Context,
   logger: Logger,
 ): Promise<ChatLearningState> {
-  if (!config.summaryModel) return state;
+  const modelId = resolveChatLearningModelId(ctx, config);
+  if (!modelId) return state;
   try {
-    const ref = ctx.yesimbot.model.resolveChatModel(config.summaryModel);
-    const patterns = await classifyPatternsWithModel(ref.model, state.turns, state.segments);
+    const ref = ctx.yesimbot.model.resolveChatModel(modelId);
+    const patterns = await classifyPatternsWithModel(ref.model, state.turns, state.segments, state.links, {
+      maxThreads: config.maxModelThreads,
+      maxThreadMessages: config.maxModelThreadMessages,
+    });
     if (!patterns) return state;
     return {
       ...state,
@@ -714,17 +1044,32 @@ async function enrichWithModel(
     };
   } catch (cause) {
     logger.warn("chat_learning.model_enrich_failed", {
-      model: config.summaryModel,
+      model: modelId,
       cause: cause instanceof Error ? cause.message : String(cause),
     });
     return state;
   }
 }
 
-function proactiveEventKind(eventType: string): ProactiveEventKind | undefined {
-  if (eventType.startsWith("global-brain")) return "global-brain";
-  if (eventType === "schedule.due") return "schedule";
-  return undefined;
+function resolveChatLearningModelId(ctx: Context, config: ChatLearningConfig): string | undefined {
+  const configured = config.summaryModel?.trim();
+  if (configured) return configured;
+  return ctx.yesimbot.model.getDefaultChatModelId();
+}
+
+function parsePositiveInt(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : fallback;
+}
+
+function formatGlobalPattern(pattern: GlobalPattern): string {
+  const total = pattern.channels.reduce((sum, channel) => sum + channel.frequency, 0);
+  return `- [${pattern.intent}] "${pattern.phrase}" channels=${pattern.channels.length} total=${total}`;
+}
+
+function formatGlobalChain(chain: GlobalChainPattern): string {
+  const total = chain.channels.reduce((sum, channel) => sum + channel.frequency, 0);
+  return `- ${chain.chain.join(" -> ")} channels=${chain.channels.length} total=${total}`;
 }
 
 function scopeOf(session: Session | undefined): ChannelScope | null {
@@ -739,6 +1084,14 @@ function scopeOf(session: Session | undefined): ChannelScope | null {
 
 function scopeKey(scope: ChannelScope): string {
   return `${scope.type}:${scope.platform}:${scope.selfId}:${scope.channelId}`;
+}
+
+function lastAssistantEntryId(entries: readonly AgentEntry[]): string | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if (entry.type === "message" && entry.data.role === "assistant") return entry.id;
+  }
+  return undefined;
 }
 
 function scopeKeyFromEntry(entry: AgentEntry): string | undefined {

@@ -122,6 +122,17 @@ export class ModelService {
     }
     options.push(Schema.string().description("Custom model (provider:model)"));
     this.ctx.schema.set("registry.chatModels", Schema.union(options).default(""));
+
+    const embeddingOptions: Schema<string>[] = [];
+    for (const model of this.embeddingModels.values()) {
+      if (isHiddenModel(model.config)) {
+        continue;
+      }
+      const fullId = model.fullId;
+      embeddingOptions.push(Schema.const(fullId).description(fullId) as Schema<string>);
+    }
+    embeddingOptions.push(Schema.string().description("Custom model (provider:model)"));
+    this.ctx.schema.set("registry.embeddingModels", Schema.union(embeddingOptions).default(""));
   }
 
   private refreshModels(): void {
