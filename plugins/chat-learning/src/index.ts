@@ -10,7 +10,7 @@ import type {
 import { createMessageEntry } from "@yesimbot/agent-runtime";
 import type { ModelMessage } from "ai";
 import { Context, Logger, Schema, Universal, type Command, type Session } from "koishi";
-import { createMessage, isMessage, type ChannelScope } from "koishi-plugin-yesimbot";
+import { createMessage, isMessage, type ChannelScope, type DeliveredPayload } from "koishi-plugin-yesimbot";
 
 import { buildLocalChainPatterns } from "./chains.js";
 import { collectTurns, segmentTurns } from "./collector.js";
@@ -43,21 +43,6 @@ import type {
   LinkKind,
   ProactiveEventKind,
 } from "./types.js";
-
-interface DeliveredEventPayload {
-  readonly platform: string;
-  readonly selfId: string;
-  readonly channel: { readonly id: string; readonly type: number };
-  readonly turnId: string;
-  readonly messageId: string;
-  readonly text: string;
-}
-
-declare module "koishi" {
-  interface Events {
-    "yesimbot/delivered": (payload: DeliveredEventPayload) => void;
-  }
-}
 
 export const Config: Schema<ChatLearningConfig> = Schema.object({
   maxExamples: Schema.number().min(1).max(10).default(4).description("每轮最多注入几个示例对话段"),
@@ -124,10 +109,7 @@ export default class ChatLearningPlugin {
   private readonly rebuildHooks = new Map<string, () => void>();
   private readonly resetHooks = new Map<string, () => void>();
   private readonly syncHooks = new Map<string, () => Promise<void>>();
-  private readonly reflectHooks = new Map<
-    string,
-    (payload: { platform: string; selfId: string; channel: { id: string; type: number }; turnId: string; messageId: string; text: string }) => Promise<void>
-  >();
+  private readonly reflectHooks = new Map<string, (payload: DeliveredPayload) => Promise<void>>();
   private readonly reflectionStores = new Map<string, ReflectionStore>();
   private readonly reflectionOverrides = new Map<string, string>();
   private readonly globalStores = new Map<string, GlobalRuleStore>();
@@ -152,14 +134,7 @@ export default class ChatLearningPlugin {
     ctx.on("dispose", this.stop.bind(this));
   }
 
-  private async onDelivered(payload: {
-    readonly platform: string;
-    readonly selfId: string;
-    readonly channel: { readonly id: string; readonly type: number };
-    readonly turnId: string;
-    readonly messageId: string;
-    readonly text: string;
-  }): Promise<void> {
+  private async onDelivered(payload: DeliveredPayload): Promise<void> {
     const scope: ChannelScope = {
       type: payload.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared",
       platform: payload.platform,
