@@ -1,6 +1,6 @@
 # yesimbot-will-policy
 
-可选的 Will 与 routing 精细化策略插件。它通过 Core 的 `registerWillEngineFactory()` seam 注册一套可克隆、可重复配置的策略引擎；不安装时 Core 完全保持默认行为。
+可选的 WillEngine 与 routing 精细化策略插件。插件启动时通过 `ctx.yesimbot.agent.will()` 注册一个具名 WillEngine；不安装时 Core 完全保持默认行为。
 
 ## 基础概念
 
@@ -25,11 +25,11 @@ engine: willingness  # 使用意愿值动态决定，routing 配置不会被使�
 
 ## 特性
 
-- 像 provider 一样可以在 Koishi 管理页中克隆/重复添加，每个实例是一套独立 Will 配置。
+- 像 provider 一样可以在 Koishi 管理页中克隆/重复添加，每个实例是一套独立 WillEngine 配置。
 - 每个实例的筛选交给 Koishi 管理页自带的 filter，插件不重复实现。
 - `routing` 支持私聊、@机器人、@全体、@在线、引用/回复、图片消息、拍一拍、普通群消息八类独立决策。
 - `willingness` 参考 v3 意愿引擎，提供基础增益、属性增益、关键词乘数、概率曲线、热/温窗口和强制触发开关。
-- 多个 Will 插件可以共存，由 Core 的 factory priority 决定顺序。
+- 多个 WillEngine 插件可以共存，由具名 `priority` 决定顺序；数值小者先执行。
 
 ## 示例配置
 
@@ -75,10 +75,10 @@ plugins:
 - 如果这个克隆实例的 `engine: willingness`，Core 使用 `willingness` 计算分数和概率，`routing` 被忽略。
 - 每个克隆实例独立选择 `engine`，所以你可以一个实例用 routing，另一个实例用 willingness。
 - Koishi 管理页的 filter 决定每个克隆实例应用于哪些频道/平台。
-- 多个实例同时匹配时，按 `factoryPriority` 决定哪一个先接管；数值小者优先。
+- 多个实例同时匹配时，按 `priority` 决定哪一个先接管；数值小者优先。
 
 ## 克隆语义
 
 - 每个插件实例拥有独立的 `routing` / `willingness` 配置。
-- 多个实例按 `factoryPriority` 参与 Core 的 WillEngineFactory 排序，数值小者先执行。
+- 多个实例按 `priority` 参与 WillEngine 排序，数值小者先执行。
 - 需要按频道/平台区分时，在 Koishi 管理页给对应实例配置 filter。

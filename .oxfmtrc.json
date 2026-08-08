@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": [".planning", "dist", "docs", "openspec", "references"],
+  "ignorePatterns": ["dist", "docs", "openspec", "references"],
   "sortImports": {
     "sortImports": {
       "groups": [

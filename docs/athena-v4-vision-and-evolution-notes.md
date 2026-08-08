@@ -37,7 +37,7 @@ Athena 最初看起来是一个 Koishi 聊天插件，但我想解决的从来�
 
 ### 3.2 不回复是一等行为
 
-当前 Core 把参与判断限制为每频道的 Will：默认 routing 根据 direct、mention 和 group 选择 `wait | trigger`；可选 willingness 只公开阈值、半衰期和回复成本三个旋钮。Core 同时提供可选的 WillConfigContributor 与 WillEngineFactory 注册 seam，让插件按频道 scope 克隆配置、匹配 Koishi filter 或包装默认 engine；没有插件注册时，Core 保持内置默认行为。
+当前 Core 把参与判断限制为每频道的 WillEngine：默认 routing 根据 direct、mention 和 group 选择 `wait | trigger`；可选 WillPlugin 通过 `agent.will()` 注册，按 priority 稳定排序。
 
 这不是 world state，也不是一套可无限扩展的行为状态机。未来若要引入学习型或评分型判断，必须先定义可解释输入、离线样本、评估方法和独立边界。
 
@@ -71,19 +71,22 @@ Athena 需要可持续的人格，但人格不应依赖难以追踪的模板变�
 
 在这些条件没有形成独立设计前，不把“世界状态”“自主计划”或“主动投递”写成当前能力。愿景可以向前看，文档不能把设想伪装成事实。
 
-## 4. 2026-07 的当前基线
+## 4. 2026-08 的当前基线
 
 当前 Athena 的输入与输出由五个明确边界组成：
 
 ```text
 Session
-  -> Gateway（allowlist、assignee、AssetStore、PlatformTranslator、canonical record、被动回复）
-  -> RuntimeManager（频道 Runtime 创建、替换、reset、stop）
-  -> ChannelRuntime（FIFO、Agent、Will、JSONL、模型输入、输出）
+  -> Messenger（allowlist、assignee、ChannelResources、Translator、canonical record、被动回复）
+  -> Runtimes（频道 Runtime 创建、替换、reset、stop）
+  -> ChannelRuntime（FIFO、Agent、WillEngine、JSONL、模型输入、输出）
       -> @yesimbot/agent-runtime + AgentPlugin / tools / providers
 ```
 
-Gateway 是 live Session 的唯一 owner。它在同一 handler 内完成准入、PlatformTranslator 调用、图片冻结和被动 `Session.send()`，随后将不含 Session 的 InputRecord 交给 RuntimeManager。ChannelRuntime 对一个频道按 FIFO 处理记录，并在 Runtime 外由唯一 output consumer 消费流输出。
+Messenger 是 live Session 的唯一 owner。它在同一 handler 内完成准入、Translator
+调用、入站资源持久化和被动 `Session.send()`，随后将不含 Session 的 MessageRecord
+或 EventRecord 交给 Runtimes。ChannelRuntime 对一个频道按 FIFO 处理记录，并由
+Messenger 作为唯一 output consumer 消费流输出。
 
 ### 4.1 `@yesimbot/agent-runtime`
 
@@ -99,47 +102,74 @@ Gateway 是 live Session 的唯一 owner。它在同一 handler 内完成准入�
 
 ### 4.2 `core/`
 
-Koishi core 负责模型注册、Gateway admission、ChannelScope/Manifest/AssetStore、RuntimeManager、ChannelRuntime、Core prompt 和回复投递。公开 `ctx.yesimbot` 只提供 model、assets、PlatformTranslator/Agent plugin 注册、`getStoragePath(scope)`、reset 和 stop。
+Koishi core 负责模型注册、Messenger admission、ChannelScope、Channel/Conversation/
+ChannelResources、Runtimes、ChannelRuntime、Core prompt 和回复投递。公开
+`ctx.yesimbot` 只提供 model、messenger、agent、resource 和 stop。
 
-Core 不提供 public channel identity、storage namespace registration、reload、DeliveryService 或 PlatformService。稳定模型、图片预算、prompt、tools 和插件在 Runtime 创建时形成快照。
+Core 不提供 public channel identity、storage namespace registration、reload、
+DeliveryService 或 PlatformService。稳定模型、图片预算、prompt、tools 和插件在
+Runtime 创建时形成快照。
 
 ### 4.3 `core/src/platforms/`
 
-内置平台通过每平台一个 `PlatformTranslator` 处理输入侧差异。Translator 接收 live Session 和频道 AssetStore，直接返回最终 message/event record 或 `null`。无精确或显式通配 Translator 时，message-created 元素使用内置默认透传；媒体持久化与自定义事件仍需平台 Translator。Translator 失败没有 Satori fallback。OneBot 只持久化 `img`，保留其他 Element 的结构。
+内置平台通过 Translator 处理输入侧差异。Translator 接收 live Session 和
+ChannelResources，直接返回最终 MessageRecord、EventRecord 或 `null`。无精确或显式
+通配 Translator 时，message-created 元素使用内置默认透传；媒体持久化与自定义事件
+仍需平台 Translator。Translator 失败没有 Satori fallback。OneBot 只持久化可接受的
+图片和文本文件，保留其他 Element 的结构。
 
 ### 4.4 `plugins/*` 与 `providers/*`
 
-可选插件以 AgentPlugin factory 增加工具和运行时行为；受信任插件使用 `getStoragePath(scope)` 自行选择 channel-root 子目录。Provider 包只注册模型实现。两类扩展都不持有 Gateway Session，也不复制 Core 的模型输入或消息格式协议。
+可选插件以具名 AgentPlugin 对象通过 `agent.use()` 增加工具和运行时行为，以
+WillPlugin 对象通过 `agent.will()` 增加被动参与策略；受信任插件通过
+`resource.get(scope)` 获取稳定 ChannelResources 并选择自己的子目录。Provider
+包只注册模型实现。插件不持有 Gateway/ Messenger 的 Session，也不复制 Core 的
+模型输入或消息格式协议。
 
 ## 5. 当前已经接受的工程决策
 
-### 5.1 Gateway 组装唯一 ingress 事实
+### 5.1 Messenger 组装唯一 ingress 事实
 
-Translator 返回最终 Message/Event record；Gateway 从 live Session 和 ChannelScope 推导 RecordBase，并把事件通过 `assembleEvent` 构造。Session 在 Gateway handler 外不再存在，JSONL 读回只逐行 `JSON.parse`，跳过 JSON 语法损坏行而不做语义验证。
+Translator 返回最终 Message/Event record；Messenger 从 live Session 和 ChannelScope
+推导 RecordBase，并把事件通过 `assembleEvent` 构造。Session 在 Messenger handler
+外不再存在，JSONL 读回只逐行 `JSON.parse`，跳过 JSON 语法损坏行而不做语义验证。
 
 ### 5.2 频道上下文保持原始且可读
 
-公开 `ChannelScope` 只含 `platform`、`selfId`、`channelId`、`isDirect`。shared 持久化使用 `[platform, channelId]`，direct 加入 `selfId`；这些 tuple 和 Runtime map key 保持私有。可读 `shared-*` / `direct-*` 根目录以 versionless `channel.json` 为权威，插件通过 `getStoragePath(scope)` 获得完整 root 后自行管理子目录。
+公开 `ChannelScope` 只含 discriminated `shared { platform, channelId }` 或 `direct
+{ platform, selfId, channelId }`；这些 tuple 和 Runtime map key 保持私有。可读
+`shared-*` / `direct-*` 根目录以 versionless `channel.json` 为权威，插件通过
+`resource.get(scope)` 获得稳定 `ChannelResources` 后管理子目录。
 
 ### 5.3 Runtime 生命周期优先于热更新
 
-RuntimeManager 为每个持久化频道维护一个 Runtime。shared 频道的当前 Bot 变化时，Core 停止旧 Runtime、删除缓存、创建新 Runtime 并处理当前记录。Core 不提供 reload；模型、prompt、tools 和插件的稳定变化在正常替换后生效。每个 ChannelRuntime 独占 FIFO、Agent、Will、JSONL、AssetStore 和 output ownership。
+Runtimes 为每个持久化频道维护一个 Runtime。shared 频道的当前 Bot 变化时，Core
+停止旧 Runtime、删除缓存、创建新 Runtime 并处理当前记录。Core 不提供 reload；
+模型、prompt、tools 和插件的稳定变化在正常替换后生效。每个 ChannelRuntime 独占
+FIFO、Agent、WillEngine、JSONL、ChannelResources 和 output ownership。
 
 ### 5.4 资产持久化与模型投影分离
 
-`AssetStore` 只存取频道范围内的字节，以前 32 位小写 SHA-256 hex 标识内容。PlatformTranslator 决定入站下载和持久化；`runtime/model-input.ts` 在模型调用时按 history 后 current 的顺序读取本地图片、检测 MIME、应用 `imageInput` 预算。模型 capability 只由 `models.json` 声明。
+AssetStore 只存取频道范围内的字节，以前 32 位小写 SHA-256 hex 标识内容。Translator
+决定入站下载和持久化；模型调用按当前调用预算读取本地图片。历史重放不请求平台 API。
+模型 capability 只由 `models.json` 声明。
 
 ### 5.5 交付仍属于产生输出的频道
 
-Gateway 用产生输入的 Session 被动发送。首段成功只通知一次 Will；失败经同频道 `delivery.failed` 回到 producing Runtime，后续输出继续。主动发送是 ChannelRuntime 中的 current-Bot tool，接受显式 channelId 并保留 Koishi 返回的全部 message IDs。
+Messenger 用产生输入的 Session 被动发送。主动 `messenger.post()` 使用匹配当前 Bot
+的 `sendMessage()`。输出失败经同频道 `delivery.failed` 回到产生输出的 Runtime，后续
+输出继续；失败不重新调用 `post()`。
 
 ### 5.6 Prompt、回复与公共 API 保持小而固定
 
-Core Constitution、persona、可选 agents 和 runtime context 按固定顺序组成系统提示词。Reply 直接传递标准 Koishi 元素，`<message>` 负责平台原生分段，`<text>` 保护逐字内容，`inner_thought` 是唯一 Core 私有元素。公共 facade 不为未来的 identity、delivery、reload、storage registry 或 Will factory 预留入口。
+Core Constitution、persona、可选 agents 和 runtime context 按固定顺序组成系统提示词。
+Reply 直接传递标准 Koishi 元素，`<message>` 负责平台原生分段，`<text>` 保护逐字
+内容，`inner_thought` 是唯一 Core 私有元素。公共 facade 不为未来的 identity、delivery、
+reload、storage registry 或 WillEngine factory 预留入口。
 
 ### 5.7 延后方向保持显式边界
 
-World state、主动行为、学习型 Will、跨频道资源中心和额外媒体类型都不是当前 Core 需求。它们必须在出现具体消费者后以独立设计讨论，不能借插件或配置名提前进入公共协议。
+World state、主动行为、学习型 WillEngine、跨频道资源中心和额外媒体类型都不是当前 Core 需求。它们必须在出现具体消费者后以独立设计讨论，不能借插件或配置名提前进入公共协议。
 
 ## 6. 仍然保留，但明确延后的方向
 

@@ -16,13 +16,11 @@ Core MUST expose a `GlobalScope` with `type: "global"` and a required non-empty 
 - **THEN** the global facade MUST reject before creating storage or a runtime
 
 ### Requirement: Global Agent Facade
-
-Core MUST expose `ctx.yesimbot.global` as the public GlobalAgent lifecycle interface. The module MUST provide scope-addressed `start`, `submit`, `replace`, `stop`, `clear`, and `getStoragePath` operations. Core MUST keep GlobalRuntimeManager and GlobalRuntime private.
+Core MUST expose `ctx.yesimbot.global` as the public GlobalAgent lifecycle interface. The module MUST provide scope-addressed `start`, `submit`, `replace`, `stop`, `clear`, and resource-root operations. Core MUST keep GlobalRuntimeManager and GlobalRuntime private.
 
 #### Scenario: Trusted plugin manages a GlobalAgent
-
 - **WHEN** a trusted plugin calls a global facade operation with a valid GlobalScope
-- **THEN** Core MUST perform that operation without returning RuntimeManager or GlobalRuntime
+- **THEN** Core MUST perform that operation without returning Runtimes or GlobalRuntime
 
 #### Scenario: Two trusted plugins use the same scope
 
@@ -129,8 +127,8 @@ Core MUST create GlobalAgent roots below `agents/` using a safe deterministic en
 
 #### Scenario: Global storage is first requested
 
-- **WHEN** `getStoragePath()` first receives a valid GlobalScope
-- **THEN** Core MUST atomically create its Manifest and return the complete Agent root
+- **WHEN** `resource.get()` first receives a valid GlobalScope
+- **THEN** Core MUST atomically create its Manifest and return the complete Agent resource root
 
 #### Scenario: Existing Manifest identity differs
 
@@ -140,7 +138,7 @@ Core MUST create GlobalAgent roots below `agents/` using a safe deterministic en
 
 ### Requirement: Global Asset Isolation
 
-The public AssetService MUST create a GlobalScope store rooted in that Agent's `assets/` child. A GlobalScope store MUST use the existing asset ID, prefix resolution, deduplication, and clear behavior. It MUST NOT implicitly resolve an asset from any ChannelScope store.
+The public resource facade MUST create a GlobalScope owner rooted in that Agent's `assets/` child. A GlobalScope owner MUST use the existing asset ID, prefix resolution, deduplication, and clear behavior. It MUST NOT implicitly resolve an asset from any ChannelScope owner.
 
 #### Scenario: Same asset reference exists in two scopes
 
@@ -159,9 +157,8 @@ Core global stop MUST close GlobalAgent admission, stop every running GlobalRunt
 
 ### Requirement: Registered Channel Plugins Remain Channel-Only
 
-This change MUST NOT make GlobalRuntime discover, adapt, or initialize factories registered through `registerChannelPlugin()`. A GlobalAgent MUST use only the fixed tools and private AgentPlugin instances supplied in its explicit definition.
+This change MUST NOT make GlobalRuntime discover, adapt, or initialize channel plugin objects registered through `agent.use()`. A GlobalAgent MUST use only the fixed tools and private AgentPlugin instances supplied in its explicit definition.
 
 #### Scenario: MCP channel plugin is registered
-
 - **WHEN** a caller starts a GlobalAgent without directly supplying an MCP AgentPlugin instance
-- **THEN** Core MUST NOT install the registered channel MCP factory into that GlobalAgent
+- **THEN** Core MUST NOT install the registered channel MCP object into that GlobalAgent

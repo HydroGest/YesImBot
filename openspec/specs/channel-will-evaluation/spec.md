@@ -1,94 +1,46 @@
 # channel-will-evaluation Specification
 
 ## Purpose
-
-Define how a channel runtime decides whether a committed input waits, starts a turn, or joins an active turn.
+Define passive-input participation decisions and the active Messenger post bypass.
 
 ## Requirements
 
-### Requirement: Per-Runtime Will Selection
-Core MUST create one Will engine for each new ChannelRuntime from its configuration. Missing selection and `routing` MUST select routing. `willingness` MUST select willingness. Each runtime's engine state MUST be independent.
+### Requirement: Fixed Core Will Selection
+Core MUST provide one fixed default WillEngine. Without a live Session match, a new ChannelRuntime MUST use that default. The default MUST trigger direct messages and messages mentioning the current Bot, and MUST wait for ordinary shared messages and non-message events.
 
-#### Scenario: Runtime uses the default engine
-- **WHEN** a ChannelRuntime is created without a Will engine selection
-- **THEN** it MUST use routing
+#### Scenario: Default engine evaluates input
+- **WHEN** a runtime without a matching WillPlugin evaluates a direct message, a Bot mention, or an ordinary shared message
+- **THEN** it MUST return `trigger`, `trigger`, or `wait` respectively
 
-#### Scenario: Runtime selects willingness
-- **WHEN** a ChannelRuntime is created with `will.engine` set to `willingness`
-- **THEN** it MUST use willingness with that runtime's configured controls
+### Requirement: Session-Filtered Will Plugins
+Optional WillPlugin instances MUST register through `ctx.yesimbot.agent.will(plugin)`, expose one numeric priority, match only while the live Session is available during runtime creation, and provide a WillEngine setup. Core MUST sort plugins by ascending priority and stable registration order, selecting the first match. No WillPlugin or WillEngine may retain the Session.
 
-### Requirement: Routing Configuration
-Routing configuration MUST expose only `direct`, `mention`, and `group`, each set to `wait` or `trigger`. Its defaults MUST trigger direct messages and bot mentions, and wait for ordinary group messages. Routing MUST wait for non-message inputs, including `delivery.failed`.
+#### Scenario: Multiple Will plugins compete
+- **WHEN** several registered plugins match one live Session
+- **THEN** Core MUST select the first plugin by priority and registration order
 
-#### Scenario: Routing evaluates messages
-- **WHEN** routing evaluates a direct message, a bot mention, and an ordinary group message
-- **THEN** it MUST return `trigger`, `trigger`, and `wait` respectively by default
+#### Scenario: No Session is available
+- **WHEN** a runtime is created without a live Session
+- **THEN** Core MUST select the fixed default and MUST NOT invoke a Session matcher
 
-### Requirement: Willingness Configuration
-Willingness configuration MUST expose only `probabilityThreshold`, `decayHalfLifeSeconds`, and `replyCost`. It MUST apply elapsed-time decay lazily before a message gain, increase its score for direct messages and bot mentions, sample a response probability, and never schedule a timer. It MUST wait for non-message inputs.
-
-#### Scenario: Message arrives after idle time
-- **WHEN** a later message arrives after an earlier willingness decision
-- **THEN** the engine MUST account for elapsed time before deciding on the new message
-
-#### Scenario: Willingness handles non-message input
-- **WHEN** willingness evaluates a non-message input
-- **THEN** it MUST return `wait` without sampling a response probability
-
-#### Scenario: Willingness calculation fails
-- **WHEN** willingness cannot calculate a decision
-- **THEN** it MUST emit a calculation diagnostic and return `wait`
-
-### Requirement: Optional Will Policy Extensions
-Core MUST apply registered Will config contributors before creating the per-runtime WillEngine. Contributors MUST be sorted by ascending priority and applied in that order, with later patches overriding earlier fields for the same key. Registered Will engine factories MUST be sorted by ascending priority and evaluated in that order; the first factory that returns an engine MUST win. A factory receives `createDefault()` so it can wrap the built-in engine. No extension is required for default behavior.
-
-#### Scenario: Contributor changes the final config
-- **WHEN** a contributor returns a patch for a ChannelRuntime's scope
-- **THEN** the engine MUST be created from the merged config, not the base config
-
-#### Scenario: Multiple factories compete
-- **WHEN** multiple factories are registered with different priorities
-- **THEN** the first factory by ascending priority that returns an engine MUST be used
-
-#### Scenario: Factory wraps the built-in engine
-- **WHEN** a factory returns a wrapper around `createDefault()`
-- **THEN** Core MUST invoke the wrapper for each Will decision
-
-### Requirement: Committed Input Decision
-ChannelRuntime MUST evaluate Will after persisting and publishing every input accepted through the ordinary routed-input path. A decision MUST be either `wait` or `trigger`; `wait` MUST not start or join an Agent turn. This requirement MUST NOT apply to a trusted forced EventRecord.
+### Requirement: Passive Will Decision Ordering
+ChannelRuntime MUST persist and emit an ordinary accepted input before calling `WillEngine.decide()`. A decision MUST be `wait` or `trigger`; `wait` MUST not start or join a turn. A passive turn that produced assistant output MAY call `WillEngine.observe()` once after its output stream completes.
 
 #### Scenario: Will waits
-- **WHEN** Will returns `wait` for an ordinarily routed input
-- **THEN** ChannelRuntime MUST retain the input without calling `Agent.run()` or `Agent.send()`
+- **WHEN** WillEngine returns `wait` for an ordinary input
+- **THEN** the runtime MUST retain the input without starting an Agent turn
 
-#### Scenario: Will triggers an idle runtime
-- **WHEN** Will returns `trigger` for an ordinarily routed input while the Agent is idle
-- **THEN** ChannelRuntime MUST start one turn and expose its output
+#### Scenario: Passive turn produces output
+- **WHEN** a passive turn produces renderable assistant output
+- **THEN** Core MUST observe the completed reply at most once
 
-#### Scenario: Will triggers a busy runtime
-- **WHEN** Will returns `trigger` for an ordinarily routed input while the Agent has an active turn
-- **THEN** ChannelRuntime MUST join the input to that turn without exposing another output
+### Requirement: Active Post Bypass
+`ctx.yesimbot.messenger.post(event, { trigger: true })` MUST bypass both `WillEngine.decide()` and `WillEngine.observe()`. It MUST still use the runtime FIFO, Agent lifecycle, model, tools, output queue, and producing-runtime failure feedback. `trigger: false` MUST bypass Will and record the event without starting or joining a turn.
 
-### Requirement: Forced Event Bypass
-ChannelRuntime MUST support a trusted forced EventRecord path that appends and publishes the event through the channel FIFO without invoking WillEngine. An idle runtime MUST start one Agent turn for that event. A busy runtime MUST join the event to its active turn without producing another output iterable.
+#### Scenario: Active post bypasses Will
+- **WHEN** a trusted plugin posts an EventRecord
+- **THEN** Core MUST not call `WillEngine.decide()` or `WillEngine.observe()` for that post
+- **AND** Core MUST use the normal Agent turn and delivery path when triggered
 
-#### Scenario: Forced event starts an idle runtime
-- **WHEN** a trusted trigger appends an EventRecord to an idle ChannelRuntime
-- **THEN** ChannelRuntime MUST start one Agent turn without calling `WillEngine.decide()`
-- **AND** Core MUST NOT publish `yesimbot/will` for that EventRecord
-
-#### Scenario: Forced event joins a busy runtime
-- **WHEN** a trusted trigger appends an EventRecord to a ChannelRuntime with an active turn
-- **THEN** ChannelRuntime MUST join it to the active turn
-- **AND** Core MUST NOT create a second stream consumer or output iterable
-
-### Requirement: Will Observation And Reply Notification
-Core MUST publish `yesimbot/will` after each completed Will decision. When either passive or autonomous delivery successfully sends the first segment of a turn, Core MUST notify that runtime's Will engine once. Core MUST NOT notify Will for failed, aborted, skipped, or undelivered turns.
-
-#### Scenario: First output is delivered
-- **WHEN** Gateway or the trusted trigger path successfully delivers the first segment of a turn
-- **THEN** willingness MUST apply its configured reply cost with a floor of zero
-
-#### Scenario: Delivery is not acknowledged
-- **WHEN** a turn fails, aborts, is skipped, or delivers no segment
-- **THEN** Core MUST NOT notify Will
+### Requirement: Delivery Failure Does Not Trigger Will
+A rejected passive or active delivery MUST append one same-channel `delivery.failed` EventRecord through the producing runtime. Core MUST NOT call `messenger.post()` or evaluate Will for that feedback event.

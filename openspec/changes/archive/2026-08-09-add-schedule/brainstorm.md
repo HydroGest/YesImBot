@@ -2,31 +2,31 @@
 
 ## Context
 
-YesImBot Core already provides a complete, trusted, Session-free proactive trigger path:
+YesImBot Core already provides a complete, trusted, Session-free proactive post path:
 
 ```
-ctx.yesimbot.trigger(event)
-  -> RuntimeManager.trigger(event)
-  -> ChannelRuntime.trigger(event)
+ctx.yesimbot.messenger.post(event)
+  -> private Runtimes resolves the ChannelRuntime
+  -> ChannelRuntime.post() enters the channel FIFO
   -> append JSONL + emit yesimbot/event
-  -> force idle run or join an active turn
-  -> YesImBotService delivers through the exact matching Bot
+  -> bypass Will and use the post busy policy
+  -> Messenger consumes the sole output and sends through the matching Bot
 ```
 
-`ChannelRuntime.trigger()` enters the normal per-channel FIFO, persists the EventRecord, publishes the existing observer event, bypasses Will, and preserves single-output-consumer semantics. RuntimeManager and ChannelRuntime do not retain Session references. The trigger facade resolves the exact current Bot before admitting the event, and Core drains admitted proactive triggers during stop.
+`ChannelRuntime.post()` persists the EventRecord, publishes the observer event, bypasses Will, and preserves single-output-consumer semantics. Runtimes and ChannelRuntime do not retain Session references. Messenger resolves the exact current Bot before admitting the event and drains admitted post work during stop.
 
-Schedule must validate this path by causing a complete Agent turn without a new inbound user message. It must not introduce a second channel identity, a synthetic Session, a separate Agent input model, a public RuntimeManager API, a general workflow engine, or a distributed scheduler.
+Schedule must validate this path by causing a complete Agent turn without a new inbound user message. It must not introduce a second channel identity, a synthetic Session, a separate Agent input model, a public Runtimes API, a general workflow engine, or a distributed scheduler.
 
 ## Decisions
 
 ### 1. Schedule is an optional plugin, not Core
 
-Create `koishi-plugin-yesimbot-schedule` under `plugins/schedule/`. Core remains unchanged except that the plugin declaration-merges the existing exported EventMap with its `schedule.due` variant. The plugin reuses the confirmed `getStoragePath()`/AgentPlugin/trigger seams where appropriate, but does not add a Core scheduler facade or expose Core internals.
+Create `koishi-plugin-yesimbot-schedule` under `plugins/schedule/`. Core remains unchanged except that the plugin declaration-merges the existing exported EventMap with its `schedule.due` variant. The plugin reuses the confirmed `resource` / AgentPlugin / Messenger post seams where appropriate, but does not add a Core scheduler facade or expose Core internals.
 
 The rejected alternatives were:
 
 - An AgentPlugin-only timer, because a missing runtime or process restart would prevent autonomous execution.
-- A Core-owned scheduler, because it would expand Core's storage, configuration, lifecycle, and public responsibility beyond the verified trigger seam.
+- A Core-owned scheduler, because it would expand Core's storage, configuration, lifecycle, and public responsibility beyond the verified post seam.
 
 ### 2. A Schedule belongs to one existing ChannelScope
 
@@ -60,7 +60,7 @@ The Agent may autonomously create, list, update, pause, resume, and cancel sched
 
 Administrators receive a `yesimbot.schedule` command family with `authority: 4`, matching the existing reset command convention. The command derives the current scope from its active Session only for the immediate operation and never retains that Session.
 
-The first version does not expose a general schedule-registration interface for other plugins. A trusted plugin can already use the confirmed Core trigger facade for one-off proactive work; a cross-plugin recurring scheduler registry has no demonstrated requirement.
+The first version does not expose a general schedule-registration interface for other plugins. A trusted plugin can already use the confirmed Messenger post facade for one-off proactive work; a cross-plugin recurring scheduler registry has no demonstrated requirement.
 
 ### 6. Persist schedules in one Minato table
 
@@ -74,7 +74,7 @@ Reset preserves schedules, like other plugin-owned data; it clears only Core ses
 
 ### 7. Fold the durable claim into lastResult
 
-A standalone `claimedFor` field was initially proposed to identify an occurrence durably acquired before `trigger()`. Its purpose was to prevent duplicate submission from duplicate timer wake-ups, concurrent dispatch, or a crash after trigger submission but before result persistence.
+A standalone `claimedFor` field was initially proposed to identify an occurrence durably acquired before `post()`. Its purpose was to prevent duplicate submission from duplicate timer wake-ups, concurrent dispatch, or a crash after post submission but before result persistence.
 
 That field is redundant. Use the latest result itself as the durable claim:
 
@@ -87,7 +87,7 @@ type LastResult = {
 }
 ```
 
-Before calling Core trigger, the Store serially verifies that the task is still enabled for the expected `nextRunAt`, writes `status: "submitting"`, and advances the next cron occurrence or completes the one-time task. The caller then invokes `trigger()`.
+Before calling Core post, the Store serially verifies that the task is still enabled for the expected `nextRunAt`, writes `status: "submitting"`, and advances the next cron occurrence or completes the one-time task. The caller then invokes `post()`.
 
 On normal resolution the result becomes `accepted`; a rejection becomes `failed`. On restart, a past `submitting` result becomes `interrupted` and is not retried. This gives deliberate at-most-once submission semantics for one Koishi process without pretending to provide a distributed lock.
 
@@ -109,7 +109,7 @@ At due time, the plugin reconstructs the target EventRecord from its stored raw 
 
 The default model projection remains the existing untrusted event wrapper and sees only the event type and text. The structured `schedule` extension is available to Core observers and Agent plugins, not projected by default.
 
-The scheduler neither caches a runtime nor directly sends a message. RuntimeManager creates or selects the current channel runtime. An idle runtime creates a turn; a busy runtime joins the existing turn. A missing Bot, stopped runtime, or failed model turn records `failed` and is not retried. Existing `delivery.failed` events remain the detailed delivery record; an `accepted` trigger result does not promise delivery success.
+The scheduler neither caches a runtime nor directly sends a message. Runtimes creates or selects the current channel runtime. An idle runtime creates a turn; a busy runtime joins the existing turn. A missing Bot, stopped runtime, or failed model turn records `failed` and is not retried. Existing `delivery.failed` events remain the detailed delivery record; an `accepted` post result does not promise delivery success.
 
 ### 9. Bound resource use and prevent self-trigger storms
 
@@ -119,13 +119,13 @@ The proposed plugin defaults are:
 | --- | ---: |
 | Enabled schedules per channel | 20 |
 | Minimum cron interval | 15 minutes |
-| Concurrent trigger calls | 5 |
+| Concurrent post calls | 5 |
 | Title length | 120 characters |
 | Prompt length | 2000 characters |
 
 Invalid or past one-time timestamps, invalid cron rules, over-frequent cron rules, mutually supplied `at` and `cron`, and exceeded limits fail before any record is written.
 
-The scheduler has no delayed backlog. If no global trigger slot is available when an occurrence is due, it records that occurrence as `missed` and advances normally. It does not reschedule based on Agent output, event observers, or delivery failure. The plugin adds no independent model timeout, output truncation, or send path: Core owns turns, output consumption, delivery pacing, interruption, and stop.
+The scheduler has no delayed backlog. If no global post slot is available when an occurrence is due, it records that occurrence as `missed` and advances normally. It does not reschedule based on Agent output, event observers, or delivery failure. The plugin adds no independent model timeout, output truncation, or send path: Core owns turns, output consumption, delivery pacing, interruption, and stop.
 
 ### 10. Test production code through standard fake timers
 

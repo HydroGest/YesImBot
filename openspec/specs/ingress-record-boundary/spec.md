@@ -1,69 +1,49 @@
 # ingress-record-boundary Specification
 
 ## Purpose
-
-Define closed host-owned base shapes for persisted ordinary messages and non-message events while preserving declaration-merged event variants.
+Define closed host-owned records and the Session boundary between Messenger ingress and Session-free runtime processing.
 
 ## Requirements
 
 ### Requirement: Closed Host-Owned Ingress Bases
-Core MUST define versionless host-owned closed base shapes for persisted ordinary messages and persisted non-message events. A message base contains `platform`, `selfId`, `channel`, `user`, `messageId`, `elements`, and `timestamp`; an event base contains `platform`, `selfId`, `channel`, `timestamp`, `eventType`, and `text`. These base shapes MUST be assembled by Core rather than inherited from `Universal.Event`, and they MUST admit only fields explicitly declared by the host contract.
+Core MUST define versionless host-owned closed base shapes for persisted ordinary messages and non-message events. A message base contains `platform`, `selfId`, `channel`, `user`, `messageId`, `elements`, and `timestamp`; an event base contains `platform`, `selfId`, `channel`, `timestamp`, `eventType`, and `text`. Core MUST assemble these bases and admit only explicit declaration-merged variant fields.
 
-#### Scenario: Gateway assembles a message record
-- **WHEN** Core accepts an ordinary message resolver draft
-- **THEN** the final persisted message record MUST contain only the fields named by the host message contract
+#### Scenario: Messenger assembles a message record
+- **WHEN** Core accepts an ordinary Translator result
+- **THEN** the final persisted MessageRecord MUST contain only the fields named by the host message contract
 - **AND** it MUST NOT inherit arbitrary fields from `session.event`
 
-#### Scenario: Gateway assembles an event record
-- **WHEN** Core accepts a non-message resolver draft
-- **THEN** the final persisted event record MUST contain only the host event base fields plus the declaration-merged variant fields for its `eventType`
-- **AND** it MUST NOT inherit arbitrary fields from `session.event`
+#### Scenario: Messenger assembles an event record
+- **WHEN** Core accepts a non-message Translator result
+- **THEN** the final persisted EventRecord MUST contain only the host event base and its declaration-merged variant fields
+- **AND** it MUST NOT inherit arbitrary platform residue
 
-### Requirement: Gateway Field Admission Authority
-Gateway MUST be the single authority that converts a Resolver Draft and host-owned Session envelope into a final persisted ingress record. Gateway MUST derive the canonical platform, current Bot, channel, user, timestamp, and message-ID boundary fields from the active Session and ChannelScope; it MUST NOT trust a Draft to define the complete persisted record envelope.
+### Requirement: Messenger Field Admission Authority
+Messenger MUST be the single authority that converts a Translator result and the live Session envelope into a final persisted ingress record. It MUST derive canonical platform, current Bot, channel, user, timestamp, and message-ID boundary fields from the Session and ChannelScope; Translator output MUST NOT define the complete persisted envelope.
 
-#### Scenario: Resolver returns a message draft
-- **WHEN** a platform resolver accepts a Session as an ordinary message
-- **THEN** Gateway MUST assemble the final persisted `MessageRecord` from the Draft and host-owned envelope fields
-- **AND** it MUST persist only the fields declared by the message contract
+#### Scenario: Translator returns a record
+- **WHEN** a Translator accepts a live Session
+- **THEN** Messenger MUST route the assembled Session-free record to the channel runtime
+- **AND** it MUST retain no Session reference after the active handler completes
 
-#### Scenario: Resolver returns an event draft
-- **WHEN** a platform resolver accepts a Session as a non-message event
-- **THEN** Gateway MUST assemble the final persisted `EventRecord` from the Draft and host-owned envelope fields
-- **AND** it MUST persist only the host event base and declaration-merged variant fields
+### Requirement: Translator-Owned Resource Results
+A Translator MAY persist inbound resources through the live ChannelResources owner. Messenger MUST preserve successful structured elements and MUST NOT re-request, source-fill, normalize, or freeze them in a second resource stage.
 
-#### Scenario: Resolver persists an image
-- **WHEN** a Resolver successfully persists an image in a Message Draft
-- **THEN** that image MUST contain a complete 32-character lowercase hexadecimal ID
-- **AND** Gateway MUST preserve it without image rewriting
+#### Scenario: Translator returns a persisted image
+- **WHEN** a Translator returns an image with a complete persisted asset ID
+- **THEN** Messenger MUST preserve that image without rewriting it
 
-#### Scenario: Resolver cannot persist one image
-- **WHEN** a Resolver cannot persist one image while resolving a Message Draft
-- **THEN** that Resolver MAY retain the original image source for that element
-- **AND** Gateway MUST preserve the successful Draft rather than applying another image fallback
+#### Scenario: Translator cannot persist one resource
+- **WHEN** a Translator preserves an original resource after a load or write failure
+- **THEN** Messenger MUST preserve the Translator result and continue routing according to the Translator contract
 
 ### Requirement: Forbidden Platform Residue Exclusion
-Core MUST exclude platform runtime residue such as `_data`, `_type`, `sn`, `login`, `referrer`, `guild`, `member`, `argv`, `friend`, `operator`, `emoji`, `role`, and `button` from persisted ingress records unless a specific host-owned field explicitly reintroduces equivalent information.
+Core MUST exclude adapter runtime residue such as `_data`, `_type`, `sn`, `login`, `guild`, `member`, `argv`, `friend`, `operator`, `emoji`, `role`, and `button` from persisted records unless an explicit host-owned or declaration-merged field reintroduces equivalent information.
 
-#### Scenario: Resolver draft sees platform residue
-- **WHEN** a platform resolver returns platform-specific data outside its declared draft
-- **THEN** Gateway MUST exclude that residue from the persisted message record
+### Requirement: Trusted Event Post Boundary
+Core MUST accept a complete EventRecord from `ctx.yesimbot.messenger.post()` as trusted host ingress. This path MUST NOT require, retain, or fabricate a Session; call a Translator; or apply external allowlist and shared-assignee admission.
 
-#### Scenario: Event variant needs platform-specific data
-- **WHEN** an event variant needs a platform-specific fact such as a reaction list or poke target
-- **THEN** the resolver MUST map that fact into explicit declaration-merged variant fields
-- **AND** Core MUST NOT persist the raw platform residue that carried it
-
-### Requirement: Trusted Host Event Admission
-Core MUST accept a complete EventRecord from `ctx.yesimbot.trigger()` as trusted host ingress. It MUST commit that EventRecord using the existing closed event base and its declaration-merged variant fields. This path MUST NOT require, retain, or fabricate a Session; call a SessionResolver; or apply Gateway's external allowlist and shared-assignee admission checks.
-
-#### Scenario: Trusted host event is committed
-- **WHEN** Core or a trusted plugin triggers a complete EventRecord
-- **THEN** Core MUST persist a `yesimbot.event` with the supplied host event base and declared variant fields
+#### Scenario: Trusted event is committed
+- **WHEN** a trusted plugin posts an EventRecord
+- **THEN** Core MUST commit it through the existing closed event base and declared variant fields
 - **AND** observers MUST receive the committed Event
-
-#### Scenario: Trigger targets a channel outside external admission
-- **WHEN** a trusted trigger targets a channel that does not match Gateway's external allowlist
-- **THEN** Core MUST NOT reject the trigger because of that allowlist
-- **AND** Core MUST NOT construct or retain a Session for the event
-

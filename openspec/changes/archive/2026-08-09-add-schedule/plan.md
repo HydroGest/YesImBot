@@ -4,19 +4,19 @@
 
 **Goal:** Add an optional channel-scoped Schedule plugin that submits bounded once and cron due events through the existing Session-free proactive trigger path.
 
-**Architecture:** `plugins/schedule` owns a single Minato table, validation, the earliest-due timer, recovery, and current-channel management tools/commands. At an accepted occurrence it declaration-merges and constructs `EventRecord<"schedule.due">`, then calls the existing `ctx.yesimbot.trigger()` facade; Core continues to own runtime selection, FIFO, Agent lifecycle, JSONL, output consumption, Bot delivery, and delivery failure feedback.
+**Architecture:** `plugins/schedule` owns a single Minato table, validation, the earliest-due timer, recovery, and current-channel management tools/commands. At an accepted occurrence it declaration-merges and constructs `EventRecord<"schedule.due">`, then calls `ctx.yesimbot.messenger.post(event)`; Core continues to own Runtimes, ChannelRuntime FIFO, Agent lifecycle, JSONL, output consumption, Bot delivery, and delivery failure feedback.
 
 **Tech Stack:** TypeScript 5.9, Yarn 4 workspaces, Koishi 4.18, Minato through `ctx.database` and `ctx.model`, `@yesimbot/agent-runtime`, `cron-parser`, Vitest 4, pkgroll.
 
 ## Global Constraints
 
-- Create only `plugins/schedule/`; do not change Core's public facade, RuntimeManager, ChannelRuntime, Agent runtime, or existing main specs.
+- Create only `plugins/schedule/`; do not change Core's public facade, private Runtimes, ChannelRuntime, Agent runtime, or existing main specs.
 - Persist raw `ChannelScope` fields, not ChannelKey, directory name, or an opaque identity wrapper.
 - Use one `yesimbot_schedule` Minato table as the schedule source of truth. Do not write schedule rules to JSONL or a second channel-root index.
 - Use fixed `Asia/Shanghai` in cron parser calls. Do not add a timezone field, tool input, or configuration setting.
 - Production code MUST call `Date.now()`, `setTimeout()`, and `clearTimeout()` directly. Do not add a Clock abstraction, constructor-injected clock, or standard-library replacement parameter.
 - Tests MUST use `vi.useFakeTimers()`, `vi.setSystemTime()`, and `vi.advanceTimersByTimeAsync()` around the real timer calls.
-- A due task MUST enter only through `ctx.yesimbot.trigger(EventRecord)`; never retain or synthesize Session, call RuntimeManager directly, consume output, or send through Bot.
+- A due task MUST enter only through `ctx.yesimbot.messenger.post(EventRecord)`; never retain or synthesize Session, call Runtimes directly, consume output, or send through Bot.
 - No catch-up, retry, delayed backlog, direct delivery, cross-channel management, plugin schedule registry, migration, dual read, aliases, output history, or model-timeout layer.
 
 ---
@@ -186,7 +186,7 @@
 
 **Interfaces:**
 - Produces `ScheduleScheduler` with `start()` and `stop()` lifecycle methods.
-- Consumes `ScheduleStore`, the real `Context.yesimbot.trigger()` facade, and standard global timers.
+- Consumes `ScheduleStore`, the real `Context.yesimbot.messenger.post()` facade, and standard global timers.
 - Produces only complete `EventRecord<"schedule.due">` values; no runtime or Bot reference escapes the scheduler.
 
 - [ ] **Step 1: Write failing fake-timer scheduler tests.**
@@ -198,7 +198,7 @@
   vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z"));
   await scheduler.start();
   await vi.advanceTimersByTimeAsync(60_000);
-  expect(ctx.yesimbot.trigger).toHaveBeenCalledTimes(1);
+  expect(ctx.yesimbot.messenger.post).toHaveBeenCalledTimes(1);
   ```
 
 - [ ] **Step 2: Run the scheduler test before implementation.**
@@ -235,7 +235,7 @@
   };
   ```
 
-  Invoke only `await this.ctx.yesimbot.trigger(event)`. On rejection finalize `failed`; on resolution finalize `accepted`; do not interpret output or delivery details.
+  Invoke only `await this.ctx.yesimbot.messenger.post(event)`. On rejection finalize `failed`; on resolution finalize `accepted`; do not interpret output or delivery details.
 
 - [ ] **Step 5: Re-run scheduler tests and package type check.**
 
@@ -308,10 +308,10 @@
 
 - [ ] **Step 1: Write failing plugin lifecycle and command tests.**
 
-  Mock a Koishi Context as existing optional plugin tests do. Assert the plugin registers its AgentPlugin factory, starts recovery/scheduling when ready, registers `yesimbot.schedule` subcommands with `authority: 4`, derives the command scope from the current Session, clears timers on dispose, and does not retain the Session object.
+  Mock a Koishi Context as existing optional plugin tests do. Assert the plugin registers its named AgentPlugin object through `ctx.yesimbot.agent.use`, starts recovery/scheduling when ready, registers `yesimbot.schedule` subcommands with `authority: 4`, derives the command scope from the current Session, clears timers on dispose, and does not retain the Session object.
 
   ```ts
-  expect(ctx.yesimbot.registerAgentPlugin).toHaveBeenCalledOnce();
+  expect(ctx.yesimbot.agent.use).toHaveBeenCalledOnce();
   expect(commands.find(({ name }) => name === "yesimbot.schedule.create")?.options)
     .toMatchObject({ authority: 4 });
   ```
@@ -324,7 +324,7 @@
 
 - [ ] **Step 3: Implement the optional plugin class.**
 
-  Follow the `WorkspacePlugin` lifecycle pattern: initialize Store/model once, construct Scheduler, register the AgentPlugin factory, and attach ready/dispose handlers. Commands must build a scope only from `session.platform`, `session.selfId`, `session.channelId`, and `session.isDirect`, immediately call the Store, and then release the Session reference. On disposal set scheduler admission closed and call `stop()`; do not clear database rows.
+  Follow the `WorkspacePlugin` lifecycle pattern: initialize Store/model once, construct Scheduler, register the named AgentPlugin object through `agent.use()`, and attach ready/dispose handlers. Commands must build a scope only from `session.platform`, `session.selfId`, `session.channelId`, and `session.isDirect`, immediately call the Store, and then release the Session reference. On disposal set scheduler admission closed and call `stop()`; do not clear database rows.
 
 - [ ] **Step 4: Install and lock the cron dependency through Yarn.**
 

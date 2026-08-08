@@ -1,3 +1,5 @@
+# GlobalAgent and WorldEngine Proposal
+
 ## Why
 
 YesImBot Core can host one Agent per admitted channel, but it cannot host a persistent subject whose identity, world time, and tool-driven activity span several chat channels. YesImBotWorld proved that phone-mediated messaging, delayed actions, world arbitration, and offline continuity produce a coherent narrative. This change brings those capabilities into the current architecture without assigning world state or world-specific lifecycle semantics to Core.
@@ -5,9 +7,9 @@ YesImBot Core can host one Agent per admitted channel, but it cannot host a pers
 ## What Changes
 
 **Global Agent hosting**
-- From: Core creates Agents only through channel-bound runtimes that require a real Bot, ChannelScope, Will decision, channel assets, and an output delivery target.
+- From: Core creates Agents only through channel-bound runtimes that require a real Bot, ChannelScope, Will decision, channel resources, and an output delivery target.
 - To: Core also hosts explicitly started GlobalAgents under stable `GlobalScope` identities, with separate runtime, storage, lifecycle, and a dedicated `ctx.yesimbot.global` facade.
-- Reason: Persistent non-Gateway Agents need Core session, model, tool, compaction, and stop behavior without pretending to be platform channels.
+- Reason: Persistent non-Messenger Agents need Core model, tool, compaction, and stop behavior without pretending to be platform channels.
 - Impact: Additive public Core capability; existing ChannelScope and ChannelRuntime behavior remains unchanged.
 
 **WorldEngine plugin**
@@ -18,7 +20,7 @@ YesImBot Core can host one Agent per admitted channel, but it cannot host a pers
 **Lifecycle and persistence**
 - Store GlobalAgent roots under `agents/<agentId>/` with an authoritative Manifest, Core-owned `sessions/` and `assets/`, and preserved domain-owned children.
 - Stop GlobalAgents without deleting data. Require a complete resource definition for every later start. Clear only Core session and asset data.
-- Reuse the existing AssetService for ChannelScope and GlobalScope stores.
+- Reuse the scoped resource owner for ChannelScope and GlobalScope stores.
 
 **Scope control**
 - Keep ChannelRuntime and GlobalRuntime as sibling modules that compose private runtime-pool and session-lifecycle implementations.
@@ -34,8 +36,8 @@ YesImBot Core can host one Agent per admitted channel, but it cannot host a pers
 ### Modified Capabilities
 
 - `core-runtime-integration`: Core gains a parallel GlobalRuntimeManager and includes GlobalRuntime shutdown in its existing service lifecycle without changing channel routing.
-- `channel-storage-protocol`: The single public AssetService also creates stores for GlobalScope while retaining the existing channel storage contract.
+- `channel-storage-protocol`: The scoped resource owner also creates stores for GlobalScope while retaining the existing channel storage contract.
 
 ## Impact
 
-Core runtime, storage, session, asset, model-resolution, and service-facade modules gain GlobalAgent hosting responsibilities. A new optional WorldEngine plugin consumes accepted channel observations and owns all world-specific state and scheduling. `@yesimbot/agent-runtime` keeps its existing Agent, custom-message, plugin, tool, and storage contracts. Existing channel plugins, Gateway behavior, ChannelScope identity, channel JSONL, and platform delivery remain unchanged. No legacy data is read or migrated.
+Core runtime, storage, session, resource, model-resolution, and service-facade modules gain GlobalAgent hosting responsibilities. A new optional WorldEngine plugin consumes accepted channel observations and owns all world-specific state and scheduling. `@yesimbot/agent-runtime` keeps its existing Agent, custom-message, plugin, tool, and storage contracts. Existing channel plugins, Messenger behavior, ChannelScope identity, channel JSONL, and platform delivery remain unchanged. No legacy data is read or migrated.

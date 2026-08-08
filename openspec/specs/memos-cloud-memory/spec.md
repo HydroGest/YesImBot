@@ -7,21 +7,18 @@ registration, minimal LLM-visible memory tools, runtime-filled MemOS fields,
 group-chat-friendly identity, prompt policy, diagnostics, and verification.
 ## Requirements
 ### Requirement: MemOS Cloud Plugin Registration
-
-The MemOS client plugin MUST register exactly one Agent plugin factory through `ctx.yesimbot.registerAgentPlugin`, and the Agent-visible memory tool set MUST be limited to `search_message` and `add_message` in the first version.
+The MemOS client plugin MUST register exactly one AgentPlugin object through `ctx.yesimbot.agent.use(plugin)`, and the Agent-visible memory tool set MUST be limited to `search_message` and `add_message` in the first version.
 
 #### Scenario: Plugin exposes minimal tools
-
 - **WHEN** the MemOS client plugin starts
-- **THEN** it MUST register an Agent plugin factory through `ctx.yesimbot.registerAgentPlugin`
-- **AND** the Agent plugin MUST expose `search_message` and `add_message`
+- **THEN** it MUST register an AgentPlugin object through `ctx.yesimbot.agent.use`
+- **AND** the AgentPlugin MUST expose `search_message` and `add_message`
 - **AND** it MUST NOT expose `get_memory`, `delete_memory`, `add_feedback`, `get_status`, or knowledge-base tools by default
 
-#### Scenario: Plugin disposal unregisters factory
-
+#### Scenario: Plugin disposal unregisters object
 - **WHEN** the MemOS client plugin stops
-- **THEN** it MUST call the dispose function returned by `registerAgentPlugin`
-- **AND** future channel runtimes MUST NOT receive the disposed MemOS Agent plugin
+- **THEN** it MUST call the disposer returned by `agent.use`
+- **AND** future channel runtimes MUST NOT receive the disposed MemOS AgentPlugin
 
 ### Requirement: Minimal Search Tool Input
 

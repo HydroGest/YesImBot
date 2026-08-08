@@ -1,6 +1,6 @@
 ## Context
 
-Core has an established trusted-host proactive path. `YesImBotService.trigger()` admits a complete EventRecord only after it finds the exact current Bot, `RuntimeManager.trigger()` selects the channel runtime, and `ChannelRuntime.trigger()` enters the normal channel FIFO, appends the event, emits `yesimbot/event`, and forces an idle run or joins a busy turn without evaluating Will. The service owns Bot-based output delivery; RuntimeManager, ChannelRuntime, Agent history, and JSONL retain no Session.
+Core currently provides a trusted proactive path through `ctx.yesimbot.messenger.post()`. Messenger resolves the exact current Bot, Runtimes selects the channel runtime, and ChannelRuntime.post() enters the normal channel FIFO, appends the event, emits `yesimbot/event`, and forces an idle run or joins a busy turn without evaluating Will. Messenger owns Bot-based output delivery; Runtimes, ChannelRuntime, Agent history, and JSONL retain no Session.
 
 That path deliberately has no durable source of future work. Schedule supplies one focused source: an optional Koishi plugin that can submit one or recurring event at a future time without a new inbound message. The plugin must preserve Core's narrow facade, raw ChannelScope vocabulary, EventRecord input model, immutable runtime snapshots, JSONL ownership, and global lifecycle behavior.
 
@@ -12,7 +12,7 @@ That path deliberately has no durable source of future work. Schedule supplies o
 - Support once and five-field cron schedules, user-visible lifecycle state, next execution time, and the latest submission result.
 - Let the current-channel Agent manage schedules autonomously and let authority-4 operators manage the current channel through Koishi commands.
 - Recover safely after restart, avoid catch-up bursts, prevent duplicate occurrence submission, and bound scheduling-specific resource use.
-- Reuse EventMap, EventRecord, `ctx.yesimbot.trigger()`, RuntimeManager, ChannelRuntime FIFO, Agent persistence, and Bot delivery unchanged.
+- Reuse EventMap, EventRecord, `ctx.yesimbot.messenger.post()`, Runtimes, ChannelRuntime FIFO, Agent persistence, and Bot delivery unchanged.
 
 **Non-Goals:**
 
@@ -25,8 +25,8 @@ That path deliberately has no durable source of future work. Schedule supplies o
 
 ### D1: Implement Schedule as an optional plugin
 
-- **Choice:** Add `plugins/schedule/` as `koishi-plugin-yesimbot-schedule`. It registers one AgentPlugin factory, current-channel Koishi commands, and its own lifecycle handler. It does not modify the Core facade or export scheduler internals.
-- **Reason:** The existing trigger facade already carries a trusted final EventRecord across the required runtime and delivery path. A plugin owns only the new persistence and timing concern, keeping Core's interface small and its locality intact.
+- **Choice:** Add `plugins/schedule/` as `koishi-plugin-yesimbot-schedule`. It registers one named AgentPlugin object through `ctx.yesimbot.agent.use()`, current-channel Koishi commands, and its own lifecycle handler. It does not modify the Core facade or export scheduler internals.
+- **Reason:** The existing Messenger post facade already carries a trusted final EventRecord across the required runtime and delivery path. A plugin owns only the new persistence and timing concern, keeping Core's interface small and its locality intact.
 - **Rejected:** A timer inside an AgentPlugin cannot recover a dormant channel after restart. A Core scheduler would broaden Core's storage, lifecycle, and configuration responsibility without a demonstrated second use.
 
 ### D2: Keep Schedule records flat and scoped by existing coordinates
@@ -47,9 +47,9 @@ Natural language is not persisted. Agent conversation must normalize it to canon
 
 ### D4: Submit `schedule.due` through the existing forced EventRecord path
 
-- **Choice:** The package declaration-merges `schedule.due` into EventMap. At a claimed occurrence it reconstructs a complete EventRecord from the stored raw scope fields and calls `ctx.yesimbot.trigger(event)`.
+- **Choice:** The package declaration-merges `schedule.due` into EventMap. At a claimed occurrence it reconstructs a complete EventRecord from the stored raw scope fields and calls `ctx.yesimbot.messenger.post(event)`.
 - **Reason:** ChannelRuntime already guarantees durable event append, observer notification, FIFO ordering, idle run/busy join behavior, and single-consumer output ownership. Schedule should not duplicate any of them.
-- **Rejected:** A synthetic MessageRecord would falsely represent a user message. Calling RuntimeManager directly, returning an output iterable, or sending through Bot directly would expose or duplicate Core mechanics.
+- **Rejected:** A synthetic MessageRecord would falsely represent a user message. Calling Runtimes directly, returning an output iterable, or sending through Bot directly would expose or duplicate Core mechanics.
 
 The event has actual submission time as its timestamp and includes `schedule.id`, `title`, `kind`, and `scheduledFor` as structured extension fields. Its text is ordinary untrusted runtime-event data. Existing model projection therefore sees only the current event wrapper's type and text; the extension fields remain available to Core observers and plugins.
 

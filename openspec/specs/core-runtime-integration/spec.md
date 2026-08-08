@@ -1,164 +1,73 @@
 # core-runtime-integration Specification
 
 ## Purpose
-
-Define how `koishi-plugin-yesimbot` integrates Koishi with `@yesimbot/agent-runtime`, including the runtime manager, channel runtime lifecycle, WillEngine evaluation, JSONL storage, prompt injection, reset, stop ordering, and error isolation.
+Define the public Core facade and the ownership, lifecycle, and stable snapshots of channel resources, Agents, and Runtimes.
 
 ## Requirements
 
-### Requirement: Core Runtime Facade
-`YesImBotService` MUST expose model access, scoped assets, SessionResolver registration, Agent plugin registration, Will config contributor and Will engine factory registration, `getStoragePath(scope)`, channel reset, global stop, and `trigger(event: EventRecord)`. It MUST delegate Session handling and channel runtime lifecycle to internal modules. It MUST own the Bot transport used by `trigger()` and MUST NOT expose RuntimeManager, ChannelRuntime, an output iterable, runtime reload, WillEngine instances, or runtime internals.
+### Requirement: Four-Entry Core Facade
+`ctx.yesimbot` MUST expose `model`, `messenger.use/post`, `agent.use/will`, and `resource.get/use`, plus the Koishi service lifecycle `stop()`. The facade MUST NOT expose Channels, Channel, Conversation, ChannelResources owners, Runtimes, ChannelRuntime, runtime maps, reset, reload, or delivery callbacks.
 
-#### Scenario: Platform plugin registers a resolver
-- **WHEN** a plugin calls `ctx.yesimbot.registerResolver()`
-- **THEN** the facade MUST delegate registration to Gateway
+#### Scenario: Plugin registers named behavior
+- **WHEN** a plugin calls `ctx.yesimbot.agent.use()` or `ctx.yesimbot.agent.will()` with a named object
+- **THEN** Core MUST register it and return a disposer
 
-#### Scenario: Trusted caller triggers an event
-- **WHEN** Core or a trusted plugin calls `ctx.yesimbot.trigger()` with a complete EventRecord
-- **THEN** the facade MUST arrange forced handling through the target ChannelRuntime
-- **AND** it MUST complete the operation without exposing runtime internals to the caller
+#### Scenario: Trusted caller posts an event
+- **WHEN** Core or a trusted plugin calls `ctx.yesimbot.messenger.post()` with a complete EventRecord
+- **THEN** the facade MUST arrange handling through the target ChannelRuntime without exposing runtime internals
 
-
-### Requirement: Runtime Manager Ownership
-RuntimeManager MUST own channel Runtime creation, replacement, reset, and global stop. It MUST share concurrent first creation for one persistent channel tuple. It MUST NOT accept Session, call SessionResolver, send platform messages, or serve as an event broadcast bus.
-
-#### Scenario: First event reaches a channel
-- **WHEN** RuntimeManager routes the first resolved event for a channel
-- **THEN** it MUST create exactly one ChannelRuntime for the channel tuple
+### Requirement: Runtimes Own Channel Runtime Lifecycle
+The private Runtimes owner MUST own ChannelRuntime creation, replacement, reset, and stop. It MUST share concurrent first creation for one persistent channel tuple, use one runtime for a shared `[platform, channelId]` tuple, and use distinct runtimes for direct `[platform, selfId, channelId]` tuples. It MUST NOT accept or retain Session beyond runtime creation's ephemeral plugin matching.
 
 #### Scenario: Concurrent events reach an uncached channel
 - **WHEN** multiple events concurrently require the same new channel
-- **THEN** RuntimeManager MUST create one ChannelRuntime and route every event to it
+- **THEN** Runtimes MUST create one ChannelRuntime and route every event to it
 
-### Requirement: Single Channel Runtime Ownership
-Each ChannelRuntime MUST represent exactly one persistent channel tuple and MUST own that channel's FIFO, Agent, JSONL storage, WillEngine instance, local state, model projection, and Agent-internal stream consumption. It MUST hold an immutable ChannelScope. Shared scopes with different `selfId` values MUST use the same tuple but MUST NOT own concurrent Runtime instances. Direct scopes with different `selfId` values MUST use different tuples.
+#### Scenario: Shared Bot changes
+- **WHEN** an admitted shared event uses a different current Bot selfId
+- **THEN** Runtimes MUST stop and replace the cached runtime before handling that event
+- **AND** persisted channel data MUST remain intact
 
-#### Scenario: Channel runtime is inspected
-- **WHEN** a ChannelRuntime handles an event
-- **THEN** it MUST NOT contain a map of other channel runtimes
-- **AND** it MUST use only its immutable ChannelScope and bound execution resources
+### Requirement: ChannelRuntime Owns FIFO Input Lifecycle
+ChannelRuntime MUST serialize accepted MessageRecord and EventRecord values through one FIFO for Agent append, persistence, event observation, and passive Will decision. It MUST persist and emit before calling `WillEngine.decide()` on ordinary input. The runtime MUST own one Agent, one storage writer, one immutable ChannelScope, and no Koishi Session.
 
-#### Scenario: Shared assignee differs from cached runtime
-- **WHEN** RuntimeManager routes an admitted shared event whose `selfId` differs from the cached Runtime's `selfId`
-- **THEN** it MUST stop the cached Runtime, replace it with one bound to the admitted `selfId`, and handle the event through that replacement
+#### Scenario: Ordinary input enters a channel
+- **WHEN** Messenger routes a resolved record
+- **THEN** ChannelRuntime MUST append the record and emit `yesimbot/message` or `yesimbot/event`
+- **AND** it MUST then evaluate WillEngine
 
-### Requirement: FIFO Input Lifecycle
-ChannelRuntime MUST serialize accepted `MessageRecord | EventRecord` values through one channel FIFO for Input creation, persistence, committed-input observation, and WillEngine decision. It MUST persist Input before calling WillEngine.
+### Requirement: Data-Only Runtime Results
+A runtime run result MUST contain only its kind, event identity, optional turn identity, output iterable, and abort signal. It MUST NOT contain delivery, acknowledgement, rejection, send, warn, or lifecycle callbacks. Messenger owns output consumption and calls the producing runtime's explicit failure method when delivery fails.
 
-#### Scenario: Accepted event enters a channel
-- **WHEN** RuntimeManager routes a resolved input record to ChannelRuntime
-- **THEN** ChannelRuntime MUST append its Message or Event
-- **AND** it MUST emit `yesimbot/event`
-- **AND** it MUST then evaluate WillEngine and emit `yesimbot/will`
+#### Scenario: Runtime yields assistant output
+- **WHEN** a ChannelRuntime starts an idle turn
+- **THEN** it MUST expose one complete renderable output iterable
+- **AND** it MUST keep token deltas, tool events, and Agent internals private
 
-### Requirement: Message-Level Outbound Ownership
-When WillEngine triggers an idle Agent, ChannelRuntime MUST own the sole consumer of the Agent internal stream and MUST expose only complete renderable assistant messages as `AsyncIterable<ChannelRuntime.Output>`. Each run result MUST include that iterable and a delivery interface containing an abort signal, first-success notification, and same-runtime failure feedback. Each output MUST carry ordered element segments parsed exactly once from that assistant message. ChannelRuntime MUST NOT re-parse an assistant message it has already parsed, and MUST NOT expose token deltas, tool events, or raw Agent internal events to Gateway.
+### Requirement: Busy Join and Stable Snapshots
+A busy runtime MUST join an accepted input without creating another output consumer. On runtime creation Core MUST snapshot model resources, prompt, tools, and initialized Agent plugins; active runtimes MUST retain those snapshots until replacement, reset, or stop creates a new runtime.
 
-#### Scenario: Assistant message is appended
-- **WHEN** the Agent appends a complete assistant message with renderable content
-- **THEN** ChannelRuntime MUST yield one ChannelRuntime.Output without waiting for turn completion
-- **AND** that message MUST be parsed exactly once
+#### Scenario: Stable resources change
+- **WHEN** model, prompt, tool, or plugin registration changes after runtime initialization
+- **THEN** the active runtime MUST retain its existing snapshot
+- **AND** a replacement runtime MUST use the new resources
 
-#### Scenario: Turn emits internal events
-- **WHEN** the Agent emits tool, plugin, delta, or lifecycle events
-- **THEN** ChannelRuntime MUST consume them internally and MUST NOT yield them to Gateway
+### Requirement: Fixed Core Will
+The Core default WillEngine MUST trigger direct messages and messages mentioning the current Bot, and MUST wait for ordinary shared messages and non-message events. A missing Session MUST select this fixed default. Optional WillPlugin instances MUST be selected only while a runtime is created from a live Session, ordered by ascending priority and stable registration order.
 
-### Requirement: Busy Turn Join Ownership
-When WillEngine triggers while the channel Agent is busy, ChannelRuntime MUST join the committed Input to the active turn and MUST NOT create another Agent internal stream consumer or output iterable.
+#### Scenario: Passive and active paths differ
+- **WHEN** ordinary Messenger ingress reaches a runtime
+- **THEN** Core MAY evaluate WillEngine
+- **WHEN** `messenger.post()` reaches a runtime
+- **THEN** Core MUST bypass both WillEngine decision and observation
 
-#### Scenario: Busy channel receives a trigger
-- **WHEN** WillEngine returns `trigger` and an active turn exists
-- **THEN** ChannelRuntime MUST join the record to that turn
-- **AND** the Gateway for the joined event MUST receive no outbound iterable
+### Requirement: Runtime Reset and Stop
+Reset MUST stop and remove the cached runtime, clear only Core-owned conversation history and assets, and preserve the channel Manifest and plugin-owned children. Global stop MUST close Messenger admission, stop all runtimes, await active delivery handlers, and preserve persistent data.
 
-### Requirement: Default Will Routing Configuration
-Core Will configuration MUST be a discriminated union selecting `routing` or `willingness`, defaulting to `routing`. Routing configuration MUST map direct messages, group mentions, and ordinary group messages independently to `wait` or `trigger`; its defaults MUST trigger direct and mentioned messages and wait for ordinary group messages. Willingness configuration MUST expose `probabilityThreshold`, `decayHalfLifeSeconds`, and `replyCost`. Self-message admission MUST remain non-configurable.
-
-#### Scenario: Default routing is used
-- **WHEN** no engine or routing override is configured
-- **THEN** the routing WillEngine MUST trigger direct and mentioned messages
-- **AND** it MUST wait for ordinary group messages
-
-#### Scenario: Willingness engine is selected
-- **WHEN** configuration explicitly selects `willingness`
-- **THEN** future ChannelRuntimes MUST use willingness with the configured controls
-
-### Requirement: Optional Will Policy Extensions
-Core MUST allow optional plugins to register Will config contributors and Will engine factories through `ctx.yesimbot`. Contributors MUST receive the immutable `ChannelScope` and current `WillConfig` and may return a patch. Factories MUST receive the scope, the config after contributor patches, and a `createDefault()` factory; they may return a WillEngine or undefined. RuntimeManager MUST apply contributor patches in priority order and use the first factory that returns an engine; when no factory returns an engine, it MUST create the built-in engine from the final config. Without any extension, Core MUST preserve the default routing or willingness behavior.
-
-#### Scenario: No Will extension is registered
-- **WHEN** a ChannelRuntime is created with no Will contributors or factories
-- **THEN** Core MUST use the built-in routing or willingness engine from the base configuration
-
-#### Scenario: Config contributor patches a routing decision
-- **WHEN** a plugin contributor returns a routing patch for a matching scope
-- **THEN** RuntimeManager MUST clone and merge the patch before creating the WillEngine
-
-#### Scenario: Engine factory replaces the default engine
-- **WHEN** a registered factory returns a WillEngine for a ChannelRuntime
-- **THEN** Core MUST use that engine instead of the built-in engine
-
-#### Scenario: Engine factory wraps the default engine
-- **WHEN** a registered factory calls `createDefault()` and returns a wrapper
-- **THEN** Core MUST use the wrapper while the built-in engine remains available through the factory context
-
-### Requirement: Channel Runtime Reset
-RuntimeManager MUST stop and remove a cached ChannelRuntime if present, then clear that channel's persisted JSONL history and scoped assets. Reset MUST NOT revalidate shared-channel assignment. The cleanup path MUST apply to cached and uncached channels. JSONL and asset cleanup MUST be independently attempted in that order; a cleanup error MUST be reported only after later mandatory cleanup and cache deletion complete. Reset MUST preserve the Manifest and every plugin-created child.
-
-#### Scenario: Cached channel is reset
-- **WHEN** reset targets an active channel
-- **THEN** RuntimeManager MUST stop it before using the shared history-and-assets cleanup path
-- **AND** it MUST remove the cached runtime after cleanup is attempted
-
-#### Scenario: Uncached channel is reset
-- **WHEN** reset targets a channel without a cached runtime
-- **THEN** RuntimeManager MUST use the same history-and-assets cleanup path
-- **AND** it MUST preserve the Manifest, workspace, and every other plugin-created child
-
-### Requirement: Runtime Stop Ordering
-Global stop MUST stop Gateway admission, stop RuntimeManager admission, interrupt and stop all ChannelRuntime Agent and WillEngine instances, terminate output iterables, wait active Gateway handlers, and release in-memory runtimes. Global stop MUST preserve JSONL history and assets.
-
-#### Scenario: Core is disposed during an active turn
-- **WHEN** global stop begins while a channel turn is active
-- **THEN** core MUST prevent new admission and terminate the active runtime work
-- **AND** it MUST wait for the owning Gateway handler to finish
+#### Scenario: Core stops during an active turn
+- **WHEN** service stop begins during channel work
+- **THEN** Core MUST prevent new admission and terminate active runtime work
+- **AND** it MUST await Messenger-owned handlers before completing stop
 
 ### Requirement: Runtime Error Isolation
-Core MUST isolate failures so one channel's error cannot stop another channel. Core MUST NOT re-check host fields on records it constructed at Session ingress, and JSONL read-back MUST recover independently from a line with invalid JSON syntax.
-
-#### Scenario: Record is routed internally
-- **WHEN** Gateway passes an assembled record to RuntimeManager
-- **THEN** Core MUST NOT re-check that record's host fields against the scope they were derived from
-
-#### Scenario: Persisted history is read from disk
-- **WHEN** Core reads a stored input from JSONL
-- **THEN** it MUST skip a line whose JSON syntax cannot be parsed and report a warning
-- **AND** it MUST return every successfully parsed line without Core semantic schema validation
-
-#### Scenario: One channel runtime throws
-- **WHEN** a channel runtime raises during input handling
-- **THEN** other channel runtimes MUST continue operating
-
-### Requirement: Channel JSONL Storage
-Core MUST use one append-only JSONL storage stream per persistent channel tuple below its channel root.
-
-#### Scenario: Storage path construction
-- **WHEN** Core creates storage for a ChannelRuntime
-- **THEN** it MUST obtain the storage location through the Core channel storage protocol
-- **AND** it MUST NOT derive, sanitize, hash, or append raw platform coordinates locally
-
-#### Scenario: Storage contract
-- **WHEN** agent-runtime calls the channel storage
-- **THEN** the storage MUST support `append`, `read`, and `clear`
-- **AND** the storage MUST NOT require indexes, pagination, compression, or legacy conversion
-
-#### Scenario: Restart reads history
-- **WHEN** Core recreates a ChannelRuntime whose current Manifest-backed JSONL file already exists
-- **THEN** the Runtime storage MUST read current-format previously appended entries and MUST not read legacy JSONL
-
-### Requirement: Immutable Runtime Image Budget Snapshot
-RuntimeManager MUST resolve explicit model image capability and `ImageBudget | null` when creating a ChannelRuntime. ChannelRuntime MUST reuse that snapshot for its lifetime; changed model metadata or `imageInput` configuration MUST activate only when the Runtime is replaced.
-
-#### Scenario: Existing runtime handles another model call
-- **WHEN** model metadata or imageInput configuration changes after ChannelRuntime initialization
-- **THEN** the active Runtime MUST retain its existing `ImageBudget | null` snapshot
+A failure in one channel runtime or one delivery MUST NOT stop unrelated channels. Runtime MUST NOT revalidate host fields on records assembled by Messenger. JSONL read-back MUST skip invalid JSON syntax lines while returning every successfully parsed line without Core semantic validation.
