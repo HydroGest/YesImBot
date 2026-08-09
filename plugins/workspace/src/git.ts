@@ -6,11 +6,20 @@ import type { CustomCommand, MountableFs } from "just-bash";
 // ============================================================================
 
 const LOCAL_SUBCOMMANDS = new Set(["init", "add", "config", "commit", "status", "log", "diff", "branch", "checkout"]);
+
 const REMOTE_SUBCOMMANDS = new Set(["clone", "fetch", "pull"]);
+
 const REJECTED_SUBCOMMANDS = new Set(["push"]);
+
 const MAX_OUTPUT_BYTES = 30 * 1024;
-const MAX_HTTP_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB for git pack data
+
+const MAX_HTTP_RESPONSE_BYTES = 10 * 1024 * 1024;
+
+// 10 MB for git pack data
 const GIT_VERSION_STRING = "git version 2.0.0-sandbox (isomorphic-git, restricted)\n";
+
+/** Flags that consume the next token as their value. */
+const CLONE_FLAGS_WITH_VALUE = new Set(["--depth", "--branch", "-b"]);
 
 // ============================================================================
 // Types
@@ -140,6 +149,124 @@ export function createFsClient(fs: MountableFs): FsClient {
         // No-op: MountableFs doesn't track permissions
       },
     },
+  };
+}
+
+export function isPrivateHost(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return true;
+  if (hostname.startsWith("10.")) return true;
+  if (hostname.startsWith("192.168.")) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) return true;
+  if (hostname.endsWith(".local")) return true;
+  return false;
+}
+
+// ============================================================================
+// Git custom command factory (for just-bash customCommands)
+// ============================================================================
+
+/**
+ * Creates a just-bash LazyCommand that registers `git` as a custom command.
+ * isomorphic-git is dynamically imported on first invocation.
+ */
+export function createGitLazyCommand(fs: MountableFs, options: GitCommandOptions = {}): CustomCommand {
+  const fsClient = createFsClient(fs);
+  const http = createHttpClient(options);
+
+  return {
+    name: "git",
+    trusted: true,
+    load: async () => ({
+      name: "git",
+      trusted: true,
+      async execute(args: string[], ctx: { cwd: string }) {
+        const git = await import("isomorphic-git");
+        if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
+          return { stdout: formatGitHelp(options), stderr: "", exitCode: args.length === 0 ? 1 : 0 };
+        }
+        if (args[0] === "--version" || args[0] === "-v") {
+          return { stdout: GIT_VERSION_STRING, stderr: "", exitCode: 0 };
+        }
+
+        const subcommand = args[0]!;
+        const subArgs = args.slice(1);
+
+        if (REJECTED_SUBCOMMANDS.has(subcommand)) {
+          return { stdout: "", stderr: `git ${subcommand}: not supported in sandbox (push is not available)\n`, exitCode: 1 };
+        }
+
+        if (REMOTE_SUBCOMMANDS.has(subcommand)) {
+          if (!options.network) {
+            return { stdout: "", stderr: `git ${subcommand}: network access is disabled\n`, exitCode: 1 };
+          }
+          if (!http) {
+            return { stdout: "", stderr: `git ${subcommand}: HTTP transport is not available\n`, exitCode: 1 };
+          }
+        }
+
+        if (!LOCAL_SUBCOMMANDS.has(subcommand) && !REMOTE_SUBCOMMANDS.has(subcommand)) {
+          return { stdout: "", stderr: `git ${subcommand}: unsupported subcommand\n`, exitCode: 1 };
+        }
+
+        try {
+          const result = await dispatchSubcommand(git, fsClient, http, ctx.cwd, subcommand, subArgs);
+          return truncateResult(result);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return { stdout: "", stderr: message + "\n", exitCode: 128 };
+        }
+      },
+    }),
+  };
+}
+
+/**
+ * Creates a standalone git command function for direct use (e.g. in tests).
+ */
+export function createGitCommand(
+  fs: MountableFs,
+  options: GitCommandOptions = {},
+): (args: string[], opts: { cwd: string; signal?: AbortSignal }) => Promise<GitCommandResult> {
+  let git: IsomorphicGit | undefined;
+  const fsClient = createFsClient(fs);
+  const http = createHttpClient(options);
+
+  return async (args, { cwd }): Promise<GitCommandResult> => {
+    if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
+      return { stdout: formatGitHelp(options), stderr: "", exitCode: args.length === 0 ? 1 : 0 };
+    }
+    if (args[0] === "--version" || args[0] === "-v") {
+      return { stdout: GIT_VERSION_STRING, stderr: "", exitCode: 0 };
+    }
+
+    const subcommand = args[0]!;
+    const subArgs = args.slice(1);
+
+    if (REJECTED_SUBCOMMANDS.has(subcommand)) {
+      return { stdout: "", stderr: `git ${subcommand}: not supported in sandbox (push is not available)`, exitCode: 1 };
+    }
+
+    if (REMOTE_SUBCOMMANDS.has(subcommand)) {
+      if (!options.network) {
+        return { stdout: "", stderr: `git ${subcommand}: network access is disabled`, exitCode: 1 };
+      }
+      if (!http) {
+        return { stdout: "", stderr: `git ${subcommand}: HTTP transport is not available`, exitCode: 1 };
+      }
+    }
+
+    if (!LOCAL_SUBCOMMANDS.has(subcommand) && !REMOTE_SUBCOMMANDS.has(subcommand)) {
+      return { stdout: "", stderr: `git ${subcommand}: unsupported subcommand`, exitCode: 1 };
+    }
+
+    try {
+      if (!git) git = await import("isomorphic-git");
+      const result = await dispatchSubcommand(git, fsClient, http, cwd, subcommand, subArgs);
+      return truncateResult(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { stdout: "", stderr: message, exitCode: 128 };
+    }
   };
 }
 
@@ -288,15 +415,6 @@ function createHttpClient(options: GitCommandOptions): HttpClient | undefined {
   };
 }
 
-export function isPrivateHost(hostname: string): boolean {
-  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return true;
-  if (hostname.startsWith("10.")) return true;
-  if (hostname.startsWith("192.168.")) return true;
-  if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)) return true;
-  if (hostname.endsWith(".local")) return true;
-  return false;
-}
-
 async function* createBoundedAsyncIterator(body: ReadableStream<Uint8Array> | null, maxBytes: number): AsyncIterableIterator<Uint8Array> {
   if (!body) return;
   const reader = body.getReader();
@@ -315,115 +433,6 @@ async function* createBoundedAsyncIterator(body: ReadableStream<Uint8Array> | nu
   } finally {
     reader.releaseLock();
   }
-}
-
-// ============================================================================
-// Git custom command factory (for just-bash customCommands)
-// ============================================================================
-
-/**
- * Creates a just-bash LazyCommand that registers `git` as a custom command.
- * isomorphic-git is dynamically imported on first invocation.
- */
-export function createGitLazyCommand(fs: MountableFs, options: GitCommandOptions = {}): CustomCommand {
-  const fsClient = createFsClient(fs);
-  const http = createHttpClient(options);
-
-  return {
-    name: "git",
-    trusted: true,
-    load: async () => ({
-      name: "git",
-      trusted: true,
-      async execute(args: string[], ctx: { cwd: string }) {
-        const git = await import("isomorphic-git");
-        if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
-          return { stdout: formatGitHelp(options), stderr: "", exitCode: args.length === 0 ? 1 : 0 };
-        }
-        if (args[0] === "--version" || args[0] === "-v") {
-          return { stdout: GIT_VERSION_STRING, stderr: "", exitCode: 0 };
-        }
-
-        const subcommand = args[0]!;
-        const subArgs = args.slice(1);
-
-        if (REJECTED_SUBCOMMANDS.has(subcommand)) {
-          return { stdout: "", stderr: `git ${subcommand}: not supported in sandbox (push is not available)\n`, exitCode: 1 };
-        }
-
-        if (REMOTE_SUBCOMMANDS.has(subcommand)) {
-          if (!options.network) {
-            return { stdout: "", stderr: `git ${subcommand}: network access is disabled\n`, exitCode: 1 };
-          }
-          if (!http) {
-            return { stdout: "", stderr: `git ${subcommand}: HTTP transport is not available\n`, exitCode: 1 };
-          }
-        }
-
-        if (!LOCAL_SUBCOMMANDS.has(subcommand) && !REMOTE_SUBCOMMANDS.has(subcommand)) {
-          return { stdout: "", stderr: `git ${subcommand}: unsupported subcommand\n`, exitCode: 1 };
-        }
-
-        try {
-          const result = await dispatchSubcommand(git, fsClient, http, ctx.cwd, subcommand, subArgs);
-          return truncateResult(result);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          return { stdout: "", stderr: message + "\n", exitCode: 128 };
-        }
-      },
-    }),
-  };
-}
-
-/**
- * Creates a standalone git command function for direct use (e.g. in tests).
- */
-export function createGitCommand(
-  fs: MountableFs,
-  options: GitCommandOptions = {},
-): (args: string[], opts: { cwd: string; signal?: AbortSignal }) => Promise<GitCommandResult> {
-  let git: IsomorphicGit | undefined;
-  const fsClient = createFsClient(fs);
-  const http = createHttpClient(options);
-
-  return async (args, { cwd }): Promise<GitCommandResult> => {
-    if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
-      return { stdout: formatGitHelp(options), stderr: "", exitCode: args.length === 0 ? 1 : 0 };
-    }
-    if (args[0] === "--version" || args[0] === "-v") {
-      return { stdout: GIT_VERSION_STRING, stderr: "", exitCode: 0 };
-    }
-
-    const subcommand = args[0]!;
-    const subArgs = args.slice(1);
-
-    if (REJECTED_SUBCOMMANDS.has(subcommand)) {
-      return { stdout: "", stderr: `git ${subcommand}: not supported in sandbox (push is not available)`, exitCode: 1 };
-    }
-
-    if (REMOTE_SUBCOMMANDS.has(subcommand)) {
-      if (!options.network) {
-        return { stdout: "", stderr: `git ${subcommand}: network access is disabled`, exitCode: 1 };
-      }
-      if (!http) {
-        return { stdout: "", stderr: `git ${subcommand}: HTTP transport is not available`, exitCode: 1 };
-      }
-    }
-
-    if (!LOCAL_SUBCOMMANDS.has(subcommand) && !REMOTE_SUBCOMMANDS.has(subcommand)) {
-      return { stdout: "", stderr: `git ${subcommand}: unsupported subcommand`, exitCode: 1 };
-    }
-
-    try {
-      if (!git) git = await import("isomorphic-git");
-      const result = await dispatchSubcommand(git, fsClient, http, cwd, subcommand, subArgs);
-      return truncateResult(result);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { stdout: "", stderr: message, exitCode: 128 };
-    }
-  };
 }
 
 // ============================================================================
@@ -691,6 +700,7 @@ async function gitFetch(git: IsomorphicGit, fs: FsClient, http: HttpClient, dir:
 
   return { stdout: "", stderr: `From ${remote}\n`, exitCode: 0 };
 }
+
 async function gitPull(git: IsomorphicGit, fs: FsClient, http: HttpClient, dir: string, args: string[]): Promise<GitCommandResult> {
   const remote = args.find((arg) => !arg.startsWith("-")) ?? "origin";
 
@@ -735,9 +745,6 @@ function deriveRepoName(url: string): string {
     return lastSlash >= 0 ? stripped.slice(lastSlash + 1) || "repo" : "repo";
   }
 }
-
-/** Flags that consume the next token as their value. */
-const CLONE_FLAGS_WITH_VALUE = new Set(["--depth", "--branch", "-b"]);
 
 /**
  * Find the first positional argument that is:

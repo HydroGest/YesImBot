@@ -13,12 +13,7 @@ async function tmpRoot(name: string): Promise<string> {
 
 async function createGitWorkspace(options?: { network?: boolean }) {
   const root = await tmpRoot("workspace");
-  const workspace = await Workspace.create({
-    root,
-    filesystem: {},
-    bash: { cwd: "/home/workspace" },
-    git: options?.network ? { network: {} } : undefined,
-  });
+  const workspace = await Workspace.create({ root, filesystem: {}, bash: { cwd: "/home/workspace" }, git: options?.network ? { network: {} } : undefined });
   return workspace;
 }
 

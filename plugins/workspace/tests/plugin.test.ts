@@ -68,7 +68,7 @@ describe("WorkspacePlugin", () => {
       expect(agentPlugin).toBeTruthy();
       expect(fixture.ctx.yesimbot.resource.get).toHaveBeenCalledWith({ type: "shared", platform: "test", channelId: "room" });
       const tools = typeof agentPlugin?.tools === "function" ? ((await agentPlugin.tools({} as never)) ?? []) : [];
-      expect(tools.map((tool) => tool.name)).toEqual(["bash", "readFile", "writeFile"]);
+      expect(tools.map((tool) => tool.name)).toEqual(["bash", "readFile", "writeFile", "editFile"]);
     } finally {
       await fixture.plugin.stop();
       await rm(fixture.baseDir, { recursive: true, force: true });
@@ -82,8 +82,8 @@ describe("WorkspacePlugin", () => {
       const agentPlugin = await fixture.plugins[0]!.setup({ type: "shared", platform: "test", channelId: "room" }, { selfId: "bot" } as never);
       const tools = typeof agentPlugin?.tools === "function" ? ((await agentPlugin.tools({} as never)) ?? []) : [];
 
-      expect(tools).toHaveLength(3);
-      expect(tools.map((t) => t.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
+      expect(tools).toHaveLength(4);
+      expect(tools.map((t) => t.name).sort()).toEqual(["bash", "editFile", "readFile", "writeFile"]);
     } finally {
       await fixture.plugin.stop();
       await rm(fixture.baseDir, { recursive: true, force: true });

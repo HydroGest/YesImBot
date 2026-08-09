@@ -1,15 +1,5 @@
 import type { Workspace } from "./workspace";
 
-function formatMountLabel(kind: Workspace["mounts"][number]["kind"]): string {
-  if (kind === "read-only") {
-    return "只读（写入会失败）";
-  }
-  if (kind === "overlay") {
-    return "覆盖层（能读到真实内容，但写入只停留在内存，看起来成功却不会落盘，下次调用即消失）";
-  }
-  return "持久（真实读写，改动会落盘）";
-}
-
 export function formatWorkspacePrompt(workspace: Workspace): string {
   const networkState = workspace.config.bash.network ? "启用（仅拒绝私有/本地地址）" : "禁用";
   const mountLines = workspace.mounts.map((mount) => `- ${mount.path}：${formatMountLabel(mount.kind)}`);
@@ -40,4 +30,14 @@ export function formatWorkspacePrompt(workspace: Workspace): string {
     "平台输入的图片与文件（asset://）以及工具工件（artifact://）不在沙箱里，也不在任何挂载点下：ls /home/workspace 找不到刚收到的图片或文件，bash 也无法处理它们，只能通过 Core 的 read 读取；需要用 bash 处理其内容时，先 read 出来再 writeFile 写进工作区。反过来，沙箱里的文件也只有通过 workspace:// 才能被外部引用。",
     "技能文件是只读资源：用 Core 的 read 读 skill://<skill-name>/SKILL.md 或 skill://<skill-name>/<relative-path>；执行技能脚本只能走 /skills/<skill-name>/... 挂载路径。",
   ].join("\n");
+}
+
+function formatMountLabel(kind: Workspace["mounts"][number]["kind"]): string {
+  if (kind === "read-only") {
+    return "只读（写入会失败）";
+  }
+  if (kind === "overlay") {
+    return "覆盖层（能读到真实内容，但写入只停留在内存，看起来成功却不会落盘，下次调用即消失）";
+  }
+  return "持久（真实读写，改动会落盘）";
 }
