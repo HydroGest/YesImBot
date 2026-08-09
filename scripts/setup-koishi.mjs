@@ -655,7 +655,7 @@ function main() {
   updateKoishi(plugins);
 
   log("building yesimbot packages");
-  runYarn(["workspace", yesimbotMeta.name, "build"]);
+  runYarn(["build"], { cwd: yesimbotRoot });
 
   log("verifying plugin resolution");
   verify(plugins);
