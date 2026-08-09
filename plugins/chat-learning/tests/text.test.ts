@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { patternPhrase, sanitizeForDisplay } from "../src/text.js";
+import { formatReflectionTarget, patternPhrase, sanitizeForDisplay } from "../src/text.js";
 
 describe("patternPhrase", () => {
   it("ignores media, urls, mentions, hashtags and bot status text", () => {
@@ -22,5 +22,16 @@ describe("sanitizeForDisplay", () => {
   it("shortens urls and asset references for preview context", () => {
     expect(sanitizeForDisplay("https://x.com/status/123 [图片]")).toContain("[链接]");
     expect(sanitizeForDisplay("[动画表情: [动画表情] asset://abc]")).not.toContain("asset://");
+  });
+});
+
+describe("formatReflectionTarget", () => {
+  it("replaces image data and html with a short media summary", () => {
+    const target = '&lt;img src=&quot;data:image/png;base64,iVBORw0KGgoAAAANSUhEUg&quot;&gt;';
+    expect(formatReflectionTarget(target)).toBe("[图片]");
+  });
+
+  it("truncates long text targets", () => {
+    expect(formatReflectionTarget("a".repeat(200), 10)).toBe("aaaaaaaaaa…");
   });
 });

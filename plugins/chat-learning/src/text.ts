@@ -10,6 +10,25 @@ export function sanitizeForDisplay(value: string): string {
     .trim();
 }
 
+export function formatReflectionTarget(value: string, maxLength = 120): string {
+  let result = value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/data:[^"'\s>]+/gi, " ")
+    .replace(/<img\b[^>]*>/gi, " [图片] ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/asset:\/\/[a-f0-9]+/gi, " [资源] ")
+    .replace(/https?:\/\/\S+/gi, " [链接] ")
+    .replace(/@\S+/g, "@")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (result.length === 0) return "[媒体]";
+  return result.length > maxLength ? `${result.slice(0, maxLength)}…` : result;
+}
+
 export function patternPhrase(value: string): string {
   let result = value;
   for (let index = 0; index < 3; index += 1) {

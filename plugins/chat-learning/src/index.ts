@@ -31,6 +31,7 @@ import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.
 import { createReflectionStore, type ReflectionRecord, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
 import { reflectOnSentMessage } from "./reflection.js";
 import { createChatLearningStore } from "./store.js";
+import { formatReflectionTarget } from "./text.js";
 import type { ChatLearningConfig, ChatLearningState, GlobalChainPattern, GlobalPattern, LinkCorrection, LinkKind, ProactiveEventKind } from "./types.js";
 
 export const Config: Schema<ChatLearningConfig> = Schema.object({
@@ -962,7 +963,7 @@ function buildReflectionHistory(store: ReflectionStore, limit: number): string |
   if (records.length === 0) return undefined;
   const lines = records.map((record) => {
     const score = record.score === undefined ? "" : ` score="${record.score}"`;
-    const target = record.text.trim().replace(/\s+/g, " ").slice(0, 160);
+    const target = formatReflectionTarget(record.text);
     const targetLine = target ? `<target>${escapePromptText(target)}</target>` : "";
     return `<reflection source="${record.source}"${score}>${targetLine}${escapePromptText(record.reflection)}</reflection>`;
   });
