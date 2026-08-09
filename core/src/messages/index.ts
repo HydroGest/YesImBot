@@ -38,10 +38,20 @@ declare module "@yesimbot/agent-runtime" {
   }
 }
 
+export interface DeliveredPayload {
+  readonly platform: string;
+  readonly selfId: string;
+  readonly channel: Universal.Channel;
+  readonly messageId: string;
+  readonly turnId: string;
+  readonly text: string;
+}
+
 declare module "koishi" {
   interface Events {
     "yesimbot/event": (input: Event) => void;
     "yesimbot/message": (input: Message) => void;
+    "yesimbot/delivered": (payload: DeliveredPayload) => void;
   }
 }
 

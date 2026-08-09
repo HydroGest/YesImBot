@@ -84,7 +84,7 @@ export class ModelService {
 
     const embeddingOptions: Schema<string>[] = [];
     for (const model of this.embeddingModels.values()) {
-      if (isHiddenModel(model.config)) {
+      if (model.config.hidden) {
         continue;
       }
       const fullId = model.fullId;

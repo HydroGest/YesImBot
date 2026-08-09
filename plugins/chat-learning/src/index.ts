@@ -3,8 +3,11 @@ import { dirname, join, resolve } from "node:path";
 import type { AgentEntry, AgentPlugin, AgentPluginRuntime, AgentStorage, PrepareStepContext } from "@yesimbot/agent-runtime";
 import { createMessageEntry } from "@yesimbot/agent-runtime";
 import type { ModelMessage } from "ai";
-import { Context, Logger, Schema, Universal, type Command, type Session } from "koishi";
-import { createMessage, isMessage, type ChannelScope, type DeliveredPayload } from "koishi-plugin-yesimbot";
+import { Context, Logger, Schema, Universal, type Bot, type Command, type Session } from "koishi";
+import { createMessage, isMessage, type DeliveredPayload } from "koishi-plugin-yesimbot";
+
+/** Internal scope that always carries selfId for keying purposes. */
+type FullScope = { readonly type: "shared" | "direct"; readonly platform: string; readonly selfId: string; readonly channelId: string };
 
 import { buildLocalChainPatterns } from "./chains.js";
 import { collectTurns, segmentTurns } from "./collector.js";
@@ -100,7 +103,7 @@ export default class ChatLearningPlugin {
   }
 
   private async onDelivered(payload: DeliveredPayload): Promise<void> {
-    const scope: ChannelScope = {
+    const scope: FullScope = {
       type: payload.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared",
       platform: payload.platform,
       selfId: payload.selfId,
@@ -114,7 +117,7 @@ export default class ChatLearningPlugin {
     this.disposeCommands();
     this.disposeAgentPlugin?.();
     this.logger.debug("chat_learning.start");
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope }) => this.createAgentPlugin(scope));
+    this.disposeAgentPlugin = this.ctx.yesimbot.agent.use({ setup: (scope, bot) => this.createAgentPlugin({ ...scope, selfId: bot.selfId }) });
     if (this.config.observeAllChannels) {
       this.observeDispose = this.ctx.middleware(async (session, next) => {
         try {
@@ -161,8 +164,8 @@ export default class ChatLearningPlugin {
     this.logger.debug("chat_learning.stop");
   }
 
-  private async createAgentPlugin(scope: ChannelScope): Promise<AgentPlugin> {
-    const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+  private async createAgentPlugin(scope: FullScope): Promise<AgentPlugin> {
+    const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
     const store = createChatLearningStore(join(storagePath, "chat-learning.json"));
     await store.init();
     const feedbackStore = await this.feedbackStoreFor(scope);
@@ -396,7 +399,7 @@ export default class ChatLearningPlugin {
         try {
           const scope = scopeOf(session);
           if (!scope) return "无法获取当前频道信息";
-          const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+          const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
           const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
           await stateStore.init();
           const state = stateStore.read();
@@ -443,7 +446,7 @@ export default class ChatLearningPlugin {
           try {
             const scope = scopeOf(session);
             if (!scope) return "无法获取当前频道信息";
-            const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+            const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
             const { store, path } = await this.globalStoreFor(storagePath);
             const bank = this.globalBanks.get(path) ?? store.read();
             const limit = parsePositiveInt(options?.limit, 20);
@@ -492,7 +495,7 @@ export default class ChatLearningPlugin {
             if (rawEvent !== undefined && eventKind === undefined) {
               return "event 必须是 global-brain|schedule|chat-learning";
             }
-            const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+            const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
             const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
             await stateStore.init();
             const state = stateStore.read();
@@ -547,7 +550,7 @@ export default class ChatLearningPlugin {
           } else {
             await this.syncGlobalHistoryOnly();
           }
-          const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+          const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
           const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
           await stateStore.init();
           const state = stateStore.read();
@@ -585,7 +588,7 @@ export default class ChatLearningPlugin {
         try {
           const scope = scopeOf(session);
           if (!scope) return "无法获取当前频道信息";
-          const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+          const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
           const history = await this.historyStoreFor(scope);
           await history.clear();
           const feedback = await this.feedbackStoreFor(scope);
@@ -680,40 +683,40 @@ export default class ChatLearningPlugin {
     this.commandDisposers.clear();
   }
 
-  private async feedbackStoreFor(scope: ChannelScope): Promise<FeedbackStore> {
+  private async feedbackStoreFor(scope: FullScope): Promise<FeedbackStore> {
     const key = scopeKey(scope);
     const existing = this.feedbackStores.get(key);
     if (existing) return existing;
-    const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+    const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
     const store = createFeedbackStore(join(storagePath, "chat-learning-feedback.jsonl"));
     await store.init();
     this.feedbackStores.set(key, store);
     return store;
   }
 
-  private async historyStoreFor(scope: ChannelScope): Promise<ChatHistoryStore> {
+  private async historyStoreFor(scope: FullScope): Promise<ChatHistoryStore> {
     const key = scopeKey(scope);
     const existing = this.historyStores.get(key);
     if (existing) return existing;
-    const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+    const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
     const store = createChatHistoryStore(join(storagePath, "chat-learning-history.jsonl"));
     await store.init();
     this.historyStores.set(key, store);
     return store;
   }
 
-  private async reflectionStoreFor(scope: ChannelScope): Promise<ReflectionStore> {
+  private async reflectionStoreFor(scope: FullScope): Promise<ReflectionStore> {
     const key = scopeKey(scope);
     const existing = this.reflectionStores.get(key);
     if (existing) return existing;
-    const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+    const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
     const store = createReflectionStore(join(storagePath, "chat-learning-reflections.jsonl"));
     await store.init();
     this.reflectionStores.set(key, store);
     return store;
   }
 
-  private async reflectionForPreview(scope: ChannelScope, _styleBlock: string | undefined): Promise<string | undefined> {
+  private async reflectionForPreview(scope: FullScope, _styleBlock: string | undefined): Promise<string | undefined> {
     const store = await this.reflectionStoreFor(scope);
     return buildReflectionHistory(store, this.config.maxInjectedReflections);
   }
@@ -853,7 +856,7 @@ export default class ChatLearningPlugin {
 function buildSnapshot(
   entries: readonly AgentEntry[],
   config: ChatLearningConfig,
-  scope: ChannelScope,
+  scope: FullScope,
   corrections: readonly LinkCorrection[],
 ): ChatLearningState {
   const now = Date.now();
@@ -944,12 +947,12 @@ function humanReflectionText(score: ReflectionScore): string {
   return "这条最终发言风格一般，可以在语气或长度上再调整。";
 }
 
-function scopeOf(session: Session | undefined): ChannelScope | null {
+function scopeOf(session: Session | undefined): FullScope | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
   return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId };
 }
 
-function scopeKey(scope: ChannelScope): string {
+function scopeKey(scope: FullScope): string {
   return `${scope.type}:${scope.platform}:${scope.selfId}:${scope.channelId}`;
 }
 
