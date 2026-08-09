@@ -6,8 +6,11 @@ import type { ScheduleCreateInput } from "./types.js";
 export const SCHEDULE_TIME_ZONE = "Asia/Shanghai";
 
 export const MIN_CRON_INTERVAL_MINUTES = 15;
+
 export const MAX_TITLE_LENGTH = 120;
+
 export const MAX_PROMPT_LENGTH = 2000;
+
 export const MAX_ENABLED_SCHEDULES = 20;
 
 const RFC_3339_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
@@ -17,10 +20,6 @@ export type ScheduleRuleShape = { kind: "once" | "cron"; at?: string; cron?: str
 
 /** A validated rule: exactly one of `at` or `cron` is defined. */
 export type ScheduleRule = { kind: "once"; at: string } | { kind: "cron"; cron: string };
-
-function isFiveFieldCron(cron: string): boolean {
-  return cron.trim().split(/\s+/).length === 5;
-}
 
 /**
  * Computes the next occurrence strictly after `after` for a five-field cron.
@@ -75,6 +74,10 @@ export function validateRule(rule: ScheduleRuleShape, now: Date): asserts rule i
     throw new Error("cron must have exactly five whitespace-separated fields");
   }
   verifyMinCronInterval(rule.cron!, now);
+}
+
+function isFiveFieldCron(cron: string): boolean {
+  return cron.trim().split(/\s+/).length === 5;
 }
 
 function verifyMinCronInterval(cron: string, now: Date): void {

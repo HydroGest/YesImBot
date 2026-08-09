@@ -14,16 +14,12 @@ import {
   type BrainThreadView,
   scopeKey,
 } from "./types.js";
+
 type BrainRecord =
   | { readonly type: "thread"; readonly data: BrainThread }
   | { readonly type: "reply"; readonly data: BrainReply }
   | { readonly type: "seen"; readonly data: BrainSeenRecord };
-interface BrainSeenRecord {
-  readonly scopeKey: string;
-  readonly threadId?: string;
-  readonly replyId?: string;
-  readonly seenAt: number;
-}
+
 export interface GlobalBrainStoreOptions {
   readonly filePath: string;
   readonly maxDigestThreads: number;
@@ -33,6 +29,7 @@ export interface GlobalBrainStoreOptions {
   readonly createId?: () => string;
   readonly logger?: { warn(message: string, context?: Record<string, unknown>): void };
 }
+
 export interface BrainDepositInput {
   readonly kind: BrainThread["kind"];
   readonly sourceScope: ChannelScope;
@@ -40,6 +37,7 @@ export interface BrainDepositInput {
   readonly payload?: BrainContent;
   readonly tags?: readonly string[];
 }
+
 export interface BrainReplyInput {
   readonly threadId: string;
   readonly sourceScope: ChannelScope;
@@ -47,6 +45,7 @@ export interface BrainReplyInput {
   readonly replySource?: BrainReply["replySource"];
   readonly author?: BrainReply["author"];
 }
+
 export interface GlobalBrainStore {
   init(): Promise<void>;
   putBlob(bytes: Uint8Array): Promise<string>;
@@ -59,6 +58,14 @@ export interface GlobalBrainStore {
   participantScopes(): Promise<ChannelScope[]>;
   digest(scope: ChannelScope): Promise<BrainDigest>;
 }
+
+interface BrainSeenRecord {
+  readonly scopeKey: string;
+  readonly threadId?: string;
+  readonly replyId?: string;
+  readonly seenAt: number;
+}
+
 export class BrainStoreError extends Error {
   public constructor(
     public readonly code: string,
@@ -68,6 +75,7 @@ export class BrainStoreError extends Error {
     this.name = "BrainStoreError";
   }
 }
+
 export function createGlobalBrainStore(options: GlobalBrainStoreOptions): GlobalBrainStore {
   const now = options.now ?? Date.now;
   const createId = options.createId ?? randomUUID;
@@ -348,6 +356,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
     },
   };
 }
+
 function parseRecord(value: unknown): BrainRecord | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const record = value as Partial<BrainRecord>;
@@ -356,6 +365,7 @@ function parseRecord(value: unknown): BrainRecord | undefined {
   if (record.type === "seen" && isSeenRecord(record.data)) return { type: "seen", data: record.data };
   return undefined;
 }
+
 function isThread(value: unknown): value is BrainThread {
   if (typeof value !== "object" || value === null) return false;
   const thread = value as Partial<BrainThread>;
@@ -370,6 +380,7 @@ function isThread(value: unknown): value is BrainThread {
     typeof thread.createdAt === "number"
   );
 }
+
 function isBrainContent(value: unknown): value is BrainContent {
   if (typeof value !== "object" || value === null) return false;
   const content = value as Partial<BrainContent>;
@@ -390,11 +401,13 @@ function isBrainContent(value: unknown): value is BrainContent {
   }
   return false;
 }
+
 function isSeenRecord(value: unknown): value is BrainSeenRecord {
   if (typeof value !== "object" || value === null) return false;
   const seen = value as Partial<BrainSeenRecord>;
   return typeof seen.scopeKey === "string" && typeof seen.seenAt === "number" && (typeof seen.threadId === "string" || typeof seen.replyId === "string");
 }
+
 function isReply(value: unknown): value is BrainReply {
   if (typeof value !== "object" || value === null) return false;
   const reply = value as Partial<BrainReply>;
@@ -407,22 +420,26 @@ function isReply(value: unknown): value is BrainReply {
     typeof reply.createdAt === "number"
   );
 }
+
 function isScope(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const scope = value as Record<string, unknown>;
   if (scope.type === "shared") return typeof scope.platform === "string" && typeof scope.channelId === "string";
   return scope.type === "direct" && typeof scope.platform === "string" && typeof scope.selfId === "string" && typeof scope.channelId === "string";
 }
+
 function requireContent(content: string): string {
   if (typeof content !== "string" || content.trim().length === 0) {
     throw new BrainStoreError("invalid_content", "Content must be a non-empty string");
   }
   return content;
 }
+
 function requirePayload(payload: BrainContent): BrainContent {
   if (!isBrainContent(payload)) throw new BrainStoreError("invalid_payload", "Payload is not a supported brain content");
   return payload;
 }
+
 function normalizeTags(tags: readonly string[] | undefined): readonly string[] {
   return [...new Set((tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0))];
 }

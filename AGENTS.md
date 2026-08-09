@@ -130,5 +130,5 @@ When finishing a coding task, summarize:
 
 - 格式：`<type>(scope): <summary>`
 - `scope` 可选
-- `summary` 使用项目语言、动词开头、长度 ≤ 50 字、不加句号
+- `summary` 使用中文、动词开头、长度 ≤ 50 字、不加句号
 - 常用 `type`：`feat` / `fix` / `refactor` / `docs` / `test` / `chore`

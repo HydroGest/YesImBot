@@ -83,6 +83,12 @@ interface UsagePayload {
   rate: RateSnapshot;
 }
 
+export default function (ctx: Context): void {
+  ctx.slot({ type: "analytic-chart", component: createChartCard("近30天 Token 消耗", historyOption), order: 0 });
+  ctx.slot({ type: "analytic-chart", component: createChartCard("每小时 Token 消耗", hourlyOption), order: 0 });
+  ctx.slot({ type: "status-right", component: TokenRateStatus, order: 0 });
+}
+
 function usagePayload() {
   return computed(() => (store as { yesimbotUsage?: UsagePayload }).yesimbotUsage);
 }
@@ -168,10 +174,4 @@ function hourlyOption(payload: UsagePayload, mode: "input" | "output"): Record<s
     legend: mode === "input" ? { data: ["缓存命中", "缓存未命中"] } : undefined,
     series,
   };
-}
-
-export default function (ctx: Context): void {
-  ctx.slot({ type: "analytic-chart", component: createChartCard("近30天 Token 消耗", historyOption), order: 0 });
-  ctx.slot({ type: "analytic-chart", component: createChartCard("每小时 Token 消耗", hourlyOption), order: 0 });
-  ctx.slot({ type: "status-right", component: TokenRateStatus, order: 0 });
 }

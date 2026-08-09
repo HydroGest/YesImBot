@@ -7,23 +7,9 @@ import { prepareStaticGif } from "./frames.js";
 import type { StickerSender } from "./sender.js";
 import type { StickerStore } from "./store.js";
 import { normalizeCategory, normalizeTags, scopeKeyFor, type StickerConfig, type StickerProjection } from "./types.js";
+
 type ToolResult = { ok: true; message: string; [key: string]: unknown } | { ok: false; error: string };
-interface StealStickerInput {
-  asset_id: string;
-  category?: string;
-}
-interface SendStickerInput {
-  sticker_id?: string;
-  category?: string;
-  index?: number;
-  tags?: string[];
-}
-interface SearchStickerInput {
-  category?: string;
-  keyword?: string;
-  tags?: string[];
-  limit?: number;
-}
+
 export interface StickerToolsOptions {
   store: StickerStore;
   classifier: StickerClassifier;
@@ -32,6 +18,26 @@ export interface StickerToolsOptions {
   scope: ChannelScope;
   config: StickerConfig;
 }
+
+interface StealStickerInput {
+  asset_id: string;
+  category?: string;
+}
+
+interface SendStickerInput {
+  sticker_id?: string;
+  category?: string;
+  index?: number;
+  tags?: string[];
+}
+
+interface SearchStickerInput {
+  category?: string;
+  keyword?: string;
+  tags?: string[];
+  limit?: number;
+}
+
 export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
   const { store, classifier, sender, assets, scope, config } = options;
   const scopeKey = scopeKeyFor(scope, config);
@@ -224,6 +230,7 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
 
   return [stealTool, sendTool, categoriesTool, searchTool, ...(tagsTool ? [tagsTool] : [])];
 }
+
 export async function pickBestTaggedSticker(
   store: StickerStore,
   scopeKey: string,
@@ -245,9 +252,11 @@ export async function pickBestTaggedSticker(
   const candidates = matches.filter((sticker) => score(sticker) >= best - threshold);
   return candidates[Math.floor(Math.random() * candidates.length)] ?? null;
 }
+
 function stickerMatches(tags: readonly string[], requested: string, fuzzyTagMatch: boolean): boolean {
   return tags.some((tag) => (fuzzyTagMatch ? fuzzyTagEquals(requested, tag) : tag === requested));
 }
+
 function fuzzyTagEquals(requested: string, stored: string): boolean {
   const left = requested.toLowerCase();
   const right = stored.toLowerCase();

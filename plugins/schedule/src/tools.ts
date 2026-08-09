@@ -56,6 +56,23 @@ type UpdateToolInput = { id: string; title?: string; prompt?: string } & (
 /** The id-only input shared by pause, resume, and cancel. */
 type IdToolInput = { id: string };
 
+/**
+ * Builds the six current-channel Schedule management tools for an AgentPlugin
+ * runtime. Every tool operates on the factory's captured ChannelScope only:
+ * no schema accepts a scope, channel, or Session parameter, and every Store
+ * call passes the captured scope.
+ */
+export function createScheduleTools(scope: ScheduleScope, store: ScheduleStore, rearm?: () => Promise<void>): AgentTool[] {
+  return [
+    createTool(scope, store, rearm),
+    listTool(scope, store),
+    updateTool(scope, store, rearm),
+    pauseTool(scope, store, rearm),
+    resumeTool(scope, store, rearm),
+    cancelTool(scope, store, rearm),
+  ];
+}
+
 function toProjection(schedule: Schedule): ScheduleProjection {
   return { id: schedule.id, title: schedule.title, kind: schedule.kind, state: schedule.state, nextRunAt: schedule.nextRunAt, lastResult: schedule.lastResult };
 }
@@ -142,21 +159,4 @@ function cancelTool(scope: ScheduleScope, store: ScheduleStore, rearm: (() => Pr
       return toProjection(schedule);
     },
   };
-}
-
-/**
- * Builds the six current-channel Schedule management tools for an AgentPlugin
- * runtime. Every tool operates on the factory's captured ChannelScope only:
- * no schema accepts a scope, channel, or Session parameter, and every Store
- * call passes the captured scope.
- */
-export function createScheduleTools(scope: ScheduleScope, store: ScheduleStore, rearm?: () => Promise<void>): AgentTool[] {
-  return [
-    createTool(scope, store, rearm),
-    listTool(scope, store),
-    updateTool(scope, store, rearm),
-    pauseTool(scope, store, rearm),
-    resumeTool(scope, store, rearm),
-    cancelTool(scope, store, rearm),
-  ];
 }

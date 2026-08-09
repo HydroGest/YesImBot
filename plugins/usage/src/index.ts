@@ -8,7 +8,20 @@ import { installModelUsagePatch } from "./middleware.js";
 import { DatabaseUsageHistory, UsageStore } from "./store.js";
 import type { UsageConfig, UsagePayload, UsageRow } from "./types.js";
 
+export const Config: Schema<UsageConfig> = Schema.object({
+  historySource: Schema.union([Schema.const("jsonl"), Schema.const("database")])
+    .default("jsonl")
+    .description("历史 Token 数据源：jsonl 从 session 文件扫描，database 使用聚合表"),
+  recentDayCount: Schema.natural().default(30).description("首页统计最近天数"),
+  refreshInterval: Schema.natural()
+    .role("ms")
+    .default(Time.second * 5)
+    .description("状态栏和首页刷新间隔"),
+  rateWindowSeconds: Schema.natural().default(60).description("Token 速率统计窗口（秒）"),
+});
+
 const USAGE_TABLE = "yesimbot.usage";
+
 const PACKAGE_NAME = "koishi-plugin-yesimbot-usage";
 
 const USAGE_FIELDS = {
@@ -24,18 +37,6 @@ const USAGE_FIELDS = {
   cacheReadTokens: "integer",
   cacheWriteTokens: "integer",
 } satisfies Field.Extension<UsageRow, Types>;
-
-export const Config: Schema<UsageConfig> = Schema.object({
-  historySource: Schema.union([Schema.const("jsonl"), Schema.const("database")])
-    .default("jsonl")
-    .description("历史 Token 数据源：jsonl 从 session 文件扫描，database 使用聚合表"),
-  recentDayCount: Schema.natural().default(30).description("首页统计最近天数"),
-  refreshInterval: Schema.natural()
-    .role("ms")
-    .default(Time.second * 5)
-    .description("状态栏和首页刷新间隔"),
-  rateWindowSeconds: Schema.natural().default(60).description("Token 速率统计窗口（秒）"),
-});
 
 declare module "koishi" {
   interface Tables {

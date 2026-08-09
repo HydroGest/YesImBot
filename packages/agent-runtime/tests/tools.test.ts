@@ -519,4 +519,3 @@ function createObservedToolModel() {
     observedToolNames,
   } as unknown as LanguageModelV3 & { observedToolNames: string[][] };
 }
-

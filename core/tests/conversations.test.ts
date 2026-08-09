@@ -58,7 +58,14 @@ describe("Conversation.archive", () => {
     const conversation = new Conversation(root, { threshold: 0.9, charTokenRatio: 1.8, minMessages: 2, maxFailures: 3 });
     await conversation.init();
     await conversation.storage.append(
-      createEntry("message", { id: "m1", timestamp: 1, role: "custom", content: "", type: "yesimbot.message", data: { user: { id: "u1", name: "Alice" }, elements: [{ type: "text", attrs: { content: "hello" }, children: [] }] } }),
+      createEntry("message", {
+        id: "m1",
+        timestamp: 1,
+        role: "custom",
+        content: "",
+        type: "yesimbot.message",
+        data: { user: { id: "u1", name: "Alice" }, elements: [{ type: "text", attrs: { content: "hello" }, children: [] }] },
+      }),
       createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "hi" }),
     );
     await conversation.archive(false, { model: {} as never, personaName: "Athena", persona: "persona" });

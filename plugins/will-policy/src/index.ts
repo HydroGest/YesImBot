@@ -8,11 +8,6 @@ import { PolicyRoutingEngine } from "./routing.js";
 import type { WillPolicyConfig } from "./types.js";
 import { PolicyWillingnessEngine } from "./willingness.js";
 
-const DEBUG_COMMAND_NAME = "yesimbot.will-policy";
-const DEBUG_PROBES = new WeakMap<Context, Set<WillPolicyPlugin>>();
-const DEBUG_COMMANDS = new WeakMap<Context, Command>();
-const DEBUG_ACTION: unique symbol = Symbol("yesimbot.will-policy.debug-action");
-
 export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.intersect([
   Schema.object({
     engine: Schema.union([Schema.const("routing").description("固定规则（routing）"), Schema.const("willingness").description("意愿值引擎(willingness)")])
@@ -67,6 +62,14 @@ export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.intersect
     }),
   ]),
 ]);
+
+const DEBUG_COMMAND_NAME = "yesimbot.will-policy";
+
+const DEBUG_PROBES = new WeakMap<Context, Set<WillPolicyPlugin>>();
+
+const DEBUG_COMMANDS = new WeakMap<Context, Command>();
+
+const DEBUG_ACTION: unique symbol = Symbol("yesimbot.will-policy.debug-action");
 
 type DebugCommand = Command & { [DEBUG_ACTION]?: boolean };
 

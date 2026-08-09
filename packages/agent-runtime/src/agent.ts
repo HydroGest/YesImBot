@@ -56,48 +56,6 @@ interface ResolvedSystemPrompt {
   blocks: SystemModelMessage[];
 }
 
-function createAbortError(): DOMException {
-  return new DOMException("Aborted", "AbortError");
-}
-
-function throwIfAborted(signal?: AbortSignal) {
-  if (signal?.aborted) {
-    throw createAbortError();
-  }
-}
-
-function raceAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) {
-    return operation;
-  }
-
-  if (signal.aborted) {
-    return Promise.reject(createAbortError());
-  }
-
-  return Promise.race([
-    operation,
-    new Promise<never>((_, reject) => {
-      signal.addEventListener("abort", () => reject(createAbortError()), { once: true });
-    }),
-  ]);
-}
-
-function isTurnScopedEvent(event: AgentInternalEvent): event is AgentInternalEvent & { turnId: string } {
-  return "turnId" in event && typeof (event as { turnId?: unknown }).turnId === "string";
-}
-
-function isTerminalTurnEvent(event: AgentInternalEvent) {
-  return event.type === "turn.done" || event.type === "turn.failed" || event.type === "turn.aborted";
-}
-
-async function resolveConfiguredSystemPrompt(input: AgentConfig["systemPrompt"], runtime: AgentPluginRuntime): Promise<ResolvedSystemPrompt> {
-  const value = typeof input === "function" ? await input(runtime) : input;
-  if (value === undefined) return { blocks: [] };
-  if (typeof value === "string") return { legacy: value, blocks: [] };
-  return { blocks: normalizeSystemPromptAppend(value) };
-}
-
 export function createAgent(config: AgentConfig): Agent {
   const id = config.id ?? crypto.randomUUID();
   const baseStorage = config.storage ?? createMemoryStorage();
@@ -585,4 +543,46 @@ export function createAgent(config: AgentConfig): Agent {
   };
 
   return agent;
+}
+
+function createAbortError(): DOMException {
+  return new DOMException("Aborted", "AbortError");
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+function raceAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    return operation;
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(createAbortError());
+  }
+
+  return Promise.race([
+    operation,
+    new Promise<never>((_, reject) => {
+      signal.addEventListener("abort", () => reject(createAbortError()), { once: true });
+    }),
+  ]);
+}
+
+function isTurnScopedEvent(event: AgentInternalEvent): event is AgentInternalEvent & { turnId: string } {
+  return "turnId" in event && typeof (event as { turnId?: unknown }).turnId === "string";
+}
+
+function isTerminalTurnEvent(event: AgentInternalEvent) {
+  return event.type === "turn.done" || event.type === "turn.failed" || event.type === "turn.aborted";
+}
+
+async function resolveConfiguredSystemPrompt(input: AgentConfig["systemPrompt"], runtime: AgentPluginRuntime): Promise<ResolvedSystemPrompt> {
+  const value = typeof input === "function" ? await input(runtime) : input;
+  if (value === undefined) return { blocks: [] };
+  if (typeof value === "string") return { legacy: value, blocks: [] };
+  return { blocks: normalizeSystemPromptAppend(value) };
 }
