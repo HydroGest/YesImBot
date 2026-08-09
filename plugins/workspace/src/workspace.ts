@@ -5,12 +5,16 @@ import type * as JustBashModule from "just-bash";
 import type { Bash, IFileSystem, InitialFiles, MountableFs, NetworkConfig } from "just-bash";
 
 import type { WorkspaceBashBackend } from "./bash-tool";
+import { createGitLazyCommand, type GitCommandOptions } from "./git";
 import { assertValidMountConfig, DEFAULT_WORKSPACE_MOUNT } from "./mounts";
 import type { WorkspaceMountSummary } from "./types";
+
 const DEFAULT_SYSTEM_BIN_PATHS = ["/usr/local/bin", "/usr/bin", "/bin"] as const;
 const DEFAULT_SYSTEM_PATH = DEFAULT_SYSTEM_BIN_PATHS.join(":");
 const USR_LOCAL_BIN_PLACEHOLDER = "/usr/local/bin/.keep";
+
 type JustBash = typeof JustBashModule;
+
 export interface SandboxWorkspaceConfig {
   root: string;
   filesystem: {
@@ -28,7 +32,9 @@ export interface SandboxWorkspaceConfig {
     python?: boolean;
     javascript?: boolean;
   };
+  git?: GitCommandOptions;
 }
+
 export class Workspace {
   public readonly bash: Bash;
   public readonly config: SandboxWorkspaceConfig;
@@ -64,6 +70,7 @@ export class Workspace {
       network: config.bash?.network,
       python: config.bash?.python ?? false,
       javascript: config.bash?.javascript ?? false,
+      customCommands: [createGitLazyCommand(this.fs, config.git)],
     });
     this.backend = {
       executeCommand: (command, options) => this.executeCommand(command, options),
@@ -113,6 +120,7 @@ export class Workspace {
     await this.writeOptionalCommandStubs();
     this._initialized = true;
   }
+
   private async executeCommand(
     command: string,
     options?: { cwd?: string; signal?: AbortSignal },
@@ -152,6 +160,8 @@ export class Workspace {
     if (this.config.bash?.javascript) {
       names.push("js-exec", "node");
     }
+    // Always register git stub since the custom command is always available
+    names.push("git");
     if (names.length === 0) return;
 
     for (const name of names) {
@@ -165,6 +175,7 @@ export class Workspace {
     return this.config.bash?.timeoutMs ?? 30000;
   }
 }
+
 function withDefaultSystemPath(env: Record<string, string> | undefined): Record<string, string> {
   const merged = { ...env };
   const pathEntries = (merged.PATH ?? DEFAULT_SYSTEM_PATH).split(":").filter(Boolean);
@@ -178,6 +189,7 @@ function withDefaultSystemPath(env: Record<string, string> | undefined): Record<
   merged.PATH = pathEntries.join(":");
   return merged;
 }
+
 function createDefaultBaseFilesystem(memoryFiles: InitialFiles, jb: JustBash): IFileSystem {
   const files: InitialFiles = { ...memoryFiles };
   // InMemoryFs creates parent directories for initial files; this keeps /usr/local/bin visible.
