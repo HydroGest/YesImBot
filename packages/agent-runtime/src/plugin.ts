@@ -99,7 +99,6 @@ export interface PluginHostHelpers {
 export interface PluginHostInitOptions {
   legacySystemPrompt?: string;
   baseTools?: AgentToolSet;
-  terminalTools?: AgentToolSet;
 }
 export interface PluginHost {
   readonly plugins: readonly AgentPlugin[];
@@ -393,7 +392,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
       stableLegacySystemPrompt = nextLegacy;
       stablePromptBlocks.push(...nextBlocks);
       try {
-        stableTools.push(...mergeTools([nextTools, initOptions.terminalTools ?? []]));
+        stableTools.push(...mergeTools([nextTools]));
       } catch (error) {
         await rollbackPlugins();
         throw error;

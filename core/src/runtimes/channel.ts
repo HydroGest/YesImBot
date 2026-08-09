@@ -88,7 +88,6 @@ export class ChannelRuntime {
         }),
       tools,
       plugins: [MODEL_INPUT_PLUGIN, ...options.plugins],
-      terminalTool: { name: "finalize", description: "结束本轮回复。" },
     });
   }
 

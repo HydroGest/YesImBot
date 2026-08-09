@@ -1,4 +1,4 @@
-import { hasToolCall, isLoopFinished, jsonSchema, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage } from "ai";
+import { isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage } from "ai";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
@@ -27,7 +27,6 @@ export interface AgentConfig {
   model: LanguageModel;
   systemPrompt?: SystemPromptAppend | ((runtime: AgentPluginRuntime) => Promise<SystemPromptAppend | void> | SystemPromptAppend | void);
   tools?: AgentToolSet;
-  terminalTool?: boolean | { name: string; description?: string };
   storage?: AgentStorage<AgentEntry>;
   plugins?: AgentPlugin[];
   initialState?: AgentState;
@@ -103,13 +102,6 @@ export function createAgent(config: AgentConfig): Agent {
   const id = config.id ?? crypto.randomUUID();
   const baseStorage = config.storage ?? createMemoryStorage();
   const channel = createAgentChannel();
-  const enableTerminalTool = config.terminalTool === true || (config.terminalTool && typeof config.terminalTool === "object");
-  const terminalToolName = enableTerminalTool
-    ? config.terminalTool && typeof config.terminalTool === "object"
-      ? config.terminalTool.name
-      : "finalize"
-    : undefined;
-  const terminalToolDescription = config.terminalTool && typeof config.terminalTool === "object" ? config.terminalTool.description : undefined;
 
   let storageReady = Promise.resolve();
   const mutateStorage = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -208,17 +200,7 @@ export function createAgent(config: AgentConfig): Agent {
     initPromise = (async () => {
       const base = await resolveConfiguredSystemPrompt(config.systemPrompt, { id, channel, state, storage });
 
-      const terminalTools: AgentToolSet = enableTerminalTool
-        ? [
-            {
-              name: terminalToolName!,
-              description: terminalToolDescription ?? "Mark the current assistant response as final. Call this after final text and required tools.",
-              inputSchema: jsonSchema({ type: "object", additionalProperties: false }),
-              execute: async () => ({ finalized: true }),
-            },
-          ]
-        : [];
-      await pluginHost.init({ legacySystemPrompt: base.legacy, baseTools, terminalTools });
+      await pluginHost.init({ legacySystemPrompt: base.legacy, baseTools });
 
       const blocks = [...base.blocks, ...pluginHost.stablePromptBlocks];
       frozenSystemPrompt =
@@ -444,7 +426,7 @@ export function createAgent(config: AgentConfig): Agent {
           system: frozenSystemPrompt,
           messages: modelMessages,
           tools: toAiToolSet(resolveTools(request.turnId, abortSignal)),
-          stopWhen: terminalToolName ? [isLoopFinished(), hasToolCall(terminalToolName)] : isLoopFinished(),
+          stopWhen: isLoopFinished(),
           abortSignal,
           prepareStep: async ({ stepNumber }) => {
             let messages = modelMessages;

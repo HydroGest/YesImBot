@@ -1,5 +1,5 @@
 import type { HttpClient } from "isomorphic-git";
-import type { CustomCommand, MountableFs, NetworkConfig } from "just-bash";
+import type { CustomCommand, MountableFs } from "just-bash";
 
 // ============================================================================
 // Constants
@@ -9,6 +9,8 @@ const LOCAL_SUBCOMMANDS = new Set(["init", "add", "config", "commit", "status", 
 const REMOTE_SUBCOMMANDS = new Set(["clone", "fetch", "pull"]);
 const REJECTED_SUBCOMMANDS = new Set(["push"]);
 const MAX_OUTPUT_BYTES = 30 * 1024;
+const MAX_HTTP_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB for git pack data
+const GIT_VERSION_STRING = "git version 2.0.0-sandbox (isomorphic-git, restricted)\n";
 
 // ============================================================================
 // Types
@@ -33,7 +35,7 @@ type FsClient = {
 };
 
 export interface GitCommandOptions {
-  network?: NetworkConfig & { allowedUrlPrefixes?: string[] };
+  network?: { dangerouslyAllowFullInternetAccess?: boolean; denyPrivateRanges?: boolean };
 }
 
 export interface GitCommandResult {
@@ -68,14 +70,31 @@ export function createFsClient(fs: MountableFs): FsClient {
         await mkdirRecursive(fs, path);
       },
       async rmdir(path, options) {
-        if (options?.recursive) {
-          await rmRecursive(fs, path);
-        } else {
-          await fs.rm(path);
+        try {
+          if (options?.recursive) {
+            await rmRecursive(fs, path);
+          } else {
+            await fs.rm(path);
+          }
+        } catch (error) {
+          // Silently ignore ENOENT — isomorphic-git cleanup may target non-existent dirs
+          if (error instanceof Error && (error.message.includes("ENOENT") || error.message.includes("no such file"))) {
+            return;
+          }
+          throw error;
         }
       },
       async unlink(path) {
-        await fs.rm(path);
+        try {
+          await fs.rm(path);
+        } catch (error) {
+          // Silently ignore ENOENT — isomorphic-git may try to remove
+          // files that don't exist (e.g. .git/shallow after clone)
+          if (error instanceof Error && (error.message.includes("ENOENT") || error.message.includes("no such file"))) {
+            return;
+          }
+          throw error;
+        }
       },
       async stat(path) {
         try {
@@ -199,15 +218,8 @@ function isEnoentOrExist(error: unknown, code: string): boolean {
 function createHttpClient(options: GitCommandOptions): HttpClient | undefined {
   if (!options.network) return undefined;
 
-  const allowedPrefixes = options.network.allowedUrlPrefixes ?? [];
-
   return {
     async request(req) {
-      // Validate URL against allowlist
-      if (!isUrlAllowed(req.url, allowedPrefixes)) {
-        throw new Error(`Git remote URL is not in the allowlist: ${req.url}`);
-      }
-
       // Only allow GET, HEAD, POST for smart HTTP protocol
       const method = (req.method ?? "GET").toUpperCase();
       if (method !== "GET" && method !== "HEAD" && method !== "POST") {
@@ -241,10 +253,19 @@ function createHttpClient(options: GitCommandOptions): HttpClient | undefined {
         headers: req.headers,
         body: bodyBytes ? new Uint8Array(bodyBytes) : undefined,
         signal: req.signal as AbortSignal | undefined,
-        redirect: "error",
+        redirect: "follow",
       };
 
       const response = await fetch(req.url, fetchOptions);
+
+      // Validate the final URL after redirects — reject if redirected to private
+      const finalUrl = response.url || req.url;
+      if (finalUrl !== req.url) {
+        const finalUrlObj = new URL(finalUrl);
+        if (isPrivateHost(finalUrlObj.hostname)) {
+          throw new Error(`Git remote redirected to a private address: ${finalUrlObj.hostname}`);
+        }
+      }
 
       // Convert response headers
       const responseHeaders: Record<string, string> = {};
@@ -253,7 +274,7 @@ function createHttpClient(options: GitCommandOptions): HttpClient | undefined {
       });
 
       // Stream response body with size limit
-      const responseBody = createBoundedAsyncIterator(response.body, MAX_OUTPUT_BYTES * 10);
+      const responseBody = createBoundedAsyncIterator(response.body, MAX_HTTP_RESPONSE_BYTES);
 
       return {
         url: response.url || req.url,
@@ -265,11 +286,6 @@ function createHttpClient(options: GitCommandOptions): HttpClient | undefined {
       };
     },
   };
-}
-
-export function isUrlAllowed(url: string, prefixes: readonly string[]): boolean {
-  if (prefixes.length === 0) return false;
-  return prefixes.some((prefix) => url.startsWith(prefix));
 }
 
 export function isPrivateHost(hostname: string): boolean {
@@ -321,8 +337,11 @@ export function createGitLazyCommand(fs: MountableFs, options: GitCommandOptions
       trusted: true,
       async execute(args: string[], ctx: { cwd: string }) {
         const git = await import("isomorphic-git");
-        if (args.length === 0) {
-          return { stdout: "usage: git <command> [args]\n", stderr: "", exitCode: 1 };
+        if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
+          return { stdout: formatGitHelp(options), stderr: "", exitCode: args.length === 0 ? 1 : 0 };
+        }
+        if (args[0] === "--version" || args[0] === "-v") {
+          return { stdout: GIT_VERSION_STRING, stderr: "", exitCode: 0 };
         }
 
         const subcommand = args[0]!;
@@ -369,8 +388,11 @@ export function createGitCommand(
   const http = createHttpClient(options);
 
   return async (args, { cwd }): Promise<GitCommandResult> => {
-    if (args.length === 0) {
-      return { stdout: "", stderr: "usage: git <command> [args]", exitCode: 1 };
+    if (args.length === 0 || args[0] === "--help" || args[0] === "-h" || args[0] === "help") {
+      return { stdout: formatGitHelp(options), stderr: "", exitCode: args.length === 0 ? 1 : 0 };
+    }
+    if (args[0] === "--version" || args[0] === "-v") {
+      return { stdout: GIT_VERSION_STRING, stderr: "", exitCode: 0 };
     }
 
     const subcommand = args[0]!;
@@ -639,12 +661,23 @@ async function gitClone(git: IsomorphicGit, fs: FsClient, http: HttpClient, dir:
     return { stdout: "", stderr: "fatal: only public HTTPS repositories are supported", exitCode: 128 };
   }
 
-  // Determine target directory
-  const targetDir = args.find((arg) => arg !== url && !arg.startsWith("-")) ?? dir;
+  // Determine target directory: explicit positional arg, or derive from URL like real git.
+  // Must skip flag values (e.g. --depth 1 → "1" is NOT a directory).
+  const explicitDir = findPositionalArg(args, url);
+  let targetDir: string;
+  if (explicitDir) {
+    // Resolve relative paths against cwd
+    targetDir = explicitDir.startsWith("/") ? explicitDir : `${dir}/${explicitDir}`;
+  } else {
+    targetDir = `${dir}/${deriveRepoName(url)}`;
+  }
 
   const depthStr = getFlag(args, "--depth");
   const depth = depthStr ? parseInt(depthStr, 10) : undefined;
   const singleBranch = args.includes("--single-branch");
+
+  // Ensure target directory exists
+  await fs.promises.mkdir(targetDir, { recursive: true });
 
   await git.clone({ fs, http, dir: targetDir, url, depth: Number.isFinite(depth) ? depth : undefined, singleBranch });
 
@@ -677,6 +710,94 @@ function getFlag(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
   if (index === -1 || index + 1 >= args.length) return undefined;
   return args[index + 1];
+}
+
+/**
+ * Derive a directory name from a git remote URL, mimicking real git behavior:
+ * strip trailing `.git`, then take the last path segment.
+ */
+function deriveRepoName(url: string): string {
+  try {
+    const parsed = new URL(url);
+    let pathname = parsed.pathname;
+    // Strip trailing slash
+    if (pathname.endsWith("/")) pathname = pathname.slice(0, -1);
+    // Strip .git suffix
+    if (pathname.endsWith(".git")) pathname = pathname.slice(0, -4);
+    // Take last segment
+    const lastSlash = pathname.lastIndexOf("/");
+    const name = lastSlash >= 0 ? pathname.slice(lastSlash + 1) : pathname;
+    return name || "repo";
+  } catch {
+    // Fallback: try to extract from the string directly
+    const stripped = url.replace(/\.git\/?$/, "").replace(/\/$/, "");
+    const lastSlash = stripped.lastIndexOf("/");
+    return lastSlash >= 0 ? stripped.slice(lastSlash + 1) || "repo" : "repo";
+  }
+}
+
+/** Flags that consume the next token as their value. */
+const CLONE_FLAGS_WITH_VALUE = new Set(["--depth", "--branch", "-b"]);
+
+/**
+ * Find the first positional argument that is:
+ * - not the URL
+ * - not a flag (starting with "-")
+ * - not a value consumed by a flag (e.g. "1" after "--depth")
+ */
+function findPositionalArg(args: string[], url: string): string | undefined {
+  let skipNext = false;
+  for (const arg of args) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    if (CLONE_FLAGS_WITH_VALUE.has(arg)) {
+      skipNext = true;
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    if (arg === url) continue;
+    return arg;
+  }
+  return undefined;
+}
+
+function formatGitHelp(options: GitCommandOptions): string {
+  const lines = [
+    "git version 2.0.0-sandbox (isomorphic-git, restricted)",
+    "",
+    "This is a sandboxed git implementation with limited subcommands.",
+    "Only public HTTPS repositories are supported; SSH and push are not available.",
+    "Private/loopback addresses are blocked.",
+    "",
+    "Supported local commands:",
+    "  init [-b <branch>]        Initialize a new repository",
+    "  add <file|.|-A>           Stage files for commit",
+    "  config <key> [<value>]    Get or set config values",
+    "  commit -m <message>       Commit staged changes",
+    "  status                    Show working tree status",
+    "  log [-n <count>]          Show commit log",
+    "  diff                      Show changed files summary",
+    "  branch [<name>|-d <name>] List, create, or delete branches",
+    "  checkout [-b] <ref>       Switch branches",
+    "",
+  ];
+
+  if (options.network) {
+    lines.push(
+      "Supported remote commands (network enabled, HTTPS only):",
+      "  clone <url> [<dir>] [--depth N] [--single-branch]",
+      "  fetch [<remote>]",
+      "  pull [<remote>]",
+    );
+  } else {
+    lines.push("Remote commands (clone/fetch/pull): DISABLED — network access is off.");
+  }
+
+  lines.push("", "Rejected commands: push (not available in sandbox)");
+  lines.push("");
+  return lines.join("\n");
 }
 
 function truncateResult(result: GitCommandResult): GitCommandResult {

@@ -5,6 +5,7 @@ import type { Channel, Channels, ChannelScope } from "../channels/index.js";
 import type { Config } from "../config.js";
 import { ModelService } from "../models/index.js";
 import { ChannelRuntime } from "./channel.js";
+import { readPersona } from "./prompt.js";
 
 export class Runtimes {
   private readonly runtimes = new Map<string, ChannelRuntime>();
@@ -83,13 +84,21 @@ export class Runtimes {
     return result.compacted ? "已压缩当前会话。" : "消息不足，未压缩。";
   }
 
-  public async archive(scope: ChannelScope): Promise<string> {
+  public async archive(scope: ChannelScope, noSummary = false): Promise<string> {
     const key = runtimeKey(scope);
     await this.serialize(key, async () => {
       const runtime = this.runtimes.get(key);
       if (runtime) await runtime.stop();
       this.runtimes.delete(key);
-      await (await this.channels.resolve(scope)).conversation.archive();
+      const channel = await this.channels.resolve(scope);
+      const input = noSummary
+        ? undefined
+        : {
+            model: this.model.resolveChatModel(this.config.chatModel).model,
+            personaName: "Athena",
+            persona: await readPersona(this.config.basePath, this.ctx.logger("yesimbot/archive")),
+          };
+      await channel.conversation.archive(noSummary, input);
     });
     return "已归档当前会话。";
   }

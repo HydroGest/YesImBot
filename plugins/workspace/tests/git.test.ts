@@ -4,20 +4,20 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createGitCommand, isPrivateHost, isUrlAllowed } from "../src/git";
+import { createGitCommand, isPrivateHost } from "../src/git";
 import { Workspace } from "../src/workspace";
 
 async function tmpRoot(name: string): Promise<string> {
   return mkdtemp(join(tmpdir(), `yesimbot-git-${name}-`));
 }
 
-async function createGitWorkspace(options?: { network?: boolean; allowedUrlPrefixes?: string[] }) {
+async function createGitWorkspace(options?: { network?: boolean }) {
   const root = await tmpRoot("workspace");
   const workspace = await Workspace.create({
     root,
     filesystem: {},
     bash: { cwd: "/home/workspace" },
-    git: options?.network ? { network: { allowedUrlPrefixes: options.allowedUrlPrefixes ?? [] } } : undefined,
+    git: options?.network ? { network: {} } : undefined,
   });
   return workspace;
 }
@@ -198,7 +198,43 @@ describe("git local operations", () => {
     const git = createGitCommand(workspace.fs);
     const result = await git([], { cwd: "/home/workspace" });
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("usage");
+    expect(result.stdout).toContain("sandbox");
+  });
+
+  it("shows version with --version", async () => {
+    const workspace = await createGitWorkspace();
+    const git = createGitCommand(workspace.fs);
+    const result = await git(["--version"], { cwd: "/home/workspace" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("sandbox");
+    expect(result.stdout).toContain("isomorphic-git");
+  });
+
+  it("shows help with --help", async () => {
+    const workspace = await createGitWorkspace();
+    const git = createGitCommand(workspace.fs);
+    const result = await git(["--help"], { cwd: "/home/workspace" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Supported local commands");
+    expect(result.stdout).toContain("Rejected commands");
+    expect(result.stdout).toContain("Remote commands");
+  });
+
+  it("shows help with help subcommand", async () => {
+    const workspace = await createGitWorkspace();
+    const git = createGitCommand(workspace.fs);
+    const result = await git(["help"], { cwd: "/home/workspace" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Supported local commands");
+  });
+
+  it("shows remote commands in help when network is enabled", async () => {
+    const workspace = await createGitWorkspace({ network: true });
+    const git = createGitCommand(workspace.fs, { network: {} });
+    const result = await git(["--help"], { cwd: "/home/workspace" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Supported remote commands");
+    expect(result.stdout).toContain("clone");
   });
 });
 
@@ -211,12 +247,31 @@ describe("git remote operations", () => {
     expect(result.stderr).toContain("network access is disabled");
   });
 
-  it("rejects clone when allowlist is empty", async () => {
-    const workspace = await createGitWorkspace({ network: true, allowedUrlPrefixes: [] });
-    const git = createGitCommand(workspace.fs, { network: { allowedUrlPrefixes: [] } });
-    const result = await git(["clone", "https://github.com/example/repo.git"], { cwd: "/home/workspace" });
+  it("rejects clone to private address", async () => {
+    const workspace = await createGitWorkspace({ network: true });
+    const git = createGitCommand(workspace.fs, { network: {} });
+    const result = await git(["clone", "https://localhost/repo.git"], { cwd: "/home/workspace" });
     expect(result.exitCode).toBe(128);
-    expect(result.stderr).toContain("allowlist");
+    expect(result.stderr).toContain("private address");
+  });
+
+  it("does not treat --depth value as target directory", async () => {
+    // Use a private address so it fails fast without network timeout
+    const workspace = await createGitWorkspace({ network: true });
+    const git = createGitCommand(workspace.fs, { network: {} });
+    const result = await git(["clone", "--depth", "1", "https://127.0.0.1/example/repo.git"], { cwd: "/home/workspace" });
+    expect(result.exitCode).toBe(128);
+    expect(result.stderr).toContain("private address");
+    // The output should NOT contain '/1' as a target directory
+    expect(result.stdout).not.toContain("'/1'");
+  });
+
+  it("rejects clone to 10.x private range", async () => {
+    const workspace = await createGitWorkspace({ network: true });
+    const git = createGitCommand(workspace.fs, { network: {} });
+    const result = await git(["clone", "https://10.0.0.1/repo.git"], { cwd: "/home/workspace" });
+    expect(result.exitCode).toBe(128);
+    expect(result.stderr).toContain("private address");
   });
 
   it("rejects fetch when network is disabled", async () => {
@@ -296,24 +351,6 @@ describe("git mount persistence", () => {
     const logResult = await git2(["log"], { cwd: "/home/workspace" });
     expect(logResult.exitCode).toBe(0);
     expect(logResult.stdout).toContain("persist");
-  });
-});
-
-describe("isUrlAllowed", () => {
-  it("returns false for empty prefixes", () => {
-    expect(isUrlAllowed("https://github.com/example/repo", [])).toBe(false);
-  });
-
-  it("matches exact prefix", () => {
-    expect(isUrlAllowed("https://github.com/org/repo", ["https://github.com/org/"])).toBe(true);
-  });
-
-  it("does not match different origin", () => {
-    expect(isUrlAllowed("https://evil.com/org/repo", ["https://github.com/org/"])).toBe(false);
-  });
-
-  it("matches prefix without trailing slash", () => {
-    expect(isUrlAllowed("https://github.com/org/repo", ["https://github.com/org"])).toBe(true);
   });
 });
 

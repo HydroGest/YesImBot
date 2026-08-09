@@ -30,13 +30,13 @@ export default class WorkspacePlugin {
           source: Schema.string().min(1).required(),
           target: Schema.string().min(1).required(),
           mode: Schema.union([Schema.const("rw"), Schema.const("ro"), Schema.const("overlay")]).required(),
-        }).role("table"),
+        }),
       )
+        .role("table")
         .default([])
         .description("Sandbox 挂载声明"),
       timeoutMs: Schema.number().default(30000).description("命令执行超时（毫秒）"),
-      enableNetwork: Schema.boolean().default(false).description("启用网络访问"),
-      allowedUrlPrefixes: Schema.array(Schema.string().min(1)).default([]).description("允许访问的 URL 前缀白名单（支持末尾 * 通配符）"),
+      enableNetwork: Schema.boolean().default(false).description("启用网络访问（仅拒绝私有地址，不设 URL 白名单）"),
       /**
        * Python/JavaScript 执行依赖 just-bash 的 wasm worker。Workspace 通过动态
        * import 固定加载 just-bash 的 ESM bundle，避免 CJS bundle 中 esbuild 把
@@ -172,8 +172,7 @@ export default class WorkspacePlugin {
   }
 
   private createWorkspaceConfig(root: string, sandbox: SandboxBashConfig, mounts: readonly NormalizedMountSpec[]): SandboxWorkspaceConfig {
-    const normalizedPrefixes = normalizeAllowedUrlPrefixes(sandbox.allowedUrlPrefixes ?? []);
-    const networkConfig = sandbox.enableNetwork ? { allowedUrlPrefixes: normalizedPrefixes } : undefined;
+    const networkConfig = sandbox.enableNetwork ? { dangerouslyAllowFullInternetAccess: true } : undefined;
     return {
       root,
       filesystem: { ...workspaceMountMaps(mounts) },
@@ -195,7 +194,6 @@ export default class WorkspacePlugin {
       cwd: bash?.cwd,
       timeoutMs: bash?.timeoutMs,
       enableNetwork: bash?.enableNetwork,
-      allowedUrlPrefixes: bash?.allowedUrlPrefixes ? [...bash.allowedUrlPrefixes] : [],
       enablePython: bash?.enablePython,
       enableJavascript: bash?.enableJavascript,
     };
@@ -300,46 +298,4 @@ function isSafeRelativePath(path: string): boolean {
 function isPathContained(root: string, candidate: string): boolean {
   const path = relative(resolve(root), resolve(candidate));
   return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
-}
-
-// ============================================================================
-// Network allowlist normalization
-// ============================================================================
-
-/**
- * Normalize and validate URL prefix allowlist entries.
- * Accepts absolute HTTP(S) URLs with an optional terminal `*`.
- * Returns cleaned prefixes (trailing `*` stripped) for prefix-match.
- */
-export function normalizeAllowedUrlPrefixes(entries: readonly string[]): string[] {
-  const normalized: string[] = [];
-  for (const entry of entries) {
-    if (!entry || typeof entry !== "string") continue;
-    const trimmed = entry.trim();
-    if (trimmed.length === 0) continue;
-
-    // Strip optional trailing wildcard
-    const hasWildcard = trimmed.endsWith("*");
-    const prefix = hasWildcard ? trimmed.slice(0, -1) : trimmed;
-
-    // Must be absolute HTTP(S)
-    if (!prefix.startsWith("http://") && !prefix.startsWith("https://")) {
-      throw new Error(`allowedUrlPrefixes entry must be an absolute HTTP(S) URL: ${entry}`);
-    }
-
-    // No wildcard in scheme/host/middle path
-    if (prefix.includes("*")) {
-      throw new Error(`allowedUrlPrefixes entry contains a wildcard in an unsupported position: ${entry}`);
-    }
-
-    // Basic URL validation
-    try {
-      new URL(prefix.endsWith("/") ? prefix : `${prefix}/`);
-    } catch {
-      throw new Error(`allowedUrlPrefixes entry is not a valid URL: ${entry}`);
-    }
-
-    normalized.push(prefix);
-  }
-  return normalized;
 }

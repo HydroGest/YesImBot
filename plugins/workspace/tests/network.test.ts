@@ -1,64 +1,28 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-vi.mock("koishi", async () => {
-  const { Schema } = await import("@koishijs/core");
-  return { Context: class {}, Logger: class {}, Schema };
-});
+import { isPrivateHost } from "../src/git";
 
-import { normalizeAllowedUrlPrefixes } from "../src/index";
-
-describe("normalizeAllowedUrlPrefixes", () => {
-  it("returns empty array for empty input", () => {
-    expect(normalizeAllowedUrlPrefixes([])).toEqual([]);
+describe("network security", () => {
+  it("blocks localhost", () => {
+    expect(isPrivateHost("localhost")).toBe(true);
+    expect(isPrivateHost("127.0.0.1")).toBe(true);
+    expect(isPrivateHost("::1")).toBe(true);
   });
 
-  it("accepts absolute HTTPS URLs without wildcard", () => {
-    expect(normalizeAllowedUrlPrefixes(["https://github.com/example/"])).toEqual(["https://github.com/example/"]);
+  it("blocks private IP ranges", () => {
+    expect(isPrivateHost("10.0.0.1")).toBe(true);
+    expect(isPrivateHost("192.168.1.1")).toBe(true);
+    expect(isPrivateHost("172.16.0.1")).toBe(true);
+    expect(isPrivateHost("172.31.255.255")).toBe(true);
   });
 
-  it("accepts absolute HTTP URLs", () => {
-    expect(normalizeAllowedUrlPrefixes(["http://example.com/repo"])).toEqual(["http://example.com/repo"]);
+  it("blocks .local domains", () => {
+    expect(isPrivateHost("myhost.local")).toBe(true);
   });
 
-  it("strips terminal wildcard", () => {
-    expect(normalizeAllowedUrlPrefixes(["https://github.com/example/*"])).toEqual(["https://github.com/example/"]);
-  });
-
-  it("handles multiple entries", () => {
-    const result = normalizeAllowedUrlPrefixes(["https://github.com/org1/*", "https://gitlab.com/org2/"]);
-    expect(result).toEqual(["https://github.com/org1/", "https://gitlab.com/org2/"]);
-  });
-
-  it("rejects non-absolute URLs", () => {
-    expect(() => normalizeAllowedUrlPrefixes(["github.com/example/*"])).toThrow(/absolute HTTP/);
-  });
-
-  it("rejects ftp scheme", () => {
-    expect(() => normalizeAllowedUrlPrefixes(["ftp://example.com/"])).toThrow(/absolute HTTP/);
-  });
-
-  it("rejects wildcard in scheme position", () => {
-    expect(() => normalizeAllowedUrlPrefixes(["*://github.com/"])).toThrow(/absolute HTTP/);
-  });
-
-  it("rejects wildcard in host position", () => {
-    expect(() => normalizeAllowedUrlPrefixes(["https://*.github.com/"])).toThrow(/wildcard in an unsupported position/);
-  });
-
-  it("rejects wildcard in middle of path", () => {
-    expect(() => normalizeAllowedUrlPrefixes(["https://github.com/*/repo"])).toThrow(/wildcard in an unsupported position/);
-  });
-
-  it("skips empty strings and falsy entries", () => {
-    expect(normalizeAllowedUrlPrefixes(["", "  ", "https://github.com/ok"])).toEqual(["https://github.com/ok"]);
-  });
-
-  it("trims whitespace", () => {
-    expect(normalizeAllowedUrlPrefixes(["  https://github.com/example/*  "])).toEqual(["https://github.com/example/"]);
-  });
-
-  it("does not turn an empty allowlist into full Internet access", () => {
-    const result = normalizeAllowedUrlPrefixes([]);
-    expect(result).toEqual([]);
+  it("allows public hosts", () => {
+    expect(isPrivateHost("github.com")).toBe(false);
+    expect(isPrivateHost("8.8.8.8")).toBe(false);
+    expect(isPrivateHost("codeload.github.com")).toBe(false);
   });
 });

@@ -59,9 +59,8 @@ describe("plugin host", () => {
     await host.init({
       legacySystemPrompt: "base",
       baseTools: [{ name: "base", inputSchema: z.object({}) }] as never,
-      terminalTools: [{ name: "finalize_response", inputSchema: z.object({}) }] as never,
     });
-    await host.init({ legacySystemPrompt: "ignored", baseTools: [], terminalTools: [] });
+    await host.init({ legacySystemPrompt: "ignored", baseTools: [] });
 
     expect(calls).toEqual(["tools:pre", "prompt:pre", "legacy-prompt:normal", "legacy-tools:normal"]);
     expect(host.stableLegacySystemPrompt).toBe("base\nlegacy");
@@ -69,7 +68,7 @@ describe("plugin host", () => {
       { role: "system", content: "pre prompt" },
       { role: "system", content: "normal prompt", providerOptions: { mock: { cache: true } } },
     ]);
-    expect(host.stableTools.map((tool) => tool.name)).toEqual(["base", "pre_tool", "normal_tool", "legacy_tool", "finalize_response"]);
+    expect(host.stableTools.map((tool) => tool.name)).toEqual(["base", "pre_tool", "normal_tool", "legacy_tool"]);
   });
 
   it("fails initialization when a required stable resource throws", async () => {
@@ -89,7 +88,7 @@ describe("plugin host", () => {
       ],
     });
 
-    await expect(host.init({ baseTools: [], terminalTools: [] })).rejects.toThrow("bad prompt");
+    await expect(host.init({ baseTools: [] })).rejects.toThrow("bad prompt");
     expect(calls).toEqual(["init:first", "init:broken", "stop:broken", "stop:first"]);
   });
 
@@ -145,7 +144,7 @@ describe("plugin host", () => {
       ],
     });
 
-    await host.init({ baseTools: [], terminalTools: [] });
+    await host.init({ baseTools: [] });
 
     expect(disabled).toEqual(["optional"]);
     expect(host.activePlugins.map((plugin) => plugin.name)).toEqual(["required"]);

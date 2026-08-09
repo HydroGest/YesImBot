@@ -14,9 +14,9 @@ export function registerSessionCommands(ctx: Context, manager: Runtimes, config:
   command
     .subcommand(".archive", "归档会话")
     .option("noSummary", "--no-summary")
-    .action(async ({ session }) => {
+    .action(async ({ session, options }) => {
       const scope = scopeFromSession(session);
-      return scope ? manager.archive(scope) : undefined;
+      return scope ? manager.archive(scope, options?.noSummary) : undefined;
     });
 
   command.subcommand(".clear", "清空会话").action(async ({ session }) => {

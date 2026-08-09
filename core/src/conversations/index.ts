@@ -77,8 +77,11 @@ export class Conversation {
   public async archive(noSummary = false, input?: CompactInput): Promise<void> {
     await this.init();
     if ((await this.storage.read()).length === 0) throw new Error("Cannot archive an empty session");
-    if (!noSummary && input) await this.compact("manual", input);
-    else this.setStorage(await this.createSession());
+    if (!noSummary && input) {
+      const result = await this.compact("manual", input);
+      if (result.compacted) return;
+    }
+    this.setStorage(await this.createSession());
   }
 
   public async compact(reason: CompactReason, input: CompactInput): Promise<CompactResult> {

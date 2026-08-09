@@ -50,6 +50,38 @@ describe("Conversation.archive", () => {
     expect(await conversation.storage.read()).toEqual([]);
     expect((await conversation.list()).filter((item) => item.isActive)).toHaveLength(1);
   });
+
+  it("performs compact on archive and seeds new session with summary", async () => {
+    generateText.mockResolvedValue({ text: "archived memory" });
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-archive-"));
+    roots.push(root);
+    const conversation = new Conversation(root, { threshold: 0.9, charTokenRatio: 1.8, minMessages: 2, maxFailures: 3 });
+    await conversation.init();
+    await conversation.storage.append(
+      createEntry("message", { id: "m1", timestamp: 1, role: "custom", content: "", type: "yesimbot.message", data: { user: { id: "u1", name: "Alice" }, elements: [{ type: "text", attrs: { content: "hello" }, children: [] }] } }),
+      createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "hi" }),
+    );
+    await conversation.archive(false, { model: {} as never, personaName: "Athena", persona: "persona" });
+    expect(generateText).toHaveBeenCalled();
+    const entries = await conversation.storage.read();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ type: "compact", data: expect.objectContaining({ summary: "archived memory" }) });
+  });
+
+  it("falls back to blank session when compact fails during archive", async () => {
+    generateText.mockRejectedValue(new Error("model unavailable"));
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-archive-"));
+    roots.push(root);
+    const conversation = new Conversation(root, { threshold: 0.9, charTokenRatio: 1.8, minMessages: 2, maxFailures: 3 });
+    await conversation.init();
+    await conversation.storage.append(
+      createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "first" }),
+      createEntry("message", { id: "m2", timestamp: 2, role: "assistant", content: "second" }),
+    );
+    await conversation.archive(false, { model: {} as never, personaName: "Athena", persona: "persona" });
+    expect(await conversation.storage.read()).toEqual([]);
+    expect(await conversation.list()).toHaveLength(2);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -15,7 +15,6 @@ export interface SandboxBashConfig {
   readonly timeoutMs?: number;
   readonly mounts?: MountSpec[];
   readonly enableNetwork?: boolean;
-  readonly allowedUrlPrefixes?: string[];
   readonly enablePython?: boolean;
   readonly enableJavascript?: boolean;
 }

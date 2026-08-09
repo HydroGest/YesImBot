@@ -11,7 +11,7 @@ function formatMountLabel(kind: Workspace["mounts"][number]["kind"]): string {
 }
 
 export function formatWorkspacePrompt(workspace: Workspace): string {
-  const networkState = workspace.config.bash.network ? "启用" : "禁用";
+  const networkState = workspace.config.bash.network ? "启用（仅拒绝私有/本地地址）" : "禁用";
   const mountLines = workspace.mounts.map((mount) => `- ${mount.path}：${formatMountLabel(mount.kind)}`);
 
   return [
@@ -26,10 +26,11 @@ export function formatWorkspacePrompt(workspace: Workspace): string {
     "文件系统挂载：",
     ...mountLines,
     "",
-    "Git：沙箱内可直接使用 git 命令（init、add、config、commit、status、log、diff、branch、checkout）。",
+    "Git：沙箱内可直接使用 git 命令（用 git --help 查看完整说明）。",
+    "支持本地操作：init、add、config、commit、status、log、diff、branch、checkout。",
     "Git 仓库数据保存在当前频道工作区的持久挂载中，跨调用保留。",
     workspace.config.bash.network
-      ? "远程 Git（clone、fetch、pull）仅支持公开 HTTPS 仓库，且 URL 必须匹配 allowedUrlPrefixes 白名单；SSH、认证和 push 不可用。"
+      ? "远程 Git（clone、fetch、pull）仅支持公开 HTTPS 仓库；私有地址被拒绝；SSH、认证和 push 不可用。"
       : "远程 Git（clone、fetch、pull）不可用：网络访问已禁用。",
     "",
     "bash 调用之间不保留 shell 状态：cd、别名、函数、导出的变量都不跨调用；需要切目录时在同一条命令里写 cd <dir> && <cmd>。文件系统的改动会在频道工作区内持久保留。",
