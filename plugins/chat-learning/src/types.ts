@@ -146,6 +146,7 @@ export interface ChatLearningConfig {
   readonly maxModelThreadMessages: number;
   readonly reflectionModel: string | undefined;
   readonly maxInjectedReflections: number;
+  readonly injectStyleAsSystem: boolean;
 }
 
 export type ProactiveEventKind = "global-brain" | "schedule" | "chat-learning";

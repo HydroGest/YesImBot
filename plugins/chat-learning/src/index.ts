@@ -60,6 +60,9 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
   maxModelThreadMessages: Schema.number().min(4).max(100).default(30).description("每条线程最多送入模型的消息数"),
   reflectionModel: Schema.dynamic("registry.chatModels").default("").description("可选：用独立模型评价 bot 最近发言并生成风格反思；留空则关闭"),
   maxInjectedReflections: Schema.number().min(1).max(10).default(3).description("每次注入提示词末尾的最近反思条数"),
+  injectStyleAsSystem: Schema.boolean()
+    .default(false)
+    .description("将 chat-learning 风格参考作为 system 消息注入；默认使用尾部 user 消息以兼容更多 provider"),
 });
 
 export default class ChatLearningPlugin {
@@ -413,10 +416,10 @@ export default class ChatLearningPlugin {
         if (block) referenceParts.push(block);
         if (reflectionBlock) referenceParts.push(reflectionBlock);
         if (referenceParts.length === 0) return [...messages];
-        const referenceMessage: ModelMessage = {
-          role: "user",
-          content: `[群聊风格参考，不要回复本段]\n\n${referenceParts.join("\n\n")}`,
-        };
+        const reference = referenceParts.join("\n\n");
+        const referenceMessage: ModelMessage = config.injectStyleAsSystem
+          ? { role: "system", content: reference }
+          : { role: "user", content: `[群聊风格参考，不要回复本段]\n\n${reference}` };
         return [...messages, referenceMessage];
       },
       stop: () => {

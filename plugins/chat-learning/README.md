@@ -28,6 +28,7 @@
 | `maxModelThreadMessages`    | `30`    | 每条线程最多送入模型的消息数                                                |
 | `reflectionModel`           | 留空    | 可选独立模型；用于评价 bot 最近发言并生成风格反思，留空则关闭                 |
 | `maxInjectedReflections`    | `3`     | 每次注入提示词末尾的最近反思条数                                             |
+| `injectStyleAsSystem`       | `false` | 将风格参考作为 system 消息注入；默认用尾部 user 消息以兼容更多 provider       |
 
 `summaryModel` 使用与 Core `chatModel` 相同的 `registry.chatModels` schema，可以直接填 `provider:model`；没有可用模型时不生成 `local_patterns`。
 
