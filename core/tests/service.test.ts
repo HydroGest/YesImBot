@@ -54,4 +54,16 @@ describe("YesImBotService facade", () => {
       imageBudget: { maxCount: 2, maxBytesPerImage: 123, maxTotalBytes: 456 },
     });
   });
+
+  it("defaults image input budget when the option is omitted", async () => {
+    const ctx = new Context();
+    ctx.baseDir = tmpdir();
+    Object.assign(ctx, { "yesimbot.model": {}, database: { get: vi.fn() } });
+    const basePath = join(tmpdir(), `yesimbot-service-default-${randomUUID()}`);
+    const service = new YesImBotService(ctx as never, { ...config, basePath, imageInput: undefined });
+
+    await expect(service.resource.get({ type: "shared", platform: "test", channelId: "room" })).resolves.toMatchObject({
+      imageBudget: { maxCount: 3, maxBytesPerImage: 5 * 1024 * 1024, maxTotalBytes: 10 * 1024 * 1024 },
+    });
+  });
 });

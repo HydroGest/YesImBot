@@ -81,7 +81,7 @@ export interface Config {
   visionModel: string | undefined;
   logLevel: number;
   allowedChannels: ChannelAllowRule[];
-  imageInput: ImageInputConfig;
+  imageInput?: ImageInputConfig;
   resourceReadTimeoutMs: number;
   reply: { pacing: PacingConfig; customInnerThought: boolean };
   session: SessionConfig;

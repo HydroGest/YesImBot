@@ -42,9 +42,9 @@ export default class YesImBotService extends Service<Config> {
         config.imageInput === false
           ? null
           : {
-              maxCount: config.imageInput.maxCount ?? 3,
-              maxBytesPerImage: config.imageInput.maxBytesPerImage ?? 5 * 1024 * 1024,
-              maxTotalBytes: config.imageInput.maxTotalBytes ?? 10 * 1024 * 1024,
+              maxCount: config.imageInput?.maxCount ?? 3,
+              maxBytesPerImage: config.imageInput?.maxBytesPerImage ?? 5 * 1024 * 1024,
+              maxTotalBytes: config.imageInput?.maxTotalBytes ?? 10 * 1024 * 1024,
             },
       readTimeoutMs: config.resourceReadTimeoutMs,
     });
