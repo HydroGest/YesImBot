@@ -23,6 +23,11 @@ describe("sanitizeForDisplay", () => {
     expect(sanitizeForDisplay("https://x.com/status/123 [图片]")).toContain("[链接]");
     expect(sanitizeForDisplay("[动画表情: 猫猫 asset://abc]")).toContain("<sticker />");
   });
+
+  it("normalizes mention ids and bare mentions to a placeholder", () => {
+    expect(sanitizeForDisplay("@1328387967 收到")).toBe("@成员 收到");
+    expect(sanitizeForDisplay("@ 禁言我")).toBe("@成员 禁言我");
+  });
 });
 
 describe("formatReflectionTarget", () => {
@@ -33,5 +38,9 @@ describe("formatReflectionTarget", () => {
 
   it("truncates long text targets", () => {
     expect(formatReflectionTarget("a".repeat(200), 10)).toBe("aaaaaaaaaa…");
+  });
+
+  it("normalizes mention markup in reflection targets", () => {
+    expect(formatReflectionTarget("<at id=\"1328387967\"/> 收到")).toBe("@成员 收到");
   });
 });

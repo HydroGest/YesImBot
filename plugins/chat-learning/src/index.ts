@@ -28,10 +28,10 @@ import { buildMemeTemplates, type MemePhraseInput } from "./memes.js";
 import { classifyPatternsWithModel, generateChainStyle, sampleSignature } from "./patterns.js";
 import { detectProactiveEvent } from "./proactive.js";
 import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.js";
-import { createReflectionStore, type ReflectionRecord, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
-import { reflectOnSentMessage } from "./reflection.js";
+import { createReflectionStore, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
+import { buildReflectionHistory, reflectOnSentMessage } from "./reflection.js";
 import { createChatLearningStore } from "./store.js";
-import { formatReflectionTarget, patternPhrase } from "./text.js";
+import { patternPhrase } from "./text.js";
 import type {
   ChatLearningConfig,
   ChatLearningState,
@@ -1044,21 +1044,6 @@ function latestUserText(messages: readonly ModelMessage[]): string {
     }
   }
   return "";
-}
-
-function buildReflectionHistory(store: ReflectionStore, limit: number): string | undefined {
-  const all = store.read();
-  const human = all.filter((record) => record.source === "human").slice(-limit);
-  const auto = all.filter((record) => record.source === "auto").slice(-(limit - human.length));
-  const records: readonly ReflectionRecord[] = [...human, ...auto];
-  if (records.length === 0) return undefined;
-  const lines = records.map((record) => {
-    const score = record.score === undefined ? "" : ` score="${record.score}"`;
-    const target = formatReflectionTarget(record.text);
-    const targetLine = target ? `<target>${escapePromptText(target)}</target>` : "";
-    return `<reflection source="${record.source}"${score}>${targetLine}${escapePromptText(record.reflection)}</reflection>`;
-  });
-  return `<reflection_history>\n${lines.join("\n")}\n</reflection_history>`;
 }
 
 function quoteText(quote: Session["quote"] | undefined): string {
