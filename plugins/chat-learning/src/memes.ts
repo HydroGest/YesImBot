@@ -1,11 +1,16 @@
 import { generateText, type LanguageModel } from "ai";
 import { z } from "zod";
 
-import type { InitiationPattern, MemeTemplate, ResponsePattern } from "./types.js";
+import type { MemeTemplate } from "./types.js";
 
 interface TemplateCandidate {
   readonly template: string;
   readonly examples: readonly string[];
+  readonly frequency: number;
+}
+
+export interface MemePhraseInput {
+  readonly phrase: string;
   readonly frequency: number;
 }
 
@@ -15,14 +20,12 @@ const memeUsageSchema = z.object({
 
 export async function buildMemeTemplates(
   model: LanguageModel | undefined,
-  responsePatterns: readonly ResponsePattern[],
-  initiationPatterns: readonly InitiationPattern[],
+  phrases: readonly MemePhraseInput[],
   now = Date.now(),
 ): Promise<readonly MemeTemplate[]> {
-  const phrases = [...responsePatterns, ...initiationPatterns]
-    .map((pattern) => ({ phrase: pattern.phrase, frequency: pattern.frequency }))
+  const normalized = phrases
     .filter((item) => item.phrase.length >= 3 && !item.phrase.includes("[") && !item.phrase.includes("]"));
-  const candidates = findTemplateCandidates(phrases).slice(0, 3);
+  const candidates = findTemplateCandidates(normalized).slice(0, 3);
   const templates: MemeTemplate[] = [];
 
   for (const candidate of candidates) {

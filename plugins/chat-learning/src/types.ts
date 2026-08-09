@@ -113,6 +113,7 @@ export interface GlobalRuleBank {
   readonly updatedAt: number;
   readonly patterns: readonly GlobalPattern[];
   readonly chains: readonly GlobalChainPattern[];
+  readonly templates: readonly MemeTemplate[];
 }
 
 export interface MemeTemplate {

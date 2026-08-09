@@ -9,6 +9,7 @@ import {
   createGlobalRuleStore,
   mergeLocalPatterns,
   selectGlobalChains,
+  selectGlobalMemeTemplates,
   selectGlobalPatterns,
   selectRelevantGlobalChains,
 } from "../src/global-store.js";
@@ -161,11 +162,35 @@ describe("selectRelevantGlobalChains", () => {
           lastSeenAt: 1,
         },
       ],
+      templates: [],
     };
 
     const selected = selectRelevantGlobalChains(bank, "草 @bot 笑点解析", 2, 3);
 
     expect(selected.map((chain) => chain.chain)).toEqual([["react", "ack"]]);
+  });
+});
+
+describe("selectGlobalMemeTemplates", () => {
+  it("returns the newest cross-group meme templates", () => {
+    const bank = {
+      version: 1,
+      updatedAt: 1,
+      patterns: [],
+      chains: [],
+      templates: [
+        {
+          template: "？！{X}！？",
+          examples: ["？！强强！？"],
+          usage: "把状态词套进感叹模板。",
+          frequency: 3,
+          firstSeenAt: 1,
+          lastSeenAt: 2,
+        },
+      ],
+    };
+
+    expect(selectGlobalMemeTemplates(bank, 1)).toHaveLength(1);
   });
 });
 
@@ -186,6 +211,7 @@ describe("embedding-based pattern merge", () => {
         },
       ],
       chains: [],
+      templates: [],
     };
     const response: ResponsePattern = { intent: "agree", phrase: "确实", frequency: 2, sampleIds: ["m2"] };
     const localEmbeddings = new Map([["response:agree:确实", [0.99, 0.01]]]);

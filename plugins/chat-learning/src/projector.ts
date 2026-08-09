@@ -50,6 +50,7 @@ export function buildPromptBlock(
   globalPatterns: readonly GlobalPattern[] = [],
   globalChains: readonly GlobalChainPattern[] = [],
   globalStylePatterns: readonly GlobalPattern[] = globalPatterns,
+  globalMemeTemplates: readonly MemeTemplate[] = [],
 ): string | undefined {
   if (!state && globalPatterns.length === 0 && globalChains.length === 0) return undefined;
   if (state && state.turns.length === 0 && globalPatterns.length === 0 && globalChains.length === 0) return undefined;
@@ -65,8 +66,12 @@ export function buildPromptBlock(
   if (state) {
     push(renderExamples(selectExamples(state, config), config));
     push(renderPatterns(state, eventKind));
-    push(renderMemeTemplates(state.memeTemplates));
   }
+  const memeTemplates = [...(state?.memeTemplates ?? [])];
+  for (const template of globalMemeTemplates) {
+    if (!memeTemplates.some((item) => item.template === template.template)) memeTemplates.push(template);
+  }
+  push(renderMemeTemplates(memeTemplates));
   push(renderGlobalPatterns(globalPatterns, eventKind, config));
   push(renderGlobalChains(globalChains, globalStylePatterns, config));
 

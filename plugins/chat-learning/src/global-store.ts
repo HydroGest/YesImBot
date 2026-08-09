@@ -12,6 +12,7 @@ import type {
   InitiationPattern,
   LocalChainSample,
   LocalChainPattern,
+  MemeTemplate,
   ResponsePattern,
 } from "./types.js";
 
@@ -65,7 +66,7 @@ export function createGlobalRuleStore(filePath: string): GlobalRuleStore {
 }
 
 export function createEmptyGlobalRuleBank(): GlobalRuleBank {
-  return { version: 1, updatedAt: Date.now(), patterns: [], chains: [] };
+  return { version: 1, updatedAt: Date.now(), patterns: [], chains: [], templates: [] };
 }
 
 export function mergeLocalPatterns(
@@ -111,7 +112,13 @@ export function mergeLocalPatterns(
     mergeChainPattern(byChainKey, chain.chain, chain.frequency, channelKey, now, chain.sample, chain.semantics);
   }
 
-  return { version: bank.version, updatedAt: now, patterns: [...byKey.values()].sort(byScore), chains: [...byChainKey.values()].sort(byChainScore) };
+  return {
+    version: bank.version,
+    updatedAt: now,
+    patterns: [...byKey.values()].sort(byScore),
+    chains: [...byChainKey.values()].sort(byChainScore),
+    templates: bank.templates ?? [],
+  };
 }
 
 export function selectGlobalPatterns(bank: GlobalRuleBank, kind: GlobalPatternKind, minChannels: number, max: number): readonly GlobalPattern[] {
@@ -126,6 +133,10 @@ export function selectGlobalChains(bank: GlobalRuleBank, minChannels: number, ma
     .filter((chain) => chain.channels.length >= minChannels)
     .sort(byChainScore)
     .slice(0, max);
+}
+
+export function selectGlobalMemeTemplates(bank: GlobalRuleBank, max: number): readonly MemeTemplate[] {
+  return (bank.templates ?? []).slice(0, max);
 }
 
 export function selectRelevantGlobalChains(
@@ -359,5 +370,6 @@ function normalizeGlobalRuleBank(value: unknown): GlobalRuleBank {
     updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
     patterns: Array.isArray(parsed.patterns) ? parsed.patterns : [],
     chains: Array.isArray(parsed.chains) ? parsed.chains : [],
+    templates: Array.isArray(parsed.templates) ? parsed.templates : [],
   };
 }
