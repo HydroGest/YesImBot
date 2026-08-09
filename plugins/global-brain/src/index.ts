@@ -99,7 +99,7 @@ export default class GlobalBrainPlugin {
         injectedTurn = context.turnId;
         const digest = await store.digest(scope);
         const text = formatBrainDigest(digest, this.config.maxDigestContentLength);
-        return text ? [{ role: "system", content: text }, ...messages] : messages;
+        return text ? [...messages, { role: "user", content: `[全局脑摘要，不要回复本段]\n\n${text}` }] : messages;
       },
     } satisfies AgentPlugin;
   }

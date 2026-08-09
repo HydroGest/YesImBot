@@ -2,6 +2,7 @@ import { generateText, type LanguageModel } from "ai";
 import { z } from "zod";
 
 import { buildConversationChains } from "./links.js";
+import { modelCacheId, type ModelCache } from "./model-cache.js";
 import { patternPhrase, sanitizeForDisplay } from "./text.js";
 import type {
   ConversationSegment,
@@ -46,7 +47,10 @@ export async function classifyPatternsWithModel(
   segments: readonly ConversationSegment[],
   links: readonly MessageLink[] = [],
   options: ClassifyModelOptions = {},
+  cache?: ModelCache,
 ): Promise<PatternSnapshot | undefined> {
+  const key = cache?.key(["classify", modelCacheId(model), turns, segments, links, options]);
+  const produce = async (): Promise<PatternSnapshot | undefined> => {
   const maxThreads = options.maxThreads ?? 3;
   const maxThreadMessages = options.maxThreadMessages ?? 30;
   const threads = selectClassifyThreads(segments, links, maxThreads, maxThreadMessages);
@@ -71,13 +75,18 @@ export async function classifyPatternsWithModel(
   } catch {
     return undefined;
   }
+  };
+  return cache && key ? cache.getOrProduce(key, produce) : produce();
 }
 
 export async function generateChainStyle(
   model: LanguageModel,
   chain: readonly string[],
   sample: LocalChainSample,
+  cache?: ModelCache,
 ): Promise<string | undefined> {
+  const key = cache?.key(["chain-style", modelCacheId(model), chain, sample]);
+  const produce = async (): Promise<string | undefined> => {
   const sampleText = sample.turns.map((turn) => `${turn.speaker}: ${turn.text}`).join("\n");
   const prompt = [
     "下面是一条真实群聊回复链：",
@@ -101,6 +110,8 @@ export async function generateChainStyle(
   } catch {
     return undefined;
   }
+  };
+  return cache && key ? cache.getOrProduce(key, produce) : produce();
 }
 
 export function sampleSignature(sample: LocalChainSample): string {

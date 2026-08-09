@@ -1,6 +1,7 @@
 import { embedMany, type EmbeddingModel } from "ai";
 import type { Context } from "koishi";
 
+import type { ModelCache } from "./model-cache.js";
 import type { ChatLearningConfig, InitiationPattern, ResponsePattern } from "./types.js";
 
 export function resolveEmbeddingModelId(config: ChatLearningConfig): string | undefined {
@@ -12,9 +13,12 @@ export async function buildPatternEmbeddingMap(
   config: ChatLearningConfig,
   responsePatterns: readonly ResponsePattern[],
   initiationPatterns: readonly InitiationPattern[],
+  cache?: ModelCache,
 ): Promise<ReadonlyMap<string, readonly number[]>> {
   const modelId = resolveEmbeddingModelId(config);
   if (!modelId) return new Map();
+  const key = cache?.key(["embedding", modelId, responsePatterns, initiationPatterns]);
+  const produce = async (): Promise<ReadonlyMap<string, readonly number[]>> => {
 
   let model: EmbeddingModel;
   try {
@@ -49,6 +53,8 @@ export async function buildPatternEmbeddingMap(
       .warn("chat_learning.embedding_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
     return new Map();
   }
+  };
+  return cache && key ? cache.getOrProduce(key, produce) : produce();
 }
 
 export function cosineSimilarity(left: readonly number[], right: readonly number[]): number {

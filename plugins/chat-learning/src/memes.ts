@@ -1,6 +1,7 @@
 import { generateText, type LanguageModel } from "ai";
 import { z } from "zod";
 
+import { modelCacheId, type ModelCache } from "./model-cache.js";
 import type { MemeTemplate } from "./types.js";
 
 const memeUsageSchema = z.object({ usage: z.string().min(1).max(140) });
@@ -25,7 +26,10 @@ export async function buildMemeTemplates(
   model: LanguageModel | undefined,
   phrases: readonly MemePhraseInput[],
   now = Date.now(),
+  cache?: ModelCache,
 ): Promise<readonly MemeTemplate[]> {
+  const key = model ? cache?.key(["meme", modelCacheId(model), phrases]) : undefined;
+  const produce = async (): Promise<readonly MemeTemplate[]> => {
   const normalized = phrases.filter((item) => item.phrase.length >= 3 && !item.phrase.includes("[") && !item.phrase.includes("]"));
   const heuristic = [...findTemplateCandidates(normalized), ...findRepetitionCandidates(normalized)];
   const semantic = model ? await summarizeSemanticTemplates(model, normalized) : [];
@@ -55,6 +59,8 @@ export async function buildMemeTemplates(
   }
 
   return templates;
+  };
+  return cache && key ? cache.getOrProduce(key, produce) : produce();
 }
 
 function findTemplateCandidates(items: readonly { readonly phrase: string; readonly frequency: number }[]): TemplateCandidate[] {

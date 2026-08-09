@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createReflectionStore } from "../src/reflection-store.js";
+import { createReflectionStore, hasReflectionForMessage } from "../src/reflection-store.js";
 
 const roots: string[] = [];
 
@@ -37,5 +37,25 @@ describe("createReflectionStore", () => {
     await reopened.init();
     expect(reopened.latestHuman()?.reflection).toBe("这条更像群友，保持");
     expect(reopened.latestAuto()?.reflection).toBe("更短一些");
+  });
+
+  it("detects existing reflections for a message id", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chat-learning-reflection-"));
+    roots.push(root);
+    const store = createReflectionStore(join(root, "reflections.jsonl"));
+    await store.init();
+
+    await store.append({
+      source: "auto",
+      text: "bot message",
+      reflection: "already reflected",
+      score: undefined,
+      annotation: undefined,
+      messageId: "m1",
+      turnId: "t1",
+    });
+
+    expect(hasReflectionForMessage(store, "m1")).toBe(true);
+    expect(hasReflectionForMessage(store, "missing")).toBe(false);
   });
 });

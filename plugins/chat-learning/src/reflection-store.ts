@@ -27,6 +27,10 @@ export interface ReflectionStore {
   clear(): Promise<void>;
 }
 
+export function hasReflectionForMessage(store: ReflectionStore, messageId: string): boolean {
+  return store.read().some((record) => record.messageId === messageId);
+}
+
 export function createReflectionStore(filePath: string): ReflectionStore {
   let records: ReflectionRecord[] = [];
   let tail: Promise<void> = Promise.resolve();

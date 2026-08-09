@@ -133,4 +133,29 @@ describe("GlobalBrainPlugin", () => {
       expect(trigger.mock.calls[0]?.[0]).toMatchObject({ eventType: "global-brain.immediate", selfId: "bot-a" });
     });
   });
+
+  it("appends the brain digest as a tail user message instead of prepending system content", async () => {
+    await withTempDir(async (baseDir) => {
+      const { ctx, plugins } = createContext(baseDir);
+      const plugin = new GlobalBrainPlugin(
+        ctx as never,
+        { storageDir: baseDir, maxDigestThreads: 5, maxDigestReplies: 5, maxDigestContentLength: 80, maxBlobBytes: 5 * 1024 * 1024 } as never,
+      );
+      await plugin.start();
+      const runtimePluginA = await plugins[0]!.setup(channelScope("group-a"), { selfId: "bot-a" });
+      const runtimePluginB = await plugins[0]!.setup(channelScope("group-b"), { selfId: "bot-a" });
+      const deposit = (await getTools(runtimePluginA!)).find((tool) => tool.name === "brain_deposit")!;
+
+      await deposit.execute?.({ kind: "share", content: "cache-safe global brain note" }, {} as never);
+
+      const input = [{ role: "user", content: "hello" }];
+      const result = await runtimePluginB!.prepareStep!(input, { turnId: "turn-1" } as never);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual(input[0]);
+      expect(result[1]).toMatchObject({ role: "user" });
+      expect(String((result[1] as { content?: string }).content)).toContain("全局脑摘要");
+      expect(String((result[1] as { content?: string }).content)).toContain("cache-safe global brain note");
+    });
+  });
 });

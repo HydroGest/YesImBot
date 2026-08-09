@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 
 import type { AgentEntry, AgentPlugin, AgentPluginRuntime, AgentStorage, PrepareStepContext } from "@yesimbot/agent-runtime";
@@ -25,10 +26,11 @@ import {
 import { createChatHistoryStore, type ChatHistoryStore } from "./history.js";
 import { buildLinks } from "./links.js";
 import { buildMemeTemplates, type MemePhraseInput } from "./memes.js";
+import { ModelCache } from "./model-cache.js";
 import { classifyPatternsWithModel, generateChainStyle, sampleSignature } from "./patterns.js";
 import { detectProactiveEvent } from "./proactive.js";
 import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.js";
-import { createReflectionStore, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
+import { createReflectionStore, hasReflectionForMessage, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
 import { buildReflectionHistory, reflectOnSentMessage } from "./reflection.js";
 import { createChatLearningStore } from "./store.js";
 import { patternPhrase } from "./text.js";
@@ -90,6 +92,7 @@ export default class ChatLearningPlugin {
   public readonly ctx: Context;
   public readonly config: ChatLearningConfig;
   public readonly logger: Logger;
+  private readonly modelCache = new ModelCache();
 
   private disposeAgentPlugin: (() => void) | undefined;
   private readonly commandDisposers = new Set<() => unknown>();
@@ -209,6 +212,7 @@ export default class ChatLearningPlugin {
     let dirty = true;
     let building: Promise<void> | undefined;
     let injectedTurn: string | undefined;
+    const reflectionResultCache = new Map<string, string>();
     let currentEvent: ProactiveEventKind | undefined;
     let lastModelEnrichAt = state?.builtAt ?? 0;
 
@@ -237,7 +241,7 @@ export default class ChatLearningPlugin {
           const shouldEnrich = allowModel && resolveChatLearningModelId(this.ctx, config) !== undefined && Date.now() - lastModelEnrichAt >= refreshMs;
           let current = next;
           if (shouldEnrich) {
-            current = await enrichWithModel(next, config, this.ctx, logger);
+            current = await enrichWithModel(next, config, this.ctx, logger, this.modelCache);
             lastModelEnrichAt = Date.now();
           } else if (state) {
             const fallbackMemeTemplates = await buildMemeTemplates(undefined, buildFallbackPhrases(next.turns));
@@ -261,13 +265,14 @@ export default class ChatLearningPlugin {
               config,
               buildLocalChainPatterns(current.segments, current.links, current.responsePatterns, current.initiationPatterns),
               currentBank.chains,
+              this.modelCache,
             );
-            const localEmbeddings = await buildPatternEmbeddingMap(this.ctx, config, current.responsePatterns, current.initiationPatterns);
+            const localEmbeddings = await buildPatternEmbeddingMap(this.ctx, config, current.responsePatterns, current.initiationPatterns, this.modelCache);
             const mergedBank = mergeLocalPatterns(currentBank, current.responsePatterns, current.initiationPatterns, chainPatterns, key, Date.now(), {
               localEmbeddings,
               embeddingSimilarity: config.embeddingSimilarity,
             });
-            const mergedWithTemplates = { ...mergedBank, templates: await buildGlobalMemeTemplates(this.ctx, config, mergedBank) };
+            const mergedWithTemplates = { ...mergedBank, templates: await buildGlobalMemeTemplates(this.ctx, config, mergedBank, this.modelCache) };
             await globalStore.update(mergedWithTemplates);
             this.globalBanks.set(globalPath, mergedWithTemplates);
             globalPatterns = [...selectGlobalPatterns(mergedWithTemplates, "response", config.minGlobalChannels, config.maxGlobalPatterns)];
@@ -336,11 +341,18 @@ export default class ChatLearningPlugin {
           if (!current) break;
           this.reflectionPending.delete(key);
           if (this.reflectionLatestMessage.get(key) !== current.messageId) continue;
+          if (current.messageId && hasReflectionForMessage(reflectionStore, current.messageId)) {
+            logger.debug("chat_learning.reflection_skipped", { scope, messageId: current.messageId });
+            continue;
+          }
           const styleBlock = buildPromptBlock(state, undefined, config, globalPatterns, globalChains, globalStylePatterns, globalMemeTemplates);
           if (!styleBlock) continue;
           try {
             const ref = ctx.yesimbot.model.resolveChatModel(modelId);
-            const next = await reflectOnSentMessage(ref.model, styleBlock, current.text);
+            const cacheKey = reflectionCacheKey(styleBlock, current.text);
+            const cached = reflectionResultCache.get(cacheKey);
+            const next = cached ?? (await reflectOnSentMessage(ref.model, styleBlock, current.text));
+            if (next && !cached) reflectionResultCache.set(cacheKey, next);
             if (next) {
               await reflectionStore.append({
                 source: "auto",
@@ -867,10 +879,14 @@ export default class ChatLearningPlugin {
       const links = buildLinks(turns);
       const modelId = resolveChatLearningModelId(this.ctx, config);
       const patterns = modelId
-        ? await classifyPatternsWithModel(this.ctx.yesimbot.model.resolveChatModel(modelId).model, turns, segments, links, {
-            maxThreads: config.maxModelThreads,
-            maxThreadMessages: config.maxModelThreadMessages,
-          }).catch((cause) => {
+        ? await classifyPatternsWithModel(
+            this.ctx.yesimbot.model.resolveChatModel(modelId).model,
+            turns,
+            segments,
+            links,
+            { maxThreads: config.maxModelThreads, maxThreadMessages: config.maxModelThreadMessages },
+            this.modelCache,
+          ).catch((cause) => {
             this.logger.warn("chat_learning.global_classify_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
             return undefined;
           })
@@ -882,15 +898,16 @@ export default class ChatLearningPlugin {
         config,
         buildLocalChainPatterns(segments, links, responsePatterns, initiationPatterns),
         bank.chains,
+        this.modelCache,
       );
-      const localEmbeddings = await buildPatternEmbeddingMap(this.ctx, config, responsePatterns, initiationPatterns);
+      const localEmbeddings = await buildPatternEmbeddingMap(this.ctx, config, responsePatterns, initiationPatterns, this.modelCache);
       bank = mergeLocalPatterns(bank, responsePatterns, initiationPatterns, chainPatterns, scopeKeyValue, Date.now(), {
         localEmbeddings,
         embeddingSimilarity: config.embeddingSimilarity,
       });
     }
 
-    bank = { ...bank, templates: await buildGlobalMemeTemplates(this.ctx, config, bank) };
+    bank = { ...bank, templates: await buildGlobalMemeTemplates(this.ctx, config, bank, this.modelCache) };
     await globalStore.update(bank);
     this.globalBanks.set(globalPath, bank);
     await history.clear();
@@ -950,20 +967,35 @@ function buildFallbackPhrases(turns: ChatLearningState["turns"]): MemePhraseInpu
   return [...counts.entries()].map(([phrase, frequency]) => ({ phrase, frequency }));
 }
 
-async function enrichWithModel(state: ChatLearningState, config: ChatLearningConfig, ctx: Context, logger: Logger): Promise<ChatLearningState> {
+async function enrichWithModel(
+  state: ChatLearningState,
+  config: ChatLearningConfig,
+  ctx: Context,
+  logger: Logger,
+  cache?: ModelCache,
+): Promise<ChatLearningState> {
   const modelId = resolveChatLearningModelId(ctx, config);
   if (!modelId) return state;
   try {
     const ref = ctx.yesimbot.model.resolveChatModel(modelId);
-    const patterns = await classifyPatternsWithModel(ref.model, state.turns, state.segments, state.links, {
-      maxThreads: config.maxModelThreads,
-      maxThreadMessages: config.maxModelThreadMessages,
-    });
+    const patterns = await classifyPatternsWithModel(
+      ref.model,
+      state.turns,
+      state.segments,
+      state.links,
+      { maxThreads: config.maxModelThreads, maxThreadMessages: config.maxModelThreadMessages },
+      cache,
+    );
     if (!patterns) return state;
-    const memeTemplates = await buildMemeTemplates(ref.model, [
-      ...patterns.responsePatterns.map((pattern) => ({ phrase: pattern.phrase, frequency: pattern.frequency })),
-      ...patterns.initiationPatterns.map((pattern) => ({ phrase: pattern.phrase, frequency: pattern.frequency })),
-    ]);
+    const memeTemplates = await buildMemeTemplates(
+      ref.model,
+      [
+        ...patterns.responsePatterns.map((pattern) => ({ phrase: pattern.phrase, frequency: pattern.frequency })),
+        ...patterns.initiationPatterns.map((pattern) => ({ phrase: pattern.phrase, frequency: pattern.frequency })),
+      ],
+      Date.now(),
+      cache,
+    );
     return { ...state, responsePatterns: patterns.responsePatterns, initiationPatterns: patterns.initiationPatterns, memeTemplates, builtAt: Date.now() };
   } catch (cause) {
     logger.warn("chat_learning.model_enrich_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
@@ -976,6 +1008,7 @@ async function enrichChainStyles(
   config: ChatLearningConfig,
   chainPatterns: readonly LocalChainPattern[],
   existingChains: readonly GlobalChainPattern[],
+  cache?: ModelCache,
 ): Promise<readonly LocalChainPattern[]> {
   const modelId = resolveChatLearningModelId(ctx, config);
   if (!modelId) return chainPatterns;
@@ -991,27 +1024,31 @@ async function enrichChainStyles(
       if (existing?.style && existing.styleSampleId === sampleId) {
         return { ...pattern, style: existing.style, styleSampleId: existing.styleSampleId };
       }
-      const style = await generateChainStyle(ref.model, pattern.chain, pattern.sample);
+      const style = await generateChainStyle(ref.model, pattern.chain, pattern.sample, cache);
       return style ? { ...pattern, style, styleSampleId: sampleId } : pattern;
     }),
   );
   return enriched;
 }
 
-async function buildGlobalMemeTemplates(ctx: Context, config: ChatLearningConfig, bank: GlobalRuleBank): Promise<readonly MemeTemplate[]> {
+async function buildGlobalMemeTemplates(ctx: Context, config: ChatLearningConfig, bank: GlobalRuleBank, cache?: ModelCache): Promise<readonly MemeTemplate[]> {
   const phrases = bank.patterns.map((pattern) => ({
     phrase: pattern.phrase,
     frequency: pattern.channels.reduce((sum, channel) => sum + channel.frequency, 0),
   }));
   const modelId = resolveChatLearningModelId(ctx, config);
   const model = modelId ? ctx.yesimbot.model.resolveChatModel(modelId).model : undefined;
-  return buildMemeTemplates(model, phrases);
+  return buildMemeTemplates(model, phrases, Date.now(), cache);
 }
 
 function resolveChatLearningModelId(ctx: Context, config: ChatLearningConfig): string | undefined {
   const configured = config.summaryModel?.trim();
   if (configured) return configured;
   return ctx.yesimbot.model.getDefaultChatModelId();
+}
+
+function reflectionCacheKey(styleBlock: string, text: string): string {
+  return createHash("sha256").update(styleBlock).update("\0").update(text).digest("hex");
 }
 
 function parsePositiveInt(value: unknown, fallback: number): number {
