@@ -1,0 +1,52 @@
+{
+  "name": "koishi-plugin-yesimbot-chat-learning",
+  "version": "0.0.1",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "npx pkgroll --sourcemap=inline",
+    "check-types": "tsc --noEmit",
+    "clean": "rimraf dist && rimraf tsconfig.tsbuildinfo",
+    "fmt": "oxfmt",
+    "lint": "oxlint",
+    "pub": "yarn npm publish --access public",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ai": "^6.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@yesimbot/agent-runtime": "workspace:^",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^",
+    "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "@yesimbot/agent-runtime": "workspace:^",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^",
+    "zod": "^3.25.76"
+  },
+  "koishi": {
+    "description": {
+      "zh": "从真实群聊中学习消息关系、回应与话题发起方式，并注入模型上下文",
+      "en": "Learn group conversation links, response and initiation patterns from real chats"
+    }
+  }
+}

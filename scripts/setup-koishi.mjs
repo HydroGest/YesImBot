@@ -9,12 +9,20 @@ import { fileURLToPath } from "node:url";
 const DEFAULT_REPO = "https://github.com/YesWeAreBot/YesImBot.git";
 const BRANCH = "dev";
 const GROUP = "group:yesimbot";
+const MIN_NODE_MAJOR = 18;
+const MIN_YARN_MAJOR = 4;
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const yesimbotRoot = path.resolve(scriptDir, "..");
 const yesimbotMeta = JSON.parse(fs.readFileSync(path.join(yesimbotRoot, "package.json"), "utf8"));
+const stateFile = path.join(yesimbotRoot, ".koishi-app-path");
 
 const parsed = parseArgs();
+if (!parsed.help) {
+  ensureNode();
+  ensureGit();
+  ensureYarn({ prepare: !parsed.check });
+}
 const appRoot = resolveAppRoot();
 const requireApp = createRequire(path.join(appRoot, "package.json"));
 
@@ -48,6 +56,12 @@ function looksLikeKoishiApp(directory) {
   return fs.existsSync(path.join(directory, "package.json")) && fs.existsSync(path.join(directory, "koishi.yml"));
 }
 
+function savedAppRoot() {
+  if (!fs.existsSync(stateFile)) return null;
+  const saved = fs.readFileSync(stateFile, "utf8").trim();
+  return saved && looksLikeKoishiApp(saved) ? saved : null;
+}
+
 function resolveAppRoot() {
   if (parsed.createApp) {
     if (parsed.app) {
@@ -56,7 +70,11 @@ function resolveAppRoot() {
 
     const directory = path.resolve(process.cwd(), parsed.createApp);
     if (fs.existsSync(directory)) {
-      fail(`${directory} already exists; choose a new directory or use --app for an existing app`);
+      if (looksLikeKoishiApp(directory)) {
+        log(`reusing existing Koishi app at ${directory}`);
+        return directory;
+      }
+      fail(`${directory} already exists but is not a Koishi app; choose a new directory or use --app`);
     }
 
     createKoishiApp(directory);
@@ -71,6 +89,8 @@ function resolveAppRoot() {
   }
 
   if (looksLikeKoishiApp(process.cwd())) return process.cwd();
+  const saved = savedAppRoot();
+  if (saved) return saved;
 
   let current = yesimbotRoot;
   while (true) {
@@ -151,6 +171,77 @@ function runNpx(commandArgs, options = {}) {
   return result;
 }
 
+function commandOutput(command, commandArgs = ["--version"], options = {}) {
+  const result = run(command, commandArgs, { ...options, cwd: options.cwd || yesimbotRoot, quiet: true });
+  return result.errorMessage ? "" : result.stdout?.trim() || "";
+}
+
+function ensureNode() {
+  const major = Number.parseInt(process.versions.node.split(".")[0], 10);
+  if (major < MIN_NODE_MAJOR) {
+    fail(`Node.js ${MIN_NODE_MAJOR}+ is required, found ${process.versions.node}`);
+  }
+  log(`Node.js ${process.versions.node} is available`);
+}
+
+function ensureGit() {
+  const version = commandOutput("git");
+  if (version) {
+    log(`Git ${version} is available`);
+    return;
+  }
+  if (parsed.pull) {
+    fail("Git is required for --pull; install Git and add it to PATH");
+  }
+  log("Git is not available; continuing because --pull is not requested");
+}
+
+function yarnVersion() {
+  try {
+    return runYarn(["--version"], { quiet: true, cwd: yesimbotRoot }).stdout?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+function ensureYarn(options = {}) {
+  const version = yarnVersion();
+  if (version.startsWith(`${MIN_YARN_MAJOR}.`)) {
+    log(`Yarn ${version} is available`);
+    return;
+  }
+
+  const corepackVersion = commandOutput("corepack", ["--version"], { shell: process.platform === "win32" });
+  if (!corepackVersion) {
+    fail(`Yarn ${MIN_YARN_MAJOR} is required; install Yarn or enable Corepack`);
+  }
+  if (!options.prepare) {
+    fail(`Yarn ${MIN_YARN_MAJOR} is required; enable Corepack and run this script again`);
+  }
+
+  log("enabling Yarn through Corepack");
+  runChecked("corepack", ["enable", "--yes"], { cwd: yesimbotRoot, shell: process.platform === "win32" });
+
+  const enabledVersion = yarnVersion();
+  if (!enabledVersion.startsWith(`${MIN_YARN_MAJOR}.`)) {
+    fail(`Corepack is available but Yarn ${MIN_YARN_MAJOR} is still unavailable`);
+  }
+  log(`Yarn ${enabledVersion} is available through Corepack`);
+}
+
+function dependenciesReady(directory) {
+  return fs.existsSync(path.join(directory, "node_modules")) && fs.existsSync(path.join(directory, "yarn.lock"));
+}
+
+function runInstallIfMissing(directory, label, options = {}) {
+  if (!options.force && dependenciesReady(directory)) {
+    log(`skipping ${label} dependency install (already present)`);
+    return;
+  }
+  log(`installing ${label} dependencies`);
+  runYarn(["install"], { cwd: directory });
+}
+
 function createKoishiApp(directory) {
   const name = path.basename(directory);
   const parent = path.dirname(directory);
@@ -191,7 +282,7 @@ function ensureDevBranch() {
 }
 
 function saveAppPath() {
-  fs.writeFileSync(path.join(yesimbotRoot, ".koishi-app-path"), `${appRoot}\n`);
+  fs.writeFileSync(stateFile, `${appRoot}\n`);
 }
 
 function collectPluginPackages() {
@@ -419,7 +510,7 @@ function main() {
         "",
         "Options:",
         "  --app <dir>      target Koishi app directory (auto-detected when omitted)",
-        "  --create-app <dir> create a new Koishi app before setup",
+        "  --create-app <dir> create a Koishi app (reuses an existing valid app)",
         "  --check          verify the current setup without changing files",
         "  --pull           fetch and fast-forward yesimbot to origin/dev first",
         "  --start          run `yarn start` after setup",
@@ -443,16 +534,17 @@ function main() {
 
   saveAppPath();
 
-  log("installing yesimbot workspace dependencies");
-  runYarn(["install"], { cwd: yesimbotRoot });
+  runInstallIfMissing(yesimbotRoot, "yesimbot workspace");
 
   const plugins = collectPluginPackages();
 
   log(`configuring Koishi app at ${appRoot}`);
+  const manifestBefore = JSON.parse(fs.readFileSync(path.join(appRoot, "package.json"), "utf8"));
   updateManifest(plugins);
+  const manifestAfter = JSON.parse(fs.readFileSync(path.join(appRoot, "package.json"), "utf8"));
+  const manifestChanged = JSON.stringify(manifestBefore) !== JSON.stringify(manifestAfter);
 
-  log("installing workspace dependencies with Yarn");
-  runYarn(["install"]);
+  runInstallIfMissing(appRoot, "Koishi app", { force: manifestChanged });
 
   log("updating koishi.yml");
   updateKoishi(plugins);
