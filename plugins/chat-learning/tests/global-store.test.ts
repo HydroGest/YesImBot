@@ -63,11 +63,48 @@ describe("initiation patterns", () => {
 
 describe("global chains", () => {
   it("aggregates the same chain structure across channels", () => {
-    const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [], [], [{ chain: ["question", "agree"], frequency: 2 }], "channel-a", 1000);
-    const crossed = mergeLocalPatterns(bank, [], [], [{ chain: ["question", "agree"], frequency: 1 }], "channel-b", 2000);
+    const bank = mergeLocalPatterns(
+      createEmptyGlobalRuleBank(),
+      [],
+      [],
+      [
+        {
+          chain: ["question", "agree"],
+          frequency: 2,
+          sample: {
+            turns: [
+              { intent: "question", speaker: "A", text: "有人试过吗" },
+              { intent: "agree", speaker: "B", text: "确实" },
+            ],
+          },
+        },
+      ],
+      "channel-a",
+      1000,
+    );
+    const crossed = mergeLocalPatterns(
+      bank,
+      [],
+      [],
+      [
+        {
+          chain: ["question", "agree"],
+          frequency: 1,
+          sample: {
+            turns: [
+              { intent: "question", speaker: "C", text: "这个能用吗" },
+              { intent: "agree", speaker: "D", text: "能用" },
+            ],
+          },
+        },
+      ],
+      "channel-b",
+      2000,
+    );
 
     expect(selectGlobalChains(crossed, 2, 8)).toHaveLength(1);
     expect(crossed.chains[0]?.channels[0]).toMatchObject({ frequency: 2 });
+    expect(crossed.chains[0]?.samples).toHaveLength(2);
   });
 });
 

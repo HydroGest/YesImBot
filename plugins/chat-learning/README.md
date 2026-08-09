@@ -43,7 +43,7 @@
 - quote/reply/@/相邻/实体关系的置信度图；
 - 本地回应规律和话题发起规律；
 - 模型驱动的响应/发起意图分类，并按真实样本频率聚合规律；
-- 有界 `<local_patterns>`、`<global_patterns>`、`<global_chains>`、`<style_examples>` 注入。
+- 有界注入 `<style_examples>` 完整对话样本，以及 `<local_patterns>`、`<global_patterns>`、`<global_chains>` 语言风格样本。
 
 响应规律只从图中有明确边或处于同一回复链的消息对提取；仅时间相邻但没有关系边的消息不会进入 response pattern。
 
@@ -51,11 +51,11 @@
 
 模型标注时会把完整对话线程交给模型，由模型结合上下文逐条标注 role/intent，而不是单独标注单条消息；线程数、消息总数和字符数都有上限，避免无限消耗额度。
 
-配置 `reflectionModel` 后，插件会在 bot 的最终发言成功发送后，用该模型基于同一份群聊 few-shot 即时生成 2-3 句可执行反思，并在下一次提示词末尾注入最近 `maxInjectedReflections` 条反思历史，人工标注优先显示。反思按频道串行异步生成，不阻塞下一次发言；连续发送时只会保留最新消息的反思结果。留空则不调用，也不会产生额外额度消耗。
+配置 `reflectionModel` 后，插件会在 bot 的最终发言成功发送后，用该模型基于同一份群聊 few-shot 即时生成 2-3 句可执行反思，并在下一次提示词末尾注入最近 `maxInjectedReflections` 条反思历史，人工标注优先显示。每条反思会同时保存被评价的 bot 发言，注入时用 `<target>` 明确指向对应消息，避免模型不知道在说哪条。反思按频道串行异步生成，不阻塞下一次发言；连续发送时只会保留最新消息的反思结果。留空则不调用，也不会产生额外额度消耗。
 
 启用 `observeAllChannels` 后，插件会在未开启 yesimbot 的频道采集真实消息，写入全局历史，并按频道聚合到 `chat-learning-global.json`。原始全局历史会在聚合成功后清空，避免无限增长。
 
-注入块前面会固定附带 `<chat_learning_guide>`，明确告诉模型 `<style_examples>` 和 `<local_patterns>` 是本群历史消息组成的风格样本，不是当前对话，要求模仿表达节奏，不复制内容，也不把这些标签写进对外回复。
+注入块前面会固定附带 `<chat_learning_guide>`，明确告诉模型 `<style_examples>` 是本群完整对话样本，`<local_patterns>` 是本群语言风格样本；`<global_patterns>` 和 `<global_chains>` 是跨群弱先验，只用于补充表达和接话节奏。要求模仿表达节奏，不复制内容；同时禁止“笑点解析/分析/总结”式长篇解释、连续刷多条说明和复读群友原句，也不把这些标签写进对外回复。
 
 ## 人工纠错
 
@@ -76,7 +76,7 @@ yesimbot.chat-learning.reflect [note] --score -1|0|1
 
 `reflect` 用于人工标注 bot 的最终发言：先引用 bot 的一条已发送消息，再运行 `yesimbot.chat-learning.reflect 保持 --score=1` 或 `yesimbot.chat-learning.reflect 太长太正式 --score=-1`；`score` 支持 `-1|0|1`。人工反思会持久化到 `chat-learning-reflections.jsonl`，并优先于自动反思注入。
 
-`global` 查看跨群全局规则库，包含高频短语和跨群回复链结构；`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<local_patterns>`、`<global_patterns>`、`<global_chains>`、`<style_examples>` 等 prompt 块，配置 `reflectionModel` 时还会在末尾显示反思历史。预览头部会显示 `globalPatterns=选中数/全局库总数`，方便区分“没有全局数据”和“未达到 `minGlobalChannels`”。`<style_examples>` 会标注 `chain` 路径，便于审计样本来自哪条历史回复链。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
+`global` 查看跨群全局规则库，包含高频短语、跨群回复链结构以及链上代表短语；`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<style_examples>`、`<local_patterns>`、`<global_patterns>`、`<global_chains>` 等 prompt 块，配置 `reflectionModel` 时还会在末尾显示反思历史。预览头部会显示 `globalPatterns=选中数/全局库总数`，方便区分“没有全局数据”和“未达到 `minGlobalChannels`”。`<style_examples>` 会标注 `chain` 路径，便于审计样本来自哪条历史回复链；`<global_chains>` 会优先渲染一条真实完整短对话 `<sample>`，旧数据没有样本时再回退到 `phrases` 代表短语。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
 
 `status` 和 `preview` 的长回复在 OneBot 适配器支持时使用合并转发发送，避免长文本直接刷屏；适配器不支持时回退为普通文本。
 

@@ -59,9 +59,20 @@ export interface InitiationPattern {
   readonly sampleIds: readonly string[];
 }
 
+export interface LocalChainSampleTurn {
+  readonly intent: string;
+  readonly speaker: string;
+  readonly text: string;
+}
+
+export interface LocalChainSample {
+  readonly turns: readonly LocalChainSampleTurn[];
+}
+
 export interface LocalChainPattern {
   readonly chain: readonly string[];
   readonly frequency: number;
+  readonly sample?: LocalChainSample;
 }
 
 export type GlobalPatternKind = "response" | "initiation";
@@ -82,8 +93,14 @@ export interface GlobalPattern {
   readonly embedding?: readonly number[];
 }
 
+export interface GlobalChainSample {
+  readonly turns: readonly LocalChainSampleTurn[];
+  readonly channelKey: string;
+}
+
 export interface GlobalChainPattern {
   readonly chain: readonly string[];
+  readonly samples?: readonly GlobalChainSample[];
   readonly channels: readonly GlobalChannelStat[];
   readonly firstSeenAt: number;
   readonly lastSeenAt: number;

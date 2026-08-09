@@ -3,7 +3,17 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { cosineSimilarity } from "./embedding.js";
-import type { GlobalChainPattern, GlobalPattern, GlobalPatternKind, GlobalRuleBank, InitiationPattern, LocalChainPattern, ResponsePattern } from "./types.js";
+import type {
+  GlobalChainSample,
+  GlobalChainPattern,
+  GlobalPattern,
+  GlobalPatternKind,
+  GlobalRuleBank,
+  InitiationPattern,
+  LocalChainSample,
+  LocalChainPattern,
+  ResponsePattern,
+} from "./types.js";
 
 export interface GlobalRuleStore {
   init(): Promise<void>;
@@ -98,7 +108,7 @@ export function mergeLocalPatterns(
     );
   }
   for (const chain of chainPatterns) {
-    mergeChainPattern(byChainKey, chain.chain, chain.frequency, channelKey, now);
+    mergeChainPattern(byChainKey, chain.chain, chain.frequency, channelKey, now, chain.sample);
   }
 
   return { version: bank.version, updatedAt: now, patterns: [...byKey.values()].sort(byScore), chains: [...byChainKey.values()].sort(byChainScore) };
@@ -195,11 +205,24 @@ function cloneGlobalPattern(pattern: GlobalPattern): GlobalPattern {
   return { ...pattern, channels: pattern.channels.map((channel) => ({ ...channel })), ...(pattern.embedding ? { embedding: [...pattern.embedding] } : {}) };
 }
 
-function mergeChainPattern(byKey: Map<string, GlobalChainPattern>, chain: readonly string[], frequency: number, channelKey: string, now: number): void {
+function mergeChainPattern(
+  byKey: Map<string, GlobalChainPattern>,
+  chain: readonly string[],
+  frequency: number,
+  channelKey: string,
+  now: number,
+  sample: LocalChainSample | undefined,
+): void {
   const key = chainKey(chain);
   const existing = byKey.get(key);
   if (!existing) {
-    byKey.set(key, { chain: [...chain], channels: [{ key: channelKey, frequency, lastSeenAt: now }], firstSeenAt: now, lastSeenAt: now });
+    byKey.set(key, {
+      chain: [...chain],
+      samples: sample ? [{ ...sample, channelKey }] : [],
+      channels: [{ key: channelKey, frequency, lastSeenAt: now }],
+      firstSeenAt: now,
+      lastSeenAt: now,
+    });
     return;
   }
 
@@ -210,11 +233,27 @@ function mergeChainPattern(byKey: Map<string, GlobalChainPattern>, chain: readon
   } else {
     channels.push({ key: channelKey, frequency, lastSeenAt: now });
   }
-  byKey.set(key, { ...existing, channels, lastSeenAt: now });
+  const samples = existing.samples ? existing.samples.map((item) => ({ ...item })) : [];
+  if (sample && !samples.some((item) => sameSample(item, sample))) {
+    samples.push({ ...sample, channelKey });
+  }
+  byKey.set(key, { ...existing, samples: samples.slice(-2), channels, lastSeenAt: now });
 }
 
 function cloneGlobalChain(chain: GlobalChainPattern): GlobalChainPattern {
-  return { ...chain, chain: [...chain.chain], channels: chain.channels.map((channel) => ({ ...channel })) };
+  return {
+    ...chain,
+    chain: [...chain.chain],
+    samples: chain.samples?.map((sample) => ({ ...sample, turns: sample.turns.map((turn) => ({ ...turn })) })),
+    channels: chain.channels.map((channel) => ({ ...channel })),
+  };
+}
+
+function sameSample(left: GlobalChainSample, right: LocalChainSample): boolean {
+  if (left.turns.length !== right.turns.length) return false;
+  return left.turns.every(
+    (turn, index) => turn.text === right.turns[index]?.text && turn.speaker === right.turns[index]?.speaker,
+  );
 }
 
 function patternKey(pattern: GlobalPattern): string {

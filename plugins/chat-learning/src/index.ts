@@ -181,6 +181,7 @@ export default class ChatLearningPlugin {
     let state = store.read();
     let learnedEntries: readonly AgentEntry[] = [];
     let globalPatterns: readonly GlobalPattern[] = [];
+    let globalStylePatterns: readonly GlobalPattern[] = [];
     let globalChains: readonly GlobalChainPattern[] = [];
     let lastGlobalSyncAt = 0;
     let dirty = true;
@@ -235,8 +236,16 @@ export default class ChatLearningPlugin {
             });
             await globalStore.update(mergedBank);
             this.globalBanks.set(globalPath, mergedBank);
-            globalPatterns = [...selectGlobalPatterns(mergedBank, "response", config.minGlobalChannels, config.maxGlobalPatterns)];
-            globalChains = [...selectGlobalChains(mergedBank, config.minGlobalChannels, config.maxGlobalPatterns)];
+            globalPatterns = [
+              ...selectGlobalPatterns(mergedBank, "response", config.minGlobalChannels, config.maxGlobalPatterns),
+            ];
+            globalStylePatterns = [
+              ...selectGlobalPatterns(mergedBank, "response", config.minGlobalChannels, config.maxGlobalPatterns),
+              ...selectGlobalPatterns(mergedBank, "initiation", config.minGlobalChannels, config.maxGlobalPatterns),
+            ];
+            globalChains = [
+              ...selectGlobalChains(mergedBank, config.minGlobalChannels, config.maxGlobalPatterns),
+            ];
             lastGlobalSyncAt = Date.now();
             logger.debug("chat_learning.global_sync", {
               scope,
@@ -296,7 +305,14 @@ export default class ChatLearningPlugin {
           if (!current) break;
           this.reflectionPending.delete(key);
           if (this.reflectionLatestMessage.get(key) !== current.messageId) continue;
-          const styleBlock = buildPromptBlock(state, undefined, config, globalPatterns, globalChains);
+          const styleBlock = buildPromptBlock(
+            state,
+            undefined,
+            config,
+            globalPatterns,
+            globalChains,
+            globalStylePatterns,
+          );
           if (!styleBlock) continue;
           try {
             const ref = ctx.yesimbot.model.resolveChatModel(modelId);
@@ -356,9 +372,20 @@ export default class ChatLearningPlugin {
         const eventKind = currentEvent;
         currentEvent = undefined;
         const bank = this.globalBanks.get(globalPath) ?? globalStore.read();
-        globalPatterns = [...selectGlobalPatterns(bank, eventKind ? "initiation" : "response", config.minGlobalChannels, config.maxGlobalPatterns)];
+        globalPatterns = [
+          ...selectGlobalPatterns(
+            bank,
+            eventKind ? "initiation" : "response",
+            config.minGlobalChannels,
+            config.maxGlobalPatterns,
+          ),
+        ];
+        globalStylePatterns = [
+          ...selectGlobalPatterns(bank, "response", config.minGlobalChannels, config.maxGlobalPatterns),
+          ...selectGlobalPatterns(bank, "initiation", config.minGlobalChannels, config.maxGlobalPatterns),
+        ];
         globalChains = [...selectGlobalChains(bank, config.minGlobalChannels, config.maxGlobalPatterns)];
-        const block = buildPromptBlock(state, eventKind, config, globalPatterns, globalChains);
+        const block = buildPromptBlock(state, eventKind, config, globalPatterns, globalChains, globalStylePatterns);
         logger.debug("chat_learning.prepare_step", {
           scope,
           turnId: context.turnId,
@@ -507,8 +534,23 @@ export default class ChatLearningPlugin {
               this.config.minGlobalChannels,
               this.config.maxGlobalPatterns,
             );
-            const globalChains = selectGlobalChains(bank, this.config.minGlobalChannels, this.config.maxGlobalPatterns);
-            const block = buildPromptBlock(state, eventKind, this.config, globalPatterns, globalChains);
+            const globalStylePatterns = [
+              ...selectGlobalPatterns(bank, "response", this.config.minGlobalChannels, this.config.maxGlobalPatterns),
+              ...selectGlobalPatterns(bank, "initiation", this.config.minGlobalChannels, this.config.maxGlobalPatterns),
+            ];
+            const globalChains = selectGlobalChains(
+              bank,
+              this.config.minGlobalChannels,
+              this.config.maxGlobalPatterns,
+            );
+            const block = buildPromptBlock(
+              state,
+              eventKind,
+              this.config,
+              globalPatterns,
+              globalChains,
+              globalStylePatterns,
+            );
             const reflection = await this.reflectionForPreview(scope, block);
             if (!block) return "当前没有可注入的学习上下文";
             this.logger.debug("chat_learning.preview", {
@@ -920,7 +962,9 @@ function buildReflectionHistory(store: ReflectionStore, limit: number): string |
   if (records.length === 0) return undefined;
   const lines = records.map((record) => {
     const score = record.score === undefined ? "" : ` score="${record.score}"`;
-    return `<reflection source="${record.source}"${score}>${escapePromptText(record.reflection)}</reflection>`;
+    const target = record.text.trim().replace(/\s+/g, " ").slice(0, 160);
+    const targetLine = target ? `<target>${escapePromptText(target)}</target>` : "";
+    return `<reflection source="${record.source}"${score}>${targetLine}${escapePromptText(record.reflection)}</reflection>`;
   });
   return `<reflection_history>\n${lines.join("\n")}\n</reflection_history>`;
 }

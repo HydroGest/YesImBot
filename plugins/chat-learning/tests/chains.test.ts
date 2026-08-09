@@ -36,7 +36,8 @@ describe("buildLocalChainPatterns", () => {
 
     const chains = buildLocalChainPatterns(segments, links, responsePatterns, initiationPatterns);
 
-    expect(chains).toEqual([{ chain: ["question", "agree", "joke"], frequency: 1 }]);
+    expect(chains).toMatchObject([{ chain: ["question", "agree", "joke"], frequency: 1 }]);
+    expect(chains[0]?.sample?.turns.map((turn) => turn.text)).toEqual(["这个方案靠谱吗", "确实", "笑死"]);
   });
 
   it("skips chains with missing intent labels", () => {
