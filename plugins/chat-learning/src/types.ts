@@ -154,6 +154,7 @@ export interface ChatLearningConfig {
   readonly blockedUserIds: string[];
   readonly blockedUserPatterns: string[];
   readonly autoBlockBotNames: boolean;
+  readonly ignoreBotMentions: boolean;
   readonly observeAllChannels: boolean;
   readonly globalRulePath: string | undefined;
   readonly globalSyncIntervalMinutes: number;

@@ -13,6 +13,8 @@ export interface CollectOptions {
   readonly blockedUserIds?: readonly string[];
   readonly blockedUserPatterns?: readonly string[];
   readonly autoBlockBotNames?: boolean;
+  readonly selfId?: string;
+  readonly ignoreBotMentions?: boolean;
 }
 
 export function collectTurns(entries: readonly AgentEntry[], options: CollectOptions = {}): MessageTurn[] {
@@ -33,6 +35,8 @@ export function collectTurns(entries: readonly AgentEntry[], options: CollectOpt
     if (matchesBlockedPattern(data.user.id, data.user.name, blockedPatterns)) continue;
     const text = renderElements(data.elements).trim();
     if (text.length === 0) continue;
+    const mentionIds = findMentionIds(data.elements);
+    if (options.ignoreBotMentions && options.selfId && mentionIds.includes(options.selfId)) continue;
     turns.push({
       id: entry.id,
       messageId: data.messageId,
@@ -44,7 +48,7 @@ export function collectTurns(entries: readonly AgentEntry[], options: CollectOpt
       hasImage: data.elements.some((element) => element.type === "img" || element.type === "image"),
       quoteId: findQuoteId(data.elements),
       quoteType: findQuoteType(data.elements),
-      mentionIds: findMentionIds(data.elements),
+      mentionIds,
     });
   }
 

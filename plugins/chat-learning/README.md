@@ -131,6 +131,7 @@ plugins/chat-learning/
 - 旧 `semantics` 不进入 prompt，避免把内容主题当成风格规则。
 - 同一说话人连续多条消息会保留为多条 `<turn>`，因为每条意图可能不同。
 - 消息中的 @ 会归一化为 `@成员`，避免真实 ID/昵称进入 prompt。
+- 默认忽略直接 @ 本 bot 的消息，避免把对 bot 的指令或提示词注入内容当作群友风格学习。
 
 ## 配置
 
@@ -146,6 +147,7 @@ plugins/chat-learning/
 | `blockedUserIds` | `[]` | 不参与学习、也不进入 few-shot 的 user id 黑名单。 |
 | `blockedUserPatterns` | `[]` | 按昵称或 user id 子串过滤其他 bot。 |
 | `autoBlockBotNames` | `false` | 启用常见 bot 名称自动过滤。 |
+| `ignoreBotMentions` | `true` | 学习时忽略 @ 本 bot 的消息，降低提示词注入内容进入风格样本的风险。 |
 | `observeAllChannels` | `false` | 在未启用 yesimbot 的频道也采集消息，用于跨群全局规律学习。 |
 | `globalRulePath` | 留空 | 跨群全局规则文件路径；留空时使用 `data/yesimbot/chat-learning-global.json`。 |
 | `globalSyncIntervalMinutes` | `60` | 跨群全局规律同步最小间隔分钟数。 |

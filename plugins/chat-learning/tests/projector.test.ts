@@ -14,6 +14,7 @@ const config: ChatLearningConfig = {
   blockedUserIds: [],
   blockedUserPatterns: [],
   autoBlockBotNames: false,
+  ignoreBotMentions: true,
   observeAllChannels: false,
   globalRulePath: undefined,
   globalSyncIntervalMinutes: 60,

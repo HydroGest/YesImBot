@@ -56,6 +56,9 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
   blockedUserIds: Schema.array(Schema.string()).default([]).description("不参与学习、也不进入 few-shot 的 user id 黑名单"),
   blockedUserPatterns: Schema.array(Schema.string()).default([]).description("按昵称或 user id 子串过滤其他 bot"),
   autoBlockBotNames: Schema.boolean().default(false).description("启用常见 bot 名称自动过滤，例如 bot、机器人、小助手、官方"),
+  ignoreBotMentions: Schema.boolean()
+    .default(true)
+    .description("学习时忽略 @ 本 bot 的消息，降低提示词注入内容进入风格样本的风险"),
   observeAllChannels: Schema.boolean().default(false).description("在未启用 yesimbot 的频道也采集消息，用于跨群全局规律学习"),
   globalRulePath: Schema.string().default("").description("跨群全局规则文件路径；留空时放在频道根目录的上一级"),
   globalSyncIntervalMinutes: Schema.number().min(1).max(1440).default(60).description("跨群规则同步最小间隔分钟数"),
@@ -854,6 +857,8 @@ export default class ChatLearningPlugin {
     let bank = this.globalBanks.get(globalPath) ?? globalStore.read();
     for (const [scopeKeyValue, groupEntries] of groups) {
       const turns = collectTurns(groupEntries, {
+        selfId: selfIdFromEntry(groupEntries[0]),
+        ignoreBotMentions: config.ignoreBotMentions,
         blockedUserIds: config.blockedUserIds,
         blockedUserPatterns: config.blockedUserPatterns,
         autoBlockBotNames: config.autoBlockBotNames,
@@ -923,6 +928,8 @@ function buildSnapshot(
     maxHistoryAgeDays: config.maxHistoryAgeDays,
     maxScanMessages: config.maxScanMessages,
     now,
+    selfId: scope.selfId,
+    ignoreBotMentions: config.ignoreBotMentions,
     blockedUserIds: config.blockedUserIds,
     blockedUserPatterns: config.blockedUserPatterns,
     autoBlockBotNames: config.autoBlockBotNames,
@@ -1081,6 +1088,11 @@ function scopeKeyFromEntry(entry: AgentEntry): string | undefined {
   if (entry.type !== "message" || !isMessage(entry.data)) return undefined;
   const data = entry.data.data;
   return `${data.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared"}:${data.platform}:${data.selfId}:${data.channel.id}`;
+}
+
+function selfIdFromEntry(entry: AgentEntry | undefined): string | undefined {
+  if (!entry || entry.type !== "message" || !isMessage(entry.data)) return undefined;
+  return entry.data.data.selfId;
 }
 
 function parseLinkKind(value: string): LinkKind | "*" | undefined {
