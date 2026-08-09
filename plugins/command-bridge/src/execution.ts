@@ -24,6 +24,10 @@ export interface CommandExecutionOptions {
   interactive: InteractiveMode;
   channelId?: string;
   guildId?: string;
+  channelName?: string;
+  guildName?: string;
+  userName?: string;
+  messageId?: string;
   authority?: number;
   permissions?: readonly string[];
   timeoutMs: number;
@@ -124,17 +128,29 @@ export class CommandExecution {
       ? options.actor.userId
       : `yesimbot:agent:${options.bot.selfId}`;
     const channelId = options.channelId ?? options.scope.channelId;
+    const guildId = options.guildId
+      ?? (options.scope.type === "shared" ? options.scope.guildId ?? channelId : undefined);
+    const userName = options.userName
+      ?? (options.actor.kind === "user" ? userId : `yesimbot:agent:${options.bot.selfId}`);
+    const channelName = options.channelName ?? (options.scope.type === "shared" ? options.scope.channelName : undefined);
+    const guildName = options.guildName ?? (options.scope.type === "shared" ? options.scope.guildName : undefined);
+    const messageId = options.messageId ?? `yesimbot:${options.id}`;
 
     const session = options.bot.session({
       type: "message-created",
+      subtype: options.scope.type === "direct" ? "private" : "group",
       platform: options.bot.platform,
       selfId: options.bot.selfId,
+      timestamp: Date.now(),
       channel: {
         id: channelId,
         type: options.scope.type === "direct" ? 1 : 0,
+        ...(channelName ? { name: channelName } : {}),
       },
-      ...(options.guildId ? { guild: { id: options.guildId } } : {}),
-      user: { id: userId },
+      ...(guildId ? { guild: { id: guildId, ...(guildName ? { name: guildName } : {}) } } : {}),
+      user: { id: userId, name: userName },
+      member: { name: userName },
+      message: { id: messageId, content: "", elements: [] },
     }) as Session;
     session.bot = createSilentBotProxy(options.bot, (content) => {
       this.transcript.push(...h.normalize(content as ElementFragment));

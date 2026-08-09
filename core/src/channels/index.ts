@@ -8,7 +8,14 @@ import type { ImageBudget } from "../config.js";
 import { Conversation } from "../conversations/index.js";
 import { ChannelResources, type Disposer, type ResourceReader, type Resources } from "../resources/index.js";
 export type ChannelScope =
-  | { readonly type: "shared"; readonly platform: string; readonly channelId: string }
+  | {
+      readonly type: "shared";
+      readonly platform: string;
+      readonly channelId: string;
+      readonly guildId?: string;
+      readonly channelName?: string;
+      readonly guildName?: string;
+    }
   | { readonly type: "direct"; readonly platform: string; readonly selfId: string; readonly channelId: string };
 type ChannelManifest = ChannelScope & { readonly createdAt: string };
 
@@ -192,6 +199,12 @@ function assertScope(scope: ChannelScope): void {
   if (typeof scope.channelId !== "string" || scope.channelId.length === 0) throw new TypeError("ChannelScope.channelId must be a non-empty string");
   if (scope.type === "direct" && (typeof scope.selfId !== "string" || scope.selfId.length === 0))
     throw new TypeError("ChannelScope.selfId must be a non-empty string");
+  if (scope.type === "shared" && scope.guildId !== undefined && (typeof scope.guildId !== "string" || scope.guildId.length === 0))
+    throw new TypeError("ChannelScope.guildId must be a non-empty string when present");
+  if (scope.type === "shared" && scope.channelName !== undefined && (typeof scope.channelName !== "string" || scope.channelName.length === 0))
+    throw new TypeError("ChannelScope.channelName must be a non-empty string when present");
+  if (scope.type === "shared" && scope.guildName !== undefined && (typeof scope.guildName !== "string" || scope.guildName.length === 0))
+    throw new TypeError("ChannelScope.guildName must be a non-empty string when present");
 }
 
 function parseManifest(value: unknown): ChannelManifest {

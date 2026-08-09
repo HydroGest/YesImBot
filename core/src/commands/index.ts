@@ -44,7 +44,17 @@ export function registerSessionCommands(ctx: Context, manager: Runtimes, config:
 
 function scopeFromSession(session: Session | undefined): ChannelScope | undefined {
   if (!session?.platform || !session.selfId || !session.channelId) return;
+  const event = session as Session & {
+    event?: { channel?: { name?: string }; guild?: { name?: string } };
+  };
   return session.isDirect
     ? { platform: session.platform, selfId: session.selfId, channelId: session.channelId, type: "direct" }
-    : { platform: session.platform, channelId: session.channelId, type: "shared" };
+    : {
+        platform: session.platform,
+        channelId: session.channelId,
+        type: "shared",
+        ...(session.guildId ? { guildId: session.guildId } : {}),
+        ...(event.event?.channel?.name ? { channelName: event.event.channel.name } : {}),
+        ...(event.event?.guild?.name ? { guildName: event.event.guild.name } : {}),
+      };
 }

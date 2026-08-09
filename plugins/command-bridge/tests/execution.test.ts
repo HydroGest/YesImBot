@@ -24,11 +24,17 @@ function createFakeBot(session: FakeSession) {
   return bot;
 }
 
-function createOptions(overrides: { command?: string; actor?: CommandActor; interactive?: InteractiveMode; session: FakeSession }) {
+function createOptions(overrides: {
+  command?: string;
+  actor?: CommandActor;
+  interactive?: InteractiveMode;
+  session: FakeSession;
+  bot?: ReturnType<typeof createFakeBot>;
+}) {
   return {
     id: "exec-1",
     command: overrides.command ?? "echo",
-    bot: createFakeBot(overrides.session) as never,
+    bot: (overrides.bot ?? createFakeBot(overrides.session)) as never,
     scope: { type: "shared" as const, platform: "test", channelId: "room" },
     actor: overrides.actor ?? { kind: "agent" as const },
     interactive: overrides.interactive ?? "reject",
@@ -77,6 +83,45 @@ describe("CommandExecution", () => {
     const event = await execution.next();
     expect(event.status).toBe("done");
     expect(event.transcript).toContain("direct");
+  });
+
+  it("treats shared channels as guild chats", async () => {
+    let capturedEvent: Record<string, unknown> | undefined;
+    const session: FakeSession = {
+      bot: undefined as never,
+      execute: async () => [],
+      send: vi.fn(async () => []),
+      sendQueued: vi.fn(async () => []),
+      prompt: vi.fn(async () => undefined),
+      observeUser: vi.fn(async () => ({ authority: 0, permissions: [] })),
+    };
+    const bot = {
+      platform: "test",
+      selfId: "bot",
+      sendMessage: vi.fn(async () => []),
+      session: vi.fn((event: Record<string, unknown>) => {
+        capturedEvent = event;
+        return session;
+      }),
+    };
+    session.bot = bot;
+    const execution = new CommandExecution(createOptions({
+      session,
+      command: "ccb",
+      bot,
+    }));
+    execution.start();
+
+    await execution.next();
+    expect(capturedEvent).toMatchObject({
+      type: "message-created",
+      subtype: "group",
+      channel: { id: "room", type: 0 },
+      guild: { id: "room" },
+      user: { id: "yesimbot:agent:bot", name: "yesimbot:agent:bot" },
+      member: { name: "yesimbot:agent:bot" },
+      message: { id: "yesimbot:exec-1" },
+    });
   });
 
   it("returns awaiting_prompt and resumes with koishi_prompt_answer", async () => {

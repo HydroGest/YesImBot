@@ -32,6 +32,56 @@ export function formatCommandCatalog(catalog: readonly CommandInfo[]): string {
   return catalog.map((entry) => formatCommandInfo(entry, "")).join("\n");
 }
 
+export function formatCommandHelp(command: Command): string {
+  const json = command.toJSON() as UniversalCommandInfo & {
+    arguments?: Array<{ name: string; type?: string; required?: boolean; description?: Record<string, string> }>;
+    options?: Array<{ name: string; type?: string; required?: boolean; description?: Record<string, string> }>;
+  };
+  const lines: string[] = [];
+
+  lines.push(`## ${command.displayName}`);
+  const desc = descToString(json.description);
+  if (desc) lines.push(desc);
+
+  if (command._usage) {
+    const usage = typeof command._usage === "string" ? command._usage : "(动态用法，执行时生成)";
+    lines.push("", "用法:", usage);
+  }
+
+  if (json.arguments?.length) {
+    lines.push("", "参数:");
+    for (const arg of json.arguments) {
+      const req = arg.required ? "(必填)" : "(可选)";
+      const argDesc = descToString(arg.description);
+      lines.push(`  ${arg.name}: ${arg.type ?? "string"} ${req}${argDesc ? " - " + argDesc : ""}`);
+    }
+  }
+
+  if (json.options?.length) {
+    lines.push("", "选项:");
+    for (const opt of json.options) {
+      const req = opt.required ? "(必填)" : "";
+      const optDesc = descToString(opt.description);
+      lines.push(`  --${opt.name}: ${opt.type ?? "string"} ${req}${optDesc ? " - " + optDesc : ""}`);
+    }
+  }
+
+  if (command._examples?.length) {
+    lines.push("", "示例:");
+    for (const ex of command._examples) lines.push(`  ${ex}`);
+  }
+
+  if (command.children?.length) {
+    lines.push("", "子命令:");
+    for (const child of command.children) {
+      const childDesc = descToString(child.toJSON().description as Record<string, string>);
+      lines.push(`  ${child.name}${childDesc ? " - " + childDesc : ""}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 function toCommandInfo(command: UniversalCommandInfo, name: string, aliases: string[]): CommandInfo {
   const description = command.description?.zh ?? command.description?.en ?? Object.values(command.description ?? {})[0];
   return { name, aliases, description, children: command.children.map((child) => toCommandInfo(child, child.name, [])) };
@@ -54,61 +104,4 @@ function formatCommandInfo(entry: CommandInfo, indent: string): string {
 function descToString(desc: Record<string, string> | undefined): string {
   if (!desc) return "";
   return desc.zh ?? desc.en ?? Object.values(desc)[0] ?? "";
-}
-
-export function formatCommandHelp(command: Command): string {
-  const json = command.toJSON() as UniversalCommandInfo & {
-    arguments?: Array<{ name: string; type?: string; required?: boolean; description?: Record<string, string> }>;
-    options?: Array<{ name: string; type?: string; required?: boolean; description?: Record<string, string> }>;
-  };
-  const lines: string[] = [];
-
-  lines.push(`## ${command.displayName}`);
-  const desc = descToString(json.description);
-  if (desc) lines.push(desc);
-
-  // Usage
-  if (command._usage) {
-    const usage = typeof command._usage === "string" ? command._usage : "(动态用法，执行时生成)";
-    lines.push("", "用法:", usage);
-  }
-
-  // Arguments
-  if (json.arguments?.length) {
-    lines.push("", "参数:");
-    for (const arg of json.arguments) {
-      const req = arg.required ? "(必填)" : "(可选)";
-      const argDesc = descToString(arg.description);
-      lines.push(`  ${arg.name}: ${arg.type ?? "string"} ${req}${argDesc ? " - " + argDesc : ""}`);
-    }
-  }
-
-  // Options
-  if (json.options?.length) {
-    lines.push("", "选项:");
-    for (const opt of json.options) {
-      const req = opt.required ? "(必填)" : "";
-      const optDesc = descToString(opt.description);
-      lines.push(`  --${opt.name}: ${opt.type ?? "string"} ${req}${optDesc ? " - " + optDesc : ""}`);
-    }
-  }
-
-  // Examples
-  if (command._examples?.length) {
-    lines.push("", "示例:");
-    for (const ex of command._examples) {
-      lines.push(`  ${ex}`);
-    }
-  }
-
-  // Children
-  if (command.children?.length) {
-    lines.push("", "子命令:");
-    for (const child of command.children) {
-      const childDesc = descToString(child.toJSON().description as Record<string, string>);
-      lines.push(`  ${child.name}${childDesc ? " - " + childDesc : ""}`);
-    }
-  }
-
-  return lines.join("\n");
 }

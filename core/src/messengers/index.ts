@@ -201,9 +201,19 @@ function scopeFromRecord(record: MessageRecord | EventRecord): ChannelScope {
 }
 function scopeFromSession(session: Session): ChannelScope | undefined {
   if (!session.platform || !session.selfId || !session.channelId) return;
+  const event = session as Session & {
+    event?: { channel?: { name?: string }; guild?: { name?: string } };
+  };
   return session.isDirect
     ? { type: "direct", platform: session.platform, selfId: session.selfId, channelId: session.channelId }
-    : { type: "shared", platform: session.platform, channelId: session.channelId };
+    : {
+        type: "shared",
+        platform: session.platform,
+        channelId: session.channelId,
+        ...(session.guildId ? { guildId: session.guildId } : {}),
+        ...(event.event?.channel?.name ? { channelName: event.event.channel.name } : {}),
+        ...(event.event?.guild?.name ? { guildName: event.event.guild.name } : {}),
+      };
 }
 async function translateDefault(ctx: Context, session: Session, resources: ChannelResources): Promise<MessageRecord | null> {
   if (session.type !== "message-created" || !session.messageId || !session.channelId || !Array.isArray(session.elements)) return null;
