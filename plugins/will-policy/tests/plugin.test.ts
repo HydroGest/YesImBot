@@ -1,4 +1,4 @@
-import type { WillEngineFactory, WillEngineFactoryContext } from "koishi-plugin-yesimbot";
+import type { WillPlugin } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -10,17 +10,7 @@ interface CommandAction {
   (argv: { session?: { send: ReturnType<typeof vi.fn> } }): Promise<unknown>;
 }
 
-interface TestShared {
-  readonly root: { readonly command: ReturnType<typeof vi.fn> };
-  readonly command: {
-    readonly ctx: object | undefined;
-    readonly action: ReturnType<typeof vi.fn>;
-    readonly dispose: ReturnType<typeof vi.fn>;
-  };
-  readonly actions: CommandAction[];
-}
-
-function createShared(): TestShared {
+function createShared() {
   const actions: CommandAction[] = [];
   const command = {
     ctx: undefined as object | undefined,
@@ -39,58 +29,42 @@ function createShared(): TestShared {
 }
 
 async function createInstance(filter: () => boolean, shared = createShared()) {
+  const registered: WillPlugin[] = [];
+  const disposeWill = vi.fn();
   const ctx = {
     root: shared.root,
     logger: vi.fn(() => ({ debug: vi.fn(), success: vi.fn() })),
     on: vi.fn(),
     filter,
-    yesimbot: { registerWillEngineFactory: vi.fn(() => () => undefined) },
+    yesimbot: {
+      agent: {
+        will: vi.fn((plugin: WillPlugin) => {
+          registered.push(plugin);
+          return disposeWill;
+        }),
+      },
+    },
     command: vi.fn(() => shared.command),
   };
-  const plugin = new WillPolicyPlugin(ctx as never, {
-    engine: "routing",
-    routing: defaultRoutingConfig(),
-    willingness: defaultWillingnessConfig(),
-  });
+  const plugin = new WillPolicyPlugin(ctx as never, { engine: "routing", routing: defaultRoutingConfig(), willingness: defaultWillingnessConfig() });
   await plugin.start();
-  return {
-    plugin,
-    register: ctx.yesimbot.registerWillEngineFactory,
-    shared,
-  };
-}
-
-function factoryContext(): WillEngineFactoryContext {
-  return {
-    scope: {
-      type: "shared",
-      platform: "test",
-      selfId: "bot-1",
-      channelId: "room-1",
-    },
-    config: {} as never,
-    session: { guildId: "room-1" } as never,
-    createDefault: () => null as never,
-  };
+  return { plugin, registered, disposeWill, shared };
 }
 
 describe("WillPolicyPlugin", () => {
-  it("returns an engine when its Koishi filter matches", async () => {
-    const { register } = await createInstance(() => true);
-    const factory = register.mock.calls[0]![0] as WillEngineFactory;
+  it("registers a named WillEngine and initializes it when its filter matches", async () => {
+    const { plugin, registered } = await createInstance(() => true);
 
-    const engine = await factory.create(factoryContext());
-
-    expect(engine).toBeTruthy();
+    expect(registered).toHaveLength(1);
+    expect(plugin.match({} as never)).toBe(true);
+    expect(plugin.setup({ type: "shared", platform: "test", channelId: "room-1" } as never)).toBeTruthy();
   });
 
   it("declines when its Koishi filter does not match", async () => {
-    const { register } = await createInstance(() => false);
-    const factory = register.mock.calls[0]![0] as WillEngineFactory;
+    const { plugin, registered } = await createInstance(() => false);
 
-    const engine = await factory.create(factoryContext());
-
-    expect(engine).toBeUndefined();
+    expect(registered).toHaveLength(1);
+    expect(plugin.match({} as never)).toBe(false);
   });
 
   it("registers one root debug command for all cloned instances", async () => {

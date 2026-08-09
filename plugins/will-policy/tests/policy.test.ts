@@ -8,11 +8,7 @@ describe("resolvePolicy", () => {
     const config = {
       engine: "willingness",
       routing: defaultRoutingConfig(),
-      willingness: {
-        ...defaultWillingnessConfig(),
-        probabilityThreshold: 30,
-        textGain: 20,
-      },
+      willingness: { ...defaultWillingnessConfig(), probabilityThreshold: 30, textGain: 20 },
     };
 
     const resolved = resolvePolicy(config);
@@ -24,11 +20,7 @@ describe("resolvePolicy", () => {
   });
 
   it("does not mutate the cloned base config", () => {
-    const config = {
-      engine: "routing",
-      routing: defaultRoutingConfig(),
-      willingness: defaultWillingnessConfig(),
-    };
+    const config = { engine: "routing", routing: defaultRoutingConfig(), willingness: defaultWillingnessConfig() };
     const resolved = resolvePolicy(config);
 
     expect(resolved.routing).not.toBe(config.routing);

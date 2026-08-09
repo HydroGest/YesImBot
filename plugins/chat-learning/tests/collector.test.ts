@@ -39,25 +39,15 @@ describe("collectTurns", () => {
       humanMessage("e3", "m3", "u2", "小助手", 3000, "自动回复"),
     ];
 
-    const turns = collectTurns(entries, {
-      now: 4000,
-      blockedUserIds: ["bot-id"],
-      blockedUserPatterns: ["小助手"],
-    });
+    const turns = collectTurns(entries, { now: 4000, blockedUserIds: ["bot-id"], blockedUserPatterns: ["小助手"] });
 
     expect(turns.map((turn) => turn.userId)).toEqual(["u1"]);
   });
 
   it("optionally auto-filters common bot names", () => {
-    const entries = [
-      humanMessage("e1", "m1", "u1", "Alice", 1000, "正常发言"),
-      humanMessage("e2", "m2", "u2", "Official Bot", 2000, "公告"),
-    ];
+    const entries = [humanMessage("e1", "m1", "u1", "Alice", 1000, "正常发言"), humanMessage("e2", "m2", "u2", "Official Bot", 2000, "公告")];
 
-    const turns = collectTurns(entries, {
-      now: 3000,
-      autoBlockBotNames: true,
-    });
+    const turns = collectTurns(entries, { now: 3000, autoBlockBotNames: true });
 
     expect(turns.map((turn) => turn.userId)).toEqual(["u1"]);
   });

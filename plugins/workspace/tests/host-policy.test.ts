@@ -15,24 +15,9 @@ import {
 } from "../src/host-policy";
 
 const scopes = {
-  shared: {
-    type: "shared",
-    platform: "onebot",
-    selfId: "bot-1",
-    channelId: "room-1",
-  } satisfies ChannelScope,
-  other: {
-    type: "shared",
-    platform: "onebot",
-    selfId: "bot-1",
-    channelId: "room-2",
-  } satisfies ChannelScope,
-  direct: {
-    type: "direct",
-    platform: "onebot",
-    selfId: "bot-1",
-    channelId: "room-1",
-  } satisfies ChannelScope,
+  shared: { type: "shared", platform: "onebot", selfId: "bot-1", channelId: "room-1" } satisfies ChannelScope,
+  other: { type: "shared", platform: "onebot", selfId: "bot-1", channelId: "room-2" } satisfies ChannelScope,
+  direct: { type: "direct", platform: "onebot", selfId: "bot-1", channelId: "room-1" } satisfies ChannelScope,
 };
 
 const directories: string[] = [];
@@ -77,18 +62,14 @@ describe("HostPolicy channel admission", () => {
     expect(policy.checkChannel(scopes.shared)).toBe(true);
     expect(policy.checkChannel(scopes.other)).toBe(false);
     expect(policy.checkChannel(scopes.direct)).toBe(false);
-    expect(policy.checkChannel({ type: "direct", platform: "telegram", selfId: "bot-*", channelId: "room" })).toBe(
-      true,
-    );
+    expect(policy.checkChannel({ type: "direct", platform: "telegram", selfId: "bot-*", channelId: "room" })).toBe(true);
   });
 
   it("denies missing, empty, invalid, and incomplete allowlists", async () => {
     const root = await temporaryRoot();
     const matchingScope = scopes.shared;
     expect(createHostPolicy({ hostRoots: [], workspaceRoot: root }).checkChannel(matchingScope)).toBe(false);
-    expect(
-      createHostPolicy({ allowedChannels: [], hostRoots: [], workspaceRoot: root }).checkChannel(matchingScope),
-    ).toBe(false);
+    expect(createHostPolicy({ allowedChannels: [], hostRoots: [], workspaceRoot: root }).checkChannel(matchingScope)).toBe(false);
     expect(
       createHostPolicy({
         allowedChannels: [{ platform: "onebot", channelId: "room-1", type: "other" } as never],
@@ -96,19 +77,15 @@ describe("HostPolicy channel admission", () => {
         workspaceRoot: root,
       }).checkChannel(matchingScope),
     ).toBe(false);
+    expect(createHostPolicy({ allowedChannels: [{ platform: "onebot" } as never], hostRoots: [], workspaceRoot: root }).checkChannel(matchingScope)).toBe(
+      false,
+    );
     expect(
-      createHostPolicy({
-        allowedChannels: [{ platform: "onebot" } as never],
-        hostRoots: [],
-        workspaceRoot: root,
-      }).checkChannel(matchingScope),
-    ).toBe(false);
-    expect(
-      createHostPolicy({
-        allowedChannels: [{ platform: "onebot", channelId: "room-1", selfId: "bot-1" }],
-        hostRoots: [],
-        workspaceRoot: root,
-      }).checkChannel({ type: "shared", platform: "onebot", channelId: "room-1" } as never),
+      createHostPolicy({ allowedChannels: [{ platform: "onebot", channelId: "room-1", selfId: "bot-1" }], hostRoots: [], workspaceRoot: root }).checkChannel({
+        type: "shared",
+        platform: "onebot",
+        channelId: "room-1",
+      } as never),
     ).toBe(false);
   });
 });
@@ -147,9 +124,7 @@ describe("HostPolicy direct file roots", () => {
     await mkdir(join(root, "directory"));
     const policy = hostPolicy(root);
 
-    expect(() => policy.checkFile("readFile", `${root}/../${outside.split("/").at(-1)}/outside.txt`)).toThrow(
-      /traversal/i,
-    );
+    expect(() => policy.checkFile("readFile", `${root}/../${outside.split("/").at(-1)}/outside.txt`)).toThrow(/traversal/i);
     expect(() => policy.checkFile("readFile", `${join(root, "inside.txt")}\0secret`)).toThrow(/NUL/i);
     expect(() => policy.checkFile("readFile", join(outside, "outside.txt"))).toThrow(/outside|root/i);
     expect(() => policy.checkFile("readFile", join(root, "link.txt"))).toThrow(/symlink/i);
@@ -204,9 +179,7 @@ describe("HostPolicy AST classification", () => {
     const result = approval(policy, scopes.shared, command);
 
     expect(result.kind).toBe("approve");
-    expect(result.kind === "approve" ? result.riskTags : []).toEqual(
-      expect.arrayContaining(["command-substitution", "delete"]),
-    );
+    expect(result.kind === "approve" ? result.riskTags : []).toEqual(expect.arrayContaining(["command-substitution", "delete"]));
   });
 
   it("marks parser failures and unknown structures unsupported", async () => {
@@ -225,17 +198,9 @@ describe("HostPolicy AST classification", () => {
     const policy = hostPolicy(root);
     const same = approval(policy, scopes.shared, command);
     const changedCommand = approval(policy, scopes.shared, "echo different-secret > output.txt");
-    const changedScope = hostPolicy(root, { allowedChannels: [{ platform: "onebot", channelId: "*" }] }).classify(
-      scopes.other,
-      "bash",
-      { command },
-    );
+    const changedScope = hostPolicy(root, { allowedChannels: [{ platform: "onebot", channelId: "*" }] }).classify(scopes.other, "bash", { command });
     const changedTool = policy.classify(scopes.shared, "hostCommand", { command });
-    const changedRevision = hostPolicy(root, { policyRevision: "test-policy-2" }).classify(
-      scopes.shared,
-      "bash",
-      input,
-    );
+    const changedRevision = hostPolicy(root, { policyRevision: "test-policy-2" }).classify(scopes.shared, "bash", input);
 
     expect(input).toEqual({ command });
     expect(same.kind).toBe("approve");
@@ -251,15 +216,9 @@ describe("HostPolicy AST classification", () => {
       changedRevision.kind === "approve"
     ) {
       expect(same.fingerprint).toHaveLength(64);
-      expect(
-        new Set([
-          same.fingerprint,
-          changedCommand.fingerprint,
-          changedScope.fingerprint,
-          changedTool.fingerprint,
-          changedRevision.fingerprint,
-        ]).size,
-      ).toBe(5);
+      expect(new Set([same.fingerprint, changedCommand.fingerprint, changedScope.fingerprint, changedTool.fingerprint, changedRevision.fingerprint]).size).toBe(
+        5,
+      );
       expect(same.summary).not.toContain("super-secret");
       expect(same.summary).not.toContain(command);
       expect(same.riskTags).toEqual(["overwrite", "write", "redirection"]);

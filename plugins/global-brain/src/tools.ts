@@ -21,11 +21,7 @@ interface BrainDepositToolInput {
   readonly tags?: string[];
   readonly assetId?: string;
   readonly artifactUri?: string;
-  readonly forward?: {
-    readonly platform: string;
-    readonly forwardId: string;
-    readonly summary?: string;
-  };
+  readonly forward?: { readonly platform: string; readonly forwardId: string; readonly summary?: string };
 }
 
 export function createBrainTools(options: BrainToolOptions): AgentTool[] {
@@ -47,45 +43,15 @@ function createBrainDepositTool(options: BrainToolOptions): AgentTool {
     inputSchema: jsonSchema<BrainDepositToolInput>({
       type: "object",
       properties: {
-        shareImmediately: {
-          type: "boolean",
-          description: "为 true 时立即向其他已知 session 唤起一次请求；默认关闭，除非插件配置开启。",
-        },
-        kind: {
-          type: "string",
-          enum: ["share", "question", "insight"],
-          description: "内容类型：分享、求助问题、形成的新认知",
-        },
-        content: {
-          type: "string",
-          minLength: 1,
-          maxLength: 20000,
-          description: "全局脑摘要或文本内容；提供 asset/artifact/forward 时可用作摘要",
-        },
-        tags: {
-          type: "array",
-          items: { type: "string", minLength: 1, maxLength: 64 },
-          maxItems: 20,
-          description: "帮助其他 session 判断是否相关的标签",
-        },
-        assetId: {
-          type: "string",
-          minLength: 32,
-          maxLength: 32,
-          description: "当前 scope 中已存在的 asset id，通常从消息里的 asset://xxx 取得",
-        },
-        artifactUri: {
-          type: "string",
-          minLength: 1,
-          description: "当前 scope 中可读取的 artifact:// URI",
-        },
+        shareImmediately: { type: "boolean", description: "为 true 时立即向其他已知 session 唤起一次请求；默认关闭，除非插件配置开启。" },
+        kind: { type: "string", enum: ["share", "question", "insight"], description: "内容类型：分享、求助问题、形成的新认知" },
+        content: { type: "string", minLength: 1, maxLength: 20000, description: "全局脑摘要或文本内容；提供 asset/artifact/forward 时可用作摘要" },
+        tags: { type: "array", items: { type: "string", minLength: 1, maxLength: 64 }, maxItems: 20, description: "帮助其他 session 判断是否相关的标签" },
+        assetId: { type: "string", minLength: 32, maxLength: 32, description: "当前 scope 中已存在的 asset id，通常从消息里的 asset://xxx 取得" },
+        artifactUri: { type: "string", minLength: 1, description: "当前 scope 中可读取的 artifact:// URI" },
         forward: {
           type: "object",
-          properties: {
-            platform: { type: "string", minLength: 1 },
-            forwardId: { type: "string", minLength: 1 },
-            summary: { type: "string" },
-          },
+          properties: { platform: { type: "string", minLength: 1 }, forwardId: { type: "string", minLength: 1 }, summary: { type: "string" } },
           required: ["platform", "forwardId"],
           additionalProperties: false,
         },
@@ -96,13 +62,7 @@ function createBrainDepositTool(options: BrainToolOptions): AgentTool {
     async execute(input) {
       try {
         const resolved = await resolveDepositInput(input, options);
-        const thread = await store.deposit({
-          kind: input.kind,
-          sourceScope: scope,
-          content: resolved.content,
-          payload: resolved.payload,
-          tags: input.tags,
-        });
+        const thread = await store.deposit({ kind: input.kind, sourceScope: scope, content: resolved.content, payload: resolved.payload, tags: input.tags });
         if (input.shareImmediately ?? options.defaultShareImmediately ?? false) {
           await options.onImmediateShare?.(thread);
         }
@@ -122,9 +82,7 @@ function createBrainReadTool(options: BrainToolOptions): AgentTool {
       "读取全局脑 thread 的完整内容、回复和可发送资源；asset/artifact 会物化到当前 session 并返回 localAssetUri，同平台 forward 会返回 localForward。读取后该 thread 对当前 session 不再重复出现在摘要中。",
     inputSchema: jsonSchema<{ threadId: string }>({
       type: "object",
-      properties: {
-        threadId: { type: "string", minLength: 1, description: "全局脑 thread id" },
-      },
+      properties: { threadId: { type: "string", minLength: 1, description: "全局脑 thread id" } },
       required: ["threadId"],
       additionalProperties: false,
     }),
@@ -147,27 +105,15 @@ function createBrainReplyTool(options: BrainToolOptions): AgentTool {
     name: "brain_reply",
     description:
       "回复全局脑中的一条 thread。replySource 为 agent 时表示这是本 session agent 自己的回答；为 human 时表示这是当前 session 中群友提供的信息，应尽量提供 author。",
-    inputSchema: jsonSchema<{
-      threadId: string;
-      content: string;
-      replySource?: BrainReplySource;
-      author?: { id: string; name?: string };
-    }>({
+    inputSchema: jsonSchema<{ threadId: string; content: string; replySource?: BrainReplySource; author?: { id: string; name?: string } }>({
       type: "object",
       properties: {
         threadId: { type: "string", minLength: 1, description: "要回复的全局脑 thread id" },
         content: { type: "string", minLength: 1, maxLength: 20000, description: "回复内容" },
-        replySource: {
-          type: "string",
-          enum: ["agent", "human"],
-          description: "回复来源，默认 agent",
-        },
+        replySource: { type: "string", enum: ["agent", "human"], description: "回复来源，默认 agent" },
         author: {
           type: "object",
-          properties: {
-            id: { type: "string", minLength: 1 },
-            name: { type: "string" },
-          },
+          properties: { id: { type: "string", minLength: 1 }, name: { type: "string" } },
           required: ["id"],
           additionalProperties: false,
         },
@@ -199,9 +145,7 @@ function createBrainResolveTool(options: BrainToolOptions): AgentTool {
     description: "由发起 thread 的 session 将问题标记为已解决；其他 session 不能调用。",
     inputSchema: jsonSchema<{ threadId: string }>({
       type: "object",
-      properties: {
-        threadId: { type: "string", minLength: 1, description: "要解决的全局脑 thread id" },
-      },
+      properties: { threadId: { type: "string", minLength: 1, description: "要解决的全局脑 thread id" } },
       required: ["threadId"],
       additionalProperties: false,
     }),
@@ -221,11 +165,7 @@ function createBrainStatusTool(options: BrainToolOptions): AgentTool {
   return {
     name: "brain_status",
     description: "查看当前 session 发布到全局脑的 thread、状态和回复数。",
-    inputSchema: jsonSchema<Record<string, never>>({
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    }),
+    inputSchema: jsonSchema<Record<string, never>>({ type: "object", properties: {}, additionalProperties: false }),
     async execute() {
       try {
         const threads: BrainThreadStatus[] = await store.status(scope);
@@ -237,17 +177,11 @@ function createBrainStatusTool(options: BrainToolOptions): AgentTool {
   };
 }
 
-async function resolveDepositInput(
-  input: BrainDepositToolInput,
-  options: BrainToolOptions,
-): Promise<{ content: string; payload: BrainContent }> {
+async function resolveDepositInput(input: BrainDepositToolInput, options: BrainToolOptions): Promise<{ content: string; payload: BrainContent }> {
   if (input.assetId) {
     const bytes = await options.assets.get(input.assetId);
     const blobId = await options.store.putBlob(bytes);
-    return {
-      content: input.content ?? "[图片]",
-      payload: { kind: "asset", blobId, mediaType: detectMediaType(bytes) },
-    };
+    return { content: input.content ?? "[图片]", payload: { kind: "asset", blobId, mediaType: detectMediaType(bytes) } };
   }
   if (input.artifactUri) {
     const opened = await options.artifacts.open(input.artifactUri);
@@ -277,22 +211,11 @@ async function resolveDepositInput(
   return { content: input.content, payload: { kind: "text", text: input.content } };
 }
 
-async function materializeView(
-  view: BrainThreadView,
-  store: GlobalBrainStore,
-  assets: AssetStore,
-  scope: ChannelScope,
-): Promise<BrainThreadView> {
+async function materializeView(view: BrainThreadView, store: GlobalBrainStore, assets: AssetStore, scope: ChannelScope): Promise<BrainThreadView> {
   const payload = view.thread.payload;
   if (payload?.kind === "forward") {
     if (payload.platform !== scope.platform) return view;
-    return {
-      ...view,
-      localForward: {
-        forwardId: payload.forwardId,
-        sendTool: "onebot_send_forward_message",
-      },
-    };
+    return { ...view, localForward: { forwardId: payload.forwardId, sendTool: "onebot_send_forward_message" } };
   }
   if (payload?.kind === "asset" || payload?.kind === "artifact") {
     try {
@@ -310,13 +233,7 @@ function fail(cause: unknown): { outcome: "failed"; error: { code: string; messa
   if (cause instanceof BrainStoreError) {
     return { outcome: "failed", error: { code: cause.code, message: cause.message } };
   }
-  return {
-    outcome: "failed",
-    error: {
-      code: "brain_failed",
-      message: cause instanceof Error ? cause.message : String(cause),
-    },
-  };
+  return { outcome: "failed", error: { code: "brain_failed", message: cause instanceof Error ? cause.message : String(cause) } };
 }
 
 function detectMediaType(bytes: Uint8Array): string | undefined {

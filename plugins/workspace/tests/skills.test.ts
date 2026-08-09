@@ -47,10 +47,7 @@ describe("formatSkillsForPrompt", () => {
   });
 
   it("excludes skills with disableModelInvocation=true", () => {
-    const result = formatSkillsForPrompt([
-      skill({ name: "visible" }),
-      skill({ name: "hidden", disableModelInvocation: true }),
-    ]);
+    const result = formatSkillsForPrompt([skill({ name: "visible" }), skill({ name: "hidden", disableModelInvocation: true })]);
     expect(result).toContain("<name>visible</name>");
     expect(result).not.toContain("<name>hidden</name>");
   });
@@ -104,10 +101,7 @@ describe("loadSkills", () => {
     await mkdir(good, { recursive: true });
     await writeFile(join(good, "SKILL.md"), "---\nname: good\ndescription: Good\n---\n# Good");
 
-    const result = await loadSkills({
-      skillPaths: [join(basePath, "missing"), good],
-      cwd: basePath,
-    });
+    const result = await loadSkills({ skillPaths: [join(basePath, "missing"), good], cwd: basePath });
     expect(result.skills.map((item) => item.name)).toEqual(["good"]);
     expect(result.diagnostics.some((item) => item.message.includes("does not exist"))).toBe(true);
   });

@@ -55,12 +55,7 @@ export function estimateTokens(text: string): number {
 }
 
 export function escapePromptText(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 }
 
 function renderPatterns(state: ChatLearningState, eventKind: ProactiveEventKind | undefined): string | undefined {
@@ -68,24 +63,16 @@ function renderPatterns(state: ChatLearningState, eventKind: ProactiveEventKind 
   const initiation = eventKind ? state.initiationPatterns.slice(0, 8) : [];
   const lines: string[] = [];
   for (const pattern of response) {
-    lines.push(
-      `<pattern kind="response" intent="${pattern.intent}" phrase="${escapeXml(pattern.phrase)}" count="${pattern.frequency}"/>`,
-    );
+    lines.push(`<pattern kind="response" intent="${pattern.intent}" phrase="${escapeXml(pattern.phrase)}" count="${pattern.frequency}"/>`);
   }
   for (const pattern of initiation) {
-    lines.push(
-      `<pattern kind="initiation" intent="${pattern.intent}" phrase="${escapeXml(pattern.phrase)}" count="${pattern.frequency}"/>`,
-    );
+    lines.push(`<pattern kind="initiation" intent="${pattern.intent}" phrase="${escapeXml(pattern.phrase)}" count="${pattern.frequency}"/>`);
   }
   if (lines.length === 0) return undefined;
   return `<local_patterns>\n${lines.join("\n")}\n</local_patterns>`;
 }
 
-function renderGlobalPatterns(
-  patterns: readonly GlobalPattern[],
-  eventKind: ProactiveEventKind | undefined,
-  config: ChatLearningConfig,
-): string | undefined {
+function renderGlobalPatterns(patterns: readonly GlobalPattern[], eventKind: ProactiveEventKind | undefined, config: ChatLearningConfig): string | undefined {
   const kind = eventKind ? "initiation" : "response";
   const relevant = patterns
     .filter((pattern) => pattern.kind === kind && pattern.channels.length >= config.minGlobalChannels)
@@ -100,20 +87,14 @@ function renderGlobalPatterns(
   return `<global_patterns>\n${lines.join("\n")}\n</global_patterns>`;
 }
 
-function renderGlobalChains(
-  chains: readonly GlobalChainPattern[],
-  config: ChatLearningConfig,
-): string | undefined {
+function renderGlobalChains(chains: readonly GlobalChainPattern[], config: ChatLearningConfig): string | undefined {
   const relevant = chains
     .filter((chain) => chain.channels.length >= config.minGlobalChannels)
     .sort((left, right) => chainScore(right) - chainScore(left))
     .slice(0, config.maxGlobalPatterns);
   if (relevant.length === 0) return undefined;
 
-  const lines = relevant.map(
-    (chain) =>
-      `<chain channels="${chain.channels.length}" steps="${escapeXml(chain.chain.join(" -> "))}"/>`,
-  );
+  const lines = relevant.map((chain) => `<chain channels="${chain.channels.length}" steps="${escapeXml(chain.chain.join(" -> "))}"/>`);
   return `<global_chains>\n${lines.join("\n")}\n</global_chains>`;
 }
 
@@ -125,10 +106,7 @@ function chainScore(chain: GlobalChainPattern): number {
   return chain.channels.reduce((total, channel) => total + channel.frequency, 0) * chain.channels.length;
 }
 
-function selectExamples(
-  state: ChatLearningState,
-  config: ChatLearningConfig,
-): readonly ConversationSegment[] {
+function selectExamples(state: ChatLearningState, config: ChatLearningConfig): readonly ConversationSegment[] {
   const intentByTurnId = buildIntentByTurnId(state.responsePatterns, state.initiationPatterns);
   const latestTurnId = state.turns.at(-1)?.id;
   const candidates = buildConversationChains(state.segments, state.links)
@@ -144,32 +122,23 @@ function selectExamples(
       .slice(-config.maxExamples);
   }
 
-  return candidates
-    .map((chain) => ({
-      id: chain.chain.id,
-      startTime: chain.chain.turns[0]?.timestamp ?? 0,
-      endTime: chain.chain.turns.at(-1)?.timestamp ?? 0,
-      turns: chain.chain.turns,
-    }));
+  return candidates.map((chain) => ({
+    id: chain.chain.id,
+    startTime: chain.chain.turns[0]?.timestamp ?? 0,
+    endTime: chain.chain.turns.at(-1)?.timestamp ?? 0,
+    turns: chain.chain.turns,
+  }));
 }
 
-function scoreChain(
-  turns: readonly MessageTurn[],
-  intentByTurnId: ReadonlyMap<string, string>,
-  config: ChatLearningConfig,
-): number {
+function scoreChain(turns: readonly MessageTurn[], intentByTurnId: ReadonlyMap<string, string>, config: ChatLearningConfig): number {
   const selected = turns.slice(-config.maxMessagesPerExample);
-  const texts = selected
-    .map((turn) => sanitizeForDisplay(turn.text).trim())
-    .filter((text) => text.length > 0);
+  const texts = selected.map((turn) => sanitizeForDisplay(turn.text).trim()).filter((text) => text.length > 0);
   if (texts.length < 2) return 0;
 
   const userIds = new Set(selected.map((turn) => turn.userId));
   const uniqueTexts = new Set(texts);
   const repetitionRatio = uniqueTexts.size / texts.length;
-  const intents = new Set(
-    selected.map((turn) => intentByTurnId.get(turn.id)).filter((intent): intent is string => intent !== undefined),
-  );
+  const intents = new Set(selected.map((turn) => intentByTurnId.get(turn.id)).filter((intent): intent is string => intent !== undefined));
 
   let score = texts.length + intents.size * 2;
   if (userIds.size < 2) score *= 0.4;
@@ -219,10 +188,5 @@ function shortId(id: string): string {
 }
 
 function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 }

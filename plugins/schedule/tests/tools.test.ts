@@ -9,40 +9,14 @@ import type { Schedule, ScheduleProjection } from "../src/types.js";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
-const TOOL_NAMES = [
-  "schedule_create",
-  "schedule_list",
-  "schedule_update",
-  "schedule_pause",
-  "schedule_resume",
-  "schedule_cancel",
-] as const;
+const TOOL_NAMES = ["schedule_create", "schedule_list", "schedule_update", "schedule_pause", "schedule_resume", "schedule_cancel"] as const;
 
-const scope: ChannelScope = {
-  type: "shared",
-  platform: "test",
-  selfId: "bot-1",
-  channelId: "room-1",
-};
+const scope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
 
-type StoreDouble = {
-  create: Mock;
-  list: Mock;
-  update: Mock;
-  pause: Mock;
-  resume: Mock;
-  cancel: Mock;
-};
+type StoreDouble = { create: Mock; list: Mock; update: Mock; pause: Mock; resume: Mock; cancel: Mock };
 
 function createStoreDouble() {
-  return {
-    create: vi.fn(),
-    list: vi.fn(),
-    update: vi.fn(),
-    pause: vi.fn(),
-    resume: vi.fn(),
-    cancel: vi.fn(),
-  };
+  return { create: vi.fn(), list: vi.fn(), update: vi.fn(), pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() };
 }
 
 function createTools(store: StoreDouble): AgentTool[] {
@@ -93,38 +67,10 @@ describe("schedule agent tools", () => {
     expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z" })).toBe(true);
     expect(validate({ title: "Standup", prompt: "Run it.", cron: "0 9 * * 1" })).toBe(true);
     expect(validate({ title: "Standup", prompt: "Run it." })).toBe(false);
-    expect(
-      validate({
-        title: "Standup",
-        prompt: "Run it.",
-        at: "2030-01-01T00:00:00Z",
-        cron: "0 9 * * 1",
-      }),
-    ).toBe(false);
-    expect(
-      validate({
-        title: "Standup",
-        prompt: "Run it.",
-        at: "2030-01-01T00:00:00Z",
-        channelId: "room-1",
-      }),
-    ).toBe(false);
-    expect(
-      validate({
-        title: "Standup",
-        prompt: "Run it.",
-        at: "2030-01-01T00:00:00Z",
-        platform: "onebot",
-      }),
-    ).toBe(false);
-    expect(
-      validate({
-        title: "Standup",
-        prompt: "Run it.",
-        at: "2030-01-01T00:00:00Z",
-        selfId: "bot-1",
-      }),
-    ).toBe(false);
+    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z", cron: "0 9 * * 1" })).toBe(false);
+    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z", channelId: "room-1" })).toBe(false);
+    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z", platform: "onebot" })).toBe(false);
+    expect(validate({ title: "Standup", prompt: "Run it.", at: "2030-01-01T00:00:00Z", selfId: "bot-1" })).toBe(false);
   });
 
   it("update schema permits a rule replacement or none and rejects channel targets", () => {
@@ -160,48 +106,18 @@ describe("schedule agent tools", () => {
     const store = createStoreDouble();
     store.create.mockResolvedValue(makeSchedule());
     const [createTool] = createTools(store);
-    const result = await execute(createTool, {
-      title: "Standup",
-      prompt: "Run the daily standup.",
-      at: "2030-01-01T00:00:00.000Z",
-    });
-    expect(store.create).toHaveBeenCalledWith(scope, {
-      title: "Standup",
-      prompt: "Run the daily standup.",
-      kind: "once",
-      at: "2030-01-01T00:00:00.000Z",
-    });
-    expect(result).toEqual({
-      id: "s-1",
-      title: "Standup",
-      kind: "once",
-      state: "enabled",
-      nextRunAt: "2030-01-01T00:00:00.000Z",
-    });
+    const result = await execute(createTool, { title: "Standup", prompt: "Run the daily standup.", at: "2030-01-01T00:00:00.000Z" });
+    expect(store.create).toHaveBeenCalledWith(scope, { title: "Standup", prompt: "Run the daily standup.", kind: "once", at: "2030-01-01T00:00:00.000Z" });
+    expect(result).toEqual({ id: "s-1", title: "Standup", kind: "once", state: "enabled", nextRunAt: "2030-01-01T00:00:00.000Z" });
   });
 
   it("create maps a cron input to a recurring schedule", async () => {
     const store = createStoreDouble();
     store.create.mockResolvedValue(makeSchedule({ kind: "cron", cron: "0 9 * * 1" }));
     const [createTool] = createTools(store);
-    const result = await execute(createTool, {
-      title: "Standup",
-      prompt: "Run the daily standup.",
-      cron: "0 9 * * 1",
-    });
-    expect(store.create).toHaveBeenCalledWith(scope, {
-      title: "Standup",
-      prompt: "Run the daily standup.",
-      kind: "cron",
-      cron: "0 9 * * 1",
-    });
-    expect(result).toEqual({
-      id: "s-1",
-      title: "Standup",
-      kind: "cron",
-      state: "enabled",
-      nextRunAt: "2030-01-01T00:00:00.000Z",
-    });
+    const result = await execute(createTool, { title: "Standup", prompt: "Run the daily standup.", cron: "0 9 * * 1" });
+    expect(store.create).toHaveBeenCalledWith(scope, { title: "Standup", prompt: "Run the daily standup.", kind: "cron", cron: "0 9 * * 1" });
+    expect(result).toEqual({ id: "s-1", title: "Standup", kind: "cron", state: "enabled", nextRunAt: "2030-01-01T00:00:00.000Z" });
   });
 
   it("list returns compact projections for the captured scope", async () => {
@@ -214,35 +130,21 @@ describe("schedule agent tools", () => {
         kind: "cron",
         cron: "0 9 * * 1",
         nextRunAt: "2030-01-02T00:00:00.000Z",
-        lastResult: {
-          occurrenceAt: "2030-01-01T00:00:00.000Z",
-          status: "accepted",
-          finishedAt: "2030-01-01T00:00:01.000Z",
-        },
+        lastResult: { occurrenceAt: "2030-01-01T00:00:00.000Z", status: "accepted", finishedAt: "2030-01-01T00:00:01.000Z" },
       }),
     ]);
     const [, listTool] = createTools(store);
     const result = (await execute(listTool, {})) as ScheduleProjection[];
     expect(store.list).toHaveBeenCalledWith(scope);
     expect(result).toEqual([
-      {
-        id: "s-1",
-        title: "Standup",
-        kind: "once",
-        state: "enabled",
-        nextRunAt: "2030-01-01T00:00:00.000Z",
-      },
+      { id: "s-1", title: "Standup", kind: "once", state: "enabled", nextRunAt: "2030-01-01T00:00:00.000Z" },
       {
         id: "s-2",
         title: "Digest",
         kind: "cron",
         state: "enabled",
         nextRunAt: "2030-01-02T00:00:00.000Z",
-        lastResult: {
-          occurrenceAt: "2030-01-01T00:00:00.000Z",
-          status: "accepted",
-          finishedAt: "2030-01-01T00:00:01.000Z",
-        },
+        lastResult: { occurrenceAt: "2030-01-01T00:00:00.000Z", status: "accepted", finishedAt: "2030-01-01T00:00:01.000Z" },
       },
     ]);
   });
@@ -253,13 +155,7 @@ describe("schedule agent tools", () => {
     const [, , updateTool] = createTools(store);
     const result = await execute(updateTool, { id: "s-1", title: "New title" });
     expect(store.update).toHaveBeenCalledWith(scope, "s-1", { title: "New title" });
-    expect(result).toEqual({
-      id: "s-1",
-      title: "New title",
-      kind: "once",
-      state: "enabled",
-      nextRunAt: "2030-01-01T00:00:00.000Z",
-    });
+    expect(result).toEqual({ id: "s-1", title: "New title", kind: "once", state: "enabled", nextRunAt: "2030-01-01T00:00:00.000Z" });
   });
 
   it("update routes a cron rule replacement through the captured scope", async () => {
@@ -268,13 +164,7 @@ describe("schedule agent tools", () => {
     const [, , updateTool] = createTools(store);
     const result = await execute(updateTool, { id: "s-1", cron: "0 9 * * 1" });
     expect(store.update).toHaveBeenCalledWith(scope, "s-1", { kind: "cron", cron: "0 9 * * 1" });
-    expect(result).toEqual({
-      id: "s-1",
-      title: "Standup",
-      kind: "cron",
-      state: "enabled",
-      nextRunAt: "2030-01-01T00:00:00.000Z",
-    });
+    expect(result).toEqual({ id: "s-1", title: "Standup", kind: "cron", state: "enabled", nextRunAt: "2030-01-01T00:00:00.000Z" });
   });
 
   it.each([
@@ -288,12 +178,6 @@ describe("schedule agent tools", () => {
     const tool = tools.find((candidate) => candidate.name === name)!;
     const result = await execute(tool, { id: "s-1" });
     expect(store[method]).toHaveBeenCalledWith(scope, "s-1");
-    expect(result).toEqual({
-      id: "s-1",
-      title: "Standup",
-      kind: "once",
-      state,
-      nextRunAt: "2030-01-01T00:00:00.000Z",
-    });
+    expect(result).toEqual({ id: "s-1", title: "Standup", kind: "once", state, nextRunAt: "2030-01-01T00:00:00.000Z" });
   });
 });

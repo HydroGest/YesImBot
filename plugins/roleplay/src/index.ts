@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
 
-import { Context, Logger, Schema } from "koishi";
-import type {} from "koishi-plugin-yesimbot";
+import type { CharacterCardV3 } from "@risuai/ccardlib";
+import type { AgentPlugin } from "@yesimbot/agent-runtime";
+import { Context, Logger, Schema, type Bot } from "koishi";
+import type { ChannelScope } from "koishi-plugin-yesimbot";
 
 import { loadCharacterCard } from "./card.js";
 import { selectGreeting } from "./greeting.js";
@@ -25,9 +27,11 @@ export default class RoleplayPlugin {
   public readonly config: RoleplayPluginConfig;
   public readonly logger: Logger;
 
+  private card?: CharacterCardV3;
+  private greeting?: string;
   private disposeAgentPlugin: (() => void) | undefined;
 
-  constructor(ctx: Context, config: RoleplayPluginConfig) {
+  public constructor(ctx: Context, config: RoleplayPluginConfig) {
     this.ctx = ctx;
     this.config = config;
     this.logger = ctx.logger("yesimbot.roleplay");
@@ -41,13 +45,14 @@ export default class RoleplayPlugin {
 
     const card = await loadCharacterCard(resolve(this.ctx.baseDir, this.config.characterCard));
     const greeting = selectGreeting(card, this.config.useRandomGreeting ?? false);
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope }) =>
-      createRoleplayPlugin({
-        card,
-        greeting,
-        userName: scope.type === "direct" ? scope.channelId : "User",
-      }),
-    );
+    this.card = card;
+    this.greeting = greeting;
+    this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
+  }
+
+  public setup(scope: ChannelScope, _bot: Bot): AgentPlugin {
+    if (!this.card || this.greeting === undefined) throw new Error("Roleplay plugin has not been started");
+    return createRoleplayPlugin({ card: this.card, greeting: this.greeting, userName: scope.type === "direct" ? scope.channelId : "User" });
   }
 
   public async stop(): Promise<void> {

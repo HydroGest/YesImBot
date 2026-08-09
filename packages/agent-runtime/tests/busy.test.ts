@@ -29,10 +29,7 @@ function createBlockingModel() {
             controller.enqueue({
               type: "finish",
               finishReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 1, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
             } as LanguageModelV3StreamPart);
             controller.close();
           },
@@ -82,7 +79,7 @@ describe("busy behavior", () => {
 
   it("keeps joined messages clean while retaining them in the active turn result", async () => {
     const agent = createAgent({ model: createBlockingModel() });
-    const turnId = agent.send(createUserMessage("first"));
+
     const joinedMessage = createUserMessage("joined");
 
     agent.send(joinedMessage, { ifBusy: "join" });
@@ -114,11 +111,8 @@ describe("busy behavior", () => {
 
   it("does not duplicate joined persistence when storage append is slow", async () => {
     const deferredStorage = createDeferredStorage();
-    const agent = createAgent({
-      model: createBlockingModel(),
-      storage: deferredStorage.storage,
-    });
-    const firstTurnId = agent.send(createUserMessage("first"));
+    const agent = createAgent({ model: createBlockingModel(), storage: deferredStorage.storage });
+    agent.send(createUserMessage("first"));
 
     agent.send(createUserMessage("joined"), { ifBusy: "join" });
     for (let attempt = 0; attempt < 10 && deferredStorage.appended.length === 0; attempt += 1) {

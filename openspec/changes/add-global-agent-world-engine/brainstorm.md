@@ -4,7 +4,7 @@
 
 YesImBotWorld demonstrated a useful narrative model: a character lives in a persistent virtual world, actions consume world time, messaging is an activity performed through a phone, and external events enter the character's awareness rather than appearing as omniscient context. The migration must preserve those semantics without moving world state, clocks, schedulers, phone state, or world-specific persistence into YesImBot Core.
 
-The current Core remains channel-first. A `ChannelScope` owns one `ChannelRuntime`, one Agent session, Gateway admission, platform resolution, Will routing, channel assets, and passive delivery. That runtime is the correct ingress and journal for accepted platform facts, but it is not the correct host for one subject whose identity and timeline span several chat channels.
+The current Core remains channel-first. A `ChannelScope` owns one `ChannelRuntime`, one Agent session, Messenger admission, platform translation, Will routing, channel resources, and passive delivery. That runtime is the correct ingress and journal for accepted platform facts, but it is not the correct host for one subject whose identity and timeline span several chat channels.
 
 ## Terminology
 
@@ -12,13 +12,13 @@ The current Core remains channel-first. A `ChannelScope` owns one `ChannelRuntim
 - **WorldEngine**: the optional Koishi plugin that owns world state, phone state, the clock, activities, scheduling, and WorldAgent-specific tools.
 - **WorldArbiter**: a stateless, on-demand model call that adjudicates uncertain world changes. It replaces the old persistent WorldAgent role without becoming a second Core Agent.
 - **Chat access point**: a stored platform, bot, and channel address reachable through the WorldAgent's phone. It is not a clone or proxy Agent.
-- **GlobalAgent**: a Core-hosted Agent identified by `GlobalScope` and detached from Gateway, Bot, Session, Will, and passive delivery. A WorldAgent uses this host, but future consumers such as Advisor may use it for different purposes.
+- **GlobalAgent**: a Core-hosted Agent identified by `GlobalScope` and detached from Messenger, Bot, Session, Will, and passive delivery. A WorldAgent uses this host, but future consumers such as Advisor may use it for different purposes.
 
 ## Decision Log
 
 ### D1. Preserve the continuous-world narrative
 
-WorldEngine must preserve one persistent subject, a global world clock, delayed activities, phone-mediated chat, heartbeats, and one compressed offline-resume transition. It must not migrate the old infinite generation loop, GBNF, Ban EOS, custom Gateway, mirrored platform database, media pipeline, shell, browser framework, or general App framework.
+WorldEngine must preserve one persistent subject, a global world clock, delayed activities, phone-mediated chat, heartbeats, and one compressed offline-resume transition. It must not migrate the old infinite generation loop, GBNF, Ban EOS, custom Messenger, mirrored platform database, media pipeline, shell, browser framework, or general App framework.
 
 ### D2. Keep the WorldAgent independent from channel Agents
 
@@ -61,7 +61,7 @@ The definition is an in-memory resource snapshot. Core does not persist factorie
 
 ### D7. Defer ecosystem plugin selection
 
-The current `registerChannelPlugin()` mechanism and all existing plugins remain unchanged. GlobalRuntime does not discover, select, adapt, or initialize registered ecosystem plugins in this change. WorldEngine supplies only its fixed private tools and AgentPlugin instances.
+The current `agent.use()` mechanism and all existing plugins remain unchanged. GlobalRuntime does not discover, select, adapt, or initialize registered channel plugin objects in this change. WorldEngine supplies only its fixed private tools and AgentPlugin instances.
 
 MCP, Schedule, Search, Skills, Workspace, and Advisor integration remain future work. A later change may add named plugin registrations and per-Agent configured selection after a second concrete consumer proves the required compatibility contract.
 
@@ -77,7 +77,7 @@ GlobalAgent data lives under `agents/<encoded-agentId>/`, alongside `channels/` 
 
 Core owns `sessions/` and `assets/`. WorldEngine uses a private child such as `worldengine/`. Global stop deletes nothing. Global clear removes only `sessions/` and `assets/`, preserving every domain-selected child.
 
-`ctx.yesimbot.global.getStoragePath(GlobalScope)` returns the root. The existing AssetService gains GlobalScope overloads and remains the only asset interface. Channel and global storage implementations remain separate internally.
+`ctx.yesimbot.global` uses the scoped resource owner for the complete root. The existing resource owner gains GlobalScope support while remaining the only asset interface. Channel and global storage implementations remain separate internally.
 
 ### D10. Keep WorldEngine state private
 
@@ -158,7 +158,7 @@ Trigger and completion conditions are natural language. Each tick advancement ru
 
 ### Inbound platform message
 
-1. Core Gateway admits and resolves a Session.
+1. Core Messenger admits and resolves a Session.
 2. ChannelRuntime persists the canonical channel message and emits `yesimbot/message`; routing normally waits.
 3. WorldEngine accepts messages only from configured chat access points and stores the phone record.
 4. On unread transition 0 to 1, WorldEngine submits `phone.notification` to its running GlobalScope.

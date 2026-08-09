@@ -4,10 +4,10 @@
 
 Athena / YesImBot v4 is a Yarn 4 monorepo for Koishi-based LLM chat agents. The current codebase is centered on a message-first `@yesimbot/agent-runtime` and a slim Koishi core service.
 
-- `core/` is the main `koishi-plugin-yesimbot` package: Koishi integration, model registry, `gateway/`, channel storage, `asset.ts`, and RuntimeManager/ChannelRuntime ownership.
+- `core/` is the main `koishi-plugin-yesimbot` package: Koishi integration, model registry, `messengers/`, Channels/Resources, Conversations, Agents, Runtimes, and built-in platform registration.
 - `packages/agent-runtime/` is the generic runtime core: `createAgent`, turn queue, message storage, plugin hooks, tools, state, channel events, and dogfood plugins.
-- `core/src/gateway/onebot.ts` implements the built-in OneBot Translator. Translators register through `ctx.yesimbot.registerTranslator()` and own platform-specific input resolution and image persistence.
-- `plugins/*` are optional Koishi integrations that register `@yesimbot/agent-runtime` `AgentPlugin`s through `ctx.yesimbot.registerAgentPlugin()`.
+- `core/src/messengers/index.ts` implements the built-in Messenger. Translators register through `ctx.yesimbot.messenger.use()` and own platform-specific live-Session input resolution and resource persistence.
+- `plugins/*` are optional Koishi integrations that register named `AgentPlugin` or `WillPlugin` objects through `ctx.yesimbot.agent.use()` / `agent.will()`.
 - `providers/*` are model provider plugins built on AI SDK providers and registered into `ctx["yesimbot.model"]`.
 
 ## Working Rules
@@ -64,7 +64,7 @@ npx vitest run plugins/memos-client/tests/tools.test.ts
 
 ## Code Organization
 
-- 模块级声明顺序：imports → 常量 → 接口 → 类型 → class → function → 重新导出；同类声明（interface 与 interface、type 与 type）保持相邻。
+- 模块级声明顺序：imports → 常量 → 类型 → 接口 → class → function → 重新导出；同类声明（interface 与 interface、type 与 type）保持相邻。
 - 导入分组：外部依赖在前，仓库内部模块在后；类型导入遵循项目既有约定，不为排序改变导入方式或产生循环依赖。
 - 各声明类别内部：对外导出优先于局部声明；运行时依赖的声明保持安全且等价的初始化顺序。
 - class 成员顺序：公共静态字段/方法 → 所有实例字段（public → protected → private）→ constructor → 公共实例方法 → protected 方法 → private 方法。
@@ -77,18 +77,11 @@ npx vitest run plugins/memos-client/tests/tools.test.ts
 ## Current Architecture
 
 - `core/src/index.ts` is the Koishi entrypoint. It registers `ModelService`, `YesImBotService`, and built-in platform registration; Database is a required injection.
-- `core/src/service.ts` owns the public `ctx.yesimbot` facade: `model`, `assets`, PlatformTranslator/Agent-plugin registration, `getStoragePath(scope)`, reset, and stop. It has no public identity, storage namespace, or reload API. Gateway, RuntimeManager, ChannelRuntime, ChannelStorage, concrete AssetStore, and assignee admission stay private.
-- `core/src/gateway/index.ts` owns Koishi middleware and `internal/session` admission. It checks allowlist and shared assignee before creating the Translator-owned `AssetStore`, invokes the selected PlatformTranslator (or built-in message pass-through default), and sends passively through `Session.send()`.
-- `core/src/messages.ts` owns versionless public Message/Event records and `RecordBase`/`assembleEvent`. `runtime/storage.ts` reads JSONL with `JSON.parse`, warns and skips invalid JSON syntax, and does no semantic validation on successfully parsed lines.
-- `core/src/asset.ts` implements the public `AssetService` / `AssetStore` interfaces exposed at `ctx.yesimbot.assets`. Translator code owns image downloads and decides which bytes to persist; `runtime/model-input.ts` projects persisted asset images for model calls.
-- The input pipeline is: allowlist -> shared assignee admission -> channel AssetStore -> PlatformTranslator -> final Message/Event record -> RuntimeManager -> ChannelRuntime FIFO -> wait, join, or one output consumer -> passive Gateway delivery. A delivery failure returns through the producing Runtime.
-- Reset stops a cached Runtime and clears only `sessions/` and `assets`, preserving the Manifest, workspace, and plugin-selected children. Global stop closes admission, stops runtimes, waits active Gateway handlers, and preserves data. Old layouts and JSONL remain unread; no migration, dual read, alias, or fallback exists.
-- ChannelRuntime initialization composes an inline Chinese Core constitution (identity-neutral, no published version), optional `<agents>`, exactly one `<persona>` (user `PERSONA.md` or the inline default), and `<runtime_context>` from ChannelScope plus Bot selfId before plugin instructions, native tools, and model. `PERSONA.md` is created with the default persona only when absent. Do not confuse runtime `AGENTS.md` and `PERSONA.md` prompt files with this repository developer guide.
-- `core/src/model/` owns `ctx["yesimbot.model"]`, `models.json` loading, aliases/defaults, Koishi schema refresh, and provider registration.
-- Provider packages are standalone Koishi plugins that directly use `ctx.yesimbot.model.register()` from `koishi-plugin-yesimbot` and AI SDK provider packages.
-- `packages/agent-runtime/src/agent.ts` owns the turn lifecycle: `append()`, `send()`, `run()`, idle `wait()`, interruption, storage serialization, tool wrapping, streamed model execution, and terminal events. `Agent.setModel()` and `Agent.setTools()` no longer exist; runtime replacement activates stable resource changes.
-- `packages/agent-runtime/src/plugin.ts` owns ordered plugin hooks: append/message transforms, model projection, prompt/tool extension, tool call hooks, and turn finish hooks.
-- Optional plugins register Agent behavior through `ctx.yesimbot.registerAgentPlugin(factory)`; trusted plugins use `getStoragePath(scope)` and select their own channel-root child paths.
+- `core/src/service.ts` owns the public `ctx.yesimbot` facade: `model`, `messenger`, `agent`, `resource`, and `stop`. It has no public identity, storage namespace, reload, or reset API. Gateway admission, Messenger, RuntimeManager, ChannelRuntime, ChannelResources, and assignee admission stay private.
+- `core/src/messengers/index.ts` owns Koishi middleware and live Session admission. It checks allowlist and shared assignee before resolving ChannelResources, invokes one Translator or built-in pass-through, and sends passively through the originating `Session.send()`.
+- `core/src/messages/index.ts` owns versionless public Message/Event records and `RecordBase`/`assembleEvent`. `resources/input.ts` persists inbound resources while Session is live; no Runtime or plugin stores Session references.
+- `core/src/resources/index.ts` owns public `Resources`, `ChannelResources`, AssetStore, ArtifactStore, ResourceReader, and the `resource.get/use` facade.
+- `core/src/service.ts` composes `ModelService`, `Channels`, `Agents`, `Runtimes`, and Messenger. Optional plugins register named behavior through `ctx.yesimbot.agent.use()` / `agent.will()` and resource readers through `ctx.yesimbot.resource.use()`.
 
 ## Workspace Package Names
 
@@ -112,17 +105,17 @@ npx vitest run plugins/memos-client/tests/tools.test.ts
 
 Load these on demand when deeper context is needed:
 
-- `core/src/service.ts` — public YesImBot facade, assets, reset command, storage ownership, and Gateway/RuntimeManager composition.
-- `core/src/gateway/index.ts` — Session admission, selected PlatformTranslator/default pass-through, private shared-assignee admission, passive delivery, and Session lifetime.
-- `core/src/messages.ts` — declaration-mergeable EventMap, versionless Message/Event records, RecordBase, assembleEvent, and Agent custom-message helpers.
-- `core/src/runtime/manager.ts` — RuntimeManager lifecycle and runtime construction.
-- `core/src/runtime/channel.ts` — ChannelRuntime FIFO, Agent assembly, model input, output ownership, and delivery feedback.
-- `core/src/runtime/prompt.ts` — inline Chinese Core constitution/default persona, user `AGENTS.md`/`PERSONA.md` reads, and core system-prompt construction.
-- `core/src/runtime/storage.ts` — JSONL append and parse-only read-back.
-- `core/src/runtime/{will,reply,output-queue,model-input}.ts` — ChannelRuntime-internal decision, output, and model projection helpers.
-- `core/src/model/` — model config, provider contracts, schema helpers, and model resolution.
-- `core/src/gateway/onebot.ts` — built-in OneBot Translator entrypoint.
-- `docs/athena-v4-vision-and-evolution-notes.md` — stable product direction, accepted engineering boundaries, and deferred directions; it is not an implementation specification.
+- `core/src/service.ts` — public four-entry facade and composition of ModelService, Channels, Agents, Runtimes, and Messenger.
+- `core/src/messengers/index.ts` — live Session admission, allowlist, shared assignee check, Translator selection, passive/active delivery, pacing, and failure feedback.
+- `core/src/messages/index.ts` — declaration-mergeable EventMap, versionless Message/Event records, RecordBase, event assembly, formatter, and model projection helpers.
+- `core/src/channels/index.ts` — ChannelScope, Channel, Channels manifest scan, persistent channel roots, and stable ChannelResources ownership.
+- `core/src/resources/{index,asset,artifact,input}.ts` — resource contracts, separate Asset/Artifact stores, safe readers, and Session-live inbound persistence.
+- `core/src/conversations/{index,compact}.ts` — one AgentStorage writer, active JSONL conversation, archive/list/status, and compact behavior.
+- `core/src/agents/{index,will,tools}.ts` — named Agent/WillPlugin registration, fixed default Will, plugin snapshots, and approved Core Tool creators.
+- `core/src/runtimes/{index,channel,output,prompt}.ts` — private runtime cache, ChannelRuntime FIFO/post semantics, output ownership, and prompt composition.
+- `core/src/models/` — model config, provider contracts, schema helpers, and model resolution.
+- `core/src/platforms/` — built-in platform registration and Translator wiring.
+- `docs/athena-v4-vision-and-evolution-notes.md` — stable product direction and accepted engineering boundaries; it is not an implementation specification.
 - `docs/athena-development-log.md` — dated architectural decisions and evidence; do not add task progress, review process, test runs, or ordinary fixes.
 
 ## Reporting

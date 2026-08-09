@@ -2,29 +2,41 @@
 
 ## Requirements
 
-### Requirement: Channel scope is the public channel context
-Core MUST expose `ChannelScope` with required `platform`, `selfId`, `channelId`, and `isDirect` fields. `selfId` identifies the current Bot for both direct and shared scopes.
+### Requirement: Discriminated ChannelScope Is the Public Context
+Core MUST expose `ChannelScope` as exactly one of:
 
-#### Scenario: A plugin receives a shared scope
-- **WHEN** Core creates a plugin for a shared channel
-- **THEN** the plugin receives the raw platform, current Bot, channel, and directness fields
+```ts
+{ type: "shared"; platform: string; channelId: string }
+{ type: "direct"; platform: string; selfId: string; channelId: string }
+```
 
-### Requirement: Persistent channel coordinates follow tuple semantics
-Shared channels MUST use `[platform, channelId]` and direct channels MUST use `[platform, selfId, channelId]` to select persistent state.
+A shared scope MUST NOT carry `selfId`; a direct scope MUST carry its real `selfId`.
 
-#### Scenario: A shared channel changes Bot
+#### Scenario: Plugin receives a shared scope
+- **WHEN** Core initializes a plugin for a shared channel
+- **THEN** the plugin MUST receive only the shared platform and channel coordinates
+
+#### Scenario: Plugin receives a direct scope
+- **WHEN** Core initializes a plugin for a direct channel
+- **THEN** the plugin MUST receive the direct platform, real selfId, and channel coordinates
+
+### Requirement: Persistent Coordinates Follow Tuple Semantics
+Shared channels MUST use `[platform, channelId]` for persistent Channel and Runtime identity. Direct channels MUST use `[platform, selfId, channelId]`. The current Bot selfId for a shared runtime is transient and MUST NOT change shared persistence identity.
+
+#### Scenario: Shared Bot changes
 - **WHEN** the current Bot changes for the same shared platform and channel
-- **THEN** its persistent channel state remains the same
+- **THEN** Core MUST retain the same Channel and persistent resource root
+- **AND** it MAY replace the transient ChannelRuntime
 
-### Requirement: Channel directories are readable and versionless
-Channel roots MUST use safe readable `shared-*` or `direct-*` directory names under `channels/`. Raw coordinates that contain delimiters or traversal-looking text MUST not collide or escape the channels root.
+### Requirement: Readable Versionless Channel Roots
+Channel roots MUST use safe readable `shared-*` or `direct-*` directory names below the configured channel root. Raw coordinates containing delimiters or traversal-looking text MUST remain contained and distinct.
 
-#### Scenario: A direct channel has unsafe raw coordinates
-- **WHEN** Core creates its channel root
-- **THEN** the resulting directory remains below `channels/` and is distinct from differently-valued raw coordinates
+#### Scenario: Direct coordinates are unsafe
+- **WHEN** Core creates a direct channel root from unsafe raw coordinates
+- **THEN** the result MUST remain below the channel root and not collide with another scope
 
-### Requirement: No public channel identity exists
-Core MUST NOT expose a ChannelKey, channel identity string, opaque channel identifier, or directory helper as a package API.
+### Requirement: No Public Opaque Identity
+Core MUST NOT expose a ChannelKey, opaque channel identity string, tuple-key helper, directory helper, or storage map key as a package API.
 
-### Requirement: Gateway retains Session scope fields
-Gateway MUST construct ChannelScope from a valid Session's platform, selfId, channelId, and directness without replacing the real selfId or isDirect values.
+### Requirement: Session-Free Runtime Scope
+Messenger MAY derive ChannelScope from a live Session, but Channel, Conversation, Resources, Runtime, Agent history, Will state, and JSONL MUST retain no Session. EventRecord `selfId` is the explicit Bot selection field for trusted active posts.

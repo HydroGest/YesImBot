@@ -5,18 +5,12 @@ import { parseKeyValueString } from "../src/transports";
 describe("parseKeyValueString", () => {
   it("parses key=value pairs", () => {
     const input = "KEY1=value1\nKEY2=value2";
-    expect(parseKeyValueString(input)).toEqual({
-      KEY1: "value1",
-      KEY2: "value2",
-    });
+    expect(parseKeyValueString(input)).toEqual({ KEY1: "value1", KEY2: "value2" });
   });
 
   it("parses key:value pairs", () => {
     const input = "Key1: value1\nKey2: value2";
-    expect(parseKeyValueString(input)).toEqual({
-      Key1: "value1",
-      Key2: "value2",
-    });
+    expect(parseKeyValueString(input)).toEqual({ Key1: "value1", Key2: "value2" });
   });
 
   it("handles mixed delimiters", () => {
@@ -35,9 +29,7 @@ describe("parseKeyValueString", () => {
 
   it("handles values with colons", () => {
     const input = "URL=http://example.com:8080";
-    expect(parseKeyValueString(input)).toEqual({
-      URL: "http://example.com:8080",
-    });
+    expect(parseKeyValueString(input)).toEqual({ URL: "http://example.com:8080" });
   });
 
   it("preserves equals signs inside values", () => {
@@ -45,9 +37,7 @@ describe("parseKeyValueString", () => {
   });
 
   it("preserves authorization padding after colon delimiter", () => {
-    expect(parseKeyValueString("Authorization: Bearer abc==")).toEqual({
-      Authorization: "Bearer abc==",
-    });
+    expect(parseKeyValueString("Authorization: Bearer abc==")).toEqual({ Authorization: "Bearer abc==" });
   });
 
   it("skips lines without delimiter", () => {

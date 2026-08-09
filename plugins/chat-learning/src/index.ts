@@ -1,23 +1,20 @@
 import { dirname, join, resolve } from "node:path";
 
-import type {
-  AgentEntry,
-  AgentPlugin,
-  AgentPluginRuntime,
-  AgentStorage,
-  PrepareStepContext,
-} from "@yesimbot/agent-runtime";
+import type { AgentEntry, AgentPlugin, AgentPluginRuntime, AgentStorage, PrepareStepContext } from "@yesimbot/agent-runtime";
 import { createMessageEntry } from "@yesimbot/agent-runtime";
 import type { ModelMessage } from "ai";
-import { Context, Logger, Schema, Universal, type Command, type Session } from "koishi";
-import { createMessage, isMessage, type ChannelScope, type DeliveredPayload } from "koishi-plugin-yesimbot";
+import { Context, Logger, Schema, Universal, type Bot, type Command, type Session } from "koishi";
+import { createMessage, isMessage, type DeliveredPayload } from "koishi-plugin-yesimbot";
+
+/** Internal scope that always carries selfId for keying purposes. */
+type FullScope = { readonly type: "shared" | "direct"; readonly platform: string; readonly selfId: string; readonly channelId: string };
 
 import { buildLocalChainPatterns } from "./chains.js";
 import { collectTurns, segmentTurns } from "./collector.js";
 import { applyCorrections } from "./corrections.js";
+import { buildPatternEmbeddingMap } from "./embedding.js";
 import { createFeedbackStore, type FeedbackStore } from "./feedback.js";
 import { sendChatLearningForward } from "./forward.js";
-import { buildPatternEmbeddingMap } from "./embedding.js";
 import {
   createEmptyGlobalRuleBank,
   createGlobalRuleStore,
@@ -31,23 +28,10 @@ import { buildLinks } from "./links.js";
 import { classifyPatternsWithModel } from "./patterns.js";
 import { detectProactiveEvent } from "./proactive.js";
 import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.js";
+import { createReflectionStore, type ReflectionRecord, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
 import { reflectOnSentMessage } from "./reflection.js";
-import {
-  createReflectionStore,
-  type ReflectionRecord,
-  type ReflectionScore,
-  type ReflectionStore,
-} from "./reflection-store.js";
 import { createChatLearningStore } from "./store.js";
-import type {
-  ChatLearningConfig,
-  ChatLearningState,
-  GlobalChainPattern,
-  GlobalPattern,
-  LinkCorrection,
-  LinkKind,
-  ProactiveEventKind,
-} from "./types.js";
+import type { ChatLearningConfig, ChatLearningState, GlobalChainPattern, GlobalPattern, LinkCorrection, LinkKind, ProactiveEventKind } from "./types.js";
 
 export const Config: Schema<ChatLearningConfig> = Schema.object({
   maxExamples: Schema.number().min(1).max(10).default(4).description("每轮最多注入几个示例对话段"),
@@ -57,16 +41,10 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
   refreshIntervalMinutes: Schema.number().min(1).max(1440).default(30).description("模型规律提炼的最小间隔分钟数"),
   maxPromptTokens: Schema.number().min(200).max(8000).default(2500).description("chat-learning 注入块的 token 预算"),
   maskNames: Schema.boolean().default(true).description("示例中把真实昵称替换为伪名"),
-  blockedUserIds: Schema.array(Schema.string())
-    .default([])
-    .description("不参与学习、也不进入 few-shot 的 user id 黑名单"),
+  blockedUserIds: Schema.array(Schema.string()).default([]).description("不参与学习、也不进入 few-shot 的 user id 黑名单"),
   blockedUserPatterns: Schema.array(Schema.string()).default([]).description("按昵称或 user id 子串过滤其他 bot"),
-  autoBlockBotNames: Schema.boolean()
-    .default(false)
-    .description("启用常见 bot 名称自动过滤，例如 bot、机器人、小助手、官方"),
-  observeAllChannels: Schema.boolean()
-    .default(false)
-    .description("在未启用 yesimbot 的频道也采集消息，用于跨群全局规律学习"),
+  autoBlockBotNames: Schema.boolean().default(false).description("启用常见 bot 名称自动过滤，例如 bot、机器人、小助手、官方"),
+  observeAllChannels: Schema.boolean().default(false).description("在未启用 yesimbot 的频道也采集消息，用于跨群全局规律学习"),
   globalRulePath: Schema.string().default("").description("跨群全局规则文件路径；留空时放在频道根目录的上一级"),
   globalSyncIntervalMinutes: Schema.number().min(1).max(1440).default(60).description("跨群规则同步最小间隔分钟数"),
   minGlobalChannels: Schema.number().min(1).max(100).default(2).description("全局规则至少出现的频道数"),
@@ -74,32 +52,12 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
   summaryModel: Schema.dynamic("registry.chatModels").description(
     "用于提炼本群规律的模型；留空则使用 Core 默认 chat 模型，没有可用模型时不生成 local_patterns",
   ),
-  embeddingModel: Schema.dynamic("registry.embeddingModels")
-    .default("")
-    .description("用于语义归并全局规律的 embedding 模型；留空则不使用 embedding"),
-  embeddingSimilarity: Schema.number()
-    .min(0)
-    .max(1)
-    .default(0.92)
-    .description("embedding 语义归并阈值，越高要求越相似"),
-  maxModelThreads: Schema.number()
-    .min(1)
-    .max(10)
-    .default(3)
-    .description("每次模型标注最多使用几条完整对话线程"),
-  maxModelThreadMessages: Schema.number()
-    .min(4)
-    .max(100)
-    .default(30)
-    .description("每条线程最多送入模型的消息数"),
-  reflectionModel: Schema.dynamic("registry.chatModels")
-    .default("")
-    .description("可选：用独立模型评价 bot 最近发言并生成风格反思；留空则关闭"),
-  maxInjectedReflections: Schema.number()
-    .min(1)
-    .max(10)
-    .default(3)
-    .description("每次注入提示词末尾的最近反思条数"),
+  embeddingModel: Schema.dynamic("registry.embeddingModels").default("").description("用于语义归并全局规律的 embedding 模型；留空则不使用 embedding"),
+  embeddingSimilarity: Schema.number().min(0).max(1).default(0.92).description("embedding 语义归并阈值，越高要求越相似"),
+  maxModelThreads: Schema.number().min(1).max(10).default(3).description("每次模型标注最多使用几条完整对话线程"),
+  maxModelThreadMessages: Schema.number().min(4).max(100).default(30).description("每条线程最多送入模型的消息数"),
+  reflectionModel: Schema.dynamic("registry.chatModels").default("").description("可选：用独立模型评价 bot 最近发言并生成风格反思；留空则关闭"),
+  maxInjectedReflections: Schema.number().min(1).max(10).default(3).description("每次注入提示词末尾的最近反思条数"),
 });
 
 export default class ChatLearningPlugin {
@@ -137,9 +95,7 @@ export default class ChatLearningPlugin {
     this.logger.level = ctx.yesimbot.config.logLevel ?? 2;
     ctx.on("yesimbot/delivered", (payload) => {
       void this.onDelivered(payload).catch((cause) => {
-        this.logger.warn("chat_learning.delivered_failed", {
-          cause: cause instanceof Error ? cause.message : String(cause),
-        });
+        this.logger.warn("chat_learning.delivered_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
       });
     });
     ctx.on("ready", this.start.bind(this));
@@ -147,7 +103,7 @@ export default class ChatLearningPlugin {
   }
 
   private async onDelivered(payload: DeliveredPayload): Promise<void> {
-    const scope: ChannelScope = {
+    const scope: FullScope = {
       type: payload.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared",
       platform: payload.platform,
       selfId: payload.selfId,
@@ -161,24 +117,20 @@ export default class ChatLearningPlugin {
     this.disposeCommands();
     this.disposeAgentPlugin?.();
     this.logger.debug("chat_learning.start");
-    this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope }) => this.createAgentPlugin(scope));
+    this.disposeAgentPlugin = this.ctx.yesimbot.agent.use({ setup: (scope, bot) => this.createAgentPlugin({ ...scope, selfId: bot.selfId }) });
     if (this.config.observeAllChannels) {
       this.observeDispose = this.ctx.middleware(async (session, next) => {
         try {
           await this.observeGlobal(session);
         } catch (cause) {
-          this.logger.warn("chat_learning.observe_failed", {
-            cause: cause instanceof Error ? cause.message : String(cause),
-          });
+          this.logger.warn("chat_learning.observe_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
         }
         return next();
       });
       const intervalMs = this.config.globalSyncIntervalMinutes * 60 * 1000;
       this.globalSyncTimer = setInterval(() => {
         void this.syncGlobalHistoryOnly().catch((cause) => {
-          this.logger.warn("chat_learning.global_history_sync_failed", {
-            cause: cause instanceof Error ? cause.message : String(cause),
-          });
+          this.logger.warn("chat_learning.global_history_sync_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
         });
       }, intervalMs);
       this.globalSyncTimer.unref?.();
@@ -212,8 +164,8 @@ export default class ChatLearningPlugin {
     this.logger.debug("chat_learning.stop");
   }
 
-  private async createAgentPlugin(scope: ChannelScope): Promise<AgentPlugin> {
-    const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+  private async createAgentPlugin(scope: FullScope): Promise<AgentPlugin> {
+    const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
     const store = createChatLearningStore(join(storagePath, "chat-learning.json"));
     await store.init();
     const feedbackStore = await this.feedbackStoreFor(scope);
@@ -237,12 +189,7 @@ export default class ChatLearningPlugin {
     let currentEvent: ProactiveEventKind | undefined;
     let lastModelEnrichAt = state?.builtAt ?? 0;
 
-    logger.debug("chat_learning.channel_plugin_created", {
-      scope,
-      key,
-      cachedTurns: state?.turns.length ?? 0,
-      cachedLinks: state?.links.length ?? 0,
-    });
+    logger.debug("chat_learning.channel_plugin_created", { scope, key, cachedTurns: state?.turns.length ?? 0, cachedLinks: state?.links.length ?? 0 });
 
     const rebuild = async (allowModel: boolean): Promise<void> => {
       if (building) return building;
@@ -253,12 +200,7 @@ export default class ChatLearningPlugin {
           dirty = false;
           const entries = learnedEntries;
           const corrections = feedbackStore.read();
-          logger.debug("chat_learning.rebuild_start", {
-            scope,
-            allowModel,
-            entries: entries.length,
-            corrections: corrections.length,
-          });
+          logger.debug("chat_learning.rebuild_start", { scope, allowModel, entries: entries.length, corrections: corrections.length });
           const next = buildSnapshot(entries, config, scope, corrections);
           logger.debug("chat_learning.rebuild_done", {
             scope,
@@ -269,20 +211,13 @@ export default class ChatLearningPlugin {
             initiationPatterns: next.initiationPatterns.length,
           });
           const refreshMs = config.refreshIntervalMinutes * 60 * 1000;
-          const shouldEnrich =
-            allowModel &&
-            resolveChatLearningModelId(this.ctx, config) !== undefined &&
-            Date.now() - lastModelEnrichAt >= refreshMs;
+          const shouldEnrich = allowModel && resolveChatLearningModelId(this.ctx, config) !== undefined && Date.now() - lastModelEnrichAt >= refreshMs;
           let current = next;
           if (shouldEnrich) {
             current = await enrichWithModel(next, config, this.ctx, logger);
             lastModelEnrichAt = Date.now();
           } else if (state) {
-            current = {
-              ...next,
-              responsePatterns: state.responsePatterns,
-              initiationPatterns: state.initiationPatterns,
-            };
+            current = { ...next, responsePatterns: state.responsePatterns, initiationPatterns: state.initiationPatterns };
           }
           state = current;
           await store.update(current);
@@ -292,38 +227,16 @@ export default class ChatLearningPlugin {
           if (Date.now() - lastGlobalSyncAt >= globalSyncMs) {
             await this.syncGlobalFromHistory(globalPath, globalStore, config);
             const currentBank = this.globalBanks.get(globalPath) ?? globalStore.read();
-            const chainPatterns = buildLocalChainPatterns(
-              current.segments,
-              current.links,
-              current.responsePatterns,
-              current.initiationPatterns,
-            );
-            const localEmbeddings = await buildPatternEmbeddingMap(
-              this.ctx,
-              config,
-              current.responsePatterns,
-              current.initiationPatterns,
-            );
-            const mergedBank = mergeLocalPatterns(
-              currentBank,
-              current.responsePatterns,
-              current.initiationPatterns,
-              chainPatterns,
-              key,
-              Date.now(),
-              {
-                localEmbeddings,
-                embeddingSimilarity: config.embeddingSimilarity,
-              },
-            );
+            const chainPatterns = buildLocalChainPatterns(current.segments, current.links, current.responsePatterns, current.initiationPatterns);
+            const localEmbeddings = await buildPatternEmbeddingMap(this.ctx, config, current.responsePatterns, current.initiationPatterns);
+            const mergedBank = mergeLocalPatterns(currentBank, current.responsePatterns, current.initiationPatterns, chainPatterns, key, Date.now(), {
+              localEmbeddings,
+              embeddingSimilarity: config.embeddingSimilarity,
+            });
             await globalStore.update(mergedBank);
             this.globalBanks.set(globalPath, mergedBank);
-            globalPatterns = [
-              ...selectGlobalPatterns(mergedBank, "response", config.minGlobalChannels, config.maxGlobalPatterns),
-            ];
-            globalChains = [
-              ...selectGlobalChains(mergedBank, config.minGlobalChannels, config.maxGlobalPatterns),
-            ];
+            globalPatterns = [...selectGlobalPatterns(mergedBank, "response", config.minGlobalChannels, config.maxGlobalPatterns)];
+            globalChains = [...selectGlobalChains(mergedBank, config.minGlobalChannels, config.maxGlobalPatterns)];
             lastGlobalSyncAt = Date.now();
             logger.debug("chat_learning.global_sync", {
               scope,
@@ -351,10 +264,7 @@ export default class ChatLearningPlugin {
     const scheduleRebuild = (): void => {
       dirty = true;
       void rebuild(false).catch((cause) => {
-        logger.warn("chat_learning.rebuild_failed", {
-          scope,
-          cause: cause instanceof Error ? cause.message : String(cause),
-        });
+        logger.warn("chat_learning.rebuild_failed", { scope, cause: cause instanceof Error ? cause.message : String(cause) });
       });
     };
     this.rebuildHooks.set(key, scheduleRebuild);
@@ -368,10 +278,7 @@ export default class ChatLearningPlugin {
       learnedEntries = [];
       dirty = true;
       void rebuild(false).catch((cause) => {
-        logger.warn("chat_learning.reset_rebuild_failed", {
-          scope,
-          cause: cause instanceof Error ? cause.message : String(cause),
-        });
+        logger.warn("chat_learning.reset_rebuild_failed", { scope, cause: cause instanceof Error ? cause.message : String(cause) });
       });
     });
 
@@ -404,17 +311,10 @@ export default class ChatLearningPlugin {
                 messageId: current.messageId,
                 turnId: current.turnId,
               });
-              logger.debug("chat_learning.reflection_saved", {
-                scope,
-                model: modelId,
-                messageId: current.messageId,
-              });
+              logger.debug("chat_learning.reflection_saved", { scope, model: modelId, messageId: current.messageId });
             }
           } catch (cause) {
-            logger.warn("chat_learning.reflection_failed", {
-              model: modelId,
-              cause: cause instanceof Error ? cause.message : String(cause),
-            });
+            logger.warn("chat_learning.reflection_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
           }
         }
       })().finally(() => {
@@ -432,16 +332,9 @@ export default class ChatLearningPlugin {
           learnedEntries = await runtimeStorage.read();
           await historyStore.append(learnedEntries);
         }
-        learnedEntries = await historyStore.trim(
-          config.maxHistoryAgeDays * 24 * 60 * 60 * 1000,
-          config.maxScanMessages,
-        );
+        learnedEntries = await historyStore.trim(config.maxHistoryAgeDays * 24 * 60 * 60 * 1000, config.maxScanMessages);
         await rebuild(false);
-        logger.debug("chat_learning.runtime_init", {
-          scope,
-          turns: state?.turns.length ?? 0,
-          links: state?.links.length ?? 0,
-        });
+        logger.debug("chat_learning.runtime_init", { scope, turns: state?.turns.length ?? 0, links: state?.links.length ?? 0 });
         if (resolveChatLearningModelId(ctx, config) !== undefined) {
           void rebuild(true);
         }
@@ -449,11 +342,7 @@ export default class ChatLearningPlugin {
       async onAppend(entries: readonly AgentEntry[]) {
         const eventKind = detectProactiveEvent(entries);
         currentEvent = eventKind;
-        logger.debug("chat_learning.on_append", {
-          scope,
-          entries: entries.length,
-          eventKind,
-        });
+        logger.debug("chat_learning.on_append", { scope, entries: entries.length, eventKind });
         learnedEntries = [...learnedEntries, ...entries];
         await historyStore.append(entries);
         dirty = true;
@@ -467,14 +356,7 @@ export default class ChatLearningPlugin {
         const eventKind = currentEvent;
         currentEvent = undefined;
         const bank = this.globalBanks.get(globalPath) ?? globalStore.read();
-        globalPatterns = [
-          ...selectGlobalPatterns(
-            bank,
-            eventKind ? "initiation" : "response",
-            config.minGlobalChannels,
-            config.maxGlobalPatterns,
-          ),
-        ];
+        globalPatterns = [...selectGlobalPatterns(bank, eventKind ? "initiation" : "response", config.minGlobalChannels, config.maxGlobalPatterns)];
         globalChains = [...selectGlobalChains(bank, config.minGlobalChannels, config.maxGlobalPatterns)];
         const block = buildPromptBlock(state, eventKind, config, globalPatterns, globalChains);
         logger.debug("chat_learning.prepare_step", {
@@ -487,9 +369,7 @@ export default class ChatLearningPlugin {
           stateLinks: state?.links.length ?? 0,
           blockLength: block?.length ?? 0,
         });
-        const prepared: ModelMessage[] = block
-          ? [{ role: "system", content: block }, ...messages]
-          : [...messages];
+        const prepared: ModelMessage[] = block ? [{ role: "system", content: block }, ...messages] : [...messages];
         const reflectionBlock = buildReflectionHistory(reflectionStore, config.maxInjectedReflections);
         if (reflectionBlock) {
           const reflectionMessage: ModelMessage = { role: "system", content: reflectionBlock };
@@ -515,51 +395,47 @@ export default class ChatLearningPlugin {
     };
 
     track(
-      this.ctx
-        .command("yesimbot.chat-learning.status", "查看 chat-learning 当前学习状态", { authority: 4 })
-        .action(async ({ session }) => {
-          try {
-            const scope = scopeOf(session);
-            if (!scope) return "无法获取当前频道信息";
-            const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
-            const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
-            await stateStore.init();
-            const state = stateStore.read();
-            const feedback = await this.feedbackStoreFor(scope);
-            const corrections = feedback.read();
-            const global = await this.globalStoreFor(storagePath);
-            const globalBank = global.store.read();
-            const globalPatterns = globalBank.patterns.length;
-            const globalChains = globalBank.chains.length;
-            this.logger.debug("chat_learning.status", {
-              scope,
-              turns: state?.turns.length ?? 0,
-              links: state?.links.length ?? 0,
-              responsePatterns: state?.responsePatterns.length ?? 0,
-              initiationPatterns: state?.initiationPatterns.length ?? 0,
-              corrections: corrections.length,
-              globalPatterns,
-              globalChains,
-            });
-            const text = [
-              `chat-learning ${scope.platform}:${scope.channelId}`,
-              `turns=${state?.turns.length ?? 0}`,
-              `links=${state?.links.length ?? 0}`,
-              `responsePatterns=${state?.responsePatterns.length ?? 0}`,
-              `initiationPatterns=${state?.initiationPatterns.length ?? 0}`,
-              `corrections=${corrections.length}`,
-              `globalPatterns=${globalPatterns}`,
-              `globalChains=${globalChains}`,
-              `state=${join(storagePath, "chat-learning.json")}`,
-            ].join("\n");
-            return await this.replyLong(session, text, text);
-          } catch (cause) {
-            this.logger.warn("chat_learning.status_failed", {
-              cause: cause instanceof Error ? cause.message : String(cause),
-            });
-            return `status 失败：${cause instanceof Error ? cause.message : String(cause)}`;
-          }
-        }),
+      this.ctx.command("yesimbot.chat-learning.status", "查看 chat-learning 当前学习状态", { authority: 4 }).action(async ({ session }) => {
+        try {
+          const scope = scopeOf(session);
+          if (!scope) return "无法获取当前频道信息";
+          const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
+          const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
+          await stateStore.init();
+          const state = stateStore.read();
+          const feedback = await this.feedbackStoreFor(scope);
+          const corrections = feedback.read();
+          const global = await this.globalStoreFor(storagePath);
+          const globalBank = global.store.read();
+          const globalPatterns = globalBank.patterns.length;
+          const globalChains = globalBank.chains.length;
+          this.logger.debug("chat_learning.status", {
+            scope,
+            turns: state?.turns.length ?? 0,
+            links: state?.links.length ?? 0,
+            responsePatterns: state?.responsePatterns.length ?? 0,
+            initiationPatterns: state?.initiationPatterns.length ?? 0,
+            corrections: corrections.length,
+            globalPatterns,
+            globalChains,
+          });
+          const text = [
+            `chat-learning ${scope.platform}:${scope.channelId}`,
+            `turns=${state?.turns.length ?? 0}`,
+            `links=${state?.links.length ?? 0}`,
+            `responsePatterns=${state?.responsePatterns.length ?? 0}`,
+            `initiationPatterns=${state?.initiationPatterns.length ?? 0}`,
+            `corrections=${corrections.length}`,
+            `globalPatterns=${globalPatterns}`,
+            `globalChains=${globalChains}`,
+            `state=${join(storagePath, "chat-learning.json")}`,
+          ].join("\n");
+          return await this.replyLong(session, text, text);
+        } catch (cause) {
+          this.logger.warn("chat_learning.status_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+          return `status 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+        }
+      }),
     );
 
     track(
@@ -570,16 +446,12 @@ export default class ChatLearningPlugin {
           try {
             const scope = scopeOf(session);
             if (!scope) return "无法获取当前频道信息";
-            const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+            const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
             const { store, path } = await this.globalStoreFor(storagePath);
             const bank = this.globalBanks.get(path) ?? store.read();
             const limit = parsePositiveInt(options?.limit, 20);
-            const responsePatterns = bank.patterns
-              .filter((pattern) => pattern.kind === "response")
-              .slice(0, limit);
-            const initiationPatterns = bank.patterns
-              .filter((pattern) => pattern.kind === "initiation")
-              .slice(0, limit);
+            const responsePatterns = bank.patterns.filter((pattern) => pattern.kind === "response").slice(0, limit);
+            const initiationPatterns = bank.patterns.filter((pattern) => pattern.kind === "initiation").slice(0, limit);
             const chainPatterns = bank.chains.slice(0, limit);
             const lines = [
               `global rules ${path}`,
@@ -601,18 +473,10 @@ export default class ChatLearningPlugin {
               lines.push(...chainPatterns.map(formatGlobalChain));
             }
             const text = lines.join("\n");
-            this.logger.debug("chat_learning.global_preview", {
-              scope,
-              path,
-              patterns: bank.patterns.length,
-              chains: bank.chains.length,
-              limit,
-            });
+            this.logger.debug("chat_learning.global_preview", { scope, path, patterns: bank.patterns.length, chains: bank.chains.length, limit });
             return await this.replyLong(session, text, text);
           } catch (cause) {
-            this.logger.warn("chat_learning.global_preview_failed", {
-              cause: cause instanceof Error ? cause.message : String(cause),
-            });
+            this.logger.warn("chat_learning.global_preview_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
             return `global 失败：${cause instanceof Error ? cause.message : String(cause)}`;
           }
         }),
@@ -631,7 +495,7 @@ export default class ChatLearningPlugin {
             if (rawEvent !== undefined && eventKind === undefined) {
               return "event 必须是 global-brain|schedule|chat-learning";
             }
-            const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+            const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
             const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
             await stateStore.init();
             const state = stateStore.read();
@@ -643,11 +507,7 @@ export default class ChatLearningPlugin {
               this.config.minGlobalChannels,
               this.config.maxGlobalPatterns,
             );
-            const globalChains = selectGlobalChains(
-              bank,
-              this.config.minGlobalChannels,
-              this.config.maxGlobalPatterns,
-            );
+            const globalChains = selectGlobalChains(bank, this.config.minGlobalChannels, this.config.maxGlobalPatterns);
             const block = buildPromptBlock(state, eventKind, this.config, globalPatterns, globalChains);
             const reflection = await this.reflectionForPreview(scope, block);
             if (!block) return "当前没有可注入的学习上下文";
@@ -667,97 +527,85 @@ export default class ChatLearningPlugin {
               `globalPatterns=${globalPatterns.length}/${bank.patterns.length} ` +
               `globalChains=${globalChains.length}/${bank.chains.length}`;
             const reflectionBlock = reflection ? `\n\n<reflection>\n${reflection}\n</reflection>` : "";
-            const fallbackReflection = reflection
-              ? `\n\n&lt;reflection&gt;\n${escapePromptText(reflection)}\n&lt;/reflection&gt;`
-              : "";
+            const fallbackReflection = reflection ? `\n\n&lt;reflection&gt;\n${escapePromptText(reflection)}\n&lt;/reflection&gt;` : "";
             const rawText = `${prefix}\n\n${block}${reflectionBlock}`;
             const fallbackText = `${prefix}\n\n${escapePromptText(block)}${fallbackReflection}`;
             return await this.replyLong(session, rawText, fallbackText);
           } catch (cause) {
-            this.logger.warn("chat_learning.preview_failed", {
-              cause: cause instanceof Error ? cause.message : String(cause),
-            });
+            this.logger.warn("chat_learning.preview_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
             return `preview 失败：${cause instanceof Error ? cause.message : String(cause)}`;
           }
         }),
     );
 
     track(
-      this.ctx
-        .command("yesimbot.chat-learning.sync", "立即触发学习总结与跨群同步", { authority: 4 })
-        .action(async ({ session }) => {
-          try {
-            const scope = scopeOf(session);
-            if (!scope) return "无法获取当前频道信息";
-            const key = scopeKey(scope);
-            const hook = this.syncHooks.get(key);
-            if (hook) {
-              await hook();
-            } else {
-              await this.syncGlobalHistoryOnly();
-            }
-            const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
-            const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
-            await stateStore.init();
-            const state = stateStore.read();
-            const global = await this.globalStoreFor(storagePath);
-            const globalBank = global.store.read();
-            const globalPatterns = globalBank.patterns.length;
-            const globalChains = globalBank.chains.length;
-            this.logger.debug("chat_learning.sync_done", {
-              scope,
-              turns: state?.turns.length ?? 0,
-              links: state?.links.length ?? 0,
-              responsePatterns: state?.responsePatterns.length ?? 0,
-              initiationPatterns: state?.initiationPatterns.length ?? 0,
-              globalPatterns,
-              globalChains,
-            });
-            return [
-              "已触发学习总结",
-              `turns=${state?.turns.length ?? 0}`,
-              `links=${state?.links.length ?? 0}`,
-              `responsePatterns=${state?.responsePatterns.length ?? 0}`,
-              `initiationPatterns=${state?.initiationPatterns.length ?? 0}`,
-              `globalPatterns=${globalPatterns}`,
-              `globalChains=${globalChains}`,
-            ].join("\n");
-          } catch (cause) {
-            this.logger.warn("chat_learning.sync_failed", {
-              cause: cause instanceof Error ? cause.message : String(cause),
-            });
-            return `sync 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+      this.ctx.command("yesimbot.chat-learning.sync", "立即触发学习总结与跨群同步", { authority: 4 }).action(async ({ session }) => {
+        try {
+          const scope = scopeOf(session);
+          if (!scope) return "无法获取当前频道信息";
+          const key = scopeKey(scope);
+          const hook = this.syncHooks.get(key);
+          if (hook) {
+            await hook();
+          } else {
+            await this.syncGlobalHistoryOnly();
           }
-        }),
+          const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
+          const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
+          await stateStore.init();
+          const state = stateStore.read();
+          const global = await this.globalStoreFor(storagePath);
+          const globalBank = global.store.read();
+          const globalPatterns = globalBank.patterns.length;
+          const globalChains = globalBank.chains.length;
+          this.logger.debug("chat_learning.sync_done", {
+            scope,
+            turns: state?.turns.length ?? 0,
+            links: state?.links.length ?? 0,
+            responsePatterns: state?.responsePatterns.length ?? 0,
+            initiationPatterns: state?.initiationPatterns.length ?? 0,
+            globalPatterns,
+            globalChains,
+          });
+          return [
+            "已触发学习总结",
+            `turns=${state?.turns.length ?? 0}`,
+            `links=${state?.links.length ?? 0}`,
+            `responsePatterns=${state?.responsePatterns.length ?? 0}`,
+            `initiationPatterns=${state?.initiationPatterns.length ?? 0}`,
+            `globalPatterns=${globalPatterns}`,
+            `globalChains=${globalChains}`,
+          ].join("\n");
+        } catch (cause) {
+          this.logger.warn("chat_learning.sync_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+          return `sync 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+        }
+      }),
     );
 
     track(
-      this.ctx
-        .command("yesimbot.chat-learning.reset", "清空 chat-learning 学习数据", { authority: 4 })
-        .action(async ({ session }) => {
-          try {
-            const scope = scopeOf(session);
-            if (!scope) return "无法获取当前频道信息";
-            const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
-            const history = await this.historyStoreFor(scope);
-            await history.clear();
-            const feedback = await this.feedbackStoreFor(scope);
-            await feedback.clear();
-            const reflections = await this.reflectionStoreFor(scope);
-            await reflections.clear();
-            const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
-            await stateStore.init();
-            await stateStore.clear();
-            this.resetHooks.get(scopeKey(scope))?.();
-            this.logger.debug("chat_learning.reset", { scope });
-            return "已清空 chat-learning 学习数据，不影响会话历史。";
-          } catch (cause) {
-            this.logger.warn("chat_learning.reset_failed", {
-              cause: cause instanceof Error ? cause.message : String(cause),
-            });
-            return `reset 失败：${cause instanceof Error ? cause.message : String(cause)}`;
-          }
-        }),
+      this.ctx.command("yesimbot.chat-learning.reset", "清空 chat-learning 学习数据", { authority: 4 }).action(async ({ session }) => {
+        try {
+          const scope = scopeOf(session);
+          if (!scope) return "无法获取当前频道信息";
+          const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
+          const history = await this.historyStoreFor(scope);
+          await history.clear();
+          const feedback = await this.feedbackStoreFor(scope);
+          await feedback.clear();
+          const reflections = await this.reflectionStoreFor(scope);
+          await reflections.clear();
+          const stateStore = createChatLearningStore(join(storagePath, "chat-learning.json"));
+          await stateStore.init();
+          await stateStore.clear();
+          this.resetHooks.get(scopeKey(scope))?.();
+          this.logger.debug("chat_learning.reset", { scope });
+          return "已清空 chat-learning 学习数据，不影响会话历史。";
+        } catch (cause) {
+          this.logger.warn("chat_learning.reset_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+          return `reset 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+        }
+      }),
     );
 
     track(
@@ -783,22 +631,20 @@ export default class ChatLearningPlugin {
     );
 
     track(
-      this.ctx
-        .command("yesimbot.chat-learning.unlink <from> <to> [kind]", "手动移除消息关系", { authority: 4 })
-        .action(async ({ session }, from, to, kind) => {
-          const scope = scopeOf(session);
-          if (!scope) return "无法获取当前频道信息";
-          if (typeof from !== "string" || typeof to !== "string") {
-            return "用法：yesimbot.chat-learning.unlink <from> <to> [kind]";
-          }
-          const linkKind = kind ? parseLinkKind(kind) : "*";
-          if (!linkKind) return "kind 必须是 quote|reply|at|adjacent|entity|*";
-          const feedback = await this.feedbackStoreFor(scope);
-          const correction = await feedback.append({ action: "remove", from, to, kind: linkKind });
-          this.logger.debug("chat_learning.link_removed", { scope, correction });
-          this.rebuildHooks.get(scopeKey(scope))?.();
-          return `已添加纠错 ${correction.id}`;
-        }),
+      this.ctx.command("yesimbot.chat-learning.unlink <from> <to> [kind]", "手动移除消息关系", { authority: 4 }).action(async ({ session }, from, to, kind) => {
+        const scope = scopeOf(session);
+        if (!scope) return "无法获取当前频道信息";
+        if (typeof from !== "string" || typeof to !== "string") {
+          return "用法：yesimbot.chat-learning.unlink <from> <to> [kind]";
+        }
+        const linkKind = kind ? parseLinkKind(kind) : "*";
+        if (!linkKind) return "kind 必须是 quote|reply|at|adjacent|entity|*";
+        const feedback = await this.feedbackStoreFor(scope);
+        const correction = await feedback.append({ action: "remove", from, to, kind: linkKind });
+        this.logger.debug("chat_learning.link_removed", { scope, correction });
+        this.rebuildHooks.get(scopeKey(scope))?.();
+        return `已添加纠错 ${correction.id}`;
+      }),
     );
 
     track(
@@ -822,11 +668,7 @@ export default class ChatLearningPlugin {
             messageId: session?.quote?.id ?? session?.quote?.messageId,
             turnId: undefined,
           });
-          this.logger.debug("chat_learning.reflection_annotated", {
-            scope,
-            id: record.id,
-            score: record.score,
-          });
+          this.logger.debug("chat_learning.reflection_annotated", { scope, id: record.id, score: record.score });
           return `已保存人工反思 ${record.id}`;
         }),
     );
@@ -841,43 +683,40 @@ export default class ChatLearningPlugin {
     this.commandDisposers.clear();
   }
 
-  private async feedbackStoreFor(scope: ChannelScope): Promise<FeedbackStore> {
+  private async feedbackStoreFor(scope: FullScope): Promise<FeedbackStore> {
     const key = scopeKey(scope);
     const existing = this.feedbackStores.get(key);
     if (existing) return existing;
-    const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+    const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
     const store = createFeedbackStore(join(storagePath, "chat-learning-feedback.jsonl"));
     await store.init();
     this.feedbackStores.set(key, store);
     return store;
   }
 
-  private async historyStoreFor(scope: ChannelScope): Promise<ChatHistoryStore> {
+  private async historyStoreFor(scope: FullScope): Promise<ChatHistoryStore> {
     const key = scopeKey(scope);
     const existing = this.historyStores.get(key);
     if (existing) return existing;
-    const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+    const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
     const store = createChatHistoryStore(join(storagePath, "chat-learning-history.jsonl"));
     await store.init();
     this.historyStores.set(key, store);
     return store;
   }
 
-  private async reflectionStoreFor(scope: ChannelScope): Promise<ReflectionStore> {
+  private async reflectionStoreFor(scope: FullScope): Promise<ReflectionStore> {
     const key = scopeKey(scope);
     const existing = this.reflectionStores.get(key);
     if (existing) return existing;
-    const storagePath = await this.ctx.yesimbot.getStoragePath(scope);
+    const storagePath = (await this.ctx.yesimbot.resource.get(scope)).path;
     const store = createReflectionStore(join(storagePath, "chat-learning-reflections.jsonl"));
     await store.init();
     this.reflectionStores.set(key, store);
     return store;
   }
 
-  private async reflectionForPreview(
-    scope: ChannelScope,
-    _styleBlock: string | undefined,
-  ): Promise<string | undefined> {
+  private async reflectionForPreview(scope: FullScope, _styleBlock: string | undefined): Promise<string | undefined> {
     const store = await this.reflectionStoreFor(scope);
     return buildReflectionHistory(store, this.config.maxInjectedReflections);
   }
@@ -895,9 +734,7 @@ export default class ChatLearningPlugin {
 
   private defaultGlobalPath(): string {
     const configured = this.config.globalRulePath?.trim();
-    return configured
-      ? resolve(this.ctx.baseDir, configured)
-      : join(this.ctx.baseDir, "data/yesimbot", "chat-learning-global.json");
+    return configured ? resolve(this.ctx.baseDir, configured) : join(this.ctx.baseDir, "data/yesimbot", "chat-learning-global.json");
   }
 
   private async globalHistoryStoreFor(): Promise<ChatHistoryStore> {
@@ -933,22 +770,13 @@ export default class ChatLearningPlugin {
         type: session.isDirect ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT,
         ...(channelName === undefined ? {} : { name: channelName }),
       },
-      user: {
-        id: session.userId ?? session.author?.id ?? "",
-        ...(userName === undefined ? {} : { name: userName }),
-      },
+      user: { id: session.userId ?? session.author?.id ?? "", ...(userName === undefined ? {} : { name: userName }) },
       messageId: session.messageId,
       elements: session.elements,
     });
-    const entry = createMessageEntry(record, {
-      id: `global-${session.messageId}-${session.timestamp}`,
-      timestamp: session.timestamp,
-    });
+    const entry = createMessageEntry(record, { id: `global-${session.messageId}-${session.timestamp}`, timestamp: session.timestamp });
     await store.append([entry]);
-    this.logger.debug("chat_learning.observe_global", {
-      scope: scopeOf(session),
-      messageId: session.messageId,
-    });
+    this.logger.debug("chat_learning.observe_global", { scope: scopeOf(session), messageId: session.messageId });
   }
 
   private async syncGlobalHistoryOnly(): Promise<void> {
@@ -956,11 +784,7 @@ export default class ChatLearningPlugin {
     await this.syncGlobalFromHistory(path, store, this.config);
   }
 
-  private async syncGlobalFromHistory(
-    globalPath: string,
-    globalStore: GlobalRuleStore,
-    config: ChatLearningConfig,
-  ): Promise<void> {
+  private async syncGlobalFromHistory(globalPath: string, globalStore: GlobalRuleStore, config: ChatLearningConfig): Promise<void> {
     const history = await this.globalHistoryStoreFor();
     const entries = await history.read();
     if (entries.length === 0) return;
@@ -985,49 +809,22 @@ export default class ChatLearningPlugin {
       const links = buildLinks(turns);
       const modelId = resolveChatLearningModelId(this.ctx, config);
       const patterns = modelId
-          ? await classifyPatternsWithModel(
-              this.ctx.yesimbot.model.resolveChatModel(modelId).model,
-              turns,
-              segments,
-              links,
-              {
-                maxThreads: config.maxModelThreads,
-                maxThreadMessages: config.maxModelThreadMessages,
-              },
-            ).catch((cause) => {
-            this.logger.warn("chat_learning.global_classify_failed", {
-              model: modelId,
-              cause: cause instanceof Error ? cause.message : String(cause),
-            });
+        ? await classifyPatternsWithModel(this.ctx.yesimbot.model.resolveChatModel(modelId).model, turns, segments, links, {
+            maxThreads: config.maxModelThreads,
+            maxThreadMessages: config.maxModelThreadMessages,
+          }).catch((cause) => {
+            this.logger.warn("chat_learning.global_classify_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
             return undefined;
           })
         : undefined;
       const responsePatterns = patterns?.responsePatterns ?? [];
       const initiationPatterns = patterns?.initiationPatterns ?? [];
-      const chainPatterns = buildLocalChainPatterns(
-        segments,
-        links,
-        responsePatterns,
-        initiationPatterns,
-      );
-      const localEmbeddings = await buildPatternEmbeddingMap(
-        this.ctx,
-        config,
-        responsePatterns,
-        initiationPatterns,
-      );
-      bank = mergeLocalPatterns(
-        bank,
-        responsePatterns,
-        initiationPatterns,
-        chainPatterns,
-        scopeKeyValue,
-        Date.now(),
-        {
-          localEmbeddings,
-          embeddingSimilarity: config.embeddingSimilarity,
-        },
-      );
+      const chainPatterns = buildLocalChainPatterns(segments, links, responsePatterns, initiationPatterns);
+      const localEmbeddings = await buildPatternEmbeddingMap(this.ctx, config, responsePatterns, initiationPatterns);
+      bank = mergeLocalPatterns(bank, responsePatterns, initiationPatterns, chainPatterns, scopeKeyValue, Date.now(), {
+        localEmbeddings,
+        embeddingSimilarity: config.embeddingSimilarity,
+      });
     }
 
     await globalStore.update(bank);
@@ -1042,24 +839,15 @@ export default class ChatLearningPlugin {
     });
   }
 
-  private async replyLong(
-    session: Session | undefined,
-    forwardText: string,
-    fallbackText: string,
-  ): Promise<string | undefined> {
+  private async replyLong(session: Session | undefined, forwardText: string, fallbackText: string): Promise<string | undefined> {
     if (!session || forwardText.length <= 200) return fallbackText;
     try {
       if (await sendChatLearningForward(session, forwardText)) {
-        this.logger.debug("chat_learning.forward_sent", {
-          scope: scopeOf(session),
-          chars: forwardText.length,
-        });
+        this.logger.debug("chat_learning.forward_sent", { scope: scopeOf(session), chars: forwardText.length });
         return undefined;
       }
     } catch (cause) {
-      this.logger.warn("chat_learning.forward_failed", {
-        cause: cause instanceof Error ? cause.message : String(cause),
-      });
+      this.logger.warn("chat_learning.forward_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
     }
     return fallbackText;
   }
@@ -1068,7 +856,7 @@ export default class ChatLearningPlugin {
 function buildSnapshot(
   entries: readonly AgentEntry[],
   config: ChatLearningConfig,
-  scope: ChannelScope,
+  scope: FullScope,
   corrections: readonly LinkCorrection[],
 ): ChatLearningState {
   const now = Date.now();
@@ -1083,23 +871,10 @@ function buildSnapshot(
   const segments = segmentTurns(turns);
   const links = applyCorrections(buildLinks(turns, { selfId: scope.selfId }), turns, corrections);
   const lastEntry = [...entries].reverse().find((entry) => entry.type === "message");
-  return {
-    lastEntryId: lastEntry?.id,
-    builtAt: now,
-    turns,
-    links,
-    segments,
-    responsePatterns: [],
-    initiationPatterns: [],
-  };
+  return { lastEntryId: lastEntry?.id, builtAt: now, turns, links, segments, responsePatterns: [], initiationPatterns: [] };
 }
 
-async function enrichWithModel(
-  state: ChatLearningState,
-  config: ChatLearningConfig,
-  ctx: Context,
-  logger: Logger,
-): Promise<ChatLearningState> {
+async function enrichWithModel(state: ChatLearningState, config: ChatLearningConfig, ctx: Context, logger: Logger): Promise<ChatLearningState> {
   const modelId = resolveChatLearningModelId(ctx, config);
   if (!modelId) return state;
   try {
@@ -1109,17 +884,9 @@ async function enrichWithModel(
       maxThreadMessages: config.maxModelThreadMessages,
     });
     if (!patterns) return state;
-    return {
-      ...state,
-      responsePatterns: patterns.responsePatterns,
-      initiationPatterns: patterns.initiationPatterns,
-      builtAt: Date.now(),
-    };
+    return { ...state, responsePatterns: patterns.responsePatterns, initiationPatterns: patterns.initiationPatterns, builtAt: Date.now() };
   } catch (cause) {
-    logger.warn("chat_learning.model_enrich_failed", {
-      model: modelId,
-      cause: cause instanceof Error ? cause.message : String(cause),
-    });
+    logger.warn("chat_learning.model_enrich_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
     return state;
   }
 }
@@ -1148,9 +915,7 @@ function formatGlobalChain(chain: GlobalChainPattern): string {
 function buildReflectionHistory(store: ReflectionStore, limit: number): string | undefined {
   const all = store.read();
   const human = all.filter((record) => record.source === "human").slice(-limit);
-  const auto = all
-    .filter((record) => record.source === "auto")
-    .slice(-(limit - human.length));
+  const auto = all.filter((record) => record.source === "auto").slice(-(limit - human.length));
   const records: readonly ReflectionRecord[] = [...human, ...auto];
   if (records.length === 0) return undefined;
   const lines = records.map((record) => {
@@ -1182,17 +947,12 @@ function humanReflectionText(score: ReflectionScore): string {
   return "这条最终发言风格一般，可以在语气或长度上再调整。";
 }
 
-function scopeOf(session: Session | undefined): ChannelScope | null {
+function scopeOf(session: Session | undefined): FullScope | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
-  return {
-    type: session.isDirect ? "direct" : "shared",
-    platform: session.platform,
-    selfId: session.selfId,
-    channelId: session.channelId,
-  };
+  return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId };
 }
 
-function scopeKey(scope: ChannelScope): string {
+function scopeKey(scope: FullScope): string {
   return `${scope.type}:${scope.platform}:${scope.selfId}:${scope.channelId}`;
 }
 

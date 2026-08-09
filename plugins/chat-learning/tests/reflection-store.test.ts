@@ -20,15 +20,7 @@ describe("createReflectionStore", () => {
     const store = createReflectionStore(path);
     await store.init();
 
-    await store.append({
-      source: "auto",
-      text: "bot message",
-      reflection: "更短一些",
-      score: undefined,
-      annotation: undefined,
-      messageId: "m1",
-      turnId: "t1",
-    });
+    await store.append({ source: "auto", text: "bot message", reflection: "更短一些", score: undefined, annotation: undefined, messageId: "m1", turnId: "t1" });
     const human = await store.append({
       source: "human",
       text: "bot message",

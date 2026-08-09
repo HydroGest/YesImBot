@@ -39,13 +39,7 @@ export function firstFrameToPng(input: Uint8Array): StaticFrame | undefined {
     if (reader.numFrames() === 0) return undefined;
     const width = reader.width;
     const height = reader.height;
-    if (
-      !Number.isInteger(width) ||
-      !Number.isInteger(height) ||
-      width <= 0 ||
-      height <= 0 ||
-      width * height > MAX_FRAME_PIXELS
-    ) {
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || width * height > MAX_FRAME_PIXELS) {
       return undefined;
     }
 
@@ -53,10 +47,7 @@ export function firstFrameToPng(input: Uint8Array): StaticFrame | undefined {
     reader.decodeAndBlitFrameRGBA(0, rgba);
     const png = new PNG({ width, height });
     png.data.set(rgba);
-    return {
-      bytes: new Uint8Array(PNG.sync.write(png)),
-      mediaType: "image/png",
-    };
+    return { bytes: new Uint8Array(PNG.sync.write(png)), mediaType: "image/png" };
   } catch {
     return undefined;
   }
@@ -66,10 +57,7 @@ export function staticToGif(input: Uint8Array, mediaType: string): StaticGif | u
   try {
     const image = decodeStaticImage(input, mediaType);
     if (!image || !hasValidDimensions(image.width, image.height)) return undefined;
-    return {
-      bytes: encodeRgbaToGif(image.rgba, image.width, image.height),
-      mediaType: "image/gif",
-    };
+    return { bytes: encodeRgbaToGif(image.rgba, image.width, image.height), mediaType: "image/gif" };
   } catch {
     return undefined;
   }
@@ -83,27 +71,17 @@ export function prepareStaticGif(input: Uint8Array, mediaType: string, enabled: 
 function decodeStaticImage(input: Uint8Array, mediaType: string): RgbaImage | undefined {
   if (mediaType === "image/png") {
     const png = PNG.sync.read(Buffer.from(input));
-    return {
-      width: png.width,
-      height: png.height,
-      rgba: new Uint8Array(png.data),
-    };
+    return { width: png.width, height: png.height, rgba: new Uint8Array(png.data) };
   }
   if (mediaType === "image/jpeg" || mediaType === "image/jpg") {
     const jpeg = decodeJpeg(Buffer.from(input), { useTArray: true });
-    return {
-      width: jpeg.width,
-      height: jpeg.height,
-      rgba: jpeg.data,
-    };
+    return { width: jpeg.width, height: jpeg.height, rgba: jpeg.data };
   }
   return undefined;
 }
 
 function hasValidDimensions(width: number, height: number): boolean {
-  return (
-    Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0 && width * height <= MAX_FRAME_PIXELS
-  );
+  return Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0 && width * height <= MAX_FRAME_PIXELS;
 }
 
 function encodeRgbaToGif(rgba: Uint8Array, width: number, height: number): Uint8Array {
@@ -128,9 +106,7 @@ function encodeRgbaToGif(rgba: Uint8Array, width: number, height: number): Uint8
   const palette = toGifPalette(colors, hasTransparency);
   const output = new Uint8Array(width * height * 2 + GIF_BUFFER_EXTRA);
   const writer = new GifWriter(output, width, height, { palette });
-  writer.addFrame(0, 0, width, height, indexed as unknown as number[], {
-    transparent: hasTransparency ? 1 : 0,
-  });
+  writer.addFrame(0, 0, width, height, indexed as unknown as number[], { transparent: hasTransparency ? 1 : 0 });
   writer.end();
   return new Uint8Array(output.slice(0, writer.getOutputBufferPosition()));
 }
@@ -161,12 +137,7 @@ function buildHistogram(rgba: Uint8Array): HistogramBin[] {
     bin.b += b;
     bin.count += 1;
   }
-  return [...bins.values()].map((bin) => ({
-    r: bin.r / bin.count,
-    g: bin.g / bin.count,
-    b: bin.b / bin.count,
-    count: bin.count,
-  }));
+  return [...bins.values()].map((bin) => ({ r: bin.r / bin.count, g: bin.g / bin.count, b: bin.b / bin.count, count: bin.count }));
 }
 
 function medianCutPalette(bins: readonly HistogramBin[], maxColors: number): Array<[number, number, number]> {

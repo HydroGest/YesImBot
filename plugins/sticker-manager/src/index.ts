@@ -1,5 +1,6 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
-import { Context, Logger } from "koishi";
+import { Context, Logger, type Bot } from "koishi";
+import type { ChannelResources, ChannelScope } from "koishi-plugin-yesimbot";
 
 import { ModelStickerClassifier } from "./classifier.js";
 import { registerStickerCommands } from "./commands.js";
@@ -22,9 +23,10 @@ export default class StickerManagerPlugin {
   public readonly logger: Logger;
   public readonly store: StickerStore;
 
+  private started = false;
+  private classifier: ModelStickerClassifier | undefined;
   private disposeAgentPlugin?: () => void;
   private disposeCommands?: () => void;
-  private started = false;
 
   public constructor(ctx: Context, config: StickerConfig) {
     this.ctx = ctx;
@@ -43,45 +45,9 @@ export default class StickerManagerPlugin {
     try {
       await this.store.ensure();
       const classifier = new ModelStickerClassifier(this.ctx, this.config);
-      this.disposeAgentPlugin = this.ctx.yesimbot.registerChannelPlugin(({ scope, bot, artifacts }) => {
-        const assets = this.ctx.yesimbot.assets.createStore(scope);
-        const artifactIds = new Map<string, string>();
-        return {
-          name: "sticker-manager",
-          tools: () =>
-            createStickerTools({
-              store: this.store,
-              classifier,
-              sender: new BotStickerSender(bot, scope),
-              assets,
-              scope,
-              config: this.config,
-            }),
-          onAppend: (entries) =>
-            projectStickerElements(entries, {
-              store: this.store,
-              artifacts,
-              scopeKey: scopeKeyFor(scope, this.config),
-              config: this.config,
-              artifactIds,
-            }),
-          transformEntries: (entries) =>
-            projectStickerHistoryElements(entries, {
-              store: this.store,
-              artifacts,
-              scopeKey: scopeKeyFor(scope, this.config),
-              config: this.config,
-              artifactIds,
-            }),
-          appendSystemPrompt: () => formatStickerPrompt(this.config),
-        } satisfies AgentPlugin;
-      });
-      this.disposeCommands = registerStickerCommands({
-        ctx: this.ctx,
-        store: this.store,
-        classifier,
-        config: this.config,
-      });
+      this.classifier = classifier;
+      this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
+      this.disposeCommands = registerStickerCommands({ ctx: this.ctx, store: this.store, classifier, config: this.config });
       this.logger.success("Sticker manager plugin started");
     } catch (cause) {
       this.started = false;
@@ -90,10 +56,44 @@ export default class StickerManagerPlugin {
     }
   }
 
+  public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin | null> {
+    const classifier = this.classifier;
+    if (!classifier) return null;
+    const resources = await this.ctx.yesimbot.resource.get(scope);
+    return this.createAgentPlugin(scope, bot, resources, classifier);
+  }
+
+  private createAgentPlugin(scope: ChannelScope, bot: Bot, resources: ChannelResources, classifier: ModelStickerClassifier): AgentPlugin {
+    const artifactIds = new Map<string, string>();
+    return {
+      name: "sticker-manager",
+      tools: () =>
+        createStickerTools({ store: this.store, classifier, sender: new BotStickerSender(bot, scope), assets: resources.assets, scope, config: this.config }),
+      onAppend: (entries) =>
+        projectStickerElements(entries, {
+          store: this.store,
+          artifacts: resources.artifacts,
+          scopeKey: scopeKeyFor(scope, this.config),
+          config: this.config,
+          artifactIds,
+        }),
+      transformEntries: (entries) =>
+        projectStickerHistoryElements(entries, {
+          store: this.store,
+          artifacts: resources.artifacts,
+          scopeKey: scopeKeyFor(scope, this.config),
+          config: this.config,
+          artifactIds,
+        }),
+      appendSystemPrompt: () => formatStickerPrompt(this.config),
+    } satisfies AgentPlugin;
+  }
+
   public async stop(): Promise<void> {
     this.started = false;
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
+    this.classifier = undefined;
     this.disposeCommands?.();
     this.disposeCommands = undefined;
     this.logger.info("Sticker manager plugin stopped");
@@ -108,13 +108,9 @@ function formatStickerPrompt(config: StickerConfig): string {
     "- sticker_steal 收藏当前消息中的图片；",
     "- sticker_send 发送指定或随机表情包。",
     "不要自己编造或直接输出 artifact://、asset://、workspace:// 等资源 URI；这些 URI 只能由系统生成。",
-    ...(config.tagMode
-      ? ["- sticker_tags 查询实验性标签；sticker_send 可传多个 tags，并会从匹配分随机范围内发送。"]
-      : []),
+    ...(config.tagMode ? ["- sticker_tags 查询实验性标签；sticker_send 可传多个 tags，并会从匹配分随机范围内发送。"] : []),
     ...(config.stickerElement
-      ? [
-          '也可以直接输出 <sticker id="..."/>、<sticker category="..."/> 或 <sticker tags="可爱,猫"/> 发送表情，不需要调用 sticker_send。',
-        ]
+      ? ['也可以直接输出 <sticker id="..."/>、<sticker category="..."/> 或 <sticker tags="可爱,猫"/> 发送表情，不需要调用 sticker_send。']
       : []),
     config.stickerElement ? "需要发图时可直接输出 <sticker/>，或调用 sticker_send。" : "需要发图时调用 sticker_send。",
     'sticker_search 返回的 id 只能用于 sticker_send 或 <sticker id="..."/>，不能拼成任何 URI。',

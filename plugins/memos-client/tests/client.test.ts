@@ -36,36 +36,19 @@ describe("memosConfigSchema", () => {
 
 describe("MemosCloudClient", () => {
   it("posts search requests with token auth", async () => {
-    const post = vi.fn<() => Promise<{ code: number; data: { memory_detail_list: never[] }; message: string }>>(
-      async () => ({ code: 0, data: { memory_detail_list: [] }, message: "ok" }),
-    );
-    const client = new MemosCloudClient({
-      baseUrl: DEFAULT_MEMOS_BASE_URL,
-      apiKey: "mpg-test",
-      timeoutMs: 1000,
-      post,
-    });
+    const post = vi.fn<() => Promise<{ code: number; data: { memory_detail_list: never[] }; message: string }>>(async () => ({
+      code: 0,
+      data: { memory_detail_list: [] },
+      message: "ok",
+    }));
+    const client = new MemosCloudClient({ baseUrl: DEFAULT_MEMOS_BASE_URL, apiKey: "mpg-test", timeoutMs: 1000, post });
 
-    await client.searchMemory({
-      user_id: "yb_ch_abc",
-      query: "hello",
-      filter: { and: [{ scene: "group_chat" }] },
-    });
+    await client.searchMemory({ user_id: "yb_ch_abc", query: "hello", filter: { and: [{ scene: "group_chat" }] } });
 
     expect(post).toHaveBeenCalledWith(
       "https://memos.memtensor.cn/api/openmem/v1/search/memory",
-      {
-        user_id: "yb_ch_abc",
-        query: "hello",
-        filter: { and: [{ scene: "group_chat" }] },
-      },
-      {
-        headers: {
-          Authorization: "Token mpg-test",
-          "Content-Type": "application/json",
-        },
-        timeout: 1000,
-      },
+      { user_id: "yb_ch_abc", query: "hello", filter: { and: [{ scene: "group_chat" }] } },
+      { headers: { Authorization: "Token mpg-test", "Content-Type": "application/json" }, timeout: 1000 },
     );
   });
 
@@ -75,33 +58,14 @@ describe("MemosCloudClient", () => {
       data: { task_id: "task_1" },
       message: "ok",
     }));
-    const client = new MemosCloudClient({
-      baseUrl: `${DEFAULT_MEMOS_BASE_URL}/`,
-      apiKey: "mpg-test",
-      timeoutMs: 2000,
-      post,
-    });
+    const client = new MemosCloudClient({ baseUrl: `${DEFAULT_MEMOS_BASE_URL}/`, apiKey: "mpg-test", timeoutMs: 2000, post });
 
-    await client.addMessage({
-      user_id: "yb_ch_abc",
-      conversation_id: "yb_conv_abc",
-      messages: [{ role: "user", content: "hello" }],
-    });
+    await client.addMessage({ user_id: "yb_ch_abc", conversation_id: "yb_conv_abc", messages: [{ role: "user", content: "hello" }] });
 
     expect(post).toHaveBeenCalledWith(
       "https://memos.memtensor.cn/api/openmem/v1/add/message",
-      {
-        user_id: "yb_ch_abc",
-        conversation_id: "yb_conv_abc",
-        messages: [{ role: "user", content: "hello" }],
-      },
-      {
-        headers: {
-          Authorization: "Token mpg-test",
-          "Content-Type": "application/json",
-        },
-        timeout: 2000,
-      },
+      { user_id: "yb_ch_abc", conversation_id: "yb_conv_abc", messages: [{ role: "user", content: "hello" }] },
+      { headers: { Authorization: "Token mpg-test", "Content-Type": "application/json" }, timeout: 2000 },
     );
   });
 
@@ -125,26 +89,13 @@ describe("MemosCloudClient", () => {
       baseUrl: DEFAULT_MEMOS_BASE_URL,
       apiKey: "mpg-secret-key",
       timeoutMs: 1000,
-      post: vi.fn<
-        () => Promise<{
-          code: number;
-          message: string;
-        }>
-      >(async () => ({
-        code: 40132,
-        message: "Authorization failed for Token mpg-secret-key",
-      })),
+      post: vi.fn<() => Promise<{ code: number; message: string }>>(async () => ({ code: 40132, message: "Authorization failed for Token mpg-secret-key" })),
     });
 
     await expect(client.searchMemory({ user_id: "yb_ch_abc", query: "hello" })).rejects.toSatisfy((error: unknown) => {
       expect(error).toBeInstanceOf(MemosCloudClientError);
-      expect(error).toMatchObject({
-        code: "api_error",
-        apiCode: 40132,
-      });
-      expect((error as Error).message).toBe(
-        "MemOS searchMemory failed with code 40132: Authorization failed for Token [REDACTED]",
-      );
+      expect(error).toMatchObject({ code: "api_error", apiCode: 40132 });
+      expect((error as Error).message).toBe("MemOS searchMemory failed with code 40132: Authorization failed for Token [REDACTED]");
       expect(JSON.stringify(error)).not.toContain("mpg-secret-key");
       return true;
     });

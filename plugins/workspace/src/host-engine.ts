@@ -1,7 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import { access } from "node:fs/promises";
-
 const BASH_PATH = "/bin/bash";
 const SETPRIV_PATH = "/usr/bin/setpriv";
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -9,35 +8,7 @@ const DEFAULT_MAX_OUTPUT_BYTES = 30 * 1024;
 const DEFAULT_KILL_GRACE_MS = 100;
 const TIMEOUT_EXIT_CODE = 124;
 const CANCEL_EXIT_CODE = 130;
-
-export interface HostCommandResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
-export interface HostRunnerInput {
-  command: string;
-  cwd: string;
-  env: NodeJS.ProcessEnv;
-  uid: number;
-  gid: number;
-  signal: AbortSignal;
-}
-
-export interface HostRunner {
-  run(input: HostRunnerInput): Promise<HostCommandResult>;
-  stop(): Promise<void>;
-}
-
-export interface HostRunnerOptions {
-  timeoutMs?: number;
-  maxOutputBytes?: number;
-  killGraceMs?: number;
-}
-
 type TerminationReason = "abort" | "timeout" | "stop";
-
 type QueueEntry = {
   input: HostRunnerInput;
   resolve: (result: HostCommandResult) => void;
@@ -47,66 +18,29 @@ type QueueEntry = {
   terminationReason?: TerminationReason;
   terminate?: (reason: TerminationReason) => void;
 };
-
-type BoundedBuffer = {
-  append(chunk: Buffer | string): void;
-  toString(): string;
-};
-
-function createBoundedBuffer(maxBytes: number): BoundedBuffer {
-  const chunks: Buffer[] = [];
-  let size = 0;
-
-  return {
-    append(chunk) {
-      if (size >= maxBytes) return;
-      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      const remaining = maxBytes - size;
-      chunks.push(bytes.length <= remaining ? bytes : bytes.subarray(0, remaining));
-      size += Math.min(bytes.length, remaining);
-    },
-    toString() {
-      return Buffer.concat(chunks).toString("utf8");
-    },
-  };
+type BoundedBuffer = { append(chunk: Buffer | string): void; toString(): string };
+export interface HostCommandResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
 }
-
-function cancellationResult(reason: TerminationReason, timeoutMs: number): HostCommandResult {
-  return {
-    stdout: "",
-    stderr: reason === "timeout" ? `Command timed out after ${timeoutMs}ms` : "Command cancelled",
-    exitCode: reason === "timeout" ? TIMEOUT_EXIT_CODE : CANCEL_EXIT_CODE,
-  };
+export interface HostRunnerInput {
+  command: string;
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  uid: number;
+  gid: number;
+  signal: AbortSignal;
 }
-
-function validateInput(input: HostRunnerInput): void {
-  if (process.platform === "win32") {
-    throw new Error("Host runner requires Unix process-group support");
-  }
-  if (typeof input.command !== "string") {
-    throw new Error("Host runner command must be a string");
-  }
-  if (typeof input.cwd !== "string" || input.cwd.length === 0) {
-    throw new Error("Host runner cwd is required");
-  }
-  if (!Number.isSafeInteger(input.uid) || input.uid < 0) {
-    throw new Error("Host runner requires a numeric uid");
-  }
-  if (!Number.isSafeInteger(input.gid) || input.gid < 0) {
-    throw new Error("Host runner requires a numeric gid");
-  }
+export interface HostRunner {
+  run(input: HostRunnerInput): Promise<HostCommandResult>;
+  stop(): Promise<void>;
 }
-
-async function hasSetpriv(): Promise<boolean> {
-  if (process.platform !== "linux") return false;
-  try {
-    await access(SETPRIV_PATH, fsConstants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
+export interface HostRunnerOptions {
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+  killGraceMs?: number;
 }
-
 class HostRunnerImpl implements HostRunner {
   private readonly timeoutMs: number;
   private readonly maxOutputBytes: number;
@@ -142,13 +76,7 @@ class HostRunnerImpl implements HostRunner {
     if (input.signal.aborted) return Promise.resolve(cancellationResult("abort", this.timeoutMs));
 
     return new Promise<HostCommandResult>((resolve, reject) => {
-      const entry: QueueEntry = {
-        input,
-        resolve,
-        reject,
-        state: "queued",
-        onAbort: () => this.cancel(entry, "abort"),
-      };
+      const entry: QueueEntry = { input, resolve, reject, state: "queued", onAbort: () => this.cancel(entry, "abort") };
       input.signal.addEventListener("abort", entry.onAbort, { once: true });
       this.queue.push(entry);
       this.startPump();
@@ -228,16 +156,7 @@ class HostRunnerImpl implements HostRunner {
     const args = ["--noprofile", "--norc", "-c", entry.input.command];
     const executable = useSetpriv ? SETPRIV_PATH : BASH_PATH;
     const executableArgs = useSetpriv
-      ? [
-          "--clear-groups",
-          "--reuid",
-          String(entry.input.uid),
-          "--regid",
-          String(entry.input.gid),
-          "--",
-          BASH_PATH,
-          ...args,
-        ]
+      ? ["--clear-groups", "--reuid", String(entry.input.uid), "--regid", String(entry.input.gid), "--", BASH_PATH, ...args]
       : args;
     const spawnOptions: SpawnOptions = {
       cwd: entry.input.cwd,
@@ -344,7 +263,56 @@ class HostRunnerImpl implements HostRunner {
     }
   }
 }
+function createBoundedBuffer(maxBytes: number): BoundedBuffer {
+  const chunks: Buffer[] = [];
+  let size = 0;
 
+  return {
+    append(chunk) {
+      if (size >= maxBytes) return;
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      const remaining = maxBytes - size;
+      chunks.push(bytes.length <= remaining ? bytes : bytes.subarray(0, remaining));
+      size += Math.min(bytes.length, remaining);
+    },
+    toString() {
+      return Buffer.concat(chunks).toString("utf8");
+    },
+  };
+}
+function cancellationResult(reason: TerminationReason, timeoutMs: number): HostCommandResult {
+  return {
+    stdout: "",
+    stderr: reason === "timeout" ? `Command timed out after ${timeoutMs}ms` : "Command cancelled",
+    exitCode: reason === "timeout" ? TIMEOUT_EXIT_CODE : CANCEL_EXIT_CODE,
+  };
+}
+function validateInput(input: HostRunnerInput): void {
+  if (process.platform === "win32") {
+    throw new Error("Host runner requires Unix process-group support");
+  }
+  if (typeof input.command !== "string") {
+    throw new Error("Host runner command must be a string");
+  }
+  if (typeof input.cwd !== "string" || input.cwd.length === 0) {
+    throw new Error("Host runner cwd is required");
+  }
+  if (!Number.isSafeInteger(input.uid) || input.uid < 0) {
+    throw new Error("Host runner requires a numeric uid");
+  }
+  if (!Number.isSafeInteger(input.gid) || input.gid < 0) {
+    throw new Error("Host runner requires a numeric gid");
+  }
+}
+async function hasSetpriv(): Promise<boolean> {
+  if (process.platform !== "linux") return false;
+  try {
+    await access(SETPRIV_PATH, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 export function createHostRunner(options: HostRunnerOptions = {}): HostRunner {
   return new HostRunnerImpl(options);
 }

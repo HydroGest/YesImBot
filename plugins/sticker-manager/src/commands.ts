@@ -6,13 +6,7 @@ import { prepareStaticGif } from "./frames.js";
 import { importDirectory, importEmojiHubTxt, importImageFile } from "./importers.js";
 import { migrateScope, migrateV3 } from "./migrate.js";
 import type { StickerStore } from "./store.js";
-import {
-  scopeKeyFor,
-  type ImportStats,
-  type MigrationResult,
-  type StickerConfig,
-  type StickerProjection,
-} from "./types.js";
+import { scopeKeyFor, type ImportStats, type MigrationResult, type StickerConfig, type StickerProjection } from "./types.js";
 
 export interface StickerCommandDeps {
   ctx: Context;
@@ -71,80 +65,50 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
   );
 
   track(
-    ctx
-      .command("yesimbot.sticker.info <category>", "查看分类详情", { authority: 2 })
-      .action(async ({ session }, category) => {
-        const scope = scopeOf(session);
-        if (!scope) return "无法获取当前频道信息";
-        if (!category) return "请提供分类名称";
-        const stickers = await store.listCategory(scopeKeyFor(scope, config), category);
-        if (stickers.length === 0) return `分类 "${category}" 中没有表情包`;
-        return `分类: ${category}\n数量: ${stickers.length}\n最新: ${new Date(stickers[0]!.createdAt).toLocaleString()}`;
-      }),
+    ctx.command("yesimbot.sticker.info <category>", "查看分类详情", { authority: 2 }).action(async ({ session }, category) => {
+      const scope = scopeOf(session);
+      if (!scope) return "无法获取当前频道信息";
+      if (!category) return "请提供分类名称";
+      const stickers = await store.listCategory(scopeKeyFor(scope, config), category);
+      if (stickers.length === 0) return `分类 "${category}" 中没有表情包`;
+      return `分类: ${category}\n数量: ${stickers.length}\n最新: ${new Date(stickers[0]!.createdAt).toLocaleString()}`;
+    }),
   );
 
   track(
-    ctx
-      .command("yesimbot.sticker.add <category> <file>", "导入单张表情包", { authority: 3 })
-      .action(async ({ session }, category, file) => {
-        const scope = scopeOf(session);
-        if (!scope) return "无法获取当前频道信息";
-        if (!category || !file) return "请提供分类和文件路径";
-        const stats = await importImageFile(
-          {
-            ctx,
-            store,
-            scopeKey: scopeKeyFor(scope, config),
-            maxImportFileBytes: config.maxImportFileBytes,
-          },
-          file,
-          category,
-        );
+    ctx.command("yesimbot.sticker.add <category> <file>", "导入单张表情包", { authority: 3 }).action(async ({ session }, category, file) => {
+      const scope = scopeOf(session);
+      if (!scope) return "无法获取当前频道信息";
+      if (!category || !file) return "请提供分类和文件路径";
+      const stats = await importImageFile({ ctx, store, scopeKey: scopeKeyFor(scope, config), maxImportFileBytes: config.maxImportFileBytes }, file, category);
+      return formatImportStats(stats);
+    }),
+  );
+
+  track(
+    ctx.command("yesimbot.sticker.import <sourceDir>", "从目录批量导入表情包", { authority: 4 }).action(async ({ session }, sourceDir) => {
+      const scope = scopeOf(session);
+      if (!scope) return "无法获取当前频道信息";
+      if (!sourceDir) return "请提供源文件夹路径";
+      try {
+        const stats = await importDirectory({ ctx, store, scopeKey: scopeKeyFor(scope, config), maxImportFileBytes: config.maxImportFileBytes }, sourceDir);
         return formatImportStats(stats);
-      }),
+      } catch (cause) {
+        return `导入失败: ${messageOf(cause)}`;
+      }
+    }),
   );
 
   track(
     ctx
-      .command("yesimbot.sticker.import <sourceDir>", "从目录批量导入表情包", { authority: 4 })
-      .action(async ({ session }, sourceDir) => {
-        const scope = scopeOf(session);
-        if (!scope) return "无法获取当前频道信息";
-        if (!sourceDir) return "请提供源文件夹路径";
-        try {
-          const stats = await importDirectory(
-            {
-              ctx,
-              store,
-              scopeKey: scopeKeyFor(scope, config),
-              maxImportFileBytes: config.maxImportFileBytes,
-            },
-            sourceDir,
-          );
-          return formatImportStats(stats);
-        } catch (cause) {
-          return `导入失败: ${messageOf(cause)}`;
-        }
-      }),
-  );
-
-  track(
-    ctx
-      .command("yesimbot.sticker.import.emojihub <category> <filePath>", "导入 emojihub-bili 格式 TXT", {
-        authority: 4,
-      })
+      .command("yesimbot.sticker.import.emojihub <category> <filePath>", "导入 emojihub-bili 格式 TXT", { authority: 4 })
       .action(async ({ session }, category, filePath) => {
         const scope = scopeOf(session);
         if (!scope) return "无法获取当前频道信息";
         if (!category || !filePath) return "请提供分类名称和 TXT 文件路径";
         try {
           const stats = await importEmojiHubTxt(
-            {
-              ctx,
-              store,
-              scopeKey: scopeKeyFor(scope, config),
-              maxImportFileBytes: config.maxImportFileBytes,
-            },
+            { ctx, store, scopeKey: scopeKeyFor(scope, config), maxImportFileBytes: config.maxImportFileBytes },
             filePath,
             category,
           );
@@ -156,20 +120,18 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
   );
 
   track(
-    ctx
-      .command("yesimbot.sticker.rename <oldName> <newName>", "重命名表情包分类", { authority: 3 })
-      .action(async ({ session }, oldName, newName) => {
-        const scope = scopeOf(session);
-        if (!scope) return "无法获取当前频道信息";
-        if (!oldName || !newName) return "请提供原分类名和新分类名";
-        if (oldName === newName) return "新分类名不能与原分类名相同";
-        try {
-          const count = await store.renameCategory(scopeKeyFor(scope, config), oldName, newName);
-          return `已将分类 "${oldName}" 重命名为 "${newName}"，共更新 ${count} 个表情包`;
-        } catch (cause) {
-          return `重命名失败: ${messageOf(cause)}`;
-        }
-      }),
+    ctx.command("yesimbot.sticker.rename <oldName> <newName>", "重命名表情包分类", { authority: 3 }).action(async ({ session }, oldName, newName) => {
+      const scope = scopeOf(session);
+      if (!scope) return "无法获取当前频道信息";
+      if (!oldName || !newName) return "请提供原分类名和新分类名";
+      if (oldName === newName) return "新分类名不能与原分类名相同";
+      try {
+        const count = await store.renameCategory(scopeKeyFor(scope, config), oldName, newName);
+        return `已将分类 "${oldName}" 重命名为 "${newName}"，共更新 ${count} 个表情包`;
+      } catch (cause) {
+        return `重命名失败: ${messageOf(cause)}`;
+      }
+    }),
   );
 
   track(
@@ -227,12 +189,7 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
         for (const sticker of targets) {
           try {
             const bytes = await store.readBytes(sticker);
-            const result = await classifier.classify({
-              bytes,
-              mediaType: sticker.mime,
-              categories,
-              signal: undefined,
-            });
+            const result = await classifier.classify({ bytes, mediaType: sticker.mime, categories, signal: undefined });
             const classified = result?.category;
             if (!classified) {
               if (clear) {
@@ -282,9 +239,7 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
         if (stickers.length === 0) return `分类 "${category}" 中没有表情包`;
         if (!session) return "无法获取当前会话";
         if (!options?.force) {
-          await session.send(
-            `确认删除分类 "${category}" 吗？该分类下有 ${stickers.length} 个表情包。回复“确认删除”继续。`,
-          );
+          await session.send(`确认删除分类 "${category}" 吗？该分类下有 ${stickers.length} 个表情包。回复“确认删除”继续。`);
           const response = await session.prompt(60_000);
           if (response !== "确认删除") return "操作已取消";
         }
@@ -316,8 +271,7 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
             ctx,
             store,
             scopeKey,
-            channelMatch:
-              config.scope === "channel" ? { platform: scope.platform, channelId: scope.channelId } : undefined,
+            channelMatch: config.scope === "channel" ? { platform: scope.platform, channelId: scope.channelId } : undefined,
             includeUnsourced: options?.includeUnsourced === true,
             sourceDir: stringOption(options, "source"),
             limit: numberOption(options, "limit"),
@@ -374,13 +328,7 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
   };
 }
 
-async function sendSticker(
-  session: Session,
-  scopeKey: string,
-  store: StickerStore,
-  sticker: StickerProjection,
-  sendStaticAsGif: boolean,
-): Promise<void> {
+async function sendSticker(session: Session, scopeKey: string, store: StickerStore, sticker: StickerProjection, sendStaticAsGif: boolean): Promise<void> {
   const bytes = await store.readBytes(sticker);
   const prepared = prepareStaticGif(bytes, sticker.mime, sendStaticAsGif);
   const dataUrl = `data:${prepared.mediaType};base64,${Buffer.from(prepared.bytes).toString("base64")}`;
@@ -390,12 +338,7 @@ async function sendSticker(
 
 function scopeOf(session: Session | undefined): ChannelScope | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
-  return {
-    type: session.isDirect ? "direct" : "shared",
-    platform: session.platform,
-    selfId: session.selfId,
-    channelId: session.channelId,
-  };
+  return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId };
 }
 
 function resolveScopeOption(value: unknown, scope: ChannelScope, currentScopeKey: string): string {
@@ -414,12 +357,7 @@ function formatImportStats(stats: ImportStats): string {
 }
 
 function formatMigrationStats(stats: MigrationResult): string {
-  const lines = [
-    `总数: ${stats.total}`,
-    `导入: ${stats.imported}`,
-    `重复: ${stats.duplicate}`,
-    `失败: ${stats.failed}`,
-  ];
+  const lines = [`总数: ${stats.total}`, `导入: ${stats.imported}`, `重复: ${stats.duplicate}`, `失败: ${stats.failed}`];
   if (stats.removedSource > 0) lines.push(`删除来源记录: ${stats.removedSource}`);
   if (stats.failedItems.length > 0) {
     lines.push("", `失败项: ${stats.failedItems.slice(0, 10).join("\n")}`);

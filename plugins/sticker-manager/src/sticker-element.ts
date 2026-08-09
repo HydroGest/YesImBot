@@ -6,7 +6,8 @@ import { prepareStaticGif } from "./frames.js";
 import type { StickerStore } from "./store.js";
 import { pickBestTaggedSticker } from "./tools.js";
 import type { StickerConfig, StickerProjection } from "./types.js";
-
+const STICKER_ARTIFACT_SOURCE = /^artifact:\/\/sticker\//;
+const STICKER_ID = /^[a-f0-9]{64}$/i;
 interface StickerElementOptions {
   readonly store: StickerStore;
   readonly artifacts: ArtifactStore;
@@ -14,14 +15,7 @@ interface StickerElementOptions {
   readonly config: StickerConfig;
   readonly artifactIds?: Map<string, string>;
 }
-
-const STICKER_ARTIFACT_SOURCE = /^artifact:\/\/sticker\//;
-const STICKER_ID = /^[a-f0-9]{64}$/i;
-
-export async function projectStickerElements(
-  entries: readonly AgentEntry[],
-  options: StickerElementOptions,
-): Promise<AgentEntry[]> {
+export async function projectStickerElements(entries: readonly AgentEntry[], options: StickerElementOptions): Promise<AgentEntry[]> {
   if (!options.config.stickerElement) return [...entries];
 
   const result: AgentEntry[] = [];
@@ -40,11 +34,7 @@ export async function projectStickerElements(
   }
   return result;
 }
-
-export async function projectStickerHistoryElements(
-  entries: readonly AgentEntry[],
-  options: StickerElementOptions,
-): Promise<AgentEntry[]> {
+export async function projectStickerHistoryElements(entries: readonly AgentEntry[], options: StickerElementOptions): Promise<AgentEntry[]> {
   if (!options.config.stickerElement) return [...entries];
 
   const result: AgentEntry[] = [];
@@ -63,27 +53,19 @@ export async function projectStickerHistoryElements(
   }
   return result;
 }
-
 function assistantText(content: unknown): string | undefined {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return undefined;
   return content
     .map((part) => {
       if (typeof part === "string") return part;
-      if (
-        part &&
-        typeof part === "object" &&
-        "type" in part &&
-        part.type === "text" &&
-        typeof (part as { text?: unknown }).text === "string"
-      ) {
+      if (part && typeof part === "object" && "type" in part && part.type === "text" && typeof (part as { text?: unknown }).text === "string") {
         return (part as { text: string }).text;
       }
       return "";
     })
     .join("");
 }
-
 async function replaceStickerElements(raw: string, options: StickerElementOptions): Promise<string> {
   const tree = h.parse(raw);
   let changed = false;
@@ -97,7 +79,6 @@ async function replaceStickerElements(raw: string, options: StickerElementOption
 
   return changed ? prepared.map((element) => String(element)).join("") : raw;
 }
-
 async function replaceStickerHistoryElements(raw: string, options: StickerElementOptions): Promise<string> {
   const tree = h.parse(raw);
   let changed = false;
@@ -111,7 +92,6 @@ async function replaceStickerHistoryElements(raw: string, options: StickerElemen
 
   return changed ? prepared.map((element) => String(element)).join("") : raw;
 }
-
 async function replaceHistoryElement(element: Element, options: StickerElementOptions): Promise<Element | undefined> {
   if (element.type === "img" && isStickerArtifactSource(element.attrs.src)) {
     const id = await resolveStickerArtifactId(element.attrs.src, options);
@@ -128,7 +108,6 @@ async function replaceHistoryElement(element: Element, options: StickerElementOp
   }
   return changed ? h(element.type, element.attrs, children) : element;
 }
-
 async function replaceElement(element: Element, options: StickerElementOptions): Promise<Element | undefined> {
   if (element.type === "sticker") {
     try {
@@ -136,10 +115,9 @@ async function replaceElement(element: Element, options: StickerElementOptions):
       if (!sticker) return undefined;
       const bytes = await options.store.readBytes(sticker);
       const prepared = prepareStaticGif(bytes, sticker.mime, options.config.sendStaticAsGif);
-      const uri = await options.artifacts.forTool("sticker").put(prepared.bytes, {
-        mediaType: prepared.mediaType,
-        filename: `${sticker.id}.${extensionOf(prepared.mediaType)}`,
-      });
+      const uri = await options.artifacts
+        .forTool("sticker")
+        .put(prepared.bytes, { mediaType: prepared.mediaType, filename: `${sticker.id}.${extensionOf(prepared.mediaType)}` });
       options.artifactIds?.set(uri, sticker.id);
       await options.store.markUsed(options.scopeKey, sticker.id);
       return h("img", { src: uri });
@@ -163,7 +141,6 @@ async function replaceElement(element: Element, options: StickerElementOptions):
   }
   return changed ? h(element.type, element.attrs, children) : element;
 }
-
 async function resolveStickerArtifactId(uri: string, options: StickerElementOptions): Promise<string | undefined> {
   const known = options.artifactIds?.get(uri);
   if (known) return known;
@@ -177,48 +154,32 @@ async function resolveStickerArtifactId(uri: string, options: StickerElementOpti
     return undefined;
   }
 }
-
 function isStickerArtifactSource(value: unknown): value is string {
   return typeof value === "string" && STICKER_ARTIFACT_SOURCE.test(value);
 }
-
 function stickerIdFromFilename(filename: string | undefined): string | undefined {
   if (!filename) return undefined;
   const dot = filename.lastIndexOf(".");
   return dot > 0 ? filename.slice(0, dot) : undefined;
 }
-
-async function resolveSticker(
-  attrs: Readonly<Record<string, unknown>>,
-  options: StickerElementOptions,
-): Promise<StickerProjection | null> {
+async function resolveSticker(attrs: Readonly<Record<string, unknown>>, options: StickerElementOptions): Promise<StickerProjection | null> {
   const id = stringAttr(attrs.id);
   if (id) return options.store.get(options.scopeKey, id);
 
   const category = stringAttr(attrs.category);
   const tags = parseTags(attrs.tags);
   if (tags.length > 0) {
-    return pickBestTaggedSticker(
-      options.store,
-      options.scopeKey,
-      tags,
-      category,
-      options.config.fuzzyTagMatch,
-      options.config.tagRandomRange,
-    );
+    return pickBestTaggedSticker(options.store, options.scopeKey, tags, category, options.config.fuzzyTagMatch, options.config.tagRandomRange);
   }
   return options.store.random(options.scopeKey, category);
 }
-
 function parseTags(value: unknown): string[] {
   if (typeof value !== "string") return [];
   return value.split(/[,，;；\s]+/).filter((tag) => tag.length > 0);
 }
-
 function stringAttr(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
-
 function extensionOf(mediaType: string): string {
   const match = /^image\/([a-z0-9.+-]+)$/.exec(mediaType);
   return match?.[1] ?? "bin";

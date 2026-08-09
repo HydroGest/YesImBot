@@ -3,15 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { cosineSimilarity } from "./embedding.js";
-import type {
-  GlobalChainPattern,
-  GlobalPattern,
-  GlobalPatternKind,
-  GlobalRuleBank,
-  InitiationPattern,
-  LocalChainPattern,
-  ResponsePattern,
-} from "./types.js";
+import type { GlobalChainPattern, GlobalPattern, GlobalPatternKind, GlobalRuleBank, InitiationPattern, LocalChainPattern, ResponsePattern } from "./types.js";
 
 export interface GlobalRuleStore {
   init(): Promise<void>;
@@ -63,12 +55,7 @@ export function createGlobalRuleStore(filePath: string): GlobalRuleStore {
 }
 
 export function createEmptyGlobalRuleBank(): GlobalRuleBank {
-  return {
-    version: 1,
-    updatedAt: Date.now(),
-    patterns: [],
-    chains: [],
-  };
+  return { version: 1, updatedAt: Date.now(), patterns: [], chains: [] };
 }
 
 export function mergeLocalPatterns(
@@ -78,10 +65,7 @@ export function mergeLocalPatterns(
   chainPatterns: readonly LocalChainPattern[],
   scopeKey: string,
   now: number,
-  options: {
-    localEmbeddings?: ReadonlyMap<string, readonly number[]>;
-    embeddingSimilarity?: number;
-  } = {},
+  options: { localEmbeddings?: ReadonlyMap<string, readonly number[]>; embeddingSimilarity?: number } = {},
 ): GlobalRuleBank {
   const byKey = new Map(bank.patterns.map((pattern) => [patternKey(pattern), cloneGlobalPattern(pattern)]));
   const byChainKey = new Map(bank.chains.map((chain) => [chainKey(chain.chain), cloneGlobalChain(chain)]));
@@ -117,31 +101,17 @@ export function mergeLocalPatterns(
     mergeChainPattern(byChainKey, chain.chain, chain.frequency, channelKey, now);
   }
 
-  return {
-    version: bank.version,
-    updatedAt: now,
-    patterns: [...byKey.values()].sort(byScore),
-    chains: [...byChainKey.values()].sort(byChainScore),
-  };
+  return { version: bank.version, updatedAt: now, patterns: [...byKey.values()].sort(byScore), chains: [...byChainKey.values()].sort(byChainScore) };
 }
 
-export function selectGlobalPatterns(
-  bank: GlobalRuleBank,
-  kind: GlobalPatternKind,
-  minChannels: number,
-  max: number,
-): readonly GlobalPattern[] {
+export function selectGlobalPatterns(bank: GlobalRuleBank, kind: GlobalPatternKind, minChannels: number, max: number): readonly GlobalPattern[] {
   return bank.patterns
     .filter((pattern) => pattern.kind === kind && pattern.channels.length >= minChannels)
     .sort(byScore)
     .slice(0, max);
 }
 
-export function selectGlobalChains(
-  bank: GlobalRuleBank,
-  minChannels: number,
-  max: number,
-): readonly GlobalChainPattern[] {
+export function selectGlobalChains(bank: GlobalRuleBank, minChannels: number, max: number): readonly GlobalChainPattern[] {
   return bank.chains
     .filter((chain) => chain.channels.length >= minChannels)
     .sort(byChainScore)
@@ -160,14 +130,7 @@ function mergePattern(
   const key = `${kind}:${intent}:${phrase}`;
   const existing = byKey.get(key);
   if (!existing) {
-    byKey.set(key, {
-      kind,
-      intent,
-      phrase,
-      channels: [{ key: channelKey, frequency, lastSeenAt: now }],
-      firstSeenAt: now,
-      lastSeenAt: now,
-    });
+    byKey.set(key, { kind, intent, phrase, channels: [{ key: channelKey, frequency, lastSeenAt: now }], firstSeenAt: now, lastSeenAt: now });
     return;
   }
 
@@ -197,15 +160,7 @@ function mergePatternWithEmbedding(
   if (target) {
     const updated = embedding && !target.embedding ? { ...target, embedding: [...embedding] } : target;
     byKey.set(patternKey(updated), updated);
-    mergePattern(
-      byKey,
-      updated.kind,
-      updated.intent,
-      updated.phrase,
-      frequency,
-      channelKey,
-      now,
-    );
+    mergePattern(byKey, updated.kind, updated.intent, updated.phrase, frequency, channelKey, now);
     return;
   }
 
@@ -237,29 +192,14 @@ function findSimilarPattern(
 }
 
 function cloneGlobalPattern(pattern: GlobalPattern): GlobalPattern {
-  return {
-    ...pattern,
-    channels: pattern.channels.map((channel) => ({ ...channel })),
-    ...(pattern.embedding ? { embedding: [...pattern.embedding] } : {}),
-  };
+  return { ...pattern, channels: pattern.channels.map((channel) => ({ ...channel })), ...(pattern.embedding ? { embedding: [...pattern.embedding] } : {}) };
 }
 
-function mergeChainPattern(
-  byKey: Map<string, GlobalChainPattern>,
-  chain: readonly string[],
-  frequency: number,
-  channelKey: string,
-  now: number,
-): void {
+function mergeChainPattern(byKey: Map<string, GlobalChainPattern>, chain: readonly string[], frequency: number, channelKey: string, now: number): void {
   const key = chainKey(chain);
   const existing = byKey.get(key);
   if (!existing) {
-    byKey.set(key, {
-      chain: [...chain],
-      channels: [{ key: channelKey, frequency, lastSeenAt: now }],
-      firstSeenAt: now,
-      lastSeenAt: now,
-    });
+    byKey.set(key, { chain: [...chain], channels: [{ key: channelKey, frequency, lastSeenAt: now }], firstSeenAt: now, lastSeenAt: now });
     return;
   }
 
@@ -274,11 +214,7 @@ function mergeChainPattern(
 }
 
 function cloneGlobalChain(chain: GlobalChainPattern): GlobalChainPattern {
-  return {
-    ...chain,
-    chain: [...chain.chain],
-    channels: chain.channels.map((channel) => ({ ...channel })),
-  };
+  return { ...chain, chain: [...chain.chain], channels: chain.channels.map((channel) => ({ ...channel })) };
 }
 
 function patternKey(pattern: GlobalPattern): string {

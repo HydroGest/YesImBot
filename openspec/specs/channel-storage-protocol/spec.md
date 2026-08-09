@@ -2,39 +2,40 @@
 
 ## Requirements
 
-### Requirement: Channel root has a versionless Manifest
-Core MUST create `channel.json` atomically before returning a channel root. A shared Manifest contains exactly `platform`, `channelId`, and `createdAt`; a direct Manifest additionally contains `selfId`.
+### Requirement: Channel and Conversation Ownership
+Core MUST converge persistent channel state under one `Channel` owner containing an immutable `ChannelScope`, a readable root, stable `ChannelResources`, and one `Conversation`. `Channels` MUST own one startup Manifest scan and MUST share concurrent first resolution and in-flight Channel creation.
 
-#### Scenario: Core creates a shared channel root
-- **WHEN** `getStoragePath(scope)` is first called for a shared scope
-- **THEN** the Manifest omits the current Bot selfId
+#### Scenario: Shared scope resolves persistently
+- **WHEN** Core resolves a shared scope
+- **THEN** its persistent identity MUST be `[platform, channelId]`
+- **AND** a different current Bot selfId MUST resolve the same Channel
 
-### Requirement: Storage path facade returns the complete channel root
-`getStoragePath(scope)` MUST asynchronously create or validate the channel root and return that root. Plugins may create their own children under it.
+#### Scenario: Direct scope resolves persistently
+- **WHEN** Core resolves a direct scope
+- **THEN** its persistent identity MUST be `[platform, selfId, channelId]`
+- **AND** a direct scope without selfId MUST be rejected
 
-#### Scenario: A workspace plugin requests storage
-- **WHEN** it calls `getStoragePath(scope)`
-- **THEN** it receives the channel root and creates its `workspace/` child itself
+### Requirement: Versionless Channel Manifest
+Core MUST create `channel.json` atomically before returning a channel root. A shared Manifest contains `platform`, `channelId`, and `createdAt`; a direct Manifest additionally contains `selfId`. Malformed, mismatched, legacy, escaping, and symlinked entries MUST be ignored or rejected without overwrite.
 
-### Requirement: Startup scan rejects invalid storage entries
-Core MUST ignore malformed, mismatched, and legacy channel entries during startup without overwriting them. It MUST retain symlink and path-containment protection when validating a channel root.
+#### Scenario: Shared channel root is created
+- **WHEN** `resource.get(scope)` is first called for a shared scope
+- **THEN** the returned ChannelResources MUST belong to a root whose Manifest omits the current Bot selfId
 
-### Requirement: Reset preserves non-Core plugin data
-`reset(scope)` MUST remove only `sessions/` and `assets/`, preserving `channel.json` and plugin-created children. Shared reset MUST not require assignee admission.
+### Requirement: Resources Facade and Stable Owner
+The public facade MUST expose `resource.get(scope)` and `resource.use(reader)`. `resource.get(scope)` MUST return the Channel's stable ChannelResources owner rather than a temporary Store. ChannelResources MUST expose its path and keep Asset and Artifact semantics separate. ResourceReader MUST use `init(resources, uri, options)`.
 
-### Requirement: Channel storage does not use a global registry file
-Core MUST NOT create or read `channels.json`. Legacy directory and Manifest data MUST remain in place without migration or fallback reads.
+#### Scenario: Repeated resource lookup
+- **WHEN** a plugin requests resources for the same scope more than once
+- **THEN** Core MUST return the same ChannelResources owner
 
-### Requirement: Channel directory limits are enforced
-Core MUST reject a safe readable channel directory basename longer than 200 characters.
+### Requirement: Scoped Asset Storage
+ChannelResources MUST provide a scoped AssetStore with SHA-256-truncated 32-character lowercase hexadecimal IDs, exact or unique 7-32 character lowercase hexadecimal prefix lookup, atomic deduplication, and scoped clear behavior. The concrete store implementation MUST remain private. Presentation elements and URI strings MUST be constructed by the caller rather than by AssetStore. Invalid, absent, or ambiguous references MUST reject. Old asset references MUST NOT be read or migrated.
 
-### Requirement: Scoped Asset Service
-The public facade MUST expose `AssetService.createStore(scope)`. A Store is scoped by the channel tuple, exposes `put`, `get`, and `clear`, and its concrete implementation remains private.
-
-#### Scenario: Store persists image bytes
-- **WHEN** a Store receives bytes through `put()`
+#### Scenario: Store persists bytes
+- **WHEN** a ChannelResources asset store receives bytes through `put()`
 - **THEN** it MUST atomically deduplicate them under the first 32 lowercase hexadecimal characters of their SHA-256 digest
-- **AND** return `h("img", { id })` containing that complete ID
+- **AND** it MUST return that complete canonical ID
 
 #### Scenario: Store resolves an asset reference
 - **WHEN** `get()` receives a 7-32 character lowercase hexadecimal ID or prefix
@@ -45,3 +46,21 @@ The public facade MUST expose `AssetService.createStore(scope)`. A Store is scop
 - **WHEN** a scoped Store is cleared
 - **THEN** only that channel's assets are removed
 - **AND** old `asset_` references are not read or migrated
+### Requirement: Scoped Artifact Storage
+ChannelResources MUST provide Artifact storage separately from Asset storage. Artifact IDs, URI scheme, metadata, safe reads, and clear behavior MUST remain distinct from image assets; an artifact operation MUST NOT resolve or clear channel assets.
+
+### Requirement: Channel tool artifact storage
+Core MUST expose the current channel's `ChannelResources.artifacts.forTool(toolName)` writer to channel plugins. Its `put(bytes, { mediaType, filename })` MUST generate a canonical lowercase UUID v7 without a third-party dependency, atomically persist an immutable artifact under `artifacts/<tool-name>/<uuid-v7>/data` and `metadata.json`, and return `artifact://<tool-name>/<uuid-v7>`. `metadata.json` MUST contain only a safe basename filename, media-type hint, and byte length. Core reset MUST remove that channel's `artifacts/` directory with its sessions and assets.
+
+#### Scenario: A tool persists a media artifact
+- **WHEN** a channel plugin writes image bytes through its `forTool("mcp_screenshot")` writer
+- **THEN** Core MUST return an `artifact://mcp_screenshot/<uuid-v7>` URI only after atomically publishing both data and metadata
+
+#### Scenario: Reset clears tool artifacts
+- **WHEN** Core resets a channel
+- **THEN** it MUST remove that channel's `artifacts/` directory
+- **AND** it MUST preserve that channel's `workspace/` directory
+### Requirement: Reset Preserves Plugin Data
+The private reset path MUST stop and remove the cached runtime, clear only Core-owned conversation history, assets, and artifacts, and preserve `channel.json`, workspace, and every other plugin-created child. Reset MUST NOT require shared assignee admission.
+### Requirement: No Legacy Storage Reads
+Core MUST NOT read or migrate old directory layouts, old Manifests, old JSONL formats, or global channel registry files. Current readable channel roots and their authoritative Manifests are the only persistent channel format.

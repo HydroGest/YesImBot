@@ -40,14 +40,7 @@ const identity: MemosIdentity = {
 };
 
 function toolContext(turnId = "turn-real"): AgentToolExecuteContext {
-  return {
-    runtime: { id: "runtime" },
-    channel: {} as never,
-    state: {} as never,
-    storage: {} as never,
-    turnId,
-    toolCallId: "tool-call",
-  };
+  return { runtime: { id: "runtime" }, channel: {} as never, state: {} as never, storage: {} as never, turnId, toolCallId: "tool-call" };
 }
 
 function schemaText(value: unknown): string {
@@ -56,11 +49,7 @@ function schemaText(value: unknown): string {
 
 describe("MemOS tools", () => {
   it("exposes minimal search input", () => {
-    const tool = createSearchMessageTool({
-      client: {} as never,
-      config,
-      resolveIdentity: () => identity,
-    });
+    const tool = createSearchMessageTool({ client: {} as never, config, resolveIdentity: () => identity });
     const schema = schemaText(tool.inputSchema);
 
     expect(tool.name).toBe("search_message");
@@ -82,19 +71,10 @@ describe("MemOS tools", () => {
   });
 
   it("constructs search requests with runtime-owned filters", async () => {
-    const searchMemory = vi.fn<() => Promise<unknown>>(async () => ({
-      code: 0,
-      data: { memory_detail_list: [], preference_detail_list: [] },
-      message: "ok",
-    }));
+    const searchMemory = vi.fn<() => Promise<unknown>>(async () => ({ code: 0, data: { memory_detail_list: [], preference_detail_list: [] }, message: "ok" }));
     const tool = createSearchMessageTool({
       client: { searchMemory } as never,
-      config: {
-        ...config,
-        searchFilterMode: "strict",
-        searchTags: ["yesimbot", "qq_import"],
-        searchImportSources: ["qq_chat"],
-      },
+      config: { ...config, searchFilterMode: "strict", searchTags: ["yesimbot", "qq_import"], searchImportSources: ["qq_chat"] },
       resolveIdentity: () => identity,
     });
 
@@ -124,11 +104,7 @@ describe("MemOS tools", () => {
       () => Promise<{
         code: number;
         data: {
-          memory_detail_list: Array<{
-            memory_value: string;
-            confidence?: number;
-            relativity?: number;
-          }>;
+          memory_detail_list: Array<{ memory_value: string; confidence?: number; relativity?: number }>;
           preference_detail_list: Array<{ preference: string }>;
         };
         message: string;
@@ -147,22 +123,12 @@ describe("MemOS tools", () => {
           },
           { memory_value: "" },
         ],
-        preference_detail_list: [
-          {
-            preference: "偏好简洁回答。",
-            tags: ["yesimbot"],
-            source: { type: "memory_source" },
-          },
-        ],
+        preference_detail_list: [{ preference: "偏好简洁回答。", tags: ["yesimbot"], source: { type: "memory_source" } }],
       },
       message: "ok",
     }));
     const resolveIdentity = vi.fn<() => MemosIdentity>(() => identity);
-    const tool = createSearchMessageTool({
-      client: { searchMemory } as never,
-      config,
-      resolveIdentity,
-    });
+    const tool = createSearchMessageTool({ client: { searchMemory } as never, config, resolveIdentity });
 
     await expect(tool.execute?.({ query: "项目包管理器" }, toolContext())).resolves.toEqual({
       outcome: "completed",
@@ -176,14 +142,7 @@ describe("MemOS tools", () => {
           confidence: 0.91,
           relativity: 0.82,
         },
-        {
-          content: "偏好简洁回答。",
-          type: "preference",
-          source: {
-            type: "memory_source",
-            tags: ["yesimbot"],
-          },
-        },
+        { content: "偏好简洁回答。", type: "preference", source: { type: "memory_source", tags: ["yesimbot"] } },
       ],
     });
 
@@ -191,9 +150,7 @@ describe("MemOS tools", () => {
     expect(searchMemory).toHaveBeenCalledWith({
       user_id: "yb_subject_chat",
       query: "项目包管理器",
-      filter: {
-        and: [{ scene: "group_chat" }, { memory_scope: "channel" }],
-      },
+      filter: { and: [{ scene: "group_chat" }, { memory_scope: "channel" }] },
       relativity: 0.67,
       memory_limit_number: 3,
       include_preference: true,
@@ -216,82 +173,38 @@ describe("MemOS tools", () => {
 
     const result = await tool.execute?.({ query: "secret" }, toolContext());
 
-    expect(result).toEqual({
-      outcome: "failed",
-      memories: [],
-      error: {
-        code: "request_failed",
-        message: "Authorization failed for Token [REDACTED]",
-      },
-    });
+    expect(result).toEqual({ outcome: "failed", memories: [], error: { code: "request_failed", message: "Authorization failed for Token [REDACTED]" } });
     expect(JSON.stringify(result)).not.toContain("mpg-secret");
     expect(warn).toHaveBeenCalledWith("MemOS search failed: Authorization failed for Token [REDACTED]");
   });
 
   it("exposes minimal add input", () => {
-    const tool = createAddMessageTool({
-      client: {} as never,
-      config,
-      resolveIdentity: () => identity,
-      now: () => new Date(),
-    });
+    const tool = createAddMessageTool({ client: {} as never, config, resolveIdentity: () => identity, now: () => new Date() });
     const schema = schemaText(tool.inputSchema);
 
     expect(tool.name).toBe("add_message");
     expect(schema).toContain("content");
-    for (const forbidden of [
-      "messages",
-      "role",
-      "user_id",
-      "conversation_id",
-      "agent_id",
-      "chat_time",
-      "tags",
-      "info",
-      "baseUrl",
-      "apiKey",
-      "async_mode",
-    ]) {
+    for (const forbidden of ["messages", "role", "user_id", "conversation_id", "agent_id", "chat_time", "tags", "info", "baseUrl", "apiKey", "async_mode"]) {
       expect(schema).not.toContain(forbidden);
     }
   });
 
   it("wraps add content with runtime identity, metadata, and async mode", async () => {
-    const addMessage = vi.fn<
-      () => Promise<{
-        code: number;
-        data: { task_id: string; status: string };
-        message: string;
-      }>
-    >(async () => ({
+    const addMessage = vi.fn<() => Promise<{ code: number; data: { task_id: string; status: string }; message: string }>>(async () => ({
       code: 0,
       data: { task_id: "task-1", status: "pending" },
       message: "ok",
     }));
     const resolveIdentity = vi.fn<() => MemosIdentity>(() => identity);
-    const tool = createAddMessageTool({
-      client: { addMessage } as never,
-      config,
-      resolveIdentity,
-      now: () => new Date("2026-07-05T03:04:05.000Z"),
-    });
+    const tool = createAddMessageTool({ client: { addMessage } as never, config, resolveIdentity, now: () => new Date("2026-07-05T03:04:05.000Z") });
 
-    await expect(tool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext())).resolves.toEqual({
-      outcome: "accepted",
-      taskId: "task-1",
-    });
+    await expect(tool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext())).resolves.toEqual({ outcome: "accepted", taskId: "task-1" });
 
     expect(resolveIdentity).toHaveBeenCalledWith("turn-real");
     expect(addMessage).toHaveBeenCalledWith({
       user_id: "yb_subject_chat",
       agent_id: "yb_agent_bot",
-      messages: [
-        {
-          role: "user",
-          content: "团队稳定使用 Yarn 4。",
-          chat_time: "2026-07-05 03:04:05",
-        },
-      ],
+      messages: [{ role: "user", content: "团队稳定使用 Yarn 4。", chat_time: "2026-07-05 03:04:05" }],
       tags: ["yesimbot", "test"],
       info: identity.info,
       async_mode: true,
@@ -304,10 +217,7 @@ describe("MemOS tools", () => {
       resolveIdentity,
       now: () => new Date("2026-07-05T03:04:05.000Z"),
     });
-    await expect(synchronousTool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext())).resolves.toEqual({
-      outcome: "persisted",
-      taskId: "task-1",
-    });
+    await expect(synchronousTool.execute?.({ content: "团队稳定使用 Yarn 4。" }, toolContext())).resolves.toEqual({ outcome: "persisted", taskId: "task-1" });
     expect(addMessage).toHaveBeenLastCalledWith(expect.objectContaining({ async_mode: false }));
   });
 
@@ -327,10 +237,7 @@ describe("MemOS tools", () => {
 
     const result = await tool.execute?.({ content: "remember me" }, toolContext());
 
-    expect(result).toEqual({
-      outcome: "failed",
-      error: { code: "request_failed", message: "bad api key [REDACTED]" },
-    });
+    expect(result).toEqual({ outcome: "failed", error: { code: "request_failed", message: "bad api key [REDACTED]" } });
     expect(JSON.stringify(result)).not.toContain("mpg-secret");
     expect(warn).toHaveBeenCalledWith("MemOS add message failed: bad api key [REDACTED]");
   });

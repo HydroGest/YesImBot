@@ -1,9 +1,4 @@
-import type {
-  LanguageModelV3,
-  LanguageModelV3CallOptions,
-  LanguageModelV3FinishReason,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3FinishReason, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -26,9 +21,7 @@ function createToolModel() {
     },
     async doStream(options: LanguageModelV3CallOptions) {
       const tools = options.tools ?? {};
-      observedToolNames.push(
-        Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools),
-      );
+      observedToolNames.push(Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools));
       return {
         stream: new ReadableStream<LanguageModelV3StreamPart>({
           start(controller) {
@@ -39,10 +32,7 @@ function createToolModel() {
             controller.enqueue({
               type: "finish",
               finishReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 1, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
             } as LanguageModelV3StreamPart);
             controller.close();
           },
@@ -71,9 +61,7 @@ function createSingleToolCallModel() {
     async doStream(options: LanguageModelV3CallOptions) {
       observedPrompts.push(structuredClone(options.prompt));
       const tools = options.tools ?? {};
-      observedToolNames.push(
-        Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools),
-      );
+      observedToolNames.push(Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools));
       callCount += 1;
       if (callCount === 1) {
         return {
@@ -83,19 +71,11 @@ function createSingleToolCallModel() {
               controller.enqueue({ type: "tool-input-start", id: "call_1", toolName: "inspect" });
               controller.enqueue({ type: "tool-input-delta", id: "call_1", delta: "{}" });
               controller.enqueue({ type: "tool-input-end", id: "call_1" });
-              controller.enqueue({
-                type: "tool-call",
-                toolCallId: "call_1",
-                toolName: "inspect",
-                input: "{}",
-              });
+              controller.enqueue({ type: "tool-call", toolCallId: "call_1", toolName: "inspect", input: "{}" });
               controller.enqueue({
                 type: "finish",
                 finishReason: toolCallsReason,
-                usage: {
-                  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                  outputTokens: { total: 1, text: 0, reasoning: 0 },
-                },
+                usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 0, reasoning: 0 } },
               });
               controller.close();
             },
@@ -110,10 +90,7 @@ function createSingleToolCallModel() {
             controller.enqueue({
               type: "finish",
               finishReason: stopReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 0, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 0, reasoning: 0 } },
             });
             controller.close();
           },
@@ -122,10 +99,7 @@ function createSingleToolCallModel() {
     },
     observedPrompts,
     observedToolNames,
-  } as unknown as LanguageModelV3 & {
-    observedPrompts: LanguageModelV3CallOptions["prompt"][];
-    observedToolNames: string[][];
-  };
+  } as unknown as LanguageModelV3 & { observedPrompts: LanguageModelV3CallOptions["prompt"][]; observedToolNames: string[][] };
 }
 
 describe("tools", () => {
@@ -143,30 +117,10 @@ describe("tools", () => {
     const pluginExecute = async () => "plugin";
     const legacyExecute = async () => "legacy";
     const terminalExecute = async () => "terminal";
-    const base = {
-      name: "base",
-      description: "base original",
-      inputSchema: z.object({}),
-      execute: baseExecute,
-    };
-    const plugin = {
-      name: "plugin",
-      description: "plugin original",
-      inputSchema: z.object({}),
-      execute: pluginExecute,
-    };
-    const legacy = {
-      name: "legacy",
-      description: "legacy original",
-      inputSchema: z.object({}),
-      execute: legacyExecute,
-    };
-    const terminal = {
-      name: "terminal",
-      description: "terminal original",
-      inputSchema: z.object({}),
-      execute: terminalExecute,
-    };
+    const base = { name: "base", description: "base original", inputSchema: z.object({}), execute: baseExecute };
+    const plugin = { name: "plugin", description: "plugin original", inputSchema: z.object({}), execute: pluginExecute };
+    const legacy = { name: "legacy", description: "legacy original", inputSchema: z.object({}), execute: legacyExecute };
+    const terminal = { name: "terminal", description: "terminal original", inputSchema: z.object({}), execute: terminalExecute };
     const merged = mergeTools([[base], [plugin], [legacy], [terminal]]);
 
     base.name = "base mutated";
@@ -219,47 +173,31 @@ describe("tools", () => {
           name: "stable-tools",
           tools: () => {
             createCount += 1;
-            return [
-              {
-                name: "stable_lookup",
-                inputSchema: z.object({}),
-                execute: async () => "ok",
-              },
-            ] as never;
+            return [{ name: "stable_lookup", inputSchema: z.object({}), execute: async () => "ok" }] as never;
           },
         },
       ],
     });
+    agent.send(createUserMessage("hello"));
 
-    const firstTurnId = agent.send(createUserMessage("hello"));
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
-    const secondTurnId = agent.send(createUserMessage("again"));
+    agent.send(createUserMessage("second"));
+
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
 
     expect(createCount).toBe(1);
-    expect((model as unknown as { observedToolNames: string[][] }).observedToolNames).toEqual([
-      ["stable_lookup"],
-      ["stable_lookup"],
-    ]);
+    expect((model as unknown as { observedToolNames: string[][] }).observedToolNames).toEqual([["stable_lookup"], ["stable_lookup"]]);
   });
 
   it("resolves deprecated tool extensions once and reuses the frozen registry", async () => {
     const model = createToolModel();
-    const extend = vi.fn(
-      (tools) => [...tools, { name: "legacy", inputSchema: z.object({}), execute: async () => "legacy" }] as never,
-    );
+    const extend = vi.fn((tools) => [...tools, { name: "legacy", inputSchema: z.object({}), execute: async () => "legacy" }] as never);
     const agent = createAgent({
       model,
       tools: [{ name: "base", inputSchema: z.object({}), execute: async () => "base" } as never],
-      plugins: [
-        {
-          name: "stable",
-          tools: [{ name: "stable", inputSchema: z.object({}), execute: async () => "stable" }],
-          extendTools: extend,
-        },
-      ],
+      plugins: [{ name: "stable", tools: [{ name: "stable", inputSchema: z.object({}), execute: async () => "stable" }], extendTools: extend }],
     });
 
     agent.send(createUserMessage("first"));
@@ -291,12 +229,7 @@ describe("tools", () => {
   });
 
   it("injects turn execution context into stable tool calls", async () => {
-    const seen: Array<{
-      runtimeId: string;
-      toolCallId: string;
-      turnId: string;
-      hasSignal: boolean;
-    }> = [];
+    const seen: Array<{ runtimeId: string; toolCallId: string; turnId: string; hasSignal: boolean }> = [];
     const agent = createAgent({
       id: "runtime_tools",
       model: createSingleToolCallModel(),
@@ -326,14 +259,7 @@ describe("tools", () => {
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
 
-    expect(seen).toEqual([
-      {
-        runtimeId: "runtime_tools",
-        toolCallId: "call_1",
-        turnId,
-        hasSignal: true,
-      },
-    ]);
+    expect(seen).toEqual([{ runtimeId: "runtime_tools", toolCallId: "call_1", turnId, hasSignal: true }]);
   });
 
   it("uses the initialized tool name, description, and execute function after caller mutation", async () => {
@@ -366,17 +292,7 @@ describe("tools", () => {
 
   it("extends the prior provider prompt during a tool loop", async () => {
     const model = createSingleToolCallModel();
-    const agent = createAgent({
-      model,
-      systemPrompt: "stable",
-      tools: [
-        {
-          name: "inspect",
-          inputSchema: z.object({}),
-          execute: async () => ({ ok: true }),
-        },
-      ],
-    });
+    const agent = createAgent({ model, systemPrompt: "stable", tools: [{ name: "inspect", inputSchema: z.object({}), execute: async () => ({ ok: true }) }] });
 
     agent.send(createUserMessage("inspect"));
     await agent.wait();
@@ -391,13 +307,7 @@ describe("tools", () => {
   it("includes tool events in the run stream", async () => {
     const agent = createAgent({
       model: createSingleToolCallModel(),
-      tools: [
-        {
-          name: "inspect",
-          inputSchema: z.object({}),
-          execute: async () => "ok",
-        } as never,
-      ],
+      tools: [{ name: "inspect", inputSchema: z.object({}), execute: async () => "ok" } as never],
     });
     const events: AgentInternalEvent[] = [];
 
@@ -405,12 +315,8 @@ describe("tools", () => {
       events.push(event);
     }
 
-    const start = events.find(
-      (event): event is Extract<AgentInternalEvent, { type: "tool.start" }> => event.type === "tool.start",
-    );
-    const done = events.find(
-      (event): event is Extract<AgentInternalEvent, { type: "tool.done" }> => event.type === "tool.done",
-    );
+    const start = events.find((event): event is Extract<AgentInternalEvent, { type: "tool.start" }> => event.type === "tool.start");
+    const done = events.find((event): event is Extract<AgentInternalEvent, { type: "tool.done" }> => event.type === "tool.done");
     expect(start).toBeDefined();
     expect(done).toBeDefined();
     expect(start?.args).toEqual({});
@@ -448,14 +354,8 @@ describe("tools", () => {
   it("preserves replacement decisions across later allow hooks", async () => {
     const decision = await runBeforeToolHooks(
       [
-        {
-          name: "replace",
-          beforeToolCall: () => ({ type: "replace", args: { query: "replaced" } }),
-        },
-        {
-          name: "allow",
-          beforeToolCall: () => ({ type: "allow" }),
-        },
+        { name: "replace", beforeToolCall: () => ({ type: "replace", args: { query: "replaced" } }) },
+        { name: "allow", beforeToolCall: () => ({ type: "allow" }) },
       ],
       { toolCallId: "call_1", toolName: "search", args: { query: "original" } },
       {} as never,
@@ -482,18 +382,11 @@ describe("tools", () => {
             },
           ],
         },
-        {
-          name: "replace-args",
-          beforeToolCall: () => ({ type: "replace", args: { query: "replaced" } }),
-        },
-        {
-          name: "allow-later",
-          beforeToolCall: () => ({ type: "allow" }),
-        },
+        { name: "replace-args", beforeToolCall: () => ({ type: "replace", args: { query: "replaced" } }) },
+        { name: "allow-later", beforeToolCall: () => ({ type: "allow" }) },
       ],
     });
-
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("inspect"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -511,9 +404,7 @@ describe("tools", () => {
         {
           name: "b",
 
-          afterToolCall: (current) => ({
-            result: { ...(current.result as Record<string, unknown>), step: 2, done: true },
-          }),
+          afterToolCall: (current) => ({ result: { ...(current.result as Record<string, unknown>), step: 2, done: true } }),
         },
       ],
       { toolCallId: "call_1", toolName: "search", args: {}, result: { step: 0 }, isError: false },
@@ -548,19 +439,12 @@ describe("tools", () => {
         },
       ],
     });
-
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("inspect"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
     expect(seen).toEqual([
-      {
-        toolCallId: "call_1",
-        toolName: "inspect",
-        args: {},
-        result: expect.objectContaining({ name: "Error", message: "inspect boom" }),
-        isError: true,
-      },
+      { toolCallId: "call_1", toolName: "inspect", args: {}, result: expect.objectContaining({ name: "Error", message: "inspect boom" }), isError: true },
     ]);
   });
 
@@ -595,8 +479,7 @@ describe("tools", () => {
         pluginErrors.push(`${event.plugin}:${event.error.message}`);
       }
     });
-
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("inspect"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -617,9 +500,7 @@ function createObservedToolModel() {
     },
     async doStream(options: LanguageModelV3CallOptions) {
       const tools = options.tools ?? {};
-      observedToolNames.push(
-        Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools),
-      );
+      observedToolNames.push(Array.isArray(tools) ? tools.map((tool) => String((tool as { name: unknown }).name)) : Object.keys(tools));
 
       return {
         stream: new ReadableStream<LanguageModelV3StreamPart>({
@@ -628,10 +509,7 @@ function createObservedToolModel() {
             controller.enqueue({
               type: "finish",
               finishReason: "stop" as unknown as LanguageModelV3FinishReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 0, text: 0, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 0, text: 0, reasoning: 0 } },
             });
             controller.close();
           },
@@ -669,19 +547,11 @@ function createTerminalToolCallModel(toolName = "finalize") {
               controller.enqueue({ type: "tool-input-start", id: "call_1", toolName });
               controller.enqueue({ type: "tool-input-delta", id: "call_1", delta: "{}" });
               controller.enqueue({ type: "tool-input-end", id: "call_1" });
-              controller.enqueue({
-                type: "tool-call",
-                toolCallId: "call_1",
-                toolName,
-                input: "{}",
-              });
+              controller.enqueue({ type: "tool-call", toolCallId: "call_1", toolName, input: "{}" });
               controller.enqueue({
                 type: "finish",
                 finishReason: toolCallsReason,
-                usage: {
-                  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                  outputTokens: { total: 2, text: 2, reasoning: 0 },
-                },
+                usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 2, text: 2, reasoning: 0 } },
               });
               controller.close();
             },
@@ -696,10 +566,7 @@ function createTerminalToolCallModel(toolName = "finalize") {
             controller.enqueue({
               type: "finish",
               finishReason: stopReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 0, text: 0, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 0, text: 0, reasoning: 0 } },
             });
             controller.close();
           },
@@ -716,8 +583,7 @@ describe("terminal tool", () => {
   it("does not add finalize_response unless enabled", async () => {
     const model = createObservedToolModel();
     const agent = createAgent({ model, tools: [] });
-
-    const turnId = agent.send(createUserMessage("hello"));
+    agent.send(createUserMessage("hello"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -726,14 +592,9 @@ describe("terminal tool", () => {
 
   it("adds finalize_response when terminalTool is true", async () => {
     const model = createObservedToolModel();
-    const agent = createAgent({
-      model,
-      tools: [],
-      terminalTool: true,
-    });
+    const agent = createAgent({ model, tools: [], terminalTool: true });
 
-    const turnId = agent.send(createUserMessage("hello"));
-
+    agent.send(createUserMessage("hello"));
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
     expect(model.observedToolNames).toEqual([["finalize"]]);
@@ -741,11 +602,7 @@ describe("terminal tool", () => {
 
   it("stops the loop successfully when the terminal tool is called", async () => {
     const model = createTerminalToolCallModel();
-    const agent = createAgent({
-      model,
-      tools: [],
-      terminalTool: true,
-    });
+    const agent = createAgent({ model, tools: [], terminalTool: true });
 
     agent.send(createUserMessage("hello"));
     await agent.wait();
@@ -757,13 +614,8 @@ describe("terminal tool", () => {
 
   it("supports custom terminal tool names", async () => {
     const model = createTerminalToolCallModel("finish_turn");
-    const agent = createAgent({
-      model,
-      tools: [],
-      terminalTool: { name: "finish_turn" },
-    });
-
-    const turnId = agent.send(createUserMessage("hello"));
+    const agent = createAgent({ model, tools: [], terminalTool: { name: "finish_turn" } });
+    agent.send(createUserMessage("hello"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -774,13 +626,7 @@ describe("terminal tool", () => {
     const agent = createAgent({
       model: createObservedToolModel(),
       terminalTool: true,
-      tools: [
-        {
-          name: "finalize",
-          inputSchema: z.object({}),
-          execute: async () => ({ ok: true }),
-        },
-      ],
+      tools: [{ name: "finalize", inputSchema: z.object({}), execute: async () => ({ ok: true }) }],
     });
 
     const events: Array<{ type: string; error?: { message?: string } }> = [];

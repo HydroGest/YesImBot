@@ -4,13 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  createEmptyGlobalRuleBank,
-  createGlobalRuleStore,
-  mergeLocalPatterns,
-  selectGlobalChains,
-  selectGlobalPatterns,
-} from "../src/global-store.js";
+import { createEmptyGlobalRuleBank, createGlobalRuleStore, mergeLocalPatterns, selectGlobalChains, selectGlobalPatterns } from "../src/global-store.js";
 import type { InitiationPattern, ResponsePattern } from "../src/types.js";
 
 const roots: string[] = [];
@@ -21,12 +15,7 @@ afterEach(async () => {
 
 describe("mergeLocalPatterns", () => {
   it("aggregates the same phrase across channels without double counting one channel", () => {
-    const response: ResponsePattern = {
-      intent: "agree",
-      phrase: "确实",
-      frequency: 2,
-      sampleIds: ["a"],
-    };
+    const response: ResponsePattern = { intent: "agree", phrase: "确实", frequency: 2, sampleIds: ["a"] };
     const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [response], [], [], "channel-a", 1000);
     const second = mergeLocalPatterns(bank, [response], [], [], "channel-b", 2000);
     const sameChannel = mergeLocalPatterns(second, [response], [], [], "channel-a", 3000);
@@ -38,12 +27,7 @@ describe("mergeLocalPatterns", () => {
   });
 
   it("selects only patterns seen in enough channels", () => {
-    const response: ResponsePattern = {
-      intent: "agree",
-      phrase: "确实",
-      frequency: 1,
-      sampleIds: ["a"],
-    };
+    const response: ResponsePattern = { intent: "agree", phrase: "确实", frequency: 1, sampleIds: ["a"] };
     const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [response], [], [], "channel-a", 1000);
 
     expect(selectGlobalPatterns(bank, "response", 2, 8)).toHaveLength(0);
@@ -55,12 +39,7 @@ describe("mergeLocalPatterns", () => {
     const root = await mkdtemp(join(tmpdir(), "chat-learning-global-"));
     roots.push(root);
     const path = join(root, "global.json");
-    const response: ResponsePattern = {
-      intent: "agree",
-      phrase: "确实",
-      frequency: 1,
-      sampleIds: ["a"],
-    };
+    const response: ResponsePattern = { intent: "agree", phrase: "确实", frequency: 1, sampleIds: ["a"] };
     const first = createGlobalRuleStore(path);
     await first.init();
     const merged = mergeLocalPatterns(first.read(), [response], [], [], "channel-a", 1000);
@@ -75,12 +54,7 @@ describe("mergeLocalPatterns", () => {
 
 describe("initiation patterns", () => {
   it("merges initiation patterns into the global bank", () => {
-    const initiation: InitiationPattern = {
-      intent: "question",
-      phrase: "有人试过吗",
-      frequency: 1,
-      sampleIds: ["a"],
-    };
+    const initiation: InitiationPattern = { intent: "question", phrase: "有人试过吗", frequency: 1, sampleIds: ["a"] };
     const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [], [initiation], [], "channel-a", 1000);
 
     expect(selectGlobalPatterns(bank, "initiation", 1, 8)).toHaveLength(1);
@@ -89,22 +63,8 @@ describe("initiation patterns", () => {
 
 describe("global chains", () => {
   it("aggregates the same chain structure across channels", () => {
-    const bank = mergeLocalPatterns(
-      createEmptyGlobalRuleBank(),
-      [],
-      [],
-      [{ chain: ["question", "agree"], frequency: 2 }],
-      "channel-a",
-      1000,
-    );
-    const crossed = mergeLocalPatterns(
-      bank,
-      [],
-      [],
-      [{ chain: ["question", "agree"], frequency: 1 }],
-      "channel-b",
-      2000,
-    );
+    const bank = mergeLocalPatterns(createEmptyGlobalRuleBank(), [], [], [{ chain: ["question", "agree"], frequency: 2 }], "channel-a", 1000);
+    const crossed = mergeLocalPatterns(bank, [], [], [{ chain: ["question", "agree"], frequency: 1 }], "channel-b", 2000);
 
     expect(selectGlobalChains(crossed, 2, 8)).toHaveLength(1);
     expect(crossed.chains[0]?.channels[0]).toMatchObject({ frequency: 2 });
@@ -132,10 +92,7 @@ describe("embedding-based pattern merge", () => {
     const response: ResponsePattern = { intent: "agree", phrase: "确实", frequency: 2, sampleIds: ["m2"] };
     const localEmbeddings = new Map([["response:agree:确实", [0.99, 0.01]]]);
 
-    const merged = mergeLocalPatterns(bank, [response], [], [], "channel-new", 2, {
-      localEmbeddings,
-      embeddingSimilarity: 0.9,
-    });
+    const merged = mergeLocalPatterns(bank, [response], [], [], "channel-new", 2, { localEmbeddings, embeddingSimilarity: 0.9 });
 
     expect(merged.patterns).toHaveLength(1);
     expect(merged.patterns[0]?.phrase).toBe("没错");

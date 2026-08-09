@@ -3,11 +3,7 @@ import { createAssistantMessage, createMessageEntry, type AgentPlugin } from "@y
 
 import type { CBSContext } from "./cbs.js";
 import { renderCBS } from "./cbs.js";
-import {
-  assembleCharacterDefinition,
-  assembleInstructionExtension,
-  assemblePostHistoryInstructions,
-} from "./prompt.js";
+import { assembleCharacterDefinition, assembleInstructionExtension, assemblePostHistoryInstructions } from "./prompt.js";
 
 export interface RoleplayAgentPluginOptions {
   readonly card: CharacterCardV3;
@@ -28,8 +24,7 @@ export function createRoleplayPlugin(options: RoleplayAgentPluginOptions): Agent
   const postHistoryInstructions = assemblePostHistoryInstructions(options.card, context);
   const greeting = renderCBS(options.greeting, context).text;
   const prefix = characterDefinition.length > 0 ? [{ role: "system" as const, content: characterDefinition }] : [];
-  const suffix =
-    postHistoryInstructions.length > 0 ? [{ role: "system" as const, content: postHistoryInstructions }] : [];
+  const suffix = postHistoryInstructions.length > 0 ? [{ role: "system" as const, content: postHistoryInstructions }] : [];
 
   return {
     name: "roleplay",

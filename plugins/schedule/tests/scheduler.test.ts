@@ -2,18 +2,7 @@ import { Context } from "cordis";
 import { clone, makeArray, pick } from "cosmokit";
 import { Universal } from "koishi";
 import type { ChannelScope, EventRecord } from "koishi-plugin-yesimbot";
-import {
-  Database,
-  Driver,
-  Eval,
-  executeEval,
-  executeQuery,
-  executeSort,
-  executeUpdate,
-  Field,
-  RuntimeError,
-  Selection,
-} from "minato";
+import { Database, Driver, Eval, executeEval, executeQuery, executeSort, executeUpdate, Field, RuntimeError, Selection } from "minato";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { MAX_CONCURRENT_TRIGGERS, ScheduleScheduler } from "../src/scheduler.js";
@@ -22,12 +11,7 @@ import type { Schedule } from "../src/types.js";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-const sharedScope: ChannelScope = {
-  type: "shared",
-  platform: "test",
-  selfId: "bot-1",
-  channelId: "room-1",
-};
+const sharedScope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
 
 const T0 = "2026-08-01T00:00:00.000Z";
 
@@ -52,9 +36,7 @@ class MemoryDriver extends Driver<Record<string, never>> {
     this.store = Object.create(null);
   }
   public async stats(): Promise<Driver.Stats> {
-    const tables = Object.fromEntries(
-      Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]),
-    );
+    const tables = Object.fromEntries(Object.entries(this.store).map(([name, rows]) => [name, { name, count: rows.length, size: 0 }]));
     return { tables, size: 0 };
   }
   public async prepare(): Promise<void> {}
@@ -185,7 +167,7 @@ describe("ScheduleScheduler", () => {
     registerScheduleModel(model);
     store = new ScheduleStore(model);
     trigger = vi.fn(async (_event: EventRecord) => {});
-    scheduler = new ScheduleScheduler(store, trigger);
+    scheduler = new ScheduleScheduler(store, { yesimbot: { messenger: { post: trigger } } } as never);
     vi.useFakeTimers();
     vi.setSystemTime(new Date(T0));
   });
@@ -196,12 +178,7 @@ describe("ScheduleScheduler", () => {
 
   it("submits one due once schedule exactly once with a complete due event", async () => {
     vi.setSystemTime(new Date(Date.parse(T0) - 3_600_000));
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: T0,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: T0 });
 
     vi.setSystemTime(new Date(T0));
     await scheduler.start();
@@ -226,12 +203,7 @@ describe("ScheduleScheduler", () => {
   });
 
   it("submits consecutive cron occurrences without overlap", async () => {
-    const created = await store.create(sharedScope, {
-      title: "quarterly",
-      prompt: "Ping.",
-      kind: "cron",
-      cron: "*/15 * * * *",
-    });
+    const created = await store.create(sharedScope, { title: "quarterly", prompt: "Ping.", kind: "cron", cron: "*/15 * * * *" });
     expect(created.nextRunAt).toBe("2026-08-01T00:15:00.000Z");
 
     await scheduler.start();
@@ -244,20 +216,12 @@ describe("ScheduleScheduler", () => {
     expect(trigger.mock.calls[1][0].schedule.scheduledFor).toBe("2026-08-01T00:30:00.000Z");
 
     const [row] = await store.list(sharedScope);
-    expect(row.lastResult).toMatchObject({
-      occurrenceAt: "2026-08-01T00:30:00.000Z",
-      status: "accepted",
-    });
+    expect(row.lastResult).toMatchObject({ occurrenceAt: "2026-08-01T00:30:00.000Z", status: "accepted" });
     expect(row.nextRunAt).toBe("2026-08-01T00:45:00.000Z");
   });
 
   it("recovers a missed cron occurrence without replaying it", async () => {
-    const created = await store.create(sharedScope, {
-      title: "quarterly",
-      prompt: "Ping.",
-      kind: "cron",
-      cron: "*/15 * * * *",
-    });
+    const created = await store.create(sharedScope, { title: "quarterly", prompt: "Ping.", kind: "cron", cron: "*/15 * * * *" });
     expect(created.nextRunAt).toBe("2026-08-01T00:15:00.000Z");
 
     // Restart after the first occurrence has passed without a submission.
@@ -266,10 +230,7 @@ describe("ScheduleScheduler", () => {
 
     expect(trigger).not.toHaveBeenCalled();
     const [row] = await store.list(sharedScope);
-    expect(row.lastResult).toMatchObject({
-      occurrenceAt: "2026-08-01T00:15:00.000Z",
-      status: "missed",
-    });
+    expect(row.lastResult).toMatchObject({ occurrenceAt: "2026-08-01T00:15:00.000Z", status: "missed" });
     expect(row.state).toBe("enabled");
     expect(row.nextRunAt).toBe("2026-08-01T00:30:00.000Z");
 
@@ -281,12 +242,7 @@ describe("ScheduleScheduler", () => {
 
   it("marks an interrupted claim on restart without resubmitting", async () => {
     vi.setSystemTime(new Date(Date.parse(T0) - 3_600_000));
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: T0,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: T0 });
 
     // The durable claim happened, but the process stopped before the trigger result.
     const claimed = await store.claim(created.id, T0);
@@ -307,12 +263,7 @@ describe("ScheduleScheduler", () => {
 
   it("does not duplicate a trigger when the same occurrence is woken twice", async () => {
     vi.setSystemTime(new Date(Date.parse(T0) - 3_600_000));
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: T0,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: T0 });
 
     vi.setSystemTime(new Date(T0));
     let release!: () => void;
@@ -338,14 +289,7 @@ describe("ScheduleScheduler", () => {
     vi.setSystemTime(new Date(Date.parse(T0) - 3_600_000));
     const created: Schedule[] = [];
     for (let i = 0; i < MAX_CONCURRENT_TRIGGERS + 1; i++) {
-      created.push(
-        await store.create(sharedScope, {
-          title: `slot-${i}`,
-          prompt: "Ping.",
-          kind: "once",
-          at: T0,
-        }),
-      );
+      created.push(await store.create(sharedScope, { title: `slot-${i}`, prompt: "Ping.", kind: "once", at: T0 }));
     }
 
     vi.setSystemTime(new Date(T0));
@@ -373,12 +317,7 @@ describe("ScheduleScheduler", () => {
 
   it("finalizes a rejected trigger as failed", async () => {
     vi.setSystemTime(new Date(Date.parse(T0) - 3_600_000));
-    const created = await store.create(sharedScope, {
-      title: "standup",
-      prompt: "Prepare the daily standup.",
-      kind: "once",
-      at: T0,
-    });
+    const created = await store.create(sharedScope, { title: "standup", prompt: "Prepare the daily standup.", kind: "once", at: T0 });
 
     vi.setSystemTime(new Date(T0));
     trigger.mockRejectedValueOnce(new Error("bot offline"));
@@ -395,12 +334,7 @@ describe("ScheduleScheduler", () => {
   });
 
   it("stops arming future work after stop() while preserving rows", async () => {
-    const created = await store.create(sharedScope, {
-      title: "quarterly",
-      prompt: "Ping.",
-      kind: "cron",
-      cron: "*/15 * * * *",
-    });
+    const created = await store.create(sharedScope, { title: "quarterly", prompt: "Ping.", kind: "cron", cron: "*/15 * * * *" });
     expect(created.nextRunAt).toBe("2026-08-01T00:15:00.000Z");
 
     await scheduler.start();
@@ -418,12 +352,7 @@ describe("ScheduleScheduler", () => {
     const dueAt = new Date(Date.parse(T0) + 0x7fffffff + 60_000).toISOString();
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     vi.setSystemTime(new Date(Date.parse(T0) - 1));
-    await store.create(sharedScope, {
-      title: "far future",
-      prompt: "Wait.",
-      kind: "once",
-      at: dueAt,
-    });
+    await store.create(sharedScope, { title: "far future", prompt: "Wait.", kind: "once", at: dueAt });
 
     vi.setSystemTime(new Date(T0));
     await scheduler.start();
@@ -439,12 +368,7 @@ describe("ScheduleScheduler", () => {
 
   it("does not submit an occurrence claimed before stop and records it as interrupted", async () => {
     vi.setSystemTime(new Date(Date.parse(T0) - 60_000));
-    const created = await store.create(sharedScope, {
-      title: "shutdown",
-      prompt: "Do not send.",
-      kind: "once",
-      at: T0,
-    });
+    const created = await store.create(sharedScope, { title: "shutdown", prompt: "Do not send.", kind: "once", at: T0 });
     const originalClaim = store.claim.bind(store);
     const claimed = new Promise<void>((resolve) => {
       vi.spyOn(store, "claim").mockImplementation(async (id, occurrenceAt) => {

@@ -1,17 +1,17 @@
 ## Context
 
-Core currently binds every hosted Agent to one admitted channel. RuntimeManager resolves a real Bot, creates one ChannelRuntime per persistent channel tuple, commits platform records, evaluates Will, and owns passive output delivery. That design gives each channel a clear identity and lifecycle, but it cannot represent one subject that uses several channels through a phone while retaining one memory and world timeline.
+Core currently binds every hosted Agent to one admitted channel. Runtimes resolves a real Bot, creates one ChannelRuntime per persistent channel tuple, commits platform records, evaluates Will, and Messenger owns passive output delivery. That design gives each channel a clear identity and lifecycle, but it cannot represent one subject that uses several channels through a phone while retaining one memory and world timeline.
 
-YesImBotWorld validated a different product model. Its character lives in a persistent textual world, receives external messages as phone notifications, spends time on actions, and experiences world changes after a delay. Its implementation also carries a second Gateway, a continuous generation loop, custom model backends, a mirrored message database, media systems, and broad platform operations. The migration should preserve the narrative model and leave those replacement subsystems behind.
+YesImBotWorld validated a different product model. Its character lives in a persistent textual world, receives external messages as phone notifications, spends time on actions, and experiences world changes after a delay. Its implementation also carries a second Messenger, a continuous generation loop, custom model backends, a mirrored message database, media systems, and broad platform operations. The migration should preserve the narrative model and leave those replacement subsystems behind.
 
-This design keeps Core channel-first and adds one parallel host capability for Agents that do not belong to Gateway. WorldEngine remains an optional plugin and owns every world-specific concept. `@yesimbot/agent-runtime` remains the common Agent implementation.
+This design keeps Core channel-first and adds one parallel host capability for Agents that do not belong to Messenger. WorldEngine remains an optional plugin and owns every world-specific concept. `@yesimbot/agent-runtime` remains the common Agent implementation.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
 - Host a persistent Agent with stable identity, session history, fixed resources, compaction, interruption, and stop behavior without requiring a platform channel.
-- Preserve ChannelScope, ChannelRuntime, Gateway, Will, and channel delivery contracts.
+- Preserve ChannelScope, ChannelRuntime, Messenger, Will, and channel delivery contracts.
 - Implement WorldEngine as an optional domain module with one WorldAgent, phone-mediated chat, continuous world time, delayed activities, and bounded narrative world state.
 - Keep world effects tool-driven and auditable. Treat model-produced world changes as proposals until WorldEngine validates and persists them.
 - Preserve Core and domain data across stop while keeping their reset responsibilities separate.
@@ -22,7 +22,7 @@ This design keeps Core channel-first and adds one parallel host capability for A
 - Advisor implementation or a general multi-Agent orchestration framework.
 - A virtual channel, synthetic Bot, Session, Will decision, or implicit delivery target for GlobalAgents.
 - Infinite model generation, GBNF, Ban EOS, dynamic tool installation, or prompt-cache control.
-- A second platform Gateway, message database, AssetService, media pipeline, App framework, shell, browser, or platform administration suite.
+- A second platform Messenger, message database, resource facade, media pipeline, App framework, shell, browser, or platform administration suite.
 - A generic world entity graph, rules DSL, custom calendar engine, manual world pause, or legacy YesImBotWorld migration.
 
 ## Decisions
@@ -30,7 +30,7 @@ This design keeps Core channel-first and adds one parallel host capability for A
 ### D1: Add a sibling GlobalAgent host
 
 - **Choice:** Add `GlobalScope`, GlobalRuntime, and GlobalRuntimeManager beside the existing channel types. `GlobalScope` contains `type: "global"` and a stable `agentId`.
-- **Rationale:** A WorldAgent owns one cross-channel identity and cannot inherit a real channel's Bot, history, reset, or delivery semantics. Advisor also demonstrates that a non-Gateway Agent may have a domain association with a channel without becoming that channel's main Agent.
+- **Rationale:** A WorldAgent owns one cross-channel identity and cannot inherit a real channel's Bot, history, reset, or delivery semantics. Advisor also demonstrates why a non-Messenger Agent may have a domain association with a channel without becoming that channel's main Agent.
 - **Alternative considered:** Use a designated home ChannelRuntime. This would bind the subject to one channel, risk delivering background output there, and make reset or Bot replacement alter global identity.
 - **Alternative considered:** Let WorldEngine call `createAgent()` directly. This would duplicate Core model resolution, session files, compaction, runtime replacement, and shutdown behavior.
 
@@ -38,7 +38,7 @@ GlobalRuntime has no Bot, Session, Will, channel send tool, passive delivery, de
 
 ### D2: Expose a shared global facade
 
-- **Choice:** Expose `ctx.yesimbot.global` with scope-addressed start, submit, replace, stop, clear, and storage-root operations. Do not return an owner handle and do not expose GlobalRuntimeManager.
+- **Choice:** Expose `ctx.yesimbot.global` with scope-addressed start, submit, replace, stop, clear, and resource-root operations. Do not return an owner handle and do not expose GlobalRuntimeManager.
 - **Rationale:** The selected trust model treats GlobalAgents as shared Core resources available to trusted in-process plugins. A dedicated facade keeps lifecycle invariants in Core and avoids widening the main YesImBotService with several flat methods.
 - **Alternative considered:** Return an exclusive owner handle. This would prevent other trusted plugins from fully managing a GlobalScope, contrary to the selected shared-resource model.
 - **Alternative considered:** Publish GlobalRuntimeManager. Callers would gain creation maps, session internals, and shutdown controls that belong to Core.
@@ -75,11 +75,11 @@ The private runtime pool may centralize one-key singleton creation, concurrent c
 - **Rationale:** A GlobalAgent has no platform tuple and should not rely on a fake shared or direct channel path.
 - **Alternative considered:** Encode GlobalScopes below `channels/`. This would mix Manifest validation, tuple semantics, and reset rules with a non-channel identity.
 
-Core owns `sessions/` and `assets/`. `ctx.yesimbot.global.getStoragePath(scope)` returns the complete Agent root so WorldEngine can create `worldengine/`. Global clear removes only the two Core children and preserves the Manifest and domain children. The existing AssetService accepts ChannelScope and GlobalScope through overloads while channel and global storage remain separate internally.
+Core owns `sessions/` and `assets/`. `ctx.yesimbot.global` resolves the complete Agent root through the scoped resource owner so WorldEngine can create `worldengine/`. Global clear removes only the two Core children and preserves the Manifest and domain children. The resource owner accepts ChannelScope and GlobalScope through separate scoped implementations.
 
 ### D7: Defer ecosystem plugin adaptation
 
-- **Choice:** Keep `registerChannelPlugin()` and every existing channel plugin unchanged. A GlobalAgent definition may contain private AgentPlugin instances constructed by its caller, but GlobalRuntime does not inspect the channel plugin registry.
+- **Choice:** Keep `agent.use()` and every existing channel plugin unchanged. A GlobalAgent definition may contain private AgentPlugin instances constructed by its caller, but GlobalRuntime does not inspect the channel plugin registry.
 - **Rationale:** WorldEngine is the first known tool-using GlobalAgent consumer. MCP, Schedule, Search, Workspace, and future Advisor have different dependencies and selection policies. Defining named registrations and compatibility before another consumer exists would widen this change and hard-code assumptions.
 - **Alternative considered:** Install every compatible registered plugin into each GlobalAgent. Advisor shows why different Agents need different tool sets.
 - **Alternative considered:** Let WorldEngine retrieve and wrap channel factories. That would duplicate registry ownership, context creation, initialization rollback, and resource snapshots.

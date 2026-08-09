@@ -26,20 +26,8 @@ function newRunner(options: Parameters<typeof createHostRunner>[0] = {}): HostRu
   return runner;
 }
 
-function input(
-  cwd: string,
-  command: string,
-  signal: AbortSignal = new AbortController().signal,
-  environment: NodeJS.ProcessEnv = {},
-): HostRunnerInput {
-  return {
-    command,
-    cwd,
-    env: { ...process.env, ...environment },
-    uid: uid!,
-    gid: gid!,
-    signal,
-  };
+function input(cwd: string, command: string, signal: AbortSignal = new AbortController().signal, environment: NodeJS.ProcessEnv = {}): HostRunnerInput {
+  return { command, cwd, env: { ...process.env, ...environment }, uid: uid!, gid: gid!, signal };
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -64,9 +52,7 @@ hostDescribe("HostRunner", () => {
     const runner = newRunner({ timeoutMs: 2_000 });
 
     const result = await runner.run(
-      input(cwd, `printf '%s|%s|%s|%s' "$PWD" "$HOST_RUNNER_ENV" "$(id -u)" "$(id -g)"`, undefined, {
-        HOST_RUNNER_ENV: "inherited-through-runner",
-      }),
+      input(cwd, `printf '%s|%s|%s|%s' "$PWD" "$HOST_RUNNER_ENV" "$(id -u)" "$(id -g)"`, undefined, { HOST_RUNNER_ENV: "inherited-through-runner" }),
     );
 
     expect(result.exitCode).toBe(0);
@@ -104,10 +90,7 @@ hostDescribe("HostRunner", () => {
     expect(result.exitCode).toBe(124);
     expect(result.stderr).toContain("Command timed out after 75ms");
     expect(Date.now() - started).toBeLessThan(2_000);
-    await expect(runner.run(input(cwd, "printf recovered"))).resolves.toMatchObject({
-      stdout: "recovered",
-      exitCode: 0,
-    });
+    await expect(runner.run(input(cwd, "printf recovered"))).resolves.toMatchObject({ stdout: "recovered", exitCode: 0 });
   });
 
   it("terminates an aborted process and releases the global slot", async () => {
@@ -119,10 +102,7 @@ hostDescribe("HostRunner", () => {
 
     controller.abort();
     await expect(running).resolves.toMatchObject({ exitCode: 130, stderr: "Command cancelled" });
-    await expect(runner.run(input(cwd, "printf recovered"))).resolves.toMatchObject({
-      stdout: "recovered",
-      exitCode: 0,
-    });
+    await expect(runner.run(input(cwd, "printf recovered"))).resolves.toMatchObject({ stdout: "recovered", exitCode: 0 });
   });
 
   it("serializes concurrent calls through one process slot", async () => {
@@ -148,10 +128,7 @@ hostDescribe("HostRunner", () => {
     queuedController.abort();
     await expect(queued).resolves.toMatchObject({ exitCode: 130, stderr: "Command cancelled" });
     await runner.stop();
-    await expect(active).resolves.toMatchObject({
-      exitCode: 130,
-      stderr: expect.stringContaining("Command cancelled"),
-    });
+    await expect(active).resolves.toMatchObject({ exitCode: 130, stderr: expect.stringContaining("Command cancelled") });
     await delay(500);
     expect(await exists(marker)).toBe(false);
     await expect(runner.run(input(cwd, "printf stopped"))).rejects.toThrow("Host runner is stopped");

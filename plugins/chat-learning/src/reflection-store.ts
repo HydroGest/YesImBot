@@ -63,11 +63,7 @@ export function createReflectionStore(filePath: string): ReflectionStore {
     },
     append(input) {
       return serialize(async () => {
-        const record: ReflectionRecord = {
-          ...input,
-          id: randomUUID(),
-          createdAt: Date.now(),
-        };
+        const record: ReflectionRecord = { ...input, id: randomUUID(), createdAt: Date.now() };
         await mkdir(dirname(filePath), { recursive: true });
         await appendFile(filePath, `${JSON.stringify(record)}\n`, "utf8");
         records.push(record);

@@ -34,19 +34,15 @@ export class ModelStickerClassifier implements StickerClassifier {
     try {
       ref = this.ctx.yesimbot.model.resolveChatModel(modelId);
     } catch (cause) {
-      this.ctx.logger("yesimbot.sticker-manager").warn("classification_model_unavailable", {
-        modelId,
-        cause: cause instanceof Error ? cause.message : String(cause),
-      });
+      this.ctx
+        .logger("yesimbot.sticker-manager")
+        .warn("classification_model_unavailable", { modelId, cause: cause instanceof Error ? cause.message : String(cause) });
       return undefined;
     }
 
     if (!ref.entry.modalities?.input?.includes("image")) return undefined;
 
-    const basePrompt = this.config.classificationPrompt.replaceAll(
-      "{{categories}}",
-      input.categories.join(", ") || "暂无分类",
-    );
+    const basePrompt = this.config.classificationPrompt.replaceAll("{{categories}}", input.categories.join(", ") || "暂无分类");
     const prompt = this.config.tagMode
       ? [
           basePrompt,
@@ -66,20 +62,14 @@ export class ModelStickerClassifier implements StickerClassifier {
             role: "user",
             content: [
               { type: "text", text: prompt },
-              {
-                type: "file",
-                data: frame?.bytes ?? input.bytes,
-                mediaType: frame?.mediaType ?? input.mediaType,
-              },
+              { type: "file", data: frame?.bytes ?? input.bytes, mediaType: frame?.mediaType ?? input.mediaType },
             ],
           },
         ],
       });
       return parseClassification(text, this.config.tagMode);
     } catch (cause) {
-      this.ctx.logger("yesimbot.sticker-manager").warn("classification_call_failed", {
-        cause: cause instanceof Error ? cause.message : String(cause),
-      });
+      this.ctx.logger("yesimbot.sticker-manager").warn("classification_call_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
       return undefined;
     }
   }

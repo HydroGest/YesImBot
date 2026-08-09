@@ -36,12 +36,14 @@
   },
   "devDependencies": {
     "@yesimbot/agent-runtime": "workspace:^",
+    "ai": "^6.0.0",
     "koishi": "^4.18.10",
     "koishi-plugin-yesimbot": "workspace:^",
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "@yesimbot/agent-runtime": "workspace:^",
+    "ai": "^6.0.0",
     "koishi": "^4.18.10",
     "koishi-plugin-yesimbot": "workspace:^"
   },

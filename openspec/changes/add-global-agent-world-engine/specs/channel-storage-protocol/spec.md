@@ -1,8 +1,7 @@
 ## MODIFIED Requirements
 
-### Requirement: Scoped Asset Service
-
-The public facade MUST expose `AssetService.createStore(scope)` overloads for ChannelScope and GlobalScope. A ChannelScope Store MUST use the existing channel tuple. A GlobalScope Store MUST use the stable agentId and the GlobalAgent root. Both Store kinds MUST expose `put`, `get`, and `clear`, and their concrete implementations MUST remain private.
+### Requirement: Scoped Resource Owner
+The public resource facade MUST expose `resource.get(scope)` for ChannelScope and GlobalScope owners. A ChannelResources owner MUST use the existing channel tuple; a GlobalResources owner MUST use the stable agentId and the GlobalAgent root. Each scoped owner MUST expose separate Asset and Artifact stores with `put`, `get`, and `clear` semantics, and concrete implementations MUST remain private.
 
 #### Scenario: Store persists image bytes
 

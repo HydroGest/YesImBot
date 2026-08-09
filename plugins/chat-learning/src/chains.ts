@@ -1,11 +1,5 @@
 import { buildConversationChains } from "./links.js";
-import type {
-  ConversationSegment,
-  InitiationPattern,
-  LocalChainPattern,
-  MessageLink,
-  ResponsePattern,
-} from "./types.js";
+import type { ConversationSegment, InitiationPattern, LocalChainPattern, MessageLink, ResponsePattern } from "./types.js";
 
 export function buildLocalChainPatterns(
   segments: readonly ConversationSegment[],
@@ -28,10 +22,7 @@ export function buildLocalChainPatterns(
   return [...counts.values()].sort((left, right) => right.frequency - left.frequency);
 }
 
-export function buildIntentByTurnId(
-  responsePatterns: readonly ResponsePattern[],
-  initiationPatterns: readonly InitiationPattern[],
-): Map<string, string> {
+export function buildIntentByTurnId(responsePatterns: readonly ResponsePattern[], initiationPatterns: readonly InitiationPattern[]): Map<string, string> {
   const intentByTurnId = new Map<string, string>();
   for (const pattern of responsePatterns) {
     for (const sampleId of pattern.sampleIds) intentByTurnId.set(sampleId, pattern.intent);

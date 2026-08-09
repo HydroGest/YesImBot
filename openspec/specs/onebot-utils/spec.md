@@ -1,36 +1,30 @@
 # onebot-utils Specification
 
 ## Purpose
-
-Define the optional OneBot utility plugin that exposes adapter-specific runtime tools through the core agent plugin factory system while keeping OneBot internals out of `agent-runtime`.
+Define the optional OneBot utility plugin that exposes adapter-specific runtime tools through a named AgentPlugin object while keeping OneBot internals out of `agent-runtime`.
 
 ## Requirements
 ### Requirement: OneBot Utils Plugin Registration
-
-The OneBot utils plugin MUST register optional OneBot-specific runtime tools through `ctx.yesimbot.registerAgentPlugin`.
+The OneBot utils plugin MUST register optional OneBot-specific runtime tools through `ctx.yesimbot.agent.use(plugin)`.
 
 #### Scenario: Plugin registers through core service
-
 - **WHEN** the Koishi plugin starts
-- **THEN** it MUST register exactly one agent plugin factory through `ctx.yesimbot.registerAgentPlugin`
-- **AND** it MUST dispose the registered factory when the Koishi plugin stops
+- **THEN** it MUST register exactly one AgentPlugin object through `ctx.yesimbot.agent.use`
+- **AND** it MUST dispose the registered object when the Koishi plugin stops
 
 #### Scenario: Non-OneBot channel runtime
-
-- **WHEN** core calls the plugin factory for a channel whose scope platform is not `onebot`
-- **THEN** the returned `AgentPlugin` MUST expose no OneBot tools
+- **WHEN** Core initializes the registered AgentPlugin for a channel whose scope platform is not `onebot`
+- **THEN** the resulting plugin MUST expose no OneBot tools
 
 #### Scenario: OneBot channel runtime
-- **WHEN** core calls the plugin factory for a channel whose scope platform is `onebot`
-- **THEN** the returned `AgentPlugin` MUST expose OneBot utility tools whose closures use that runtime's supplied current Bot
+- **WHEN** Core initializes the registered AgentPlugin for a channel whose scope platform is `onebot`
+- **THEN** the resulting plugin MUST expose OneBot utility tools whose closures use that runtime's supplied current Bot
 - **AND** those tools MUST access adapter internals through those closures rather than `AgentToolExecuteContext`
 
 ### Requirement: OneBot Utils Forward Configuration
-
 The plugin MUST expose `parseImages`, defaulting to `false`, `attachImageSummary`, defaulting to `true`, and a positive `maxForwardPageChars`, defaulting to `6000`. It MUST NOT expose a forward expansion-depth, cache-capacity, or cache-expiration setting.
 
 #### Scenario: Default forward configuration
-
 - **WHEN** no forward-specific configuration is supplied
 - **THEN** images MUST be represented by text placeholders
 - **AND** a page MUST have a 6,000-character text budget

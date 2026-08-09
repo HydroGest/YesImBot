@@ -58,14 +58,7 @@ function deriveAgentHash(platform: string, selfId: string): string {
 }
 
 function deriveRuntimeConversationHash(input: MemosIdentityInput, subjectRawId: string): string {
-  return hashMemosIdParts([
-    "memos-conversation-v1",
-    "runtime_turn",
-    input.channelScope.platform,
-    input.channelType,
-    subjectRawId,
-    input.turnId,
-  ]);
+  return hashMemosIdParts(["memos-conversation-v1", "runtime_turn", input.channelScope.platform, input.channelType, subjectRawId, input.turnId]);
 }
 
 function deriveImportChunkConversationHash(input: MemosImportChunkIdentityInput): string {
@@ -88,11 +81,10 @@ export function deriveMemosIdentity(input: MemosIdentityInput): MemosIdentity {
   const channelScopeId = legacyChannelHash(input);
   const subjectRawId = input.channelScope.channelId;
   const subjectHash = deriveSubjectHash(input.channelScope.platform, input.channelType, subjectRawId);
-  const agentHash = deriveAgentHash(input.channelScope.platform, input.channelScope.selfId);
+  const selfId = input.channelScope.type === "direct" ? input.channelScope.selfId : "shared";
+  const agentHash = deriveAgentHash(input.channelScope.platform, selfId);
   const authorHash = hashMemosIdParts(["memos-author-v1", input.channelScope.platform, input.authorId]);
-  const messageHash = input.messageId
-    ? hashMemosIdParts(["memos-message-v1", input.channelScope.platform, input.messageId])
-    : undefined;
+  const messageHash = input.messageId ? hashMemosIdParts(["memos-message-v1", input.channelScope.platform, input.messageId]) : undefined;
   const memoryScope = resolveMemoryScope(input);
 
   const info: MemosIdentityInfo = {
@@ -111,7 +103,7 @@ export function deriveMemosIdentity(input: MemosIdentityInput): MemosIdentity {
   if (input.includeRawIdentityInfo) {
     info.raw_channel_id = input.channelScope.channelId;
     info.raw_author_id = input.authorId;
-    info.raw_self_id = input.channelScope.selfId;
+    info.raw_self_id = selfId;
     if (input.messageId) {
       info.raw_message_id = input.messageId;
     }
@@ -129,6 +121,7 @@ export function deriveMemosImportChunkIdentity(input: MemosImportChunkIdentityIn
   const channelScopeId = legacyChannelHash(input);
   const subjectRawId = input.channelScope.channelId;
   const subjectHash = deriveSubjectHash(input.channelScope.platform, input.channelType, subjectRawId);
+  const selfId = input.channelScope.type === "direct" ? input.channelScope.selfId : "shared";
   const conversationHash = deriveImportChunkConversationHash(input);
   const memoryScope: ResolvedMemosMemoryScope = input.channelType === "group" ? "channel" : "user";
   const info: MemosIdentityInfo = {
@@ -145,13 +138,13 @@ export function deriveMemosImportChunkIdentity(input: MemosImportChunkIdentityIn
 
   if (input.includeRawIdentityInfo) {
     info.raw_channel_id = input.channelScope.channelId;
-    info.raw_self_id = input.channelScope.selfId;
+    info.raw_self_id = selfId;
   }
 
   return {
     userId: `yb_subject_${subjectHash}`,
     conversationId: `yb_conv_${conversationHash}`,
-    agentId: `yb_agent_${deriveAgentHash(input.channelScope.platform, input.channelScope.selfId)}`,
+    agentId: `yb_agent_${deriveAgentHash(input.channelScope.platform, selfId)}`,
     info,
   };
 }

@@ -6,9 +6,7 @@ type Row = Record<string, unknown>;
 export function createMemoryModel<T extends Row>() {
   const tables = new Map<string, T[]>();
   const extend = vi.fn();
-  const get = vi.fn(async (table: string, query: Record<string, unknown>) =>
-    (tables.get(table) ?? []).filter((row) => matches(row, query)),
-  );
+  const get = vi.fn(async (table: string, query: Record<string, unknown>) => (tables.get(table) ?? []).filter((row) => matches(row, query)));
   const create = vi.fn(async (table: string, row: T) => {
     const rows = tables.get(table) ?? [];
     rows.push(row);

@@ -34,23 +34,14 @@ describe("roleplay agent plugin", () => {
     const channel = createAgentChannel();
     const state = createStateManager({ storage });
     const host = createPluginHost({
-      plugins: [
-        createRoleplayPlugin({
-          card: createCard(),
-          greeting: "Hello, {{user}}.",
-          userName: "direct-user",
-        }),
-      ],
+      plugins: [createRoleplayPlugin({ card: createCard(), greeting: "Hello, {{user}}.", userName: "direct-user" })],
       runtime: { id: "channel", channel, state, storage },
     });
 
     await host.init();
 
     await expect(storage.read()).resolves.toEqual([
-      expect.objectContaining({
-        type: "message",
-        data: expect.objectContaining({ role: "assistant", content: "Hello, direct-user." }),
-      }),
+      expect.objectContaining({ type: "message", data: expect.objectContaining({ role: "assistant", content: "Hello, direct-user." }) }),
     ]);
   });
 
@@ -68,10 +59,7 @@ describe("roleplay agent plugin", () => {
     await host.init();
 
     await expect(storage.read()).resolves.toEqual([
-      expect.objectContaining({
-        type: "message",
-        data: expect.objectContaining({ role: "assistant", content: "Hello, Nyx." }),
-      }),
+      expect.objectContaining({ type: "message", data: expect.objectContaining({ role: "assistant", content: "Hello, Nyx." }) }),
     ]);
   });
 
@@ -87,14 +75,7 @@ describe("roleplay agent plugin", () => {
     const channel = createAgentChannel();
     const state = createStateManager({ storage });
     const host = createPluginHost({
-      plugins: [
-        createRoleplayPlugin({
-          card,
-          greeting: "",
-          userName: "direct-user",
-          random: () => 0.8,
-        }),
-      ],
+      plugins: [createRoleplayPlugin({ card, greeting: "", userName: "direct-user", random: () => 0.8 })],
       runtime: { id: "channel", channel, state, storage },
     });
     const context = { runtime: { id: "channel" }, channel, state, turnId: "turn", stepNumber: 0 };
@@ -103,18 +84,10 @@ describe("roleplay agent plugin", () => {
     const first = await host.helpers.prepareStep([{ role: "user", content: "hello" }], context);
     const second = await host.helpers.prepareStep([{ role: "user", content: "hello" }], context);
 
-    expect(host.stablePromptBlocks).toEqual([
-      expect.objectContaining({
-        role: "system",
-        content: expect.stringContaining("Protect direct-user."),
-      }),
-    ]);
+    expect(host.stablePromptBlocks).toEqual([expect.objectContaining({ role: "system", content: expect.stringContaining("Protect direct-user.") })]);
     expect(JSON.stringify(host.stablePromptBlocks)).toContain("<example_dialogues>");
     expect(first).toEqual([
-      {
-        role: "system",
-        content: "Name: Athena\n\nA dark character.\n\nPersonality:\nMood: kind.\n\nScenario:\nRoll: 5.",
-      },
+      { role: "system", content: "Name: Athena\n\nA dark character.\n\nPersonality:\nMood: kind.\n\nScenario:\nRoll: 5." },
       { role: "user", content: "hello" },
       { role: "system", content: "Answer direct-user last." },
     ]);

@@ -23,15 +23,12 @@ export type Schedule = {
   updatedAt: string;
 } & ({ kind: "once"; at: string; cron?: never } | { kind: "cron"; cron: string; at?: never });
 
-export type ScheduleCreateInput = {
-  title: string;
-  prompt: string;
-} & ({ kind: "once"; at: string; cron?: never } | { kind: "cron"; cron: string; at?: never });
+export type ScheduleCreateInput = { title: string; prompt: string } & ({ kind: "once"; at: string; cron?: never } | { kind: "cron"; cron: string; at?: never });
 
-export type ScheduleUpdateInput = {
-  title?: string;
-  prompt?: string;
-} & ({ kind?: "once"; at?: string; cron?: never } | { kind?: "cron"; cron?: string; at?: never });
+export type ScheduleUpdateInput = { title?: string; prompt?: string } & (
+  | { kind?: "once"; at?: string; cron?: never }
+  | { kind?: "cron"; cron?: string; at?: never }
+);
 
 /**
  * The compact, tool-facing view of a Schedule: identity, lifecycle, and next
@@ -72,14 +69,7 @@ export type ScheduleRow = {
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
-    "schedule.due": {
-      schedule: {
-        id: string;
-        title: string;
-        kind: "once" | "cron";
-        scheduledFor: string;
-      };
-    };
+    "schedule.due": { schedule: { id: string; title: string; kind: "once" | "cron"; scheduledFor: string } };
   }
 }
 

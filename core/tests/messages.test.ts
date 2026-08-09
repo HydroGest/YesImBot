@@ -1,15 +1,15 @@
-import type { AgentMessage, AgentPlugin, ModelMessageContext } from "@yesimbot/agent-runtime";
+import type { AgentMessage } from "@yesimbot/agent-runtime";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { h, Universal } from "koishi";
+import { Element, h, Universal } from "koishi";
 
-import "./helpers/setup.js";
 import {
   assembleEvent,
   createEvent,
   createMessage,
+  formatInput,
   isEvent,
   isMessage,
   isMessageRecord,
@@ -20,29 +20,26 @@ import {
   type Message,
   type MessageRecord,
   type RecordBase,
-} from "../src/messages.js";
-import { createModelInputPlugin } from "../src/runtime/channel.js";
+} from "../src/messages/index.js";
+import { parseReply } from "../src/messages/index.js";
 import { scope } from "./helpers/index.js";
+
+type Input = Message | Event;
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
-    "test.variant": {
-      channel: { id: string };
-      test: { value: number };
-    };
+    "test.variant": { channel: { id: string }; test: { value: number } };
   }
 }
 
 declare module "koishi-plugin-yesimbot" {
   interface EventMap {
-    "formatter.variant": {
-      extra: { secret: string };
-    };
+    "formatter.variant": { extra: { secret: string } };
   }
 }
 
 // ---------------------------------------------------------------------------
-// describe("Event") helpers
+// Event
 // ---------------------------------------------------------------------------
 
 function messageRecord(overrides: { timestamp?: number } = {}): MessageRecord {
@@ -73,13 +70,7 @@ function deliveryFailureRecord(overrides: { timestamp?: number } = {}): EventRec
     platform: "test",
     selfId: "bot-1",
     channel: { id: "channel-1", type: Universal.Channel.Type.TEXT },
-    delivery: {
-      turnId: "turn-1",
-      messageId: "assistant-1",
-      segmentIndex: 1,
-      segmentTotal: 1,
-      error: { name: "Error", message: "offline" },
-    },
+    delivery: { turnId: "turn-1", messageId: "assistant-1", segmentIndex: 1, segmentTotal: 1, error: { name: "Error", message: "offline" } },
     text: "failed",
     timestamp: overrides.timestamp ?? 5678,
   };
@@ -88,23 +79,14 @@ function deliveryFailureRecord(overrides: { timestamp?: number } = {}): EventRec
 describe("Event", () => {
   it("creates yesimbot.message without payload timestamp", () => {
     const message = createMessage(messageRecord({ timestamp: 1234 }));
-    expect(message).toMatchObject({
-      role: "custom",
-      type: "yesimbot.message",
-      timestamp: 1234,
-      data: { messageId: "m1" },
-    });
+    expect(message).toMatchObject({ role: "custom", type: "yesimbot.message", timestamp: 1234, data: { messageId: "m1" } });
     expect("timestamp" in message.data).toBe(false);
     expect(message.data).not.toHaveProperty("schemaVersion");
   });
 
   it("creates eventType-discriminated yesimbot.event", () => {
     const event = createEvent(deliveryFailureRecord({ timestamp: 5678 }));
-    expect(event).toMatchObject({
-      type: "yesimbot.event",
-      timestamp: 5678,
-      data: { eventType: "delivery.failed" },
-    });
+    expect(event).toMatchObject({ type: "yesimbot.event", timestamp: 5678, data: { eventType: "delivery.failed" } });
     expect("timestamp" in event.data).toBe(false);
     expect(event.data).not.toHaveProperty("schemaVersion");
   });
@@ -116,13 +98,7 @@ describe("Event", () => {
 
   it("recognizes yesimbot.message custom messages as Message", () => {
     const message = createMessage(messageRecord());
-    const nonMessage: AgentMessage = {
-      id: "x",
-      timestamp: 0,
-      role: "custom",
-      type: "other",
-      data: {},
-    } as AgentMessage;
+    const nonMessage: AgentMessage = { id: "x", timestamp: 0, role: "custom", type: "other", data: {} } as AgentMessage;
 
     expect(isMessage(message)).toBe(true);
     expect(isMessage(nonMessage)).toBe(false);
@@ -131,13 +107,7 @@ describe("Event", () => {
 
   it("recognizes yesimbot.event custom messages as Event", () => {
     const event = createEvent(deliveryFailureRecord());
-    const nonEvent: AgentMessage = {
-      id: "x",
-      timestamp: 0,
-      role: "custom",
-      type: "other",
-      data: {},
-    } as AgentMessage;
+    const nonEvent: AgentMessage = { id: "x", timestamp: 0, role: "custom", type: "other", data: {} } as AgentMessage;
 
     expect(isEvent(event)).toBe(true);
     expect(isEvent(nonEvent)).toBe(false);
@@ -145,20 +115,8 @@ describe("Event", () => {
   });
 
   it("recognizes custom discriminators without re-validating their payloads", () => {
-    const badMessage = {
-      id: "x",
-      timestamp: 0,
-      role: "custom",
-      type: "yesimbot.message",
-      data: { messageId: "m1", text: "hello" },
-    } as AgentMessage;
-    const badEvent = {
-      id: "y",
-      timestamp: 0,
-      role: "custom",
-      type: "yesimbot.event",
-      data: { eventType: "delivery.failed", text: "failed" },
-    } as AgentMessage;
+    const badMessage = { id: "x", timestamp: 0, role: "custom", type: "yesimbot.message", data: { messageId: "m1", text: "hello" } } as AgentMessage;
+    const badEvent = { id: "y", timestamp: 0, role: "custom", type: "yesimbot.event", data: { eventType: "delivery.failed", text: "failed" } } as AgentMessage;
 
     expect(isMessage(badMessage)).toBe(true);
     expect(isEvent(badEvent)).toBe(true);
@@ -197,11 +155,7 @@ describe("Event", () => {
   });
 
   it("assembles events from RecordBase without copying user", () => {
-    const event = assembleEvent(recordBase(), {
-      eventType: "test.variant",
-      text: "variant",
-      test: { value: 42 },
-    });
+    const event = assembleEvent(recordBase(), { eventType: "test.variant", text: "variant", test: { value: 42 } });
 
     expect(event).toMatchObject({
       platform: "test",
@@ -213,17 +167,12 @@ describe("Event", () => {
     });
     expect(event).not.toHaveProperty("user");
   });
+
   it("assembles delivery.failed without payload channel or user residue", () => {
     const event = assembleEvent(recordBase(), {
       eventType: "delivery.failed",
       text: "Delivery failed",
-      delivery: {
-        turnId: "turn-1",
-        messageId: "assistant-1",
-        segmentIndex: 1,
-        segmentTotal: 1,
-        error: { name: "Error", message: "offline" },
-      },
+      delivery: { turnId: "turn-1", messageId: "assistant-1", segmentIndex: 1, segmentTotal: 1, error: { name: "Error", message: "offline" } },
     });
 
     expect(event).toMatchObject({
@@ -292,7 +241,7 @@ describe("Event", () => {
 });
 
 // ---------------------------------------------------------------------------
-// describe("createModelInputPlugin") helpers
+// formatInput
 // ---------------------------------------------------------------------------
 
 const ASSET_ID = "00000000000000000000000000000000";
@@ -310,10 +259,7 @@ function miMessageRecord(overrides: { timestamp?: number } = {}): MessageRecord 
 }
 
 function miMessageRecordWithText(text: string, overrides: { timestamp?: number } = {}): MessageRecord {
-  return {
-    ...miMessageRecord(overrides),
-    elements: h.parse(text),
-  };
+  return { ...miMessageRecord(overrides), elements: h.parse(text) };
 }
 
 function miDeliveryFailureRecord(): EventRecord<"delivery.failed"> {
@@ -322,13 +268,7 @@ function miDeliveryFailureRecord(): EventRecord<"delivery.failed"> {
     platform: scope.platform,
     selfId: scope.selfId,
     channel: { id: scope.channelId },
-    delivery: {
-      turnId: "turn-1",
-      messageId: "assistant-1",
-      segmentIndex: 1,
-      segmentTotal: 1,
-      error: { name: "Error", message: "offline" },
-    },
+    delivery: { turnId: "turn-1", messageId: "assistant-1", segmentIndex: 1, segmentTotal: 1, error: { name: "Error", message: "offline" } },
     text: "failed",
     timestamp: Date.parse("2026-07-18T12:34:00.000Z"),
   };
@@ -346,41 +286,22 @@ function miFormatterVariantRecord(): EventRecord<"formatter.variant"> {
   };
 }
 
-function context(history: readonly AgentMessage[], current: readonly AgentMessage[] = []): ModelMessageContext {
-  return { history, current } as ModelMessageContext;
+function project(input: Input) {
+  return formatInput(input);
 }
 
-function plugin(
-  imageBudget: { maxCount: number; maxBytesPerImage: number; maxTotalBytes: number } | null = null,
-): AgentPlugin {
-  return createModelInputPlugin({ imageBudget, warn: vi.fn() });
-}
-
-async function project(input: Input, modelContext: ModelMessageContext, inputPlugin: AgentPlugin) {
-  if (!inputPlugin.toModelMessages) throw new Error("Model-input hook is unavailable");
-  const result = await inputPlugin.toModelMessages(input, modelContext);
-  if (!result || Array.isArray(result) === false) throw new Error("Expected one model message");
-  return result[0];
-}
-
-describe("createModelInputPlugin", () => {
+describe("formatInput", () => {
   it("always formats a message with the fixed header including its ID", async () => {
     const input = createMessage(miMessageRecord({ timestamp: new Date("2026-07-25T12:34:00.000Z").valueOf() }));
-    const inputPlugin = plugin();
 
-    expect(inputPlugin.enforce).toBe("pre");
-    await expect(project(input, context([input]), inputPlugin)).resolves.toEqual({
-      role: "user",
-      content: '[time="2026/7/25 20:34" sender="Alice (10001)" id="m-1"]\nhello',
-    });
+    expect(project(input)).toEqual({ role: "user", content: '[time="2026/7/25 20:34" sender="Alice (10001)" id="m-1"]\nhello' });
   });
 
   it("hydrates JSONL-replayed Elements before rendering", async () => {
     const replayed = JSON.parse(JSON.stringify(createMessage(miMessageRecord()))) as Input;
-    const inputPlugin = plugin();
 
-    const first = await project(replayed, context([replayed]), inputPlugin);
-    const second = await project(replayed, context([replayed]), inputPlugin);
+    const first = await project(replayed);
+    const second = await project(replayed);
 
     expect(first).toEqual(second);
     expect(String(first.content)).not.toContain("[object Object]");
@@ -389,7 +310,7 @@ describe("createModelInputPlugin", () => {
 
   it("formats events from only eventType and text", async () => {
     const event: Event = createEvent(miFormatterVariantRecord());
-    const result = await project(event, context([event]), plugin());
+    const result = await project(event);
 
     expect(result.content).toContain('"eventType":"formatter.variant"');
     expect(result.content).toContain('"text":"variant"');
@@ -398,17 +319,15 @@ describe("createModelInputPlugin", () => {
 
   it("renders persisted image references as safe asset text without bytes", async () => {
     const input = createMessage(miMessageRecordWithText(`<img id="${ASSET_ID}"/>`));
-    const result = await project(input, context([input]), plugin());
+    const result = await project(input);
 
     expect(result.content).toContain(`[图片：asset://${ASSET_ID}]`);
     expect(result.content).not.toContain("<img");
   });
 
   it("never leaks src, data URIs, or platform URLs for unpersisted images", async () => {
-    const input = createMessage(
-      miMessageRecordWithText('<img src="https://example.test/x.png"/><img src="data:image/png;base64,AAAA"/>'),
-    );
-    const result = await project(input, context([input]), plugin());
+    const input = createMessage(miMessageRecordWithText('<img src="https://example.test/x.png"/><img src="data:image/png;base64,AAAA"/>'));
+    const result = await project(input);
 
     expect(result.content).toContain("[图片]");
     expect(String(result.content)).not.toContain("https://");
@@ -416,27 +335,112 @@ describe("createModelInputPlugin", () => {
   });
 
   it("keeps nested image elements discoverable in document order", async () => {
-    const input = createMessage({
-      ...miMessageRecord(),
-      elements: [h("p", {}, [h("span", {}, [h("img", { id: "11111111111111111111111111111111" })])])],
-    });
-    const result = await project(input, context([input]), plugin());
+    const input = createMessage({ ...miMessageRecord(), elements: [h("p", {}, [h("span", {}, [h("img", { id: "11111111111111111111111111111111" })])])] });
+    const result = await project(input);
 
     expect(result.content).toContain("[图片：asset://11111111111111111111111111111111]");
   });
 
   it("never reads asset bytes during model projection", async () => {
     const input = createMessage(miMessageRecordWithText(`<img id="${ASSET_ID}"/>`));
-    const result = await project(input, context([input]), plugin());
+    const result = await project(input);
 
     expect(result.content).toContain(`asset://${ASSET_ID}`);
   });
 
   it("formats delivery-failed notifications without instruction text", async () => {
     const event: Event = createEvent(miDeliveryFailureRecord());
-    const result = await project(event, context([event]), plugin());
+    const result = await project(event);
 
     expect(result.content).toContain("[SYSTEM_NOTIFICATION]");
     expect(result.content).toContain('"eventType":"delivery.failed"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseReply
+// ---------------------------------------------------------------------------
+
+function text(segment: readonly Element[]): string {
+  return segment.map((element) => (element.type === "text" ? `${element.attrs["content"] ?? ""}` : element.toString())).join("");
+}
+
+describe("parseReply", () => {
+  it("produces one fragment for plain text", () => {
+    const segments = parseReply("hello world");
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("hello world");
+  });
+
+  it("splits message elements into separate delivery segments", () => {
+    const segments = parseReply("one<message>two</message>three");
+    expect(segments.map(text)).toEqual(["one", "two", "three"]);
+  });
+
+  it("splits nested message elements into separate delivery segments", () => {
+    const segments = parseReply("one<message>two<message>three</message></message>four");
+    expect(segments.map(text)).toEqual(["one", "two", "three", "four"]);
+  });
+
+  it("preserves platform elements at the reply root", () => {
+    const segments = parseReply('hello <at id="42"/> there');
+    expect(segments).toHaveLength(1);
+    expect(segments[0].find((element) => element.type === "at")?.attrs["id"]).toBe("42");
+  });
+
+  it("keeps at and quote elements inside the same message segment", () => {
+    const segments = parseReply('hello <at id="42"/> <quote>quoted</quote> world');
+    expect(segments).toHaveLength(1);
+    expect(segments[0].some((element) => element.type === "at")).toBe(true);
+    expect(segments[0].some((element) => element.type === "quote")).toBe(true);
+  });
+
+  it("preserves unrecognized Koishi elements without a Core allowlist", () => {
+    const segments = parseReply('<custom-card state="open"/>');
+    expect(segments).toHaveLength(1);
+    expect(segments[0][0].type).toBe("custom-card");
+    expect(segments[0][0].attrs["state"]).toBe("open");
+  });
+
+  it("delivers <text> content literally with no nested elements", () => {
+    const segments = parseReply("<text>List<String> generic</text>");
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toHaveLength(1);
+    expect(segments[0][0].type).toBe("text");
+    expect(text(segments[0])).toBe("List<String> generic");
+  });
+
+  it("does not parse a message element inside <text>", () => {
+    const segments = parseReply("<text>before<message>after</message></text>");
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("before<message>after</message>");
+  });
+
+  it("keeps escaped element syntax as literal text", () => {
+    const segments = parseReply("before&lt;message&gt;after&lt;/message&gt;");
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("before<message>after</message>");
+  });
+
+  it("fully removes root inner thought from the output", () => {
+    const segments = parseReply("<inner_thought>private plan</inner_thought>visible reply");
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("visible reply");
+  });
+
+  it("fully removes inner thought nested in a message element", () => {
+    const segments = parseReply("<message>visible<inner_thought>private</inner_thought></message>");
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("visible");
+  });
+
+  it("does not create empty segments around message boundaries", () => {
+    expect(parseReply("one<message/>two")).toEqual([[h.text("one")], [h.text("two")]]);
+  });
+
+  it("does not trigger substitution for text resembling the nonce placeholder", () => {
+    const segments = parseReply(" r0  not a real capture");
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("r0 not a real capture");
   });
 });

@@ -1,10 +1,6 @@
 import type { LinkCorrection, MessageLink, MessageTurn } from "./types.js";
 
-export function applyCorrections(
-  links: readonly MessageLink[],
-  turns: readonly MessageTurn[],
-  corrections: readonly LinkCorrection[],
-): MessageLink[] {
+export function applyCorrections(links: readonly MessageLink[], turns: readonly MessageTurn[], corrections: readonly LinkCorrection[]): MessageLink[] {
   const byMessageId = new Map(turns.map((turn) => [turn.messageId, turn]));
   const removed = new Set<string>();
   const added: MessageLink[] = [];
@@ -33,11 +29,7 @@ export function applyCorrections(
   }
 
   return [
-    ...links.filter(
-      (link) =>
-        !removed.has(`${link.from}|${link.to ?? "null"}|${link.kind}`) &&
-        !removed.has(`${link.from}|${link.to ?? "null"}|*`),
-    ),
+    ...links.filter((link) => !removed.has(`${link.from}|${link.to ?? "null"}|${link.kind}`) && !removed.has(`${link.from}|${link.to ?? "null"}|*`)),
     ...added,
   ];
 }

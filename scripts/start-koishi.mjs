@@ -13,13 +13,7 @@ const parsed = parseArgs();
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const options = {
-    app: null,
-    dev: false,
-    prod: false,
-    check: false,
-    help: false,
-  };
+  const options = { app: null, dev: false, prod: false, check: false, help: false };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];

@@ -27,10 +27,7 @@ export interface NormalizedWorkspaceMountConfig {
  * virtual filesystem. Target conflicts are checked before touching any source
  * path so a bad declaration cannot partially create a writable directory.
  */
-export async function normalizeMounts(
-  mounts: readonly MountSpec[] | undefined,
-  baseDir: string,
-): Promise<NormalizedMountSpec[]> {
+export async function normalizeMounts(mounts: readonly MountSpec[] | undefined, baseDir: string): Promise<NormalizedMountSpec[]> {
   const candidates = (mounts ?? []).map((mount, index) => {
     if (!mount || typeof mount !== "object") {
       throw new TypeError(`Mount ${index} must be an object`);
@@ -42,11 +39,7 @@ export async function normalizeMounts(
       throw new Error(`Mount ${index} mode must be rw, ro, or overlay`);
     }
 
-    return {
-      source: mount.source,
-      target: normalizeVirtualMountPath(mount.target),
-      mode: mount.mode,
-    } satisfies MountSpec;
+    return { source: mount.source, target: normalizeVirtualMountPath(mount.target), mode: mount.mode } satisfies MountSpec;
   });
 
   assertMountTargetConflicts(candidates);
@@ -68,11 +61,7 @@ export async function normalizeMounts(
       throw new Error(`Mount source is not a directory for ${mount.target}: ${source}`);
     }
 
-    normalized.push({
-      source: await realpath(source),
-      target: mount.target,
-      mode: mount.mode,
-    });
+    normalized.push({ source: await realpath(source), target: mount.target, mode: mount.mode });
   }
 
   return normalized;

@@ -56,25 +56,13 @@ function createToolLoopModel(modelRequests: LanguageModelV3Message[][]) {
             start(controller) {
               controller.enqueue({ type: "stream-start", warnings: [] });
               controller.enqueue({ type: "tool-input-start", id: "call_1", toolName: "lookup" });
-              controller.enqueue({
-                type: "tool-input-delta",
-                id: "call_1",
-                delta: '{"value":"trigger"}',
-              });
+              controller.enqueue({ type: "tool-input-delta", id: "call_1", delta: '{"value":"trigger"}' });
               controller.enqueue({ type: "tool-input-end", id: "call_1" });
-              controller.enqueue({
-                type: "tool-call",
-                toolCallId: "call_1",
-                toolName: "lookup",
-                input: '{"value":"trigger"}',
-              });
+              controller.enqueue({ type: "tool-call", toolCallId: "call_1", toolName: "lookup", input: '{"value":"trigger"}' });
               controller.enqueue({
                 type: "finish",
                 finishReason: toolCallsReason,
-                usage: {
-                  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                  outputTokens: { total: 1, text: 0, reasoning: 0 },
-                },
+                usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 0, reasoning: 0 } },
               });
               controller.close();
             },
@@ -92,10 +80,7 @@ function createToolLoopModel(modelRequests: LanguageModelV3Message[][]) {
             controller.enqueue({
               type: "finish",
               finishReason: stopReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 1, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
             });
             controller.close();
           },
@@ -128,25 +113,13 @@ function createChainedToolLoopModel(modelRequests: LanguageModelV3Message[][]) {
             start(controller) {
               controller.enqueue({ type: "stream-start", warnings: [] });
               controller.enqueue({ type: "tool-input-start", id: callId, toolName: "lookup" });
-              controller.enqueue({
-                type: "tool-input-delta",
-                id: callId,
-                delta: `{"value":"step-${callNumber}"}`,
-              });
+              controller.enqueue({ type: "tool-input-delta", id: callId, delta: `{"value":"step-${callNumber}"}` });
               controller.enqueue({ type: "tool-input-end", id: callId });
-              controller.enqueue({
-                type: "tool-call",
-                toolCallId: callId,
-                toolName: "lookup",
-                input: `{"value":"step-${callNumber}"}`,
-              });
+              controller.enqueue({ type: "tool-call", toolCallId: callId, toolName: "lookup", input: `{"value":"step-${callNumber}"}` });
               controller.enqueue({
                 type: "finish",
                 finishReason: toolCallsReason,
-                usage: {
-                  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                  outputTokens: { total: 1, text: 0, reasoning: 0 },
-                },
+                usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 0, reasoning: 0 } },
               });
               controller.close();
             },
@@ -164,10 +137,7 @@ function createChainedToolLoopModel(modelRequests: LanguageModelV3Message[][]) {
             controller.enqueue({
               type: "finish",
               finishReason: stopReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 1, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
             });
             controller.close();
           },
@@ -200,10 +170,7 @@ function createTextModel(modelRequests: LanguageModelV3Message[][]) {
             controller.enqueue({
               type: "finish",
               finishReason: stopReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 1, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
             });
             controller.close();
           },
@@ -300,10 +267,7 @@ describe("append", () => {
 
     const entries = await storage.read();
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      type: "message",
-      data: { role: "user", content: "observed" },
-    });
+    expect(entries[0]).toMatchObject({ type: "message", data: { role: "user", content: "observed" } });
     expect(transformMessages).not.toHaveBeenCalled();
     expect(toModelMessages).not.toHaveBeenCalled();
     expect(extendSystemPrompt).not.toHaveBeenCalled();
@@ -323,12 +287,7 @@ describe("append", () => {
           name: "append-transform",
           onAppend(entries): AgentEntry[] {
             return entries.map((entry) =>
-              entry.type === "message" && entry.data.role === "user"
-                ? {
-                    ...entry,
-                    data: createUserMessage(`${entry.data.content} transformed`),
-                  }
-                : entry,
+              entry.type === "message" && entry.data.role === "user" ? { ...entry, data: createUserMessage(`${entry.data.content} transformed`) } : entry,
             );
           },
         },
@@ -345,12 +304,7 @@ describe("append", () => {
     await agent.append(createUserMessage("event"));
 
     expect(seen).toEqual([{ type: "message.appended", hasTurnId: false }]);
-    expect(await storage.read()).toMatchObject([
-      {
-        type: "message",
-        data: { content: "event transformed" },
-      },
-    ]);
+    expect(await storage.read()).toMatchObject([{ type: "message", data: { content: "event transformed" } }]);
   });
 
   it("does not block append completion when message.appended listeners await append", async () => {
@@ -396,12 +350,8 @@ describe("append", () => {
         return structuredClone(await baseStorage.read());
       },
     };
-    const agent = createAgent({
-      model: createTextModel(modelRequests),
-      storage,
-    });
-
-    const turnId = agent.send(createUserMessage("hello"));
+    const agent = createAgent({ model: createTextModel(modelRequests), storage });
+    agent.send(createUserMessage("hello"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -417,12 +367,7 @@ describe("append", () => {
           name: "rewrite-current",
           onAppend(entries): AgentEntry[] {
             return entries.map((entry) =>
-              entry.type === "message" && entry.data.role === "user"
-                ? {
-                    ...entry,
-                    data: createUserMessage(`${entry.data.content} transformed`),
-                  }
-                : entry,
+              entry.type === "message" && entry.data.role === "user" ? { ...entry, data: createUserMessage(`${entry.data.content} transformed`) } : entry,
             );
           },
         },
@@ -467,7 +412,7 @@ describe("append", () => {
       });
     });
 
-    const turnId = agent.send(createUserMessage("trigger"));
+    agent.send(createUserMessage("trigger"));
     await started;
     await agent.append(createUserMessage("observed while busy"));
     releaseTool?.();
@@ -488,16 +433,9 @@ describe("append", () => {
     const modelRequests: LanguageModelV3Message[][] = [];
     const agent = createAgent({
       model: createToolLoopModel(modelRequests),
-      tools: [
-        {
-          name: "lookup",
-          inputSchema: z.object({ value: z.string() }),
-          execute: async () => ({ ok: true }),
-        } as never,
-      ],
+      tools: [{ name: "lookup", inputSchema: z.object({ value: z.string() }), execute: async () => ({ ok: true }) } as never],
     });
-
-    const turnId = agent.send(createUserMessage("trigger"));
+    agent.send(createUserMessage("trigger"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -512,29 +450,16 @@ describe("append", () => {
 
     const toolContent = secondPrompt[2].content;
     expect(Array.isArray(toolContent)).toBe(true);
-    expect(toolContent).toEqual([
-      expect.objectContaining({
-        type: "tool-result",
-        toolName: "lookup",
-        output: { type: "json", value: { ok: true } },
-      }),
-    ]);
+    expect(toolContent).toEqual([expect.objectContaining({ type: "tool-result", toolName: "lookup", output: { type: "json", value: { ok: true } } })]);
   });
 
   it("does not duplicate prior response messages at later tool-loop boundaries", async () => {
     const modelRequests: LanguageModelV3Message[][] = [];
     const agent = createAgent({
       model: createChainedToolLoopModel(modelRequests),
-      tools: [
-        {
-          name: "lookup",
-          inputSchema: z.object({ value: z.string() }),
-          execute: async ({ value }: { value: string }) => ({ value }),
-        } as never,
-      ],
+      tools: [{ name: "lookup", inputSchema: z.object({ value: z.string() }), execute: async ({ value }: { value: string }) => ({ value }) } as never],
     });
-
-    const turnId = agent.send(createUserMessage("trigger"));
+    agent.send(createUserMessage("trigger"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -550,9 +475,7 @@ describe("append", () => {
     const persistedMessages = (await agent.storage.read()).filter((entry) => entry.type === "message");
     expect(
       persistedMessages.filter(
-        (entry) =>
-          entry.data.role === "tool" &&
-          entry.data.content.some((part) => part.type === "tool-result" && part.toolCallId === "call_1"),
+        (entry) => entry.data.role === "tool" && entry.data.content.some((part) => part.type === "tool-result" && part.toolCallId === "call_1"),
       ),
     ).toHaveLength(1);
   });
@@ -583,12 +506,7 @@ describe("append", () => {
         {
           name: "slow-first-append",
           async onAppend(entries) {
-            if (
-              entries.some(
-                (entry) =>
-                  entry.type === "message" && entry.data.role === "user" && entry.data.content === "slow observation",
-              )
-            ) {
+            if (entries.some((entry) => entry.type === "message" && entry.data.role === "user" && entry.data.content === "slow observation")) {
               await slowAppendReady;
             }
             return entries;
@@ -596,6 +514,7 @@ describe("append", () => {
         },
       ],
     });
+    agent.send(createUserMessage("trigger"));
 
     const started = new Promise<void>((resolve) => {
       const unsubscribe = agent.channel.subscribe("internal", (event) => {
@@ -606,7 +525,6 @@ describe("append", () => {
       });
     });
 
-    const turnId = agent.send(createUserMessage("trigger"));
     await started;
     const slowAppend = agent.append(createUserMessage("slow observation"));
     const fastAppend = agent.append(createUserMessage("fast observation"));
@@ -619,11 +537,7 @@ describe("append", () => {
     expect(agent.isIdle()).toBe(true);
 
     expect(modelRequests).toHaveLength(2);
-    expect(modelRequests[1].map(flattenPromptContent).slice(0, 3)).toEqual([
-      ["trigger"],
-      ["slow observation"],
-      ["fast observation"],
-    ]);
+    expect(modelRequests[1].map(flattenPromptContent).slice(0, 3)).toEqual([["trigger"], ["slow observation"], ["fast observation"]]);
   });
 
   it("keeps joined busy input explicit at the tool-loop boundary while appended observations come from history", async () => {
@@ -655,7 +569,7 @@ describe("append", () => {
       });
     });
 
-    const turnId = agent.send(createUserMessage("trigger"));
+    agent.send(createUserMessage("trigger"));
     await started;
     await agent.append(createUserMessage("observed while busy"));
     agent.send(createUserMessage("joined while busy"), { ifBusy: "join" });
@@ -664,9 +578,7 @@ describe("append", () => {
     await agent.wait();
 
     const entries = await agent.storage.read();
-    const joined = entries.filter(
-      (entry) => entry.type === "message" && entry.data.role === "user" && entry.data.content === "joined while busy",
-    );
+    const joined = entries.filter((entry) => entry.type === "message" && entry.data.role === "user" && entry.data.content === "joined while busy");
     expect(joined).toHaveLength(1);
 
     expect(modelRequests).toHaveLength(2);

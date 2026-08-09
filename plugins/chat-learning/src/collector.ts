@@ -19,10 +19,7 @@ export function collectTurns(entries: readonly AgentEntry[], options: CollectOpt
   const maxScanMessages = options.maxScanMessages ?? 1000;
   const cutoff = now - maxAgeMs;
   const blockedIds = new Set(options.blockedUserIds ?? []);
-  const blockedPatterns = [
-    ...(options.blockedUserPatterns ?? []),
-    ...(options.autoBlockBotNames ? DEFAULT_BOT_PATTERNS : []),
-  ];
+  const blockedPatterns = [...(options.blockedUserPatterns ?? []), ...(options.autoBlockBotNames ? DEFAULT_BOT_PATTERNS : [])];
   const turns: MessageTurn[] = [];
 
   for (const entry of entries) {
@@ -81,12 +78,7 @@ export function segmentTurns(turns: readonly MessageTurn[], maxGapMs = 10 * 60 *
 }
 
 function createSegment(index: number, turns: readonly MessageTurn[], startTime: number): ConversationSegment {
-  return {
-    id: `segment-${index}`,
-    startTime,
-    endTime: turns.at(-1)?.timestamp ?? startTime,
-    turns,
-  };
+  return { id: `segment-${index}`, startTime, endTime: turns.at(-1)?.timestamp ?? startTime, turns };
 }
 
 function renderElements(elements: readonly Element[]): string {

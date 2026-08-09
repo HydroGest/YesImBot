@@ -1,6 +1,5 @@
 import { formatAnimatedImageLabel, isAnimatedImage } from "./animated-image.js";
 import type { OneBotInternal, OneBotSenderInfo } from "./onebot.js";
-
 const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
   year: "numeric",
@@ -10,108 +9,66 @@ const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
   hour12: false,
 });
-
+type ForwardPart = string | { image: readonly [summary: string, file: string, size: string | null] } | { forward: string };
+type ForwardMessage = readonly [sender: string, time: string | null, content: readonly ForwardPart[]];
+export type ForwardResult = ForwardPage | ForwardFailure;
+type OneBotForwardSegment = OneBotTextSegment | OneBotImageSegment | OneBotNestedForwardSegment | OneBotRecordSegment | OneBotVideoSegment | OneBotFileSegment;
 export interface ForwardToolInput {
   forwardId: string;
   offset?: number;
   limit?: number;
 }
-
 interface ForwardPage {
   messages: readonly ForwardMessage[];
   nextOffset?: number;
   tips?: string;
   overLimit?: true;
 }
-
 interface ForwardFailure {
   error: string;
 }
-
 export interface ForwardImageRequest {
   readonly file: string;
   readonly summary: string;
   readonly url?: string;
 }
-
 export interface ForwardReaderConfig {
   parseImages: boolean;
   maxForwardPageChars: number;
   attachImageSummary: boolean;
   persistImages?: (images: readonly ForwardImageRequest[]) => Promise<ReadonlyMap<string, string>>;
 }
-
 interface OneBotForwardNode {
   sender: OneBotSenderInfo;
   time: number;
   message: readonly OneBotForwardSegment[];
   raw_message?: unknown;
 }
-
 interface OneBotTextSegment {
   type: "text";
-  data: {
-    text: string;
-  };
+  data: { text: string };
 }
-
 interface OneBotImageSegment {
   type: "image";
-  data: {
-    summary: string;
-    file: string;
-    file_size?: string;
-    src?: string;
-    url?: string;
-    sub_type?: unknown;
-    subType?: unknown;
-  };
+  data: { summary: string; file: string; file_size?: string; src?: string; url?: string; sub_type?: unknown; subType?: unknown };
 }
-
 interface OneBotNestedForwardSegment {
   type: "forward";
-  data: {
-    id: string;
-    content?: readonly OneBotForwardNode[];
-  };
+  data: { id: string; content?: readonly OneBotForwardNode[] };
 }
-
 interface OneBotRecordSegment {
   type: "record";
   data: object;
 }
-
 interface OneBotVideoSegment {
   type: "video";
   data: object;
 }
-
 interface OneBotFileSegment {
   type: "file";
   data: object;
 }
-
-type ForwardPart =
-  | string
-  | { image: readonly [summary: string, file: string, size: string | null] }
-  | { forward: string };
-
-type ForwardMessage = readonly [sender: string, time: string | null, content: readonly ForwardPart[]];
-
-export type ForwardResult = ForwardPage | ForwardFailure;
-
-type OneBotForwardSegment =
-  | OneBotTextSegment
-  | OneBotImageSegment
-  | OneBotNestedForwardSegment
-  | OneBotRecordSegment
-  | OneBotVideoSegment
-  | OneBotFileSegment;
-
-export function createForwardReader(
-  internal: OneBotInternal,
-  config: Readonly<ForwardReaderConfig>,
-): (input: ForwardToolInput) => Promise<ForwardResult> {
+export function createForwardReader(internal: OneBotInternal, config: Readonly<ForwardReaderConfig>): (input: ForwardToolInput) => Promise<ForwardResult> {
   const cache = new Map<string, readonly ForwardMessage[]>();
 
   return async function readForwardPage(input) {
@@ -136,11 +93,7 @@ export function createForwardReader(
     if (config.persistImages && imageRequests.length > 0) {
       const assetIds = await config.persistImages(imageRequests);
       const render = (items: readonly ForwardMessage[]): ForwardMessage[] =>
-        items.map((record) => [
-          record[0],
-          record[1],
-          coalesceParts(record[2].map((part) => renderImagePart(part, assetIds))),
-        ]);
+        items.map((record) => [record[0], record[1], coalesceParts(record[2].map((part) => renderImagePart(part, assetIds)))]);
       const renderedRecords = render(records);
       cache.set(forwardId, renderedRecords);
       for (const [nestedForwardId, nestedRecords] of nestedForwards) {
@@ -156,34 +109,26 @@ export function createForwardReader(
     return records;
   }
 }
-
 function normalizeNode(
   node: OneBotForwardNode,
   config: Readonly<ForwardReaderConfig>,
   nestedForwards: Map<string, readonly ForwardMessage[]>,
   imageUrls: Map<string, string>,
 ): ForwardMessage {
-  return [
-    formatSender(node.sender),
-    formatTime(node.time),
-    normalizeSegments(node.message, config, nestedForwards, imageUrls),
-  ];
+  return [formatSender(node.sender), formatTime(node.time), normalizeSegments(node.message, config, nestedForwards, imageUrls)];
 }
-
 function formatSender(sender: OneBotSenderInfo): string {
   const userId = String(sender.user_id);
   const displayName = sender.card || sender.nickname;
 
   return displayName && displayName !== userId ? `${displayName} (${userId})` : userId;
 }
-
 function formatTime(value: number): string | null {
   if (!Number.isFinite(value)) return null;
 
   const date = new Date(value * 1000);
   return Number.isNaN(date.getTime()) ? null : timeFormatter.format(date);
 }
-
 function normalizeSegments(
   segments: readonly OneBotForwardSegment[],
   config: Readonly<ForwardReaderConfig>,
@@ -202,15 +147,7 @@ function normalizeSegments(
       }
       case "image": {
         const data = segment.data as
-          | {
-              summary?: unknown;
-              file?: unknown;
-              file_size?: unknown;
-              src?: unknown;
-              url?: unknown;
-              sub_type?: unknown;
-              subType?: unknown;
-            }
+          | { summary?: unknown; file?: unknown; file_size?: unknown; src?: unknown; url?: unknown; sub_type?: unknown; subType?: unknown }
           | undefined;
         if (typeof data?.summary !== "string" || typeof data.file !== "string") {
           appendString(parts, "[未知消息段]");
@@ -221,12 +158,7 @@ function normalizeSegments(
         } else {
           appendString(
             parts,
-            isAnimatedImage(data)
-              ? formatAnimatedImageLabel({
-                  attachImageSummary: config.attachImageSummary,
-                  summary: data.summary,
-                })
-              : "[图片]",
+            isAnimatedImage(data) ? formatAnimatedImageLabel({ attachImageSummary: config.attachImageSummary, summary: data.summary }) : "[图片]",
           );
         }
         break;
@@ -262,7 +194,6 @@ function normalizeSegments(
 
   return parts;
 }
-
 function appendString(parts: ForwardPart[], value: string): void {
   const previous = parts.at(-1);
   if (typeof previous === "string") {
@@ -271,7 +202,6 @@ function appendString(parts: ForwardPart[], value: string): void {
     parts.push(value);
   }
 }
-
 function formatFileSize(value: unknown): string | null {
   if (typeof value !== "string" || !/^(?:0|[1-9]\d*)$/.test(value)) return null;
 
@@ -279,15 +209,10 @@ function formatFileSize(value: unknown): string | null {
   if (!Number.isSafeInteger(bytes)) return null;
   if (bytes < 1000) return `${bytes} B`;
 
-  const unit: readonly [number, string] =
-    bytes < 1_000_000 ? [1000, "KB"] : bytes < 1_000_000_000 ? [1_000_000, "MB"] : [1_000_000_000, "GB"];
+  const unit: readonly [number, string] = bytes < 1_000_000 ? [1000, "KB"] : bytes < 1_000_000_000 ? [1_000_000, "MB"] : [1_000_000_000, "GB"];
   return `${(bytes / unit[0]).toFixed(1)} ${unit[1]}`;
 }
-
-function collectImageRequests(
-  records: readonly (readonly ForwardMessage[])[],
-  imageUrls: ReadonlyMap<string, string>,
-): ForwardImageRequest[] {
+function collectImageRequests(records: readonly (readonly ForwardMessage[])[], imageUrls: ReadonlyMap<string, string>): ForwardImageRequest[] {
   const requests = new Map<string, ForwardImageRequest>();
   for (const recordList of records) {
     for (const record of recordList) {
@@ -296,24 +221,18 @@ function collectImageRequests(
         const [summary, file] = part.image;
         if (!requests.has(file)) {
           const url = imageUrls.get(file);
-          requests.set(file, {
-            file,
-            summary,
-            ...(url === undefined ? {} : { url }),
-          });
+          requests.set(file, { file, summary, ...(url === undefined ? {} : { url }) });
         }
       }
     }
   }
   return [...requests.values()];
 }
-
 function renderImagePart(part: ForwardPart, assetIds: ReadonlyMap<string, string>): ForwardPart {
   if (typeof part === "string" || !("image" in part)) return part;
   const assetId = assetIds.get(part.image[1]);
   return assetId ? `[图片：asset://${assetId}]` : "[图片]";
 }
-
 function coalesceParts(parts: readonly ForwardPart[]): ForwardPart[] {
   const result: ForwardPart[] = [];
   for (const part of parts) {
@@ -326,17 +245,14 @@ function coalesceParts(parts: readonly ForwardPart[]): ForwardPart[] {
   }
   return result;
 }
-
 function clampOffset(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value)) return 0;
   return Math.max(0, Math.trunc(value));
 }
-
 function clampLimit(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value)) return 30;
   return Math.min(60, Math.max(1, Math.trunc(value)));
 }
-
 function page(records: readonly ForwardMessage[], start: number, limit: number, budget: number): ForwardPage {
   if (start >= records.length) return { messages: [] };
 
@@ -349,11 +265,7 @@ function page(records: readonly ForwardMessage[], start: number, limit: number, 
     const recordChars = record[2].reduce((total, part) => total + (typeof part === "string" ? part.length : 0), 0);
 
     if (messages.length === 0 && recordChars > budget) {
-      return {
-        messages: [record],
-        ...continuation(index + 1, records.length),
-        overLimit: true,
-      };
+      return { messages: [record], ...continuation(index + 1, records.length), overLimit: true };
     }
     if (chars + recordChars > budget) break;
 
@@ -362,16 +274,10 @@ function page(records: readonly ForwardMessage[], start: number, limit: number, 
     index += 1;
   }
 
-  return {
-    messages,
-    ...continuation(index, records.length),
-  };
+  return { messages, ...continuation(index, records.length) };
 }
 function continuation(nextOffset: number, totalRecords: number) {
   if (nextOffset >= totalRecords) return {};
 
-  return {
-    nextOffset,
-    tips: `还有 ${totalRecords - nextOffset} 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset ${nextOffset}。`,
-  };
+  return { nextOffset, tips: `还有 ${totalRecords - nextOffset} 条消息未读取；如需继续，请使用相同 forwardId 和 nextOffset ${nextOffset}。` };
 }

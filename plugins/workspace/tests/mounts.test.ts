@@ -27,48 +27,23 @@ describe("workspace mount validation", () => {
   });
 
   it("rejects duplicate mount points across maps", () => {
-    expect(() =>
-      assertValidMountConfig({
-        persistPaths: { "/data": "/host/a" },
-        readOnlyPaths: { "/data": "/host/b" },
-      }),
-    ).toThrow(/Duplicate mount point/);
+    expect(() => assertValidMountConfig({ persistPaths: { "/data": "/host/a" }, readOnlyPaths: { "/data": "/host/b" } })).toThrow(/Duplicate mount point/);
   });
 
   it("rejects nested mount points", () => {
-    expect(() =>
-      assertValidMountConfig({
-        persistPaths: { "/data": "/host/a" },
-        overlayPaths: { "/data/repo": "/host/b" },
-      }),
-    ).toThrow(/Nested mount point/);
+    expect(() => assertValidMountConfig({ persistPaths: { "/data": "/host/a" }, overlayPaths: { "/data/repo": "/host/b" } })).toThrow(/Nested mount point/);
   });
 
   it("rejects explicit mounts nested under the default workspace", () => {
-    expect(() =>
-      assertValidMountConfig({
-        persistPaths: { "/home/workspace/repo": "/host/repo" },
-      }),
-    ).toThrow(/reserved mount point/);
+    expect(() => assertValidMountConfig({ persistPaths: { "/home/workspace/repo": "/host/repo" } })).toThrow(/reserved mount point/);
   });
 
   it("rejects duplicate mount points created by normalization in the same map", () => {
-    expect(() =>
-      assertValidMountConfig({
-        persistPaths: {
-          "/data": "/host/a",
-          "/data/": "/host/b",
-        },
-      }),
-    ).toThrow(/Duplicate mount point/);
+    expect(() => assertValidMountConfig({ persistPaths: { "/data": "/host/a", "/data/": "/host/b" } })).toThrow(/Duplicate mount point/);
   });
 
   it("rejects explicit mounts over the default workspace", () => {
-    expect(() =>
-      assertValidMountConfig({
-        persistPaths: { "/home/workspace": "/host/workspace" },
-      }),
-    ).toThrow(/reserved mount point/);
+    expect(() => assertValidMountConfig({ persistPaths: { "/home/workspace": "/host/workspace" } })).toThrow(/reserved mount point/);
   });
 
   it("resolves relative sources against the base directory and creates rw directories", async () => {
@@ -77,11 +52,7 @@ describe("workspace mount validation", () => {
 
     const [mount] = await normalizeMounts([{ source: "created/data", target: "/data/", mode: "rw" }], baseDir);
 
-    expect(mount).toEqual({
-      source: await realpath(join(baseDir, "created", "data")),
-      target: "/data",
-      mode: "rw",
-    });
+    expect(mount).toEqual({ source: await realpath(join(baseDir, "created", "data")), target: "/data", mode: "rw" });
     await expect(stat(join(baseDir, "created", "data"))).resolves.toMatchObject({ isDirectory: expect.any(Function) });
   });
 
@@ -102,22 +73,12 @@ describe("workspace mount validation", () => {
       { source: await realpath(join(baseDir, "docs")), target: "/docs", mode: "ro" },
       { source: await realpath(join(baseDir, "docs")), target: "/overlay", mode: "overlay" },
     ]);
-    await expect(normalizeMounts([{ source: "missing", target: "/missing", mode: "ro" }], baseDir)).rejects.toThrow(
-      /does not exist/,
-    );
+    await expect(normalizeMounts([{ source: "missing", target: "/missing", mode: "ro" }], baseDir)).rejects.toThrow(/does not exist/);
   });
 
   it.each([
-    {
-      name: "root",
-      mounts: [{ source: ".", target: "/", mode: "rw" }],
-      message: /Mount point \/ is not allowed/,
-    },
-    {
-      name: "reserved workspace",
-      mounts: [{ source: ".", target: "/home/workspace/cache", mode: "rw" }],
-      message: /reserved mount point/,
-    },
+    { name: "root", mounts: [{ source: ".", target: "/", mode: "rw" }], message: /Mount point \/ is not allowed/ },
+    { name: "reserved workspace", mounts: [{ source: ".", target: "/home/workspace/cache", mode: "rw" }], message: /reserved mount point/ },
     {
       name: "duplicate targets",
       mounts: [

@@ -10,22 +10,12 @@ import { createMemoryStorage } from "../src/storage.js";
 function createRuntime() {
   const storage = createMemoryStorage();
   const channel = createAgentChannel();
-  return {
-    id: "runtime_1",
-    channel,
-    state: createStateManager({ storage }),
-    storage,
-  };
+  return { id: "runtime_1", channel, state: createStateManager({ storage }), storage };
 }
 
 describe("plugin host", () => {
   it("orders plugins by pre, normal, then post", () => {
-    const plugins: AgentPlugin[] = [
-      { name: "normal-1" },
-      { name: "post", enforce: "post" },
-      { name: "pre", enforce: "pre" },
-      { name: "normal-2" },
-    ];
+    const plugins: AgentPlugin[] = [{ name: "normal-1" }, { name: "post", enforce: "post" }, { name: "pre", enforce: "pre" }, { name: "normal-2" }];
 
     const host = createPluginHost({ plugins, runtime: createRuntime() });
 
@@ -61,11 +51,7 @@ describe("plugin host", () => {
             calls.push("legacy-tools:normal");
             return [...tools, { name: "legacy_tool", inputSchema: z.object({}) }] as never;
           },
-          appendSystemPrompt: () => ({
-            role: "system",
-            content: "normal prompt",
-            providerOptions: { mock: { cache: true } },
-          }),
+          appendSystemPrompt: () => ({ role: "system", content: "normal prompt", providerOptions: { mock: { cache: true } } }),
         },
       ],
     });
@@ -81,19 +67,9 @@ describe("plugin host", () => {
     expect(host.stableLegacySystemPrompt).toBe("base\nlegacy");
     expect(host.stablePromptBlocks).toEqual([
       { role: "system", content: "pre prompt" },
-      {
-        role: "system",
-        content: "normal prompt",
-        providerOptions: { mock: { cache: true } },
-      },
+      { role: "system", content: "normal prompt", providerOptions: { mock: { cache: true } } },
     ]);
-    expect(host.stableTools.map((tool) => tool.name)).toEqual([
-      "base",
-      "pre_tool",
-      "normal_tool",
-      "legacy_tool",
-      "finalize_response",
-    ]);
+    expect(host.stableTools.map((tool) => tool.name)).toEqual(["base", "pre_tool", "normal_tool", "legacy_tool", "finalize_response"]);
   });
 
   it("fails initialization when a required stable resource throws", async () => {
@@ -101,11 +77,7 @@ describe("plugin host", () => {
     const host = createPluginHost({
       runtime: createRuntime(),
       plugins: [
-        {
-          name: "first",
-          init: () => void calls.push("init:first"),
-          stop: () => void calls.push("stop:first"),
-        },
+        { name: "first", init: () => void calls.push("init:first"), stop: () => void calls.push("stop:first") },
         {
           name: "broken",
           init: () => calls.push("init:broken"),
@@ -127,11 +99,7 @@ describe("plugin host", () => {
     const host = createPluginHost({
       runtime: createRuntime(),
       plugins: [
-        {
-          name: "first",
-          init: () => void calls.push("init:first"),
-          stop: () => void calls.push("stop:first"),
-        },
+        { name: "first", init: () => void calls.push("init:first"), stop: () => void calls.push("stop:first") },
         {
           name: "intermediate",
           init: () => void calls.push("init:intermediate"),
@@ -152,14 +120,7 @@ describe("plugin host", () => {
     });
 
     await expect(host.init()).rejects.toBe(primaryError);
-    expect(calls).toEqual([
-      "init:first",
-      "init:intermediate",
-      "init:broken",
-      "stop:broken",
-      "stop:intermediate",
-      "stop:first",
-    ]);
+    expect(calls).toEqual(["init:first", "init:intermediate", "init:broken", "stop:broken", "stop:intermediate", "stop:first"]);
     expect(host.activePlugins).toEqual([]);
   });
 
@@ -180,11 +141,7 @@ describe("plugin host", () => {
             throw new Error("bad optional prompt");
           },
         },
-        {
-          name: "required",
-          tools: [{ name: "kept", inputSchema: z.object({}) }] as never,
-          appendSystemPrompt: () => "kept prompt",
-        },
+        { name: "required", tools: [{ name: "kept", inputSchema: z.object({}) }] as never, appendSystemPrompt: () => "kept prompt" },
       ],
     });
 
@@ -291,11 +248,7 @@ describe("plugin host", () => {
     });
 
     await host.init();
-    const result = await host.helpers.transformMessages([], {
-      runtime: { id: runtime.id },
-      channel: runtime.channel,
-      state: runtime.state,
-    });
+    const result = await host.helpers.transformMessages([], { runtime: { id: runtime.id }, channel: runtime.channel, state: runtime.state });
 
     expect(result).toEqual([]);
     expect(seen).toEqual(["broken-transform:Error:bad transform"]);
@@ -325,12 +278,7 @@ describe("plugin host", () => {
     const result = await host.helpers.beforeToolCall(
       { type: "allow" },
       { toolCallId: "call_1", toolName: "search", args: {} },
-      {
-        runtime: { id: runtime.id },
-        channel: runtime.channel,
-        state: runtime.state,
-        turnId: "turn_1",
-      },
+      { runtime: { id: runtime.id }, channel: runtime.channel, state: runtime.state, turnId: "turn_1" },
     );
 
     expect(result).toEqual({ type: "block", reason: "plugin-error" });

@@ -26,12 +26,8 @@ export const memosConfigSchema: Schema<MemosClientConfig> = Schema.object({
   ])
     .default("context")
     .description("MemOS runtime-owned search filter mode"),
-  searchTags: Schema.array(Schema.string())
-    .default(["yesimbot"])
-    .description("MemOS search tags enforced by runtime code"),
-  searchImportSources: Schema.array(Schema.string())
-    .default([])
-    .description("Allowed MemOS import sources enforced by runtime code"),
+  searchTags: Schema.array(Schema.string()).default(["yesimbot"]).description("MemOS search tags enforced by runtime code"),
+  searchImportSources: Schema.array(Schema.string()).default([]).description("Allowed MemOS import sources enforced by runtime code"),
   asyncMode: Schema.boolean().default(true).description("Use async MemOS writes"),
   tags: Schema.array(Schema.string()).default(["yesimbot"]).description("Default MemOS tags"),
   includeRawIdentityInfo: Schema.boolean().default(false).description("Include raw platform ids in MemOS info"),

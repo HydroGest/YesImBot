@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createMessageEntry, createUserMessage, type AgentEntry } from "@yesimbot/agent-runtime";
-
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createChatHistoryStore } from "../src/history.js";

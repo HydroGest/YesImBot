@@ -25,13 +25,7 @@ describe("buildLinks", () => {
 
     const links = buildLinks(turns);
 
-    expect(links).toContainEqual({
-      from: "t2",
-      to: "t1",
-      kind: "reply",
-      confidence: 1,
-      evidence: ["platform:reply", "target:m1"],
-    });
+    expect(links).toContainEqual({ from: "t2", to: "t1", kind: "reply", confidence: 1, evidence: ["platform:reply", "target:m1"] });
   });
 
   it("builds low-confidence adjacent links", () => {
@@ -43,12 +37,7 @@ describe("buildLinks", () => {
   });
 
   it("marks direct mentions of the bot", () => {
-    const turns = [
-      {
-        ...turn("t1", "m1", 1000, "你好"),
-        mentionIds: ["bot-1"],
-      },
-    ];
+    const turns = [{ ...turn("t1", "m1", 1000, "你好"), mentionIds: ["bot-1"] }];
 
     const links = buildLinks(turns, { selfId: "bot-1" });
 

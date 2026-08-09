@@ -3,15 +3,7 @@ import { z } from "zod";
 
 import { buildConversationChains } from "./links.js";
 import { patternPhrase, sanitizeForDisplay } from "./text.js";
-import type {
-  ConversationSegment,
-  InitiationIntent,
-  InitiationPattern,
-  MessageLink,
-  MessageTurn,
-  ResponseIntent,
-  ResponsePattern,
-} from "./types.js";
+import type { ConversationSegment, InitiationIntent, InitiationPattern, MessageLink, MessageTurn, ResponseIntent, ResponsePattern } from "./types.js";
 
 export interface PatternSnapshot {
   readonly responsePatterns: readonly ResponsePattern[];
@@ -25,14 +17,8 @@ export interface ClassifyModelOptions {
 
 const RESPONSE_INTENTS = ["ack", "agree", "question", "joke", "roast", "empathy", "refuse"] as const;
 const INITIATION_INTENTS = ["share", "question", "react", "recall", "opinion"] as const;
-const messageAnnotationSchema = z.object({
-  id: z.string(),
-  role: z.enum(["response", "initiation", "noise"]),
-  intent: z.string(),
-});
-const modelOutputSchema = z.object({
-  messages: z.array(messageAnnotationSchema).optional(),
-});
+const messageAnnotationSchema = z.object({ id: z.string(), role: z.enum(["response", "initiation", "noise"]), intent: z.string() });
+const modelOutputSchema = z.object({ messages: z.array(messageAnnotationSchema).optional() });
 
 const MAX_MODEL_MESSAGES = 80;
 const MAX_MODEL_CHARS = 12_000;
@@ -63,12 +49,7 @@ export async function classifyPatternsWithModel(
   ].join("\n");
 
   try {
-    const { text } = await generateText({
-      model,
-      system,
-      prompt,
-      temperature: 0.1,
-    });
+    const { text } = await generateText({ model, system, prompt, temperature: 0.1 });
     return parseModelAnnotations(text, messageByPromptId);
   } catch {
     return undefined;
@@ -96,10 +77,7 @@ function selectClassifyThreads(
   for (const candidate of candidates) {
     if (threads.length >= maxThreads) break;
     const selectedTurns = candidate.chain.turns.slice(-maxThreadMessages);
-    const chars = selectedTurns.reduce(
-      (sum, turn) => sum + sanitizeForDisplay(turn.text).trim().length,
-      0,
-    );
+    const chars = selectedTurns.reduce((sum, turn) => sum + sanitizeForDisplay(turn.text).trim().length, 0);
     if (totalMessages + selectedTurns.length > MAX_MODEL_MESSAGES) continue;
     if (totalChars + chars > MAX_MODEL_CHARS) break;
     threads.push({ turns: selectedTurns });
@@ -110,9 +88,7 @@ function selectClassifyThreads(
 }
 
 function threadScore(turns: readonly MessageTurn[]): number {
-  const texts = turns
-    .map((turn) => sanitizeForDisplay(turn.text).trim())
-    .filter((text) => text.length > 0);
+  const texts = turns.map((turn) => sanitizeForDisplay(turn.text).trim()).filter((text) => text.length > 0);
   if (texts.length < 2) return 0;
   const userIds = new Set(turns.map((turn) => turn.userId));
   const uniqueTexts = new Set(texts);
@@ -121,10 +97,7 @@ function threadScore(turns: readonly MessageTurn[]): number {
   return turns.length + userIds.size * 2 + Math.min(uniqueTexts.size, 8);
 }
 
-function buildThreadPrompt(threads: readonly ClassifyThread[]): {
-  readonly prompt: string;
-  readonly messageByPromptId: ReadonlyMap<string, MessageTurn>;
-} {
+function buildThreadPrompt(threads: readonly ClassifyThread[]): { readonly prompt: string; readonly messageByPromptId: ReadonlyMap<string, MessageTurn> } {
   const lines: string[] = [];
   const messageByPromptId = new Map<string, MessageTurn>();
 
@@ -155,10 +128,7 @@ function byFrequency(left: { readonly frequency: number }, right: { readonly fre
   return right.frequency - left.frequency;
 }
 
-function parseModelAnnotations(
-  text: string,
-  messageByPromptId: ReadonlyMap<string, MessageTurn>,
-): PatternSnapshot | undefined {
+function parseModelAnnotations(text: string, messageByPromptId: ReadonlyMap<string, MessageTurn>): PatternSnapshot | undefined {
   const cleaned = text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -204,20 +174,10 @@ function parseModelAnnotations(
 
   return {
     responsePatterns: [...responseCounts.values()]
-      .map((item) => ({
-        intent: item.intent,
-        phrase: item.phrase,
-        frequency: item.sampleIds.length,
-        sampleIds: item.sampleIds.slice(0, 3),
-      }))
+      .map((item) => ({ intent: item.intent, phrase: item.phrase, frequency: item.sampleIds.length, sampleIds: item.sampleIds.slice(0, 3) }))
       .sort(byFrequency),
     initiationPatterns: [...initiationCounts.values()]
-      .map((item) => ({
-        intent: item.intent,
-        phrase: item.phrase,
-        frequency: item.sampleIds.length,
-        sampleIds: item.sampleIds.slice(0, 3),
-      }))
+      .map((item) => ({ intent: item.intent, phrase: item.phrase, frequency: item.sampleIds.length, sampleIds: item.sampleIds.slice(0, 3) }))
       .sort(byFrequency),
   };
 }

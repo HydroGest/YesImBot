@@ -1,33 +1,14 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "tasks": {
-    "//#fmt": {
-      "cache": false,
-      "dependsOn": ["//#lint:fix"]
-    },
+    "//#fmt": { "cache": false, "dependsOn": ["//#lint:fix"] },
     "//#fmt:check": {},
     "//#lint": {},
-    "//#lint:fix": {
-      "cache": false
-    },
-    "build": {
-      "dependsOn": ["check-types", "^build"],
-      "outputs": ["dist/**", "lib/**"]
-    },
-    "check-types": {
-      "dependsOn": ["^build"],
-      "outputs": ["tsconfig.tsbuildinfo"]
-    },
-    "clean": {
-      "cache": false
-    },
-    "pub": {
-      "cache": false,
-      "dependsOn": ["build", "^pub"]
-    },
-    "test": {
-      "cache": false,
-      "dependsOn": ["build"]
-    }
+    "//#lint:fix": { "cache": false },
+    "build": { "dependsOn": ["check-types", "^build"], "outputs": ["dist/**", "lib/**"] },
+    "check-types": { "dependsOn": ["^build"], "outputs": ["tsconfig.tsbuildinfo"] },
+    "clean": { "cache": false },
+    "pub": { "cache": false, "dependsOn": ["build", "^pub"] },
+    "test": { "cache": false, "dependsOn": ["build"] }
   }
 }

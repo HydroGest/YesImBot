@@ -20,10 +20,9 @@ export async function buildPatternEmbeddingMap(
   try {
     model = ctx.yesimbot.model.resolveEmbedding(modelId);
   } catch (cause) {
-    ctx.logger("yesimbot.chat-learning").warn("chat_learning.embedding_model_unavailable", {
-      model: modelId,
-      cause: cause instanceof Error ? cause.message : String(cause),
-    });
+    ctx
+      .logger("yesimbot.chat-learning")
+      .warn("chat_learning.embedding_model_unavailable", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
     return new Map();
   }
 
@@ -37,11 +36,7 @@ export async function buildPatternEmbeddingMap(
   if (patterns.length === 0) return new Map();
 
   try {
-    const result = await embedMany({
-      model,
-      values: patterns.map((pattern) => pattern.phrase),
-      maxRetries: 0,
-    });
+    const result = await embedMany({ model, values: patterns.map((pattern) => pattern.phrase), maxRetries: 0 });
     const map = new Map<string, readonly number[]>();
     result.embeddings.forEach((embedding, index) => {
       const pattern = patterns[index];
@@ -49,10 +44,9 @@ export async function buildPatternEmbeddingMap(
     });
     return map;
   } catch (cause) {
-    ctx.logger("yesimbot.chat-learning").warn("chat_learning.embedding_failed", {
-      model: modelId,
-      cause: cause instanceof Error ? cause.message : String(cause),
-    });
+    ctx
+      .logger("yesimbot.chat-learning")
+      .warn("chat_learning.embedding_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
     return new Map();
   }
 }

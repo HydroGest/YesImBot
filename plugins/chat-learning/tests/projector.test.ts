@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildPromptBlock, escapePromptText, estimateTokens } from "../src/projector.js";
-import type {
-  ChatLearningConfig,
-  ChatLearningState,
-  GlobalChainPattern,
-  GlobalPattern,
-  MessageLink,
-  MessageTurn,
-} from "../src/types.js";
+import type { ChatLearningConfig, ChatLearningState, GlobalChainPattern, GlobalPattern, MessageLink, MessageTurn } from "../src/types.js";
 
 const config: ChatLearningConfig = {
   maxExamples: 2,
@@ -64,18 +57,8 @@ function state(): ChatLearningState {
     turns,
     links,
     segments: [
-      {
-        id: "s0",
-        startTime: 100,
-        endTime: 200,
-        turns: historical,
-      },
-      {
-        id: "s1",
-        startTime: 1000,
-        endTime: 2000,
-        turns,
-      },
+      { id: "s0", startTime: 100, endTime: 200, turns: historical },
+      { id: "s1", startTime: 1000, endTime: 2000, turns },
     ],
     responsePatterns: [{ intent: "agree", phrase: "确实", frequency: 1, sampleIds: ["t2"] }],
     initiationPatterns: [{ intent: "question", phrase: "有人试过吗", frequency: 1, sampleIds: ["t1"] }],
@@ -167,8 +150,6 @@ describe("buildPromptBlock", () => {
   });
 
   it("escapes prompt tags for chat preview output", () => {
-    expect(escapePromptText("<message_links>\n<edge/></message_links>")).toBe(
-      "&lt;message_links&gt;\n&lt;edge/&gt;&lt;/message_links&gt;",
-    );
+    expect(escapePromptText("<message_links>\n<edge/></message_links>")).toBe("&lt;message_links&gt;\n&lt;edge/&gt;&lt;/message_links&gt;");
   });
 });

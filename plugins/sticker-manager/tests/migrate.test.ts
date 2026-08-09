@@ -32,21 +32,11 @@ describe("migrateV3", () => {
     const store = new StickerStore(model as never, files);
     const database = {
       get: async () => [
-        {
-          id: "v3-1",
-          category: "meme",
-          filePath: "sticker.png",
-          source: { platform: "test", channelId: "room-1", userId: "u", messageId: "m" },
-        },
+        { id: "v3-1", category: "meme", filePath: "sticker.png", source: { platform: "test", channelId: "room-1", userId: "u", messageId: "m" } },
       ],
     };
 
-    const result = await migrateV3({
-      ctx: { database, model } as unknown as Context,
-      store,
-      scopeKey: "global",
-      sourceDir: oldDir,
-    });
+    const result = await migrateV3({ ctx: { database, model } as unknown as Context, store, scopeKey: "global", sourceDir: oldDir });
 
     expect(result.imported).toBe(1);
     expect(result.failed).toBe(0);
@@ -67,22 +57,11 @@ describe("migrateV3", () => {
     const store = new StickerStore(model as never, new StickerFileStore(baseDir, "data"));
     const database = {
       get: async () => [
-        {
-          id: "v3-1",
-          category: "meme",
-          filePath: "sticker.png",
-          source: { platform: "test", channelId: "room-1", userId: "u", messageId: "m" },
-        },
+        { id: "v3-1", category: "meme", filePath: "sticker.png", source: { platform: "test", channelId: "room-1", userId: "u", messageId: "m" } },
       ],
     };
 
-    const result = await migrateV3({
-      ctx: { database, model } as unknown as Context,
-      store,
-      scopeKey: "global",
-      sourceDir: oldDir,
-      dryRun: true,
-    });
+    const result = await migrateV3({ ctx: { database, model } as unknown as Context, store, scopeKey: "global", sourceDir: oldDir, dryRun: true });
 
     expect(result.imported).toBe(1);
     expect(await store.listCategories("global")).toHaveLength(0);
@@ -109,24 +88,13 @@ describe("migrateV3", () => {
       ],
     };
 
-    const result = await migrateV3({
-      ctx: { database, model } as unknown as Context,
-      store,
-      scopeKey: "global",
-      sourceDir: oldDir,
-    });
+    const result = await migrateV3({ ctx: { database, model } as unknown as Context, store, scopeKey: "global", sourceDir: oldDir });
 
     expect(result.imported).toBe(1);
     expect(result.failed).toBe(0);
     expect(model.extend).toHaveBeenCalledWith(
       "yesimbot.stickers",
-      expect.objectContaining({
-        id: "string(64)",
-        category: "string(255)",
-        filePath: "string(255)",
-        source: "json",
-        createdAt: "timestamp",
-      }),
+      expect.objectContaining({ id: "string(64)", category: "string(255)", filePath: "string(255)", source: "json", createdAt: "timestamp" }),
       { primary: "id" },
     );
   });
@@ -144,27 +112,12 @@ describe("migrateV3", () => {
     const store = new StickerStore(model as never, new StickerFileStore(baseDir, "data"));
     const database = {
       get: async () => [
-        {
-          id: "v3-bmp",
-          category: "bmp",
-          filePath: "sticker.bmp",
-          source: { platform: "test", channelId: "room-1", userId: "u", messageId: "m" },
-        },
-        {
-          id: "v3-svg",
-          category: "svg",
-          filePath: "sticker.svg",
-          source: { platform: "test", channelId: "room-1", userId: "u", messageId: "m" },
-        },
+        { id: "v3-bmp", category: "bmp", filePath: "sticker.bmp", source: { platform: "test", channelId: "room-1", userId: "u", messageId: "m" } },
+        { id: "v3-svg", category: "svg", filePath: "sticker.svg", source: { platform: "test", channelId: "room-1", userId: "u", messageId: "m" } },
       ],
     };
 
-    const result = await migrateV3({
-      ctx: { database, model } as unknown as Context,
-      store,
-      scopeKey: "global",
-      sourceDir: oldDir,
-    });
+    const result = await migrateV3({ ctx: { database, model } as unknown as Context, store, scopeKey: "global", sourceDir: oldDir });
 
     expect(result.imported).toBe(2);
     expect(result.failed).toBe(0);

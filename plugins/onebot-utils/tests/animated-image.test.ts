@@ -17,13 +17,7 @@ function messageEntry(subType: unknown, id = ID, summary?: string): AgentEntry {
     channel: { id: "group", type: Universal.Channel.Type.TEXT },
     user: { id: "user-1", name: "User" },
     messageId: "m-1",
-    elements: [
-      h("img", {
-        id,
-        ...(subType === undefined ? {} : { subType }),
-        ...(summary === undefined ? {} : { summary }),
-      }),
-    ],
+    elements: [h("img", { id, ...(subType === undefined ? {} : { subType }), ...(summary === undefined ? {} : { summary }) })],
     timestamp: 1,
   };
   const message: Message = {
@@ -56,9 +50,7 @@ describe("animated image projection", () => {
   });
 
   it("omits image summary when summary attachment is disabled", () => {
-    const [projected] = projectAnimatedImages([messageEntry(1, ID, "大笑")], {
-      attachImageSummary: false,
-    });
+    const [projected] = projectAnimatedImages([messageEntry(1, ID, "大笑")], { attachImageSummary: false });
     const message = projected.data as { data: { elements: readonly Element[] } };
 
     expect(message.data.elements).toEqual([textElement(`[动画表情: asset://${ID}]`)]);

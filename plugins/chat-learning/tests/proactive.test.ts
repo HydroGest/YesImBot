@@ -1,5 +1,4 @@
 import { createCustomMessage, createMessageEntry, type AgentEntry } from "@yesimbot/agent-runtime";
-
 import { describe, expect, it } from "vitest";
 
 import { detectProactiveEvent } from "../src/proactive.js";
@@ -7,13 +6,7 @@ import { detectProactiveEvent } from "../src/proactive.js";
 function eventEntry(id: string, eventType: string, timestamp: number): AgentEntry {
   const message = createCustomMessage(
     "yesimbot.event",
-    {
-      platform: "test",
-      selfId: "bot-1",
-      channel: { id: "room-1", type: 0 },
-      eventType,
-      text: "event",
-    },
+    { platform: "test", selfId: "bot-1", channel: { id: "room-1", type: 0 }, eventType, text: "event" },
     { id: `${id}-event`, timestamp },
   );
   return createMessageEntry(message, { id, timestamp }) as unknown as AgentEntry;

@@ -25,13 +25,7 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
 
 function createExportFixture(params: { name: string; type: "group" | "private"; messages: unknown[] }): unknown {
   return {
-    chatInfo: {
-      name: params.name,
-      type: params.type,
-      selfUid: "bot-uid-placeholder",
-      selfUin: BOT_SELF_ID,
-      selfName: "Example Bot",
-    },
+    chatInfo: { name: params.name, type: params.type, selfUid: "bot-uid-placeholder", selfUin: BOT_SELF_ID, selfName: "Example Bot" },
     statistics: {},
     messages: params.messages,
     exportOptions: { includedFields: [], filters: {}, options: { encoding: "utf-8" } },
@@ -53,12 +47,7 @@ function textMessage(overrides: {
     id: overrides.id,
     seq: overrides.id,
     timestamp: overrides.timestamp,
-    sender: {
-      uid: `uid-${overrides.senderId}`,
-      uin: overrides.senderId,
-      name: overrides.senderName,
-      nickname: overrides.senderName,
-    },
+    sender: { uid: `uid-${overrides.senderId}`, uin: overrides.senderId, name: overrides.senderName, nickname: overrides.senderName },
     type: "type_1",
     content: {
       text: overrides.text,
@@ -94,14 +83,7 @@ async function createInputDirectory(): Promise<string> {
           senderName: "Example Bot",
           text: "Acknowledged with a synthetic assistant reply.",
         }),
-        textMessage({
-          id: "g-3",
-          timestamp: 1_710_000_120_000,
-          senderId: USER_ID,
-          senderName: "Example User",
-          text: "",
-          system: true,
-        }),
+        textMessage({ id: "g-3", timestamp: 1_710_000_120_000, senderId: USER_ID, senderName: "Example User", text: "", system: true }),
         textMessage({
           id: "g-4",
           timestamp: 1_710_000_180_000,
@@ -139,10 +121,7 @@ async function createInputDirectory(): Promise<string> {
     }),
   );
   await mkdir(join(dir, "nested"));
-  await writeJson(
-    join(dir, "nested", "Nested_Should_Not_Load.json"),
-    createExportFixture({ name: "Nested", type: "group", messages: [] }),
-  );
+  await writeJson(join(dir, "nested", "Nested_Should_Not_Load.json"), createExportFixture({ name: "Nested", type: "group", messages: [] }));
   return dir;
 }
 
@@ -192,53 +171,28 @@ describe("qq-memos-import script", () => {
   it("builds chunk messages with system source context, chat_time, and role mapping", async () => {
     const inputDir = await createInputDirectory();
 
-    const plan = await buildQqMemosImportPlan({
-      input: inputDir,
-      botSelfId: BOT_SELF_ID,
-      dryRun: true,
-    });
+    const plan = await buildQqMemosImportPlan({ input: inputDir, botSelfId: BOT_SELF_ID, dryRun: true });
 
     expect(plan.chunks).toHaveLength(2);
     expect(plan.chunks.every((chunk) => chunk.estimatedTokens <= 16000)).toBe(true);
     expect(plan.chunks.every((chunk) => chunk.importedMessageCount <= 400)).toBe(true);
 
     const groupChunk = plan.chunks.find((chunk) => chunk.channelId === GROUP_ID);
-    expect(groupChunk?.request.messages[0]).toMatchObject({
-      role: "system",
-      chat_time: "2024-03-09 16:00:00",
-    });
+    expect(groupChunk?.request.messages[0]).toMatchObject({ role: "system", chat_time: "2024-03-09 16:00:00" });
     expect(groupChunk?.request.messages[0]?.content).toContain("平台标识符：onebot");
     expect(groupChunk?.request.messages[0]?.content).toContain(`频道 ID：${GROUP_ID}`);
     expect(groupChunk?.request.messages.slice(1)).toEqual([
-      {
-        role: "user",
-        content: `Example User(${USER_ID}): This project uses deterministic synthetic fixtures.`,
-        chat_time: "2024-03-09 16:00:00",
-      },
-      {
-        role: "assistant",
-        content: `Example Bot(${BOT_SELF_ID}): Acknowledged with a synthetic assistant reply.`,
-        chat_time: "2024-03-09 16:01:00",
-      },
+      { role: "user", content: `Example User(${USER_ID}): This project uses deterministic synthetic fixtures.`, chat_time: "2024-03-09 16:00:00" },
+      { role: "assistant", content: `Example Bot(${BOT_SELF_ID}): Acknowledged with a synthetic assistant reply.`, chat_time: "2024-03-09 16:01:00" },
     ]);
   });
 
   it("uses shared subject ids and chunk-scoped conversation ids", async () => {
     const inputDir = await createInputDirectory();
 
-    const plan = await buildQqMemosImportPlan({
-      input: inputDir,
-      botSelfId: BOT_SELF_ID,
-      dryRun: true,
-      maxMessages: 1,
-    });
+    const plan = await buildQqMemosImportPlan({ input: inputDir, botSelfId: BOT_SELF_ID, dryRun: true, maxMessages: 1 });
     const runtimeIdentity = deriveMemosIdentity({
-      channelScope: {
-        platform: "onebot",
-        selfId: "another-synthetic-bot",
-        channelId: GROUP_ID,
-        type: "shared",
-      },
+      channelScope: { platform: "onebot", selfId: "another-synthetic-bot", channelId: GROUP_ID, type: "shared" },
       channelHash: "y4hqcmhpojcbee72vfgt22mflq",
       channelType: "group",
       authorId: USER_ID,
@@ -263,17 +217,11 @@ describe("qq-memos-import script", () => {
         body: JSON.parse(String(init?.body)) as unknown,
         authorization: init?.headers instanceof Headers ? (init.headers.get("Authorization") ?? undefined) : undefined,
       });
-      return new Response(JSON.stringify({ code: 0, data: { task_id: "task-synthetic" } }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(JSON.stringify({ code: 0, data: { task_id: "task-synthetic" } }), { status: 200, headers: { "content-type": "application/json" } });
     });
 
     await runQqMemosImportCli(["--input", inputDir, "--bot-self-id", BOT_SELF_ID, "--debug"], {
-      env: {
-        MEMOS_BASE_URL: "https://memos.example/api/openmem/v1",
-        MEMOS_API_KEY: "mpg-synthetic-secret",
-      },
+      env: { MEMOS_BASE_URL: "https://memos.example/api/openmem/v1", MEMOS_API_KEY: "mpg-synthetic-secret" },
       fetch,
       stdout: () => undefined,
       stderr: (line) => stderr.push(line),
@@ -282,11 +230,7 @@ describe("qq-memos-import script", () => {
     expect(requests).toHaveLength(2);
     expect(requests[0]?.url).toBe("https://memos.example/api/openmem/v1/add/message");
     expect(requests[0]?.authorization).toBe("Token mpg-synthetic-secret");
-    expect(requests[0]?.body).toMatchObject({
-      async_mode: true,
-      source: "yesimbot.qq_import",
-      tags: ["yesimbot", "qq_import", "trusted_source"],
-    });
+    expect(requests[0]?.body).toMatchObject({ async_mode: true, source: "yesimbot.qq_import", tags: ["yesimbot", "qq_import", "trusted_source"] });
     expect(JSON.stringify(requests[0]?.body)).not.toContain("mpg-synthetic-secret");
     expect(stderr.join("\n")).not.toContain("mpg-synthetic-secret");
   });

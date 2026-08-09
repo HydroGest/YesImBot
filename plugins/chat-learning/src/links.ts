@@ -42,35 +42,17 @@ export function buildLinks(turns: readonly MessageTurn[], options: BuildLinksOpt
     }
 
     if (options.selfId && turn.mentionIds.includes(options.selfId)) {
-      links.push({
-        from: turn.id,
-        to: null,
-        kind: "at",
-        confidence: 1,
-        evidence: [`mention:${options.selfId}`],
-      });
+      links.push({ from: turn.id, to: null, kind: "at", confidence: 1, evidence: [`mention:${options.selfId}`] });
     }
 
     if (index === 0) continue;
     const previous = turns[index - 1]!;
     const delta = turn.timestamp - previous.timestamp;
     if (delta >= 0 && delta <= (options.maxAdjacentMs ?? 60_000)) {
-      links.push({
-        from: turn.id,
-        to: previous.id,
-        kind: "adjacent",
-        confidence: 0.35,
-        evidence: [`time-delta:${delta}ms`],
-      });
+      links.push({ from: turn.id, to: previous.id, kind: "adjacent", confidence: 0.35, evidence: [`time-delta:${delta}ms`] });
     }
     if (delta >= 0 && delta <= (options.maxEntityMs ?? 300_000) && sharesEntity(turn, previous)) {
-      links.push({
-        from: turn.id,
-        to: previous.id,
-        kind: "entity",
-        confidence: 0.5,
-        evidence: ["shared-bigram"],
-      });
+      links.push({ from: turn.id, to: previous.id, kind: "entity", confidence: 0.5, evidence: ["shared-bigram"] });
     }
   }
 
@@ -121,28 +103,18 @@ export function createMessageGraph(turns: readonly MessageTurn[], links: readonl
     componentByTurnId.set(turn.id, component);
   }
 
-  return {
-    turns,
-    links,
-    outEdges,
-    componentByTurnId,
-  };
+  return { turns, links, outEdges, componentByTurnId };
 }
 
 export function isGraphRelated(graph: MessageGraph, fromId: string, toId: string): boolean {
-  const direct = graph.outEdges
-    .get(fromId)
-    ?.some((link) => link.to === toId && link.kind !== "at" && link.confidence >= 0.5);
+  const direct = graph.outEdges.get(fromId)?.some((link) => link.to === toId && link.kind !== "at" && link.confidence >= 0.5);
   if (direct) return true;
   const fromComponent = graph.componentByTurnId.get(fromId);
   const toComponent = graph.componentByTurnId.get(toId);
   return fromComponent !== undefined && fromComponent === toComponent;
 }
 
-export function buildConversationChains(
-  segments: readonly { readonly turns: readonly MessageTurn[] }[],
-  links: readonly MessageLink[],
-): ConversationChain[] {
+export function buildConversationChains(segments: readonly { readonly turns: readonly MessageTurn[] }[], links: readonly MessageLink[]): ConversationChain[] {
   const turns = segments.flatMap((segment) => segment.turns);
   const byId = new Map(turns.map((turn) => [turn.id, turn]));
   const parentEdges = new Map<string, MessageLink[]>();
@@ -188,11 +160,7 @@ export function buildConversationChains(
     return !chainKeys.some((other, otherIndex) => otherIndex !== index && other.length > key.length && other.startsWith(`${key}>`));
   });
 
-  rootChains.sort(
-    (left, right) =>
-      right.turns.length - left.turns.length ||
-      (right.turns.at(-1)?.timestamp ?? 0) - (left.turns.at(-1)?.timestamp ?? 0),
-  );
+  rootChains.sort((left, right) => right.turns.length - left.turns.length || (right.turns.at(-1)?.timestamp ?? 0) - (left.turns.at(-1)?.timestamp ?? 0));
   return rootChains;
 }
 

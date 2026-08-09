@@ -85,9 +85,7 @@ describe("sticker output element", () => {
   });
 
   it("resolves an exact sticker id", async () => {
-    const store = createStore({
-      get: vi.fn(async () => projection({ id: "b".repeat(64), mime: "image/gif" })),
-    });
+    const store = createStore({ get: vi.fn(async () => projection({ id: "b".repeat(64), mime: "image/gif" })) });
     const [projected] = await projectStickerElements([assistantEntry(`<sticker id="${"b".repeat(64)}"/>`)], {
       store,
       artifacts: createArtifacts(),
@@ -117,33 +115,25 @@ describe("sticker output element", () => {
 
   it("rewrites sticker artifact images back to sticker elements for model history", async () => {
     const id = "a".repeat(64);
-    const artifacts = createArtifacts({
-      open: vi.fn(async () => ({ bytes: pngBytes, mediaType: "image/png", filename: `${id}.png` })),
+    const artifacts = createArtifacts({ open: vi.fn(async () => ({ bytes: pngBytes, mediaType: "image/png", filename: `${id}.png` })) });
+    const [projected] = await projectStickerHistoryElements([assistantEntry(`<img src="artifact://sticker/00000000-0000-7000-8000-000000000000"/>`)], {
+      store: createStore(),
+      artifacts,
+      scopeKey: "global",
+      config: config(),
     });
-    const [projected] = await projectStickerHistoryElements(
-      [assistantEntry(`<img src="artifact://sticker/00000000-0000-7000-8000-000000000000"/>`)],
-      {
-        store: createStore(),
-        artifacts,
-        scopeKey: "global",
-        config: config(),
-      },
-    );
     const message = projected.data as { content: string };
 
     expect(message.content).toBe(`<sticker id="${id}"/>`);
   });
 
   it("drops a missing sticker artifact image from model history", async () => {
-    const [projected] = await projectStickerHistoryElements(
-      [assistantEntry(`<img src="artifact://sticker/00000000-0000-7000-8000-000000000000"/>`)],
-      {
-        store: createStore(),
-        artifacts: createArtifacts(),
-        scopeKey: "global",
-        config: config(),
-      },
-    );
+    const [projected] = await projectStickerHistoryElements([assistantEntry(`<img src="artifact://sticker/00000000-0000-7000-8000-000000000000"/>`)], {
+      store: createStore(),
+      artifacts: createArtifacts(),
+      scopeKey: "global",
+      config: config(),
+    });
     const message = projected.data as { content: string };
 
     expect(message.content).toBe("");

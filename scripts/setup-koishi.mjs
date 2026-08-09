@@ -28,15 +28,7 @@ const requireApp = createRequire(path.join(appRoot, "package.json"));
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const options = {
-    app: null,
-    createApp: null,
-    repo: DEFAULT_REPO,
-    check: false,
-    pull: false,
-    start: false,
-    help: false,
-  };
+  const options = { app: null, createApp: null, repo: DEFAULT_REPO, check: false, pull: false, start: false, help: false };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -180,11 +172,7 @@ function runNpx(commandArgs, options = {}) {
 }
 
 function commandOutput(command, commandArgs = ["--version"], options = {}) {
-  const result = run(command, commandArgs, {
-    ...options,
-    cwd: options.cwd || yesimbotRoot,
-    quiet: true,
-  });
+  const result = run(command, commandArgs, { ...options, cwd: options.cwd || yesimbotRoot, quiet: true });
   return result.errorMessage ? "" : result.stdout?.trim() || "";
 }
 
@@ -223,9 +211,7 @@ function ensureYarn(options = {}) {
     return;
   }
 
-  const corepackVersion = commandOutput("corepack", ["--version"], {
-    shell: process.platform === "win32",
-  });
+  const corepackVersion = commandOutput("corepack", ["--version"], { shell: process.platform === "win32" });
   if (!corepackVersion) {
     fail(`Yarn ${MIN_YARN_MAJOR} is required; install Yarn or enable Corepack`);
   }
@@ -234,10 +220,7 @@ function ensureYarn(options = {}) {
   }
 
   log("enabling Yarn through Corepack");
-  runChecked("corepack", ["enable", "--yes"], {
-    cwd: yesimbotRoot,
-    shell: process.platform === "win32",
-  });
+  runChecked("corepack", ["enable", "--yes"], { cwd: yesimbotRoot, shell: process.platform === "win32" });
 
   const enabledVersion = yarnVersion();
   if (!enabledVersion.startsWith(`${MIN_YARN_MAJOR}.`)) {
@@ -348,11 +331,7 @@ function toPosix(value) {
 }
 
 function isManagedPluginName(name) {
-  return (
-    name === "koishi-plugin-yesimbot" ||
-    name.startsWith("koishi-plugin-yesimbot-") ||
-    /^@yesimbot\/koishi-plugin-provider-/.test(name)
-  );
+  return name === "koishi-plugin-yesimbot" || name.startsWith("koishi-plugin-yesimbot-") || /^@yesimbot\/koishi-plugin-provider-/.test(name);
 }
 
 function configKeyToPackageName(key) {
@@ -424,9 +403,7 @@ function updateManifest(plugins) {
     pkg.dependencies[plugin.name] = "workspace:^";
   }
 
-  pkg.dependencies = Object.fromEntries(
-    Object.entries(pkg.dependencies).sort(([left], [right]) => left.localeCompare(right)),
-  );
+  pkg.dependencies = Object.fromEntries(Object.entries(pkg.dependencies).sort(([left], [right]) => left.localeCompare(right)));
 
   fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
 }

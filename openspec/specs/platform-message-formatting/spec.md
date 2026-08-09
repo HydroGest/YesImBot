@@ -33,7 +33,7 @@ Core MUST include the stored raw message ID in every projected Message header, t
 - **AND** this MUST NOT depend on the active Agent plugins or tools
 
 ### Requirement: Replay Uses Persisted Data
-Projection MUST NOT invoke a SessionResolver, Session, platform API, or replay-time formatter, and MUST NOT mutate persisted `elements`. Rendering MUST be a pure function of persisted `elements`.
+Projection MUST NOT invoke a Translator, Session, platform API, or replay-time formatter, and MUST NOT mutate persisted `elements`. Rendering MUST be a pure function of persisted `elements`.
 
 #### Scenario: Runtime restarts
 - **WHEN** Core reads a current input from JSONL after restart

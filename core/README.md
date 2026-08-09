@@ -1,68 +1,74 @@
 # koishi-plugin-yesimbot
 
-`koishi-plugin-yesimbot` composes the Koishi facade, model registry, Session
-Gateway, channel storage, assets, and the per-channel runtime.
+`koishi-plugin-yesimbot` composes the Koishi facade, model registry, live Session
+Messenger, channel resources, and the per-channel runtime.
 
 ## Public API
 
-`ctx.yesimbot` exposes:
+`ctx.yesimbot` exposes exactly four domain entries:
 
 - `model`
-- `assets`, an `AssetService`; call `assets.createStore(scope)` to obtain an
-  `AssetStore` with `put()`, `get()`, and `clear()` for that channel
-- `registerTranslator()` and `registerChannelPlugin()`
-- `getStoragePath(scope)`
-- `reset(scope)` and `stop()`
+- `messenger.use()` / `messenger.post()`
+- `agent.use()` / `agent.will()`
+- `resource.get()` / `resource.use()`
+
+It also exposes the lifecycle `stop()` inherited from the Koishi service.
+
+Named channel plugins implement `setup(scope, bot)` and return an AgentPlugin
+snapshot (or `null`). Will plugins implement `match(session)` and
+`setup(scope)`, and are selected only while the live Session is available.
+Resource readers implement `init(resources, uri, options)`; these are the only
+initialization seams exposed to plugin implementations.
 
 `ChannelScope` is the public current-channel context:
 
 ```ts
-{
-  platform: string;
-  selfId: string;
-  channelId: string;
-  isDirect: boolean;
-}
+type ChannelScope = { type: "shared"; platform: string; channelId: string } | { type: "direct"; platform: string; selfId: string; channelId: string };
 ```
 
 Core derives shared `[platform, channelId]` and direct
 `[platform, selfId, channelId]` tuples only inside its storage and runtime
 implementations. It does not expose a channel identity, tuple key, directory
-helper, storage implementation, Gateway, RuntimeManager, or ChannelRuntime.
+helper, storage implementation, runtime owner, concrete stores, or delivery
+adapter.
 
-The package root exports `Config`, `ChannelScope`, input contracts and input
-helpers, `PlatformTranslator`, `RecordBase`, `assembleEvent`, `AssetService`, `AssetStore`,
-`ChannelPluginFactory`, and `YesImBotService`. The only supported code subpath is `./model`.
+The package root exports `Config`, `ChannelScope`, message/event records,
+`Translator`, resource contracts, Agent/WillPlugin/WillEngine contracts, model
+contracts, and `YesImBotService`. Channel and runtime owners, concrete stores,
+and delivery adapters remain private.
 
-## Gateway and runtime
+## Messenger and runtime
 
-A platform registers one `PlatformTranslator` for its platform. Gateway derives a
-`ChannelScope`, checks the allowlist, and for shared channels checks the Koishi
-Channel assignee before it creates an asset store, invokes the Translator, or
-routes a record. Direct channels skip the assignee query. If no exact or explicit
-`"*"` Translator is registered, `message-created` sessions with a nonempty
-message ID use the built-in element pass-through default; custom events and media
-persistence still require a platform Translator.
+Messenger is the sole live Session ingress. It performs allowlist and shared
+assignee admission, resolves one stable ChannelResources owner, invokes one
+platform Translator or the built-in pass-through translator, and routes the
+resulting Session-free record to the private Runtimes owner. Passive output uses
+the originating `Session.send()`; active output uses the matching Bot through
+`messenger.post()`.
 
-Gateway passes its channel-scoped `AssetStore` to the Translator. The Translator
-owns any platform-specific image download and persistence, then returns the final
-Session-free `MessageRecord` or `EventRecord`. Gateway owns passive `Session.send()`
-delivery. A failed delivery reports one same-channel `delivery.failed` event
-through the producing runtime.
+Translator owns platform-specific image and file persistence while the Session
+is live. Messenger owns passive `Session.send()` and active `Bot.sendMessage()`
+delivery. A failed delivery calls the producing runtime's explicit `fail()` and
+creates one same-channel `delivery.failed` event; it never re-enters `post()`.
 
-`RuntimeManager` creates one `ChannelRuntime` for a persistent channel tuple.
-When a shared channel is admitted for a different Bot, it stops the old runtime,
-removes it from the cache, creates a runtime for the new Bot, and routes the
-current record there. Core has no `reload()` operation. Model, image-input,
-prompt, tool, and plugin changes apply when a runtime is replaced.
+Runtimes keeps one private `ChannelRuntime` per persistent tuple: shared
+`[platform, channelId]`, direct `[platform, selfId, channelId]`. Shared Bot
+changes stop and replace the transient runtime while preserving Channel,
+Conversation, resources, and plugin-owned files. There is no public reset,
+reload, RuntimeManager, or ChannelRuntime API.
 
-`ChannelRuntime` owns its channel FIFO, Agent, Will engine, JSONL storage,
-prompt assembly, model input projection, output queue, and delivery feedback.
-It holds no live Koishi Session.
+Each ChannelRuntime owns its immutable scope, FIFO, Agent, Will snapshot,
+Conversation storage, prompt, model input, output queue, and delivery feedback.
+It holds no live Koishi Session. Model, prompt, tools, and AgentPlugin resources
+are snapshots for the runtime lifetime and take effect on replacement.
 
 ## Model input
 
-`runtime/read.ts` handles explicit `read` tool resource URIs (`asset://`, `artifact://`, and registered schemes), while image bytes are projected only from the current model step's successful read result under the per-call `imageInput` budget. `runtime/model-input.ts` formats persisted input; it does not scan history for images. Model image capability comes only from `models.json`; `imageInput: false` disables image projection. PlatformTranslator download limits remain platform policy.
+Core reads explicit `asset://`, `artifact://`, and registered resource URIs
+through `ResourceReader.init()`. Image bytes are selected only from the current
+model-call context under the configured `imageInput` budget; history is never
+re-requested from a platform API. Model image capability comes from
+`models.json`, and `imageInput: false` disables projection.
 
 ## Prompt composition
 
@@ -88,9 +94,8 @@ splits blank-line prose.
 Each channel root is named `shared-<platform>-<channelId>` or
 `direct-<platform>-<channelId>-<selfId>` with safely encoded segments. Its
 `channel.json` Manifest is authoritative. `sessions/messages.jsonl`, `assets/`,
-and plugin-selected child directories live below that root. `getStoragePath()`
-creates or validates the channel root and returns it; plugins select and create
-their own child paths.
+and plugin-selected child directories live below that root. Trusted plugins
+obtain the root through `resource.get(scope)` and select their own child paths.
 
 Records and Manifests are versionless. JSONL read-back parses each line with
 `JSON.parse`, skips lines with invalid JSON syntax after logging a warning, and
@@ -98,11 +103,11 @@ returns all successfully parsed values without Core schema validation. Core does
 not read, migrate, or provide compatibility aliases for prior layouts or
 records.
 
-## Configuration migration
+## Configuration
 
-`allowedChannels` is a deny-by-default Gateway boundary. Rules are ORed; fields
-within one rule are ANDed. `platform` and `channelId` accept an exact string or
-`*`. Omit `isDirect` to match both direct and shared channels.
+`allowedChannels` is a deny-by-default Messenger boundary. Rules are ORed;
+fields within one rule are ANDed. `platform` and `channelId` accept an exact
+string or `*`. Omit `isDirect` to match both direct and shared channels.
 
 ```yaml
 allowedChannels:
@@ -114,6 +119,6 @@ allowedChannels:
 ```
 
 Declare model image capability in the model override in `models.json`. The
-runtime uses `imageInput` for its model-call budget; its default is four images,
-5 MiB per image, and 10 MiB total. Set `imageInput: false` to disable model
-image input. This setting does not impose a download policy on PlatformTranslators.
+runtime uses `imageInput` for its model-call budget; its default is three
+images, 5 MiB per image, and 10 MiB total. Set `imageInput: false` to disable
+model image input. This setting does not impose a download policy on Translators.

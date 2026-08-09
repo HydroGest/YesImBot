@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildLocalChainPatterns } from "../src/chains.js";
-import type {
-  ConversationSegment,
-  InitiationPattern,
-  MessageLink,
-  MessageTurn,
-  ResponsePattern,
-} from "../src/types.js";
+import type { ConversationSegment, InitiationPattern, MessageLink, MessageTurn, ResponsePattern } from "../src/types.js";
 
 function turn(id: string, timestamp: number, text: string): MessageTurn {
   return {
@@ -38,9 +32,7 @@ describe("buildLocalChainPatterns", () => {
       { intent: "agree", phrase: "确实", frequency: 1, sampleIds: ["m2"] },
       { intent: "joke", phrase: "笑死", frequency: 1, sampleIds: ["m3"] },
     ];
-    const initiationPatterns: InitiationPattern[] = [
-      { intent: "question", phrase: "这个方案靠谱吗", frequency: 1, sampleIds: ["m1"] },
-    ];
+    const initiationPatterns: InitiationPattern[] = [{ intent: "question", phrase: "这个方案靠谱吗", frequency: 1, sampleIds: ["m1"] }];
 
     const chains = buildLocalChainPatterns(segments, links, responsePatterns, initiationPatterns);
 

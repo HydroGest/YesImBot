@@ -25,10 +25,7 @@ function createTextModel(text = "ok") {
             controller.enqueue({
               type: "finish",
               finishReason,
-              usage: {
-                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                outputTokens: { total: 1, text: 1, reasoning: 0 },
-              },
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
             } as LanguageModelV3StreamPart);
             controller.close();
           },
@@ -213,9 +210,7 @@ describe("turn lifecycle", () => {
     expect(failedTurnId).toBe(turnId);
     const entries = await agent.storage.read();
     expect(entries.filter((entry) => entry.type === "event")).toEqual([
-      expect.objectContaining({
-        data: expect.objectContaining({ type: "turn.failed", turnId }),
-      }),
+      expect.objectContaining({ data: expect.objectContaining({ type: "turn.failed", turnId }) }),
     ]);
   });
 
@@ -234,9 +229,7 @@ describe("turn lifecycle", () => {
 
       const entries = await agent.storage.read();
       expect(entries.filter((entry) => entry.type === "event")).toEqual([
-        expect.objectContaining({
-          data: expect.objectContaining({ type: "turn.failed", turnId }),
-        }),
+        expect.objectContaining({ data: expect.objectContaining({ type: "turn.failed", turnId }) }),
       ]);
     } finally {
       errorSpy.mockRestore();

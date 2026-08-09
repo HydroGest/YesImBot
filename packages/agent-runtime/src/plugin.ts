@@ -9,18 +9,15 @@ import type { AgentStateManager } from "./state.js";
 import type { AgentStorage } from "./storage.js";
 import { mergeTools, type AgentToolSet, type ToolDecision } from "./tools.js";
 import { TurnResult } from "./turn.js";
-
+export type SystemPromptBlock = string | SystemModelMessage;
+export type SystemPromptAppend = SystemPromptBlock | readonly SystemPromptBlock[];
+type Awaitable<T> = T | Promise<T>;
 export interface AgentPluginRuntime {
   readonly id: string;
   readonly channel: AgentChannel;
   readonly state: AgentStateManager;
   readonly storage: AgentStorage<AgentEntry>;
 }
-
-export type SystemPromptBlock = string | SystemModelMessage;
-export type SystemPromptAppend = SystemPromptBlock | readonly SystemPromptBlock[];
-type Awaitable<T> = T | Promise<T>;
-
 export interface AgentPlugin {
   name: string;
   version?: string;
@@ -33,10 +30,7 @@ export interface AgentPlugin {
   transformEntries?(entries: readonly AgentEntry[]): Awaitable<AgentEntry[] | void>;
   /** @deprecated Define an explicit cache lifecycle before adding historical projection behavior. */
   transformMessages?(messages: AgentMessage[], context: MessageTransformContext): Awaitable<AgentMessage[]>;
-  toModelMessages?(
-    message: AgentMessage,
-    context: ModelMessageContext,
-  ): Awaitable<ModelMessage[] | ModelMessage | void>;
+  toModelMessages?(message: AgentMessage, context: ModelMessageContext): Awaitable<ModelMessage[] | ModelMessage | void>;
   extendSystemPrompt?(prompt: string, context: PromptContext): Awaitable<string | void>;
   appendSystemPrompt?(context: PromptContext): Awaitable<SystemPromptAppend | void>;
   /** @deprecated Declare stable tools through `AgentPlugin.tools`. */
@@ -44,12 +38,8 @@ export interface AgentPlugin {
   beforeToolCall?(call: ToolCallContext, context: ToolHookContext): Awaitable<ToolDecision | void>;
   afterToolCall?(result: ToolResultContext, context: ToolHookContext): Awaitable<Partial<ToolResultContext> | void>;
   onTurnFinish?(result: TurnResult, context: TurnFinishContext): Awaitable<void>;
-  prepareStep?(
-    messages: readonly ModelMessage[],
-    context: PrepareStepContext,
-  ): Awaitable<readonly ModelMessage[] | void>;
+  prepareStep?(messages: readonly ModelMessage[], context: PrepareStepContext): Awaitable<readonly ModelMessage[] | void>;
 }
-
 export interface HookContextBase {
   readonly runtime: { id: string };
   readonly channel: AgentChannel;
@@ -57,57 +47,45 @@ export interface HookContextBase {
   readonly signal?: AbortSignal;
   readonly pluginName?: string;
 }
-
 export interface AppendHookContext extends HookContextBase {
   readonly storage: AgentStorage;
 }
-
 export interface MessageTransformContext extends HookContextBase {
   readonly turnId?: string;
 }
-
 export interface ModelMessageContext extends HookContextBase {
   readonly turnId?: string;
   readonly history: readonly AgentMessage[];
   readonly current: readonly AgentMessage[];
 }
-
 export interface PromptContext extends HookContextBase {
   readonly turnId?: string;
 }
-
 export interface ToolExtensionContext extends HookContextBase {
   readonly turnId?: string;
 }
-
 export interface ToolHookContext extends HookContextBase {
   readonly turnId: string;
 }
-
 export interface TurnFinishContext extends HookContextBase {
   readonly turnId: string;
 }
-
 export interface PrepareStepContext extends HookContextBase {
   readonly turnId: string;
   readonly stepNumber: number;
 }
-
 export interface ToolCallContext {
   toolCallId: string;
   toolName: string;
   args: unknown;
 }
-
 export interface ToolResultContext extends ToolCallContext {
   result: unknown;
   isError: boolean;
 }
-
 export interface PluginHostRuntime extends AgentPluginRuntime {
   readonly storage: AgentStorage<AgentEntry>;
 }
-
 export interface PluginHostHelpers {
   onAppend(entries: AgentEntry[], context: AppendHookContext): Promise<AgentEntry[]>;
   transformEntries(entries: readonly AgentEntry[]): Promise<readonly AgentEntry[]>;
@@ -118,13 +96,11 @@ export interface PluginHostHelpers {
   afterToolCall(result: ToolResultContext, context: ToolHookContext): Promise<ToolResultContext>;
   onTurnFinish(result: TurnResult, context: TurnFinishContext): Promise<void>;
 }
-
 export interface PluginHostInitOptions {
   legacySystemPrompt?: string;
   baseTools?: AgentToolSet;
   terminalTools?: AgentToolSet;
 }
-
 export interface PluginHost {
   readonly plugins: readonly AgentPlugin[];
   readonly activePlugins: readonly AgentPlugin[];
@@ -136,7 +112,6 @@ export interface PluginHost {
   stop(): Promise<void>;
   emitPluginError(pluginName: string, error: unknown): void;
 }
-
 export function orderPlugins(plugins: readonly AgentPlugin[]): AgentPlugin[] {
   const pre = plugins.filter((plugin) => plugin.enforce === "pre");
   const normal = plugins.filter((plugin) => plugin.enforce !== "pre" && plugin.enforce !== "post");
@@ -168,11 +143,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
   };
 
   const emitPluginError = (pluginName: string, error: unknown) => {
-    emitInternal({
-      type: "plugin.error",
-      plugin: pluginName,
-      error: createDiagnostic(error),
-    });
+    emitInternal({ type: "plugin.error", plugin: pluginName, error: createDiagnostic(error) });
   };
 
   const stopPlugin = async (plugin: AgentPlugin) => {
@@ -184,9 +155,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
   };
 
   const rollbackPlugins = async (currentPlugin?: AgentPlugin) => {
-    const pluginsToStop = currentPlugin
-      ? [currentPlugin, ...[...activePlugins].reverse()]
-      : [...activePlugins].reverse();
+    const pluginsToStop = currentPlugin ? [currentPlugin, ...[...activePlugins].reverse()] : [...activePlugins].reverse();
 
     for (const plugin of pluginsToStop) {
       await stopPlugin(plugin);
@@ -398,13 +367,10 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
           const candidateBlocks = appended === undefined ? [] : normalizeSystemPromptAppend(appended);
 
           if (candidateLegacy !== undefined && plugin.extendSystemPrompt) {
-            candidateLegacy =
-              (await plugin.extendSystemPrompt(candidateLegacy, initializationContext)) ?? candidateLegacy;
+            candidateLegacy = (await plugin.extendSystemPrompt(candidateLegacy, initializationContext)) ?? candidateLegacy;
           }
           if (plugin.extendTools) {
-            candidateTools = mergeTools([
-              (await plugin.extendTools([...candidateTools], initializationContext)) ?? candidateTools,
-            ]);
+            candidateTools = mergeTools([(await plugin.extendTools([...candidateTools], initializationContext)) ?? candidateTools]);
           }
 
           activePlugins.push(plugin);
@@ -416,11 +382,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
             await stopPlugin(plugin);
           }
           if (plugin.optional) {
-            emitInternal({
-              type: "plugin.disabled",
-              plugin: plugin.name,
-              reason: createDiagnostic(error),
-            });
+            emitInternal({ type: "plugin.disabled", plugin: plugin.name, reason: createDiagnostic(error) });
             continue;
           }
           await rollbackPlugins(didStartPlugin ? plugin : undefined);
@@ -452,12 +414,7 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
     emitPluginError,
   };
 }
-
-export async function runHookPipeline<T>(
-  items: readonly AgentPlugin[],
-  runner: (plugin: AgentPlugin) => Awaitable<T | undefined>,
-  fallback: T,
-): Promise<T> {
+export async function runHookPipeline<T>(items: readonly AgentPlugin[], runner: (plugin: AgentPlugin) => Awaitable<T | undefined>, fallback: T): Promise<T> {
   let current = fallback;
 
   for (const plugin of items) {

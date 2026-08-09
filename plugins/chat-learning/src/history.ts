@@ -68,11 +68,7 @@ export function createChatHistoryStore(filePath: string): ChatHistoryStore {
 
         await mkdir(dirname(filePath), { recursive: true });
         const temporary = `${filePath}.${Date.now()}.tmp`;
-        await writeFile(
-          temporary,
-          `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
-          { encoding: "utf8", flag: "wx" },
-        );
+        await writeFile(temporary, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, { encoding: "utf8", flag: "wx" });
         try {
           await rename(temporary, filePath);
         } finally {

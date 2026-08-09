@@ -52,24 +52,13 @@ export class MemosCloudClient {
     body: MemosSearchMemoryRequest | MemosAddMessageRequest,
   ): Promise<MemosApiResponse<TData>> {
     try {
-      const response = await this.options.post<MemosApiResponse<TData>>(
-        `${this.options.baseUrl.replace(/\/+$/, "")}${path}`,
-        body,
-        {
-          headers: {
-            Authorization: `Token ${this.options.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          timeout: this.options.timeoutMs,
-        },
-      );
+      const response = await this.options.post<MemosApiResponse<TData>>(`${this.options.baseUrl.replace(/\/+$/, "")}${path}`, body, {
+        headers: { Authorization: `Token ${this.options.apiKey}`, "Content-Type": "application/json" },
+        timeout: this.options.timeoutMs,
+      });
 
       if (!isObject(response) || typeof response.code !== "number") {
-        throw new MemosCloudClientError({
-          code: "invalid_response",
-          endpoint,
-          message: `MemOS ${endpoint} returned an invalid response.`,
-        });
+        throw new MemosCloudClientError({ code: "invalid_response", endpoint, message: `MemOS ${endpoint} returned an invalid response.` });
       }
 
       if (response.code !== 0) {
@@ -93,10 +82,7 @@ export class MemosCloudClient {
       throw new MemosCloudClientError({
         code: "network_error",
         endpoint,
-        message: `MemOS ${endpoint} request failed: ${sanitizeMessage(
-          error instanceof Error ? error.message : "Unknown error.",
-          this.options.apiKey,
-        )}`,
+        message: `MemOS ${endpoint} request failed: ${sanitizeMessage(error instanceof Error ? error.message : "Unknown error.", this.options.apiKey)}`,
       });
     }
   }

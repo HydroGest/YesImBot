@@ -41,12 +41,7 @@ function createForwardNodes(selfId: string, text: string): readonly OneBotForwar
   const time = String(Math.floor(Date.now() / 1000));
   return chunks.map((content) => ({
     type: "node" as const,
-    data: {
-      name: "chat-learning",
-      uin: selfId,
-      content: [{ type: "text" as const, data: { text: content } }],
-      time,
-    },
+    data: { name: "chat-learning", uin: selfId, content: [{ type: "text" as const, data: { text: content } }], time },
   }));
 }
 

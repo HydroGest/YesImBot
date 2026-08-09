@@ -19,22 +19,8 @@ function turn(id: string, messageId: string, timestamp: number, text: string): M
   };
 }
 
-function correction(
-  action: LinkCorrection["action"],
-  from: string,
-  to: string | null,
-  kind: LinkCorrection["kind"] = "reply",
-): LinkCorrection {
-  return {
-    id: `${action}-${from}-${to}`,
-    action,
-    from,
-    to,
-    kind,
-    confidence: 1,
-    createdAt: 1,
-    note: undefined,
-  };
+function correction(action: LinkCorrection["action"], from: string, to: string | null, kind: LinkCorrection["kind"] = "reply"): LinkCorrection {
+  return { id: `${action}-${from}-${to}`, action, from, to, kind, confidence: 1, createdAt: 1, note: undefined };
 }
 
 describe("applyCorrections", () => {

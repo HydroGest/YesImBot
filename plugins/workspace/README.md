@@ -8,10 +8,10 @@ Workspace tools for YesImBot agents, backed by `just-bash` and `bash-tool`.
 - `readFile`: read a known file from the virtual workspace.
 - `writeFile`: write a complete file into the virtual workspace.
 
-The default writable workspace is channel-isolated. The workspace plugin calls
-`YesImBotService.getStoragePath(scope)` and creates its `workspace/` child
-under the returned channel root. Shared scopes use `platform + channelId`;
-direct scopes also include `selfId`.
+The default writable workspace is channel-isolated. On channel initialization
+the plugin obtains `ChannelResources` through `ctx.yesimbot.resource.get(scope)`
+and creates its `workspace/` child below `resources.path`. Shared scopes use
+`platform + channelId`; direct scopes also include `selfId`.
 
 This plugin no longer exposes the previous default tool names
 `grep`, `glob`, `edit_file`, `read_file`, `write_file`, or `execute_command`.
@@ -29,10 +29,8 @@ tool-name-specific prompts to use `bash`, `readFile`, and `writeFile`.
 | `timeoutMs`     | Bash command timeout in milliseconds. Default: `30000`.                                                 |
 | `enableNetwork` | Enables `just-bash` network support. Default: `false`.                                                  |
 
-The default
-writable workspace root is resolved through the Core channel root. The plugin
-does not derive a directory path and no longer accepts a plugin-local `root`
-option.
+The writable workspace root comes from `ChannelResources.path`; the plugin
+does not derive a parallel channel identity.
 
 ## Examples
 
@@ -43,8 +41,7 @@ cwd: /home/workspace
 enableNetwork: false
 ```
 
-Every Koishi channel gets its own writable `/home/workspace`. Recreating the
-runtime for the same Core channel identity reuses that channel's files.
+Recreating the runtime for the same Core channel scope reuses that channel's files.
 
 ### Group project assistant
 

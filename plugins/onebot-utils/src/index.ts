@@ -1,19 +1,16 @@
-import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
-import { Context, h, Logger, Schema, type Bot, type Element } from "koishi";
-import {
-  persistElements,
-  type AssetStore,
-  type ChannelPluginContext,
-  type ChannelPluginFactory,
-  type ChannelScope,
-} from "koishi-plugin-yesimbot";
+import type { ReadableStream } from "node:stream/web";
+
+import { jsonSchema, type AgentPlugin, type AgentTool } from "@yesimbot/agent-runtime";
+import { Context, Logger, Schema, type Bot } from "koishi";
+import type { ChannelResources, ChannelScope } from "koishi-plugin-yesimbot";
 
 import { projectAnimatedImages } from "./animated-image.js";
 import { createForwardReader, type ForwardImageRequest, type ForwardResult, type ForwardToolInput } from "./forward.js";
 import type { OneBotCQCode, OneBotForwardSendNode, OneBotInternal, OneBotSenderInfo } from "./onebot.js";
-
 const ONEBOT_INTERNAL_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 协议内部接口";
 const ONEBOT_REQUEST_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 请求接口";
+const MAX_FORWARD_IMAGE_BYTES = 5 * 1024 * 1024;
+const FORWARD_IMAGE_TIMEOUT_MS = 10_000;
 const MAX_FORWARD_IMAGES_PER_PERSIST_BATCH = 4;
 const TOOLS = {
   GET_FORWARD_MESSAGE: "onebot_get_forward_message",
@@ -28,18 +25,20 @@ const TOOLS = {
   SET_QQ_AVATAR: "onebot_set_qq_avatar",
 };
 const TOOL_SCHEMA = Object.entries(TOOLS).map(([key, value]) => Schema.const(value).description(key));
-
+type GroupToolResult = { success: true } | { error: string };
+type GroupUserInput = { userId: string };
+type BanUserInput = GroupUserInput & { duration: number };
+type KickUserInput = GroupUserInput & { rejectAddRequest?: boolean };
+type ForwardSendResult = { ok: true; messageId: string } | { ok: false; error: { name: string; message: string } };
 export interface OnebotUtilsConfig {
   enabledTools: (typeof TOOLS)[keyof typeof TOOLS][];
   parseImages: boolean;
   attachImageSummary: boolean;
   maxForwardPageChars: number;
 }
-
 interface OcrImageToolInput {
   image: string;
 }
-
 interface OcrImageToolOutput {
   status: "ok" | "failed";
   retcode: number;
@@ -49,13 +48,6 @@ interface OcrImageToolOutput {
   echo: unknown | null;
   stream: "normal-action" | "normal-event" | "normal-response";
 }
-
-type GroupToolResult = { success: true } | { error: string };
-type GroupUserInput = { userId: string };
-type BanUserInput = GroupUserInput & { duration: number };
-type KickUserInput = GroupUserInput & { rejectAddRequest?: boolean };
-type ForwardSendResult = { ok: true; messageId: string } | { ok: false; error: { name: string; message: string } };
-
 export default class OnebotUtilsPlugin {
   public static name = "yesimbot-onebot-utils";
   public static inject = ["yesimbot"];
@@ -82,31 +74,33 @@ export default class OnebotUtilsPlugin {
   }
 
   public async start(): Promise<void> {
-    this.dispose = this.ctx.yesimbot.registerChannelPlugin(createOneBotPluginFactory(this.ctx, this.config));
+    this.dispose = this.ctx.yesimbot.agent.use(this);
+  }
+
+  public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin | null> {
+    if (scope.platform !== "onebot") return null;
+    const resources = await this.ctx.yesimbot.resource.get(scope);
+    return {
+      name: "onebot-utils",
+      tools: createOneBotTools(this.ctx, bot, this.config, scope, resources),
+      onAppend: (entries) => projectAnimatedImages(entries, { attachImageSummary: this.config.attachImageSummary }),
+      transformEntries: (entries) => projectAnimatedImages(entries, { attachImageSummary: this.config.attachImageSummary }),
+    } satisfies AgentPlugin;
   }
 
   public async stop(): Promise<void> {
     this.dispose?.();
   }
 }
-
 function getOneBotInternal(bot: Bot): OneBotInternal {
   const internal = (bot as unknown as { internal?: OneBotInternal }).internal;
   if (!internal) throw new Error(ONEBOT_INTERNAL_UNAVAILABLE_ERROR);
   return internal;
 }
-
-async function loadForwardSendNodes(
-  internal: OneBotInternal,
-  forwardId: string,
-): Promise<readonly OneBotForwardSendNode[] | undefined> {
+async function loadForwardSendNodes(internal: OneBotInternal, forwardId: string): Promise<readonly OneBotForwardSendNode[] | undefined> {
   const response = await internal.getForwardMsg(forwardId);
   if (!Array.isArray(response)) return undefined;
-  const nodes = response as unknown as readonly {
-    readonly sender: OneBotSenderInfo;
-    readonly time: number;
-    readonly message: readonly OneBotCQCode[];
-  }[];
+  const nodes = response as unknown as readonly { readonly sender: OneBotSenderInfo; readonly time: number; readonly message: readonly OneBotCQCode[] }[];
   return Promise.all(
     nodes.map(async (node) => ({
       type: "node" as const,
@@ -119,11 +113,7 @@ async function loadForwardSendNodes(
     })),
   );
 }
-
-async function resolveForwardSendContent(
-  internal: OneBotInternal,
-  segments: readonly OneBotCQCode[],
-): Promise<readonly OneBotCQCode[]> {
+async function resolveForwardSendContent(internal: OneBotInternal, segments: readonly OneBotCQCode[]): Promise<readonly OneBotCQCode[]> {
   return Promise.all(
     segments.map(async (segment) => {
       if (segment.type !== "image") return { ...segment, data: { ...segment.data } };
@@ -149,15 +139,13 @@ async function resolveForwardSendContent(
     }),
   );
 }
-
 function directChannelId(channelId: string): string {
   return channelId.startsWith("private:") ? channelId.slice("private:".length) : channelId;
 }
-
 async function persistForwardImages(
   ctx: Context,
   internal: OneBotInternal,
-  assets: AssetStore,
+  resources: ChannelResources,
   images: readonly ForwardImageRequest[],
 ): Promise<ReadonlyMap<string, string>> {
   const resolved = await Promise.all(
@@ -173,86 +161,90 @@ async function persistForwardImages(
   const assetIds = new Map<string, string>();
   for (let offset = 0; offset < resolved.length; offset += MAX_FORWARD_IMAGES_PER_PERSIST_BATCH) {
     const batch = resolved.slice(offset, offset + MAX_FORWARD_IMAGES_PER_PERSIST_BATCH);
-    const elements = batch
-      .filter((item): item is { file: string; url: string } => item !== undefined)
-      .map(({ url }) => h("img", { src: url }));
-    if (elements.length === 0) continue;
-    let persisted: Element[];
-    try {
-      persisted = await persistElements(ctx, elements, assets);
-    } catch {
-      continue;
-    }
-    let index = 0;
-    for (const item of batch) {
-      if (!item) continue;
-      const element = persisted[index++];
-      const id = element?.attrs.id;
-      if (typeof id === "string") assetIds.set(item.file, id);
-    }
+    await Promise.all(
+      batch.map(async (item) => {
+        if (!item) return;
+        try {
+          assetIds.set(item.file, await resources.assets.put(await downloadForwardImage(ctx, item.url)));
+        } catch {}
+      }),
+    );
   }
   return assetIds;
 }
-
-function createOneBotTools(
-  ctx: Context,
-  bot: Bot,
-  config: Readonly<OnebotUtilsConfig>,
-  scope: ChannelScope,
-  assets: AssetStore,
-): AgentTool[] {
+async function downloadForwardImage(ctx: Context, url: string): Promise<Uint8Array> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("Forward image download timed out")), FORWARD_IMAGE_TIMEOUT_MS);
+  try {
+    const headers = await ctx.http.head(url, { timeout: FORWARD_IMAGE_TIMEOUT_MS }).catch(() => undefined);
+    const length = headers?.get("content-length");
+    if (length && /^\d+$/.test(length) && Number(length) > MAX_FORWARD_IMAGE_BYTES) throw new Error("Forward image exceeds byte limit");
+    const type = headers?.get("content-type")?.split(";", 1)[0]?.toLowerCase();
+    if (type && !type.startsWith("image/") && type !== "application/octet-stream") throw new Error("Forward resource is not an image");
+    const response = await ctx.http(url, { responseType: "stream", signal: controller.signal });
+    return readForwardImage(response.data, controller.signal);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+async function readForwardImage(stream: ReadableStream<Uint8Array>, signal: AbortSignal): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      signal.throwIfAborted();
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > MAX_FORWARD_IMAGE_BYTES) {
+        await reader.cancel(new Error("Forward image exceeds byte limit"));
+        throw new Error("Forward image exceeds byte limit");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsConfig>, scope: ChannelScope, resources: ChannelResources): AgentTool[] {
   let forwardReader: ReturnType<typeof createForwardReader> | undefined;
 
   const isGroupScope = scope.type === "shared";
 
   const getForwardMessageTool: AgentTool<ForwardToolInput, ForwardResult> = {
     name: TOOLS.GET_FORWARD_MESSAGE,
-    description:
-      "分页获取合并转发消息的紧凑元组。使用 forwardId；若返回 tips，表示还有剩余内容，可按其中的 nextOffset 使用相同 forwardId 继续读取。",
+    description: "分页获取合并转发消息的紧凑元组。使用 forwardId；若返回 tips，表示还有剩余内容，可按其中的 nextOffset 使用相同 forwardId 继续读取。",
     inputSchema: jsonSchema<ForwardToolInput>({
       type: "object",
       properties: {
-        forwardId: {
-          type: "string",
-          description: "合并转发消息的 ID",
-        },
-        offset: {
-          type: "integer",
-          minimum: 0,
-          description: "分页偏移，默认 0",
-        },
-        limit: {
-          type: "integer",
-          minimum: 1,
-          maximum: 60,
-          description: "每页条数，默认 30，最大 60",
-        },
+        forwardId: { type: "string", description: "合并转发消息的 ID" },
+        offset: { type: "integer", minimum: 0, description: "分页偏移，默认 0" },
+        limit: { type: "integer", minimum: 1, maximum: 60, description: "每页条数，默认 30，最大 60" },
       },
       required: ["forwardId"],
       additionalProperties: false,
     }),
     execute: async (input) => {
       const internal = getOneBotInternal(bot);
-      forwardReader ??= createForwardReader(internal, {
-        ...config,
-        persistImages: (images) => persistForwardImages(ctx, internal, assets, images),
-      });
+      forwardReader ??= createForwardReader(internal, { ...config, persistImages: (images) => persistForwardImages(ctx, internal, resources, images) });
       return forwardReader(input);
     },
   };
 
   const sendForwardMessageTool: AgentTool<{ forwardId: string }, ForwardSendResult> = {
     name: TOOLS.SEND_FORWARD_MESSAGE,
-    description:
-      "将合并转发消息原样发送到当前频道。传入与 onebot_get_forward_message 相同的 forwardId；不要根据摘要逐条粘贴或重建消息。",
+    description: "将合并转发消息原样发送到当前频道。传入与 onebot_get_forward_message 相同的 forwardId；不要根据摘要逐条粘贴或重建消息。",
     inputSchema: jsonSchema<{ forwardId: string }>({
       type: "object",
-      properties: {
-        forwardId: {
-          type: "string",
-          description: "要原样发送的合并转发消息 ID",
-        },
-      },
+      properties: { forwardId: { type: "string", description: "要原样发送的合并转发消息 ID" } },
       required: ["forwardId"],
       additionalProperties: false,
     }),
@@ -261,25 +253,13 @@ function createOneBotTools(
         const internal = getOneBotInternal(bot);
         const nodes = await loadForwardSendNodes(internal, forwardId);
         if (!nodes) {
-          return {
-            ok: false,
-            error: { name: "ForwardNotFound", message: `未找到合并转发消息: ${forwardId}` },
-          };
+          return { ok: false, error: { name: "ForwardNotFound", message: `未找到合并转发消息: ${forwardId}` } };
         }
         const target = directChannelId(scope.channelId);
-        const messageId =
-          scope.type === "direct"
-            ? await internal.sendPrivateForwardMsg(target, nodes)
-            : await internal.sendGroupForwardMsg(target, nodes);
+        const messageId = scope.type === "direct" ? await internal.sendPrivateForwardMsg(target, nodes) : await internal.sendGroupForwardMsg(target, nodes);
         return { ok: true, messageId: String(messageId) };
       } catch (cause) {
-        return {
-          ok: false,
-          error: {
-            name: cause instanceof Error ? cause.name : "Error",
-            message: errorMessage(cause),
-          },
-        };
+        return { ok: false, error: { name: cause instanceof Error ? cause.name : "Error", message: errorMessage(cause) } };
       }
     },
   };
@@ -289,26 +269,14 @@ function createOneBotTools(
     description: "对消息进行表态",
     inputSchema: jsonSchema<{ messageId: string; emojiId: string }>({
       type: "object",
-      properties: {
-        messageId: {
-          type: "string",
-          description: "要表态的消息 ID",
-        },
-        emojiId: {
-          type: "string",
-          description: "表情 ID",
-        },
-      },
+      properties: { messageId: { type: "string", description: "要表态的消息 ID" }, emojiId: { type: "string", description: "表情 ID" } },
       required: ["messageId", "emojiId"],
       additionalProperties: false,
     }),
     execute: async ({ messageId, emojiId }) => {
       const internal = getOneBotInternal(bot);
       if (!internal._request) throw new Error(ONEBOT_REQUEST_UNAVAILABLE_ERROR);
-      return internal._request("set_msg_emoji_like", {
-        message_id: messageId,
-        emoji_id: emojiId,
-      });
+      return internal._request("set_msg_emoji_like", { message_id: messageId, emoji_id: emojiId });
     },
   };
 
@@ -317,12 +285,7 @@ function createOneBotTools(
     description: "将消息设置为精华",
     inputSchema: jsonSchema<{ messageId: string }>({
       type: "object",
-      properties: {
-        messageId: {
-          type: "string",
-          description: "要设置为精华的消息 ID",
-        },
-      },
+      properties: { messageId: { type: "string", description: "要设置为精华的消息 ID" } },
       required: ["messageId"],
       additionalProperties: false,
     }),
@@ -335,13 +298,7 @@ function createOneBotTools(
   const ocrImageTool: AgentTool<OcrImageToolInput, OcrImageToolOutput> = {
     name: TOOLS.OCR_IMAGE,
     description: "对图片进行 OCR 识别",
-    inputSchema: jsonSchema<OcrImageToolInput>({
-      type: "object",
-      properties: {
-        image: { type: "string" },
-      },
-      required: ["image"],
-    }),
+    inputSchema: jsonSchema<OcrImageToolInput>({ type: "object", properties: { image: { type: "string" } }, required: ["image"] }),
     outputSchema: jsonSchema<OcrImageToolOutput>({
       type: "object",
       properties: {
@@ -368,11 +325,7 @@ function createOneBotTools(
     description: "设置 QQ 个人资料",
     inputSchema: jsonSchema<{ nickname?: string; personal_note?: string }>({
       type: "object",
-      properties: {
-        nickname: { type: "string" },
-        personal_note: { type: "string" },
-        sex: { type: "number" },
-      },
+      properties: { nickname: { type: "string" }, personal_note: { type: "string" }, sex: { type: "number" } },
       additionalProperties: false,
     }),
     execute: async (input) => {
@@ -386,14 +339,7 @@ function createOneBotTools(
   const setQqAvatarTool: AgentTool<{ file: string }, { success: true }> = {
     name: TOOLS.SET_QQ_AVATAR,
     description: "设置 QQ 头像",
-    inputSchema: jsonSchema<{ file: string }>({
-      type: "object",
-      properties: {
-        file: { type: "string" },
-      },
-      required: ["file"],
-      additionalProperties: false,
-    }),
+    inputSchema: jsonSchema<{ file: string }>({ type: "object", properties: { file: { type: "string" } }, required: ["file"], additionalProperties: false }),
     execute: async (input) => {
       const internal = getOneBotInternal(bot);
       if (!internal._request) throw new Error(ONEBOT_REQUEST_UNAVAILABLE_ERROR);
@@ -407,20 +353,13 @@ function createOneBotTools(
     description: "禁言当前群内的指定成员，duration 单位秒",
     inputSchema: jsonSchema<BanUserInput>({
       type: "object",
-      properties: {
-        userId: { type: "string" },
-        duration: { type: "number", minimum: 0 },
-      },
+      properties: { userId: { type: "string" }, duration: { type: "number", minimum: 0 } },
       required: ["userId", "duration"],
       additionalProperties: false,
     }),
     execute: async ({ userId, duration }) => {
       try {
-        await requestOneBot(bot, "set_group_ban", {
-          group_id: Number(scope.channelId),
-          user_id: toOneBotUserId(userId),
-          duration: Math.floor(duration),
-        });
+        await requestOneBot(bot, "set_group_ban", { group_id: Number(scope.channelId), user_id: toOneBotUserId(userId), duration: Math.floor(duration) });
         return { success: true };
       } catch (cause) {
         return { error: errorMessage(cause) };
@@ -431,19 +370,10 @@ function createOneBotTools(
   const unbanUserTool: AgentTool<GroupUserInput, GroupToolResult> = {
     name: TOOLS.UNBAN_USER,
     description: "解除当前群内指定成员的禁言",
-    inputSchema: jsonSchema<GroupUserInput>({
-      type: "object",
-      properties: { userId: { type: "string" } },
-      required: ["userId"],
-      additionalProperties: false,
-    }),
+    inputSchema: jsonSchema<GroupUserInput>({ type: "object", properties: { userId: { type: "string" } }, required: ["userId"], additionalProperties: false }),
     execute: async ({ userId }) => {
       try {
-        await requestOneBot(bot, "set_group_ban", {
-          group_id: Number(scope.channelId),
-          user_id: toOneBotUserId(userId),
-          duration: 0,
-        });
+        await requestOneBot(bot, "set_group_ban", { group_id: Number(scope.channelId), user_id: toOneBotUserId(userId), duration: 0 });
         return { success: true };
       } catch (cause) {
         return { error: errorMessage(cause) };
@@ -456,10 +386,7 @@ function createOneBotTools(
     description: "将指定成员移出当前群",
     inputSchema: jsonSchema<KickUserInput>({
       type: "object",
-      properties: {
-        userId: { type: "string" },
-        rejectAddRequest: { type: "boolean" },
-      },
+      properties: { userId: { type: "string" }, rejectAddRequest: { type: "boolean" } },
       required: ["userId"],
       additionalProperties: false,
     }),
@@ -493,31 +420,16 @@ function createOneBotTools(
   if (enabledTools.has(TOOLS.SET_QQ_AVATAR)) tools.push(setQqAvatarTool);
   return tools;
 }
-
 function requestOneBot(bot: Bot, action: string, params: Record<string, unknown>): Promise<unknown> {
   const internal = getOneBotInternal(bot);
   if (!internal._request) throw new Error(ONEBOT_REQUEST_UNAVAILABLE_ERROR);
   return internal._request(action, params);
 }
-
 function toOneBotUserId(userId: string): number {
   const id = Number(userId);
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error(`无效的用户 ID: ${userId}`);
   return id;
 }
-
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
-}
-
-function createOneBotPluginFactory(ctx: Context, config: OnebotUtilsConfig): ChannelPluginFactory {
-  return async ({ scope, bot }: ChannelPluginContext) => {
-    if (scope.platform !== "onebot") return null;
-    return {
-      name: "onebot-utils",
-      tools: createOneBotTools(ctx, bot, config, scope, ctx.yesimbot.assets.createStore(scope)),
-      onAppend: (entries) => projectAnimatedImages(entries, { attachImageSummary: config.attachImageSummary }),
-      transformEntries: (entries) => projectAnimatedImages(entries, { attachImageSummary: config.attachImageSummary }),
-    };
-  };
 }

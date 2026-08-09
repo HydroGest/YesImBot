@@ -1,4 +1,4 @@
-import { Universal } from "koishi";
+import { Universal, type Context } from "koishi";
 import type { EventRecord } from "koishi-plugin-yesimbot";
 
 import { ScheduleStore } from "./store.js";
@@ -14,21 +14,21 @@ const MAX_TIMER_DELAY = 0x7fffffff;
  * Earliest-due timer scheduler over the durable ScheduleStore. It arms one
  * timer for the earliest enabled `nextRunAt`, and on wake claims every
  * currently due occurrence through the Store before submitting a complete
- * `schedule.due` EventRecord via `ctx.yesimbot.trigger()`. Trigger calls are
- * bounded to `MAX_CONCURRENT_TRIGGERS`; a due occurrence without a free slot
- * is recorded as missed instead of entering a backlog. Production time APIs
- * are the direct global `Date.now()`, `setTimeout()`, and `clearTimeout()`.
+ * `schedule.due` EventRecord via `Messenger.post()`. Post calls are bounded
+ * to `MAX_CONCURRENT_TRIGGERS`; a due occurrence without a free slot is
+ * recorded as missed instead of entering a backlog. Production time APIs are
+ * the direct global `Date.now()`, `setTimeout()`, and `clearTimeout()`.
  */
 export class ScheduleScheduler {
   private readonly store: ScheduleStore;
-  private readonly trigger: (event: EventRecord) => Promise<void>;
+  private readonly ctx: Context;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private activeTriggers = 0;
   private running = false;
 
-  public constructor(store: ScheduleStore, trigger: (event: EventRecord) => Promise<void>) {
+  public constructor(store: ScheduleStore, ctx: Context) {
     this.store = store;
-    this.trigger = trigger;
+    this.ctx = ctx;
   }
 
   /** Recovers persisted schedules, then arms the earliest due timer. */
@@ -107,13 +107,10 @@ export class ScheduleScheduler {
   private async runTrigger(row: Schedule, occurrenceAt: string): Promise<void> {
     const event = buildDueEvent(row, occurrenceAt);
     try {
-      await this.trigger(event);
+      await this.ctx.yesimbot.messenger.post(event);
       await this.store.finish(row.id, occurrenceAt, "accepted");
     } catch (cause) {
-      const error =
-        cause instanceof Error
-          ? { name: cause.name, message: cause.message }
-          : { name: "Error", message: String(cause) };
+      const error = cause instanceof Error ? { name: cause.name, message: cause.message } : { name: "Error", message: String(cause) };
       await this.store.finish(row.id, occurrenceAt, "failed", error);
     }
   }
@@ -131,11 +128,6 @@ function buildDueEvent(row: Schedule, occurrenceAt: string): EventRecord<"schedu
     timestamp: Date.now(),
     channel: { id: row.channelId, type: toUniversalChannelType(row.type) },
     text: `Schedule "${row.title}" is due.\n${row.prompt}`,
-    schedule: {
-      id: row.id,
-      title: row.title,
-      kind: row.kind,
-      scheduledFor: occurrenceAt,
-    },
+    schedule: { id: row.id, title: row.title, kind: row.kind, scheduledFor: occurrenceAt },
   };
 }

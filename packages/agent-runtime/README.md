@@ -26,11 +26,7 @@ The package exports both ESM and CommonJS builds from `dist/`, plus a `./plugins
 ```ts
 import { createAgent, createUserMessage } from "@yesimbot/agent-runtime";
 
-const agent = createAgent({
-  id: "demo",
-  model,
-  systemPrompt: "You are a concise assistant.",
-});
+const agent = createAgent({ id: "demo", model, systemPrompt: "You are a concise assistant." });
 
 for await (const event of agent.run(createUserMessage("hello"))) {
   if (event.type === "message.appended" && event.message.role === "assistant") {
@@ -61,10 +57,7 @@ for await (const event of agent.run(createUserMessage("hello"))) {
 All runtime messages carry a top-level `id` and `timestamp`.
 
 ```ts
-const message = createUserMessage("hello", {
-  id: "platform-message-id",
-  timestamp: Date.now(),
-});
+const message = createUserMessage("hello", { id: "platform-message-id", timestamp: Date.now() });
 ```
 
 Use custom messages for structured observations that should not go to the model by default. A plugin can project them with `toModelMessages`.
@@ -78,9 +71,7 @@ declare module "@yesimbot/agent-runtime" {
   }
 }
 
-const note = createCustomMessage("example.note", {
-  text: "visible only if a plugin projects it",
-});
+const note = createCustomMessage("example.note", { text: "visible only if a plugin projects it" });
 ```
 
 ## Turns And Events
@@ -114,24 +105,14 @@ import { createAgent, jsonSchema, type AgentTool } from "@yesimbot/agent-runtime
 const echoTool: AgentTool<{ text: string }, { text: string }> = {
   name: "echo",
   description: "Echo text.",
-  inputSchema: jsonSchema({
-    type: "object",
-    properties: {
-      text: { type: "string" },
-    },
-    required: ["text"],
-    additionalProperties: false,
-  }),
+  inputSchema: jsonSchema({ type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false }),
   execute: async ({ text }, context) => {
     console.log(context.turnId);
     return { text };
   },
 };
 
-const agent = createAgent({
-  model,
-  tools: [echoTool],
-});
+const agent = createAgent({ model, tools: [echoTool] });
 ```
 
 Tool names must be unique after runtime tools, plugin tools, initialization-only compatibility extensions, and the optional terminal tool are merged.
@@ -154,17 +135,11 @@ const plugin: AgentPlugin = {
       return undefined;
     }
 
-    return {
-      role: "user",
-      content: `[note]: ${message.data.text}`,
-    };
+    return { role: "user", content: `[note]: ${message.data.text}` };
   },
 };
 
-const agent = createAgent({
-  model,
-  plugins: [plugin],
-});
+const agent = createAgent({ model, plugins: [plugin] });
 ```
 
 Plugin order is `enforce: "pre"` first, then normal plugins, then `enforce: "post"`.
@@ -178,10 +153,7 @@ Storage is append-only from the runtime's point of view:
 import { createAgent, createMemoryStorage } from "@yesimbot/agent-runtime";
 
 const storage = createMemoryStorage();
-const agent = createAgent({
-  model,
-  storage,
-});
+const agent = createAgent({ model, storage });
 ```
 
 The core package provides its own JSONL storage for channel sessions. Tool-loop responses are persisted at step boundaries as complete assistant/tool messages, not as streaming deltas.

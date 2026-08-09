@@ -7,19 +7,10 @@ export interface GenerateReflectionOptions {
   readonly maxMessages?: number;
 }
 
-export async function reflectOnSentMessage(
-  model: LanguageModel,
-  styleBlock: string,
-  sentText: string,
-): Promise<string | undefined> {
+export async function reflectOnSentMessage(model: LanguageModel, styleBlock: string, sentText: string): Promise<string | undefined> {
   const text = sanitizeForDisplay(sentText).trim();
   if (text.length === 0 || styleBlock.trim().length === 0) return undefined;
-  const prompt = [
-    "## 群聊风格 few-shot",
-    styleBlock,
-    "## bot 最终发送的发言",
-    text,
-  ].join("\n\n");
+  const prompt = ["## 群聊风格 few-shot", styleBlock, "## bot 最终发送的发言", text].join("\n\n");
   const system = [
     "你是一个发言风格反思器。",
     "根据群聊风格 few-shot，评价 bot 刚刚最终发送的这条发言是否像群友。",
@@ -29,12 +20,7 @@ export async function reflectOnSentMessage(
   ].join("\n");
 
   try {
-    const { text: generated } = await generateText({
-      model,
-      system,
-      prompt,
-      temperature: 0.2,
-    });
+    const { text: generated } = await generateText({ model, system, prompt, temperature: 0.2 });
     const reflection = generated.trim().replace(/\s+/g, " ").slice(0, 600);
     return reflection.length > 0 ? reflection : undefined;
   } catch {
@@ -53,17 +39,10 @@ export async function generateReflection(
     .filter(isAssistantEntry)
     .sort((left, right) => left.timestamp - right.timestamp)
     .slice(-maxMessages);
-  const texts = recent
-    .map((entry) => sanitizeForDisplay(renderAssistantText(entry.data.content)).trim())
-    .filter((text) => text.length > 0);
+  const texts = recent.map((entry) => sanitizeForDisplay(renderAssistantText(entry.data.content)).trim()).filter((text) => text.length > 0);
   if (texts.length === 0 || styleBlock.trim().length === 0) return undefined;
 
-  const prompt = [
-    "## 群聊风格 few-shot",
-    styleBlock,
-    "## bot 最近发言",
-    ...texts.map((text, index) => `[${index + 1}] ${text}`),
-  ].join("\n\n");
+  const prompt = ["## 群聊风格 few-shot", styleBlock, "## bot 最近发言", ...texts.map((text, index) => `[${index + 1}] ${text}`)].join("\n\n");
   const system = [
     "你是一个发言风格反思器。",
     "根据群聊风格 few-shot，评价 bot 最近几次发言是否像群友。",
@@ -73,12 +52,7 @@ export async function generateReflection(
   ].join("\n");
 
   try {
-    const { text } = await generateText({
-      model,
-      system,
-      prompt,
-      temperature: 0.2,
-    });
+    const { text } = await generateText({ model, system, prompt, temperature: 0.2 });
     const reflection = text.trim().replace(/\s+/g, " ").slice(0, 600);
     return reflection.length > 0 ? reflection : undefined;
   } catch {
@@ -86,9 +60,7 @@ export async function generateReflection(
   }
 }
 
-function isAssistantEntry(
-  entry: AgentEntry,
-): entry is AgentEntry & { data: { role: "assistant"; content: unknown } } {
+function isAssistantEntry(entry: AgentEntry): entry is AgentEntry & { data: { role: "assistant"; content: unknown } } {
   return entry.type === "message" && entry.data.role === "assistant";
 }
 
