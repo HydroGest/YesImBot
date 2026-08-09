@@ -4,59 +4,42 @@ import type { AssistantContent, LanguageModelUsage, ModelMessage, ToolContent, U
 import { createRandomId } from "./id.js";
 import { PluginHost } from "./plugin.js";
 import { ModelMessageContext } from "./plugin.js";
-
+export type AgentCustomMessage<T extends keyof AgentCustomMessages = keyof AgentCustomMessages> = AgentCustomMessages[T];
+type AgentCustomMessageKey = Extract<keyof AgentCustomMessages, string>;
+export type AgentCustomMessageType = {
+  [K in AgentCustomMessageKey]: AgentCustomMessages[K] extends CustomMessageBase<K, unknown> ? K : never;
+}[AgentCustomMessageKey];
+export type AgentCustomMessageData<T extends AgentCustomMessageType> = AgentCustomMessages[T] extends CustomMessageBase<T, infer D> ? D : never;
+export type AgentMessage = AgentUserMessage | AgentSystemMessage | AgentAssistantMessage | AgentToolMessage | AgentCustomMessage;
+export type CreateMessageOptions = Partial<Pick<AgentMessageBase, "id" | "timestamp">>;
 export interface AgentMessageBase {
   id: string;
   timestamp: number;
 }
-
 export interface CustomMessageBase<T extends string = string, D = unknown> extends AgentMessageBase {
   role: "custom";
   type: T;
   data: D;
 }
-
 export interface AgentCustomMessages {
   custom: CustomMessageBase<"custom", unknown>;
 }
-
-export type AgentCustomMessage<T extends keyof AgentCustomMessages = keyof AgentCustomMessages> = AgentCustomMessages[T];
-
-type AgentCustomMessageKey = Extract<keyof AgentCustomMessages, string>;
-
-export type AgentCustomMessageType = {
-  [K in AgentCustomMessageKey]: AgentCustomMessages[K] extends CustomMessageBase<K, unknown> ? K : never;
-}[AgentCustomMessageKey];
-
-export type AgentCustomMessageData<T extends AgentCustomMessageType> = AgentCustomMessages[T] extends CustomMessageBase<T, infer D> ? D : never;
-
-export type AgentMessage = AgentUserMessage | AgentSystemMessage | AgentAssistantMessage | AgentToolMessage | AgentCustomMessage;
-
 export interface AgentUserMessage extends AgentMessageBase, UserModelMessage {}
-
 export interface AgentSystemMessage extends AgentMessageBase, SystemModelMessage {}
-
 export interface AgentAssistantMessage extends AgentMessageBase, AssistantModelMessage {
   usage?: Partial<LanguageModelUsage>;
   finishReason?: string;
 }
-
 export interface AgentToolMessage extends AgentMessageBase, ToolModelMessage {}
-
-export type CreateMessageOptions = Partial<Pick<AgentMessageBase, "id" | "timestamp">>;
-
 function createMessageBase(options: CreateMessageOptions = {}): AgentMessageBase {
   return { id: options.id ?? createRandomId(), timestamp: options.timestamp ?? Date.now() };
 }
-
 export function createUserMessage(content: UserContent, options: CreateMessageOptions = {}): AgentUserMessage {
   return { ...createMessageBase(options), role: "user", content };
 }
-
 export function createSystemMessage(content: string, options: CreateMessageOptions = {}): AgentSystemMessage {
   return { ...createMessageBase(options), role: "system", content };
 }
-
 export function createAssistantMessage(
   content: AssistantContent,
   options: Omit<Partial<AgentAssistantMessage>, "role" | "content"> = {},
@@ -64,11 +47,9 @@ export function createAssistantMessage(
   const { id, timestamp, ...rest } = options;
   return { ...createMessageBase({ id, timestamp }), role: "assistant", content, ...rest };
 }
-
 export function createToolMessage(content: ToolContent, options: CreateMessageOptions = {}): AgentToolMessage {
   return { ...createMessageBase(options), role: "tool", content };
 }
-
 export function createCustomMessage<T extends AgentCustomMessageType>(
   type: T,
   data: AgentCustomMessageData<T>,
@@ -76,11 +57,9 @@ export function createCustomMessage<T extends AgentCustomMessageType>(
 ): AgentCustomMessages[T] {
   return { ...createMessageBase(options), role: "custom", type, data } as unknown as AgentCustomMessages[T];
 }
-
 function isModelMessageRole(role: AgentMessage["role"]): role is Exclude<AgentMessage["role"], "custom"> {
   return role === "system" || role === "user" || role === "assistant" || role === "tool";
 }
-
 function toPlainModelMessage(message: AgentUserMessage | AgentAssistantMessage | AgentToolMessage | Extract<AgentMessage, { role: "system" }>): ModelMessage {
   switch (message.role) {
     case "system":
@@ -103,7 +82,6 @@ function toPlainModelMessage(message: AgentUserMessage | AgentAssistantMessage |
     }
   }
 }
-
 export async function buildModelMessages(options: {
   history: AgentMessage[];
   current: AgentMessage[];

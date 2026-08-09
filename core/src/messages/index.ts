@@ -1,20 +1,8 @@
 import { createCustomMessage, type AgentMessage, type CustomMessageBase } from "@yesimbot/agent-runtime";
 import type { UserModelMessage } from "ai";
 import { h, type Element, type Universal } from "koishi";
+const MARK = "\u0000";
 
-export interface EventMap {
-  "delivery.failed": {
-    channel: Universal.Channel;
-    delivery: { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number; error: { name: string; message: string; code?: string } };
-  };
-}
-export interface RecordBase {
-  readonly platform: string;
-  readonly selfId: string;
-  readonly channel: Universal.Channel;
-  readonly user: Universal.User;
-  readonly timestamp: number;
-}
 export type MessageRecord = Readonly<RecordBase & { readonly messageId: string; readonly elements: readonly Element[] }>;
 export type EventBase = Readonly<{
   readonly platform: string;
@@ -27,6 +15,21 @@ export type EventBase = Readonly<{
 export type EventRecord<K extends keyof EventMap = keyof EventMap> = K extends K ? Readonly<EventBase & { readonly eventType: K } & EventMap[K]> : never;
 export type Message = CustomMessageBase<"yesimbot.message", Omit<MessageRecord, "timestamp">>;
 export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<"yesimbot.event", K extends K ? Omit<EventRecord<K>, "timestamp"> : never>;
+
+export interface EventMap {
+  "delivery.failed": {
+    channel: Universal.Channel;
+    delivery: { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number; error: { name: string; message: string; code?: string } };
+  };
+}
+
+export interface RecordBase {
+  readonly platform: string;
+  readonly selfId: string;
+  readonly channel: Universal.Channel;
+  readonly user: Universal.User;
+  readonly timestamp: number;
+}
 
 declare module "@yesimbot/agent-runtime" {
   interface AgentCustomMessages {
@@ -114,4 +117,63 @@ function formatElement(element: Element): string {
     return element.type === "img" ? "[图片]" : "[文件]";
   }
   return String(h(element.type, element.attrs, element.children.map(formatElement)));
+}
+
+export function parseReply(raw: string): Element[][] {
+  const source = raw.replaceAll(MARK, "");
+  const nonce = `${MARK}t${Math.random().toString(36).slice(2)}`;
+  const captured: string[] = [];
+  let masked = "";
+  let cursor = 0;
+  for (;;) {
+    const open = source.indexOf("<text>", cursor);
+    if (open < 0) {
+      masked += source.slice(cursor);
+      break;
+    }
+    masked += source.slice(cursor, open);
+    const start = open + 6;
+    const close = source.indexOf("</text>", start);
+    masked += `${nonce}${captured.length}${MARK}`;
+    captured.push(close < 0 ? source.slice(start) : source.slice(start, close));
+    if (close < 0) break;
+    cursor = close + 7;
+  }
+  const restore = (element: Element): Element[] => {
+    if (element.type === "inner_thought") return [];
+    if (element.type !== "text") return [h(element.type, element.attrs, element.children.flatMap(restore))];
+    const content = `${element.attrs.content ?? ""}`;
+    const values: Element[] = [];
+    let offset = 0;
+    for (;;) {
+      const start = content.indexOf(nonce, offset);
+      if (start < 0) {
+        if (offset < content.length) values.push(h.text(content.slice(offset)));
+        return values;
+      }
+      const end = content.indexOf(MARK, start + nonce.length);
+      if (end < 0) return [h.text(content)];
+      if (offset < start) values.push(h.text(content.slice(offset, start)));
+      const value = captured[Number(content.slice(start + nonce.length, end))];
+      if (value) values.push(h.text(value));
+      offset = end + 1;
+    }
+  };
+  const split = (elements: readonly Element[]): Element[][] => {
+    const segments: Element[][] = [];
+    let current: Element[] = [];
+    const flush = () => {
+      if (current.some((element) => element.type !== "text" || `${element.attrs.content ?? ""}`.trim())) segments.push(current);
+      current = [];
+    };
+    for (const element of elements) {
+      if (element.type === "message") {
+        flush();
+        segments.push(...split(element.children));
+      } else current.push(element);
+    }
+    flush();
+    return segments;
+  };
+  return split(h.parse(masked).flatMap(restore));
 }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,9 +8,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { createReadTool, type ResourceReadResult } from "../src/agents/tools.js";
-import { ChannelResources, type ResourceReader } from "../src/resources/index.js";
-import { prepareOutputSegments } from "../src/runtimes/output.js";
+import { h } from "koishi";
+
+import { createReadTool, createSendMessageTool, type ResourceReadResult } from "../src/agents/tools.js";
+import { ChannelArtifactStore } from "../src/resources/artifact.js";
+import { ChannelAssetStore } from "../src/resources/asset.js";
+import { ChannelResources, prepareOutputSegments, type ResourceReader } from "../src/resources/index.js";
+import { persistElements } from "../src/resources/input.js";
 import { PNG_BYTES } from "./helpers/index.js";
 
 const roots: string[] = [];
@@ -34,6 +39,106 @@ type ReadTool = AgentTool<{ uri: string }, ResourceReadResult>;
 
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
 
+// ---------------------------------------------------------------------------
+// session-live input resources
+// ---------------------------------------------------------------------------
+
+describe("session-live input resources", () => {
+  it("persists an inbound image through the resolved ChannelResources owner", async () => {
+    const http = Object.assign(
+      vi.fn(async () => ({
+        data: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+            controller.close();
+          },
+        }),
+      })),
+      { head: vi.fn(async () => ({ get: (name: string) => ({ "content-type": "image/png", "content-length": "4" })[name] ?? null })) },
+    );
+    const resources = { assets: { put: vi.fn(async () => "0123456789abcdef0123456789abcdef") } };
+
+    const elements = await persistElements({ http } as never, [h("img", { src: "https://example.test/image.png" })], resources as never);
+
+    expect(resources.assets.put).toHaveBeenCalledWith(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    expect(elements).toEqual([h("img", { id: "0123456789abcdef0123456789abcdef" })]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ChannelResources binary stores
+// ---------------------------------------------------------------------------
+
+describe("ChannelResources binary stores", () => {
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+  const id = createHash("sha256").update(PNG).digest("hex").slice(0, 32);
+
+  it("keeps asset IDs and artifact URIs, metadata, and clear lifecycles distinct", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-channel-resources-"));
+    roots.push(root);
+    const assets = new ChannelAssetStore(root);
+    const artifacts = new ChannelArtifactStore(root);
+    const source = PNG.slice();
+
+    expect(await assets.put(source)).toBe(id);
+    source[0] = 0;
+    const uri = await artifacts.forTool("capture").put(PNG, { filename: "capture.png", mediaType: "image/png" });
+
+    await expect(assets.get(id)).resolves.toEqual(PNG);
+    await expect(artifacts.open(uri)).resolves.toEqual({ bytes: PNG, filename: "capture.png", mediaType: "image/png" });
+    await assets.clear();
+    await expect(assets.get(id)).rejects.toThrow();
+    await expect(artifacts.open(uri)).resolves.toMatchObject({ bytes: PNG });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sendMessage tool
+// ---------------------------------------------------------------------------
+
+describe("sendMessage tool", () => {
+  it("rejects sending to the current channel before dispatch", async () => {
+    const resources = await createResources();
+    const sendMessage = vi.fn(async () => ["message-1"]);
+    const tool = createSendMessageTool({ sendMessage } as never, "room", resources);
+
+    expect(tool.description).toContain("当前频道");
+    expect(tool.description).toContain("必须检查 ok");
+    expect(tool.description).toContain("<message/>");
+    expect(tool.description).toContain("<img>");
+    expect(tool.description).toContain("资源解析失败");
+    await expect(tool.execute({ channelId: "room", content: "ignored" }, { toolCallId: "call-1", abortSignal: undefined } as never)).resolves.toMatchObject({
+      ok: false,
+      error: { name: "InvalidChannel" },
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("prepares resource elements and returns every delivered message id", async () => {
+    const resources = await createResources();
+    resources.use(reader("workspace", "workspace 文件引用", async () => ({ bytes: PNG_BYTES, mediaType: "image/png" })));
+    const sent: readonly unknown[][] = [];
+    const sendMessage = vi.fn(async (_channelId: string, elements: readonly unknown[]) => {
+      (sent as unknown[][]).push([...elements]);
+      return sent.length === 1 ? ["message-1"] : [];
+    });
+    const tool = createSendMessageTool({ sendMessage } as never, "room", resources);
+
+    await expect(
+      tool.execute({ channelId: "other-room", content: '<message>hello</message><message><img src="workspace:///chart.png"/></message>' }, {
+        toolCallId: "call-1",
+        abortSignal: undefined,
+      } as never),
+    ).resolves.toEqual({ ok: true, messageIds: ["message-1"] });
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sent[1]?.[0]).toMatchObject({ type: "img", attrs: { src: expect.stringContaining("data:image/png;base64,") } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ChannelResources raw open
+// ---------------------------------------------------------------------------
+
 describe("ChannelResources raw open", () => {
   it("opens built-in assets and dispatches a registered reader", async () => {
     const resources = await createResources();
@@ -51,6 +156,10 @@ describe("ChannelResources raw open", () => {
     await expect(resources.open("missing://host/file")).resolves.toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// read tool resource errors
+// ---------------------------------------------------------------------------
 
 describe("read tool resource errors", () => {
   it("rejects registration of reserved schemes", async () => {
@@ -169,6 +278,10 @@ describe("read tool resource errors", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// prepareOutputSegments
+// ---------------------------------------------------------------------------
 
 describe("prepareOutputSegments", () => {
   async function resourcesWith(open: ResourceReader["setup"], registrations: Map<string, ResourceReader> = new Map()): Promise<ChannelResources> {
@@ -294,6 +407,10 @@ describe("prepareOutputSegments", () => {
     expect(prepared).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// read tool model projection
+// ---------------------------------------------------------------------------
 
 describe("read tool model projection", () => {
   async function createTool(

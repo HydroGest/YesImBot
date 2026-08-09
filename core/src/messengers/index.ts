@@ -7,14 +7,12 @@ import type { EventRecord, MessageRecord, RecordBase } from "../messages/index.j
 import type { ChannelResources } from "../resources/index.js";
 import { persistElements } from "../resources/input.js";
 import type { ChannelRuntime, PostOptions, RuntimeResult, Runtimes } from "../runtimes/index.js";
-
+type RunResult = Extract<RuntimeResult, { readonly kind: "run" }>;
+type DeliveryContext = { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number };
 export interface Translator {
   readonly platform: string;
   translate(session: Session, resources: ChannelResources): Awaitable<MessageRecord | EventRecord | null>;
 }
-
-type RunResult = Extract<RuntimeResult, { readonly kind: "run" }>;
-
 export class Messenger {
   private readonly logger: Logger;
   private readonly translators = new Map<string, Translator>();
@@ -105,39 +103,48 @@ export class Messenger {
   }
 
   private async deliverPassive(session: Session, runtime: ChannelRuntime, result: RunResult): Promise<void> {
+    const delivery = emptyDeliveryContext(result.eventId);
     await this.serializeDelivery(runtime.scope, async () => {
       try {
-        for await (const segment of this.pacedSegments(result)) await session.send([...segment]);
+        for await (const segment of this.pacedSegments(result, delivery)) await session.send([...segment]);
       } catch (cause) {
-        await this.failDelivery(runtime, result, cause);
+        await this.failDelivery(runtime, result, delivery, cause);
       }
     });
   }
 
   private async deliverActive(bot: Bot, channelId: string, runtime: ChannelRuntime, result: RunResult): Promise<void> {
+    const delivery = emptyDeliveryContext(result.eventId);
     await this.serializeDelivery(runtime.scope, async () => {
       try {
-        for await (const segment of this.pacedSegments(result)) await bot.sendMessage(channelId, [...segment]);
+        for await (const segment of this.pacedSegments(result, delivery)) await bot.sendMessage(channelId, [...segment]);
       } catch (cause) {
-        await this.failDelivery(runtime, result, cause);
+        await this.failDelivery(runtime, result, delivery, cause);
       }
     });
   }
 
-  private async *pacedSegments(result: RunResult): AsyncIterable<readonly Element[]> {
-    let delay = 0;
+  private async *pacedSegments(result: RunResult, delivery: DeliveryContext): AsyncIterable<readonly Element[]> {
+    let elapsed = 0;
     for await (const output of result.output) {
-      for (const segment of output.segments) {
+      for (const [index, segment] of output.segments.entries()) {
         if (result.signal.aborted) return;
-        delay += pacedDelay(segment, this.config.reply.pacing, delay);
-        if (delay > 0) await sleep(delay);
+        const delay = pacedDelay(segment, this.config.reply.pacing, elapsed);
+        const startedAt = Date.now();
+        await sleep(delay, result.signal);
+        elapsed += Math.max(delay, Date.now() - startedAt);
+        if (result.signal.aborted) return;
+        delivery.turnId = output.turnId;
+        delivery.messageId = output.messageId;
+        delivery.segmentIndex = index + 1;
+        delivery.segmentTotal = output.segments.length;
         yield segment;
       }
     }
   }
 
-  private async failDelivery(runtime: ChannelRuntime, result: RunResult, cause: unknown): Promise<void> {
-    await runtime.fail(result.eventId, cause);
+  private async failDelivery(runtime: ChannelRuntime, result: RunResult, delivery: DeliveryContext, cause: unknown): Promise<void> {
+    await runtime.fail(result.eventId, cause, delivery);
     this.warn("delivery.failed", cause, runtime.scope.platform);
   }
 
@@ -172,7 +179,6 @@ export class Messenger {
     } catch {}
   }
 }
-
 export function matchesAllowedChannel(scope: ChannelScope, rules: readonly ChannelAllowRule[] | undefined): boolean {
   return (
     rules?.some(
@@ -183,26 +189,22 @@ export function matchesAllowedChannel(scope: ChannelScope, rules: readonly Chann
     ) ?? false
   );
 }
-
 async function assertAssignee(ctx: Context, scope: ChannelScope, selfId: string): Promise<void> {
   if (scope.type === "direct") return;
   const [channel] = await ctx.database.get("channel", { platform: scope.platform, id: scope.channelId }, ["assignee"]);
   if (!channel?.assignee || channel.assignee !== selfId) throw new Error("Shared channel assignee admission failed");
 }
-
 function scopeFromRecord(record: MessageRecord | EventRecord): ChannelScope {
   return record.channel.type === Universal.Channel.Type.DIRECT
     ? { type: "direct", platform: record.platform, selfId: record.selfId, channelId: record.channel.id }
     : { type: "shared", platform: record.platform, channelId: record.channel.id };
 }
-
 function scopeFromSession(session: Session): ChannelScope | undefined {
   if (!session.platform || !session.selfId || !session.channelId) return;
   return session.isDirect
     ? { type: "direct", platform: session.platform, selfId: session.selfId, channelId: session.channelId }
     : { type: "shared", platform: session.platform, channelId: session.channelId };
 }
-
 async function translateDefault(ctx: Context, session: Session, resources: ChannelResources): Promise<MessageRecord | null> {
   if (session.type !== "message-created" || !session.messageId || !session.channelId || !Array.isArray(session.elements)) return null;
   const base: RecordBase = {
@@ -221,24 +223,34 @@ async function translateDefault(ctx: Context, session: Session, resources: Chann
   };
   return { ...base, messageId: session.messageId, elements: await persistElements(ctx, session.elements, resources) };
 }
-
 function deliveryKey(scope: ChannelScope): string {
   return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
 }
-
+function emptyDeliveryContext(eventId: string): DeliveryContext {
+  return { turnId: "", messageId: eventId, segmentIndex: 0, segmentTotal: 0 };
+}
 function pacedDelay(segment: readonly Element[], pacing: PacingConfig, elapsed: number): number {
   const characters = segment.reduce((total, element) => total + elementTextLength(element), 0);
-  const target = Math.min(Math.max(250, Math.ceil((characters / pacing.charactersPerSecond) * 1000)), pacing.maxTotalDelayMs);
-  return Math.max(0, target - elapsed);
+  const delay = Math.min(Math.max(250, Math.ceil((characters / pacing.charactersPerSecond) * 1000)), 10_000);
+  return elapsed + delay >= pacing.maxTotalDelayMs ? 250 : Math.round(delay);
 }
-
 function elementTextLength(element: Element): number {
   return (
     (typeof element.attrs.content === "string" ? element.attrs.content.length : 0) +
     element.children.reduce((total, child) => total + elementTextLength(child), 0)
   );
 }
-
-function sleep(timeout: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, timeout));
+function sleep(timeout: number, signal: AbortSignal): Promise<void> {
+  const { promise, resolve } = (
+    Promise as PromiseConstructor & { withResolvers<T>(): { promise: Promise<T>; resolve: (value?: T | PromiseLike<T>) => void } }
+  ).withResolvers<void>();
+  let timer: NodeJS.Timeout;
+  const finish = () => {
+    clearTimeout(timer);
+    signal.removeEventListener("abort", finish);
+    resolve();
+  };
+  timer = setTimeout(finish, timeout);
+  signal.addEventListener("abort", finish, { once: true });
+  return promise;
 }

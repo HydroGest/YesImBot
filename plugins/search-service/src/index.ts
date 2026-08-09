@@ -5,11 +5,8 @@ import type { ChannelScope } from "koishi-plugin-yesimbot";
 import { createSearXNGBackend, searxngConfigSchema, type SearXNGConfig } from "./backends/searxng";
 import { createTavilyBackend, tavilyConfigSchema, type TavilyConfig } from "./backends/tavily";
 import type { SearchBackend, SearchRuntimeConfig } from "./types";
-
 const DEFAULT_PROVIDER: SearchProviderName = "tavily";
-
 type SearchProviderName = "tavily" | "searxng";
-
 interface SearchServiceConfig {
   provider?: SearchProviderName;
   defaultLimit?: number;
@@ -19,25 +16,6 @@ interface SearchServiceConfig {
   tavily?: TavilyConfig;
   searxng?: SearXNGConfig;
 }
-
-function formatSearchPrompt(provider: string, hasScrape: boolean): string {
-  const lines = [
-    "",
-    "## Web Search",
-    "",
-    `You have access to web search via the \`web_search\` tool (provider: ${provider}).`,
-    "Use it when you need current, external, or source-backed web information.",
-    "It returns structured JSON with URLs and snippets.",
-  ];
-
-  if (hasScrape) {
-    lines.push("For detailed page content, use the `web_scrape` tool on candidate URLs.");
-  }
-
-  lines.push("");
-  return lines.join("\n");
-}
-
 export default class SearchService {
   public static name = "yesimbot-search-service";
   public static usage = "搜索服务插件，提供 Web 搜索和网页内容抓取功能";
@@ -129,4 +107,21 @@ export default class SearchService {
     this.hasScrape = false;
     this.backend = undefined;
   }
+}
+function formatSearchPrompt(provider: string, hasScrape: boolean): string {
+  const lines = [
+    "",
+    "## Web Search",
+    "",
+    `You have access to web search via the \`web_search\` tool (provider: ${provider}).`,
+    "Use it when you need current, external, or source-backed web information.",
+    "It returns structured JSON with URLs and snippets.",
+  ];
+
+  if (hasScrape) {
+    lines.push("For detailed page content, use the `web_scrape` tool on candidate URLs.");
+  }
+
+  lines.push("");
+  return lines.join("\n");
 }

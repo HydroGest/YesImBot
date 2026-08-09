@@ -1,5 +1,5 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
-import type { ChannelPlugin, ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelPlugin } from "koishi-plugin-yesimbot";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 vi.mock("koishi", () => ({ Context: class {}, Logger: class {}, Universal: { Channel: { Type: { TEXT: 0, DIRECT: 1, CATEGORY: 2, VOICE: 3 } } } }));

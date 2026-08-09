@@ -112,6 +112,7 @@ describe("busy behavior", () => {
   it("does not duplicate joined persistence when storage append is slow", async () => {
     const deferredStorage = createDeferredStorage();
     const agent = createAgent({ model: createBlockingModel(), storage: deferredStorage.storage });
+    agent.send(createUserMessage("first"));
 
     agent.send(createUserMessage("joined"), { ifBusy: "join" });
     for (let attempt = 0; attempt < 10 && deferredStorage.appended.length === 0; attempt += 1) {

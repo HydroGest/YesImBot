@@ -7,7 +7,6 @@ import type { ChannelResources, ChannelScope } from "koishi-plugin-yesimbot";
 import { projectAnimatedImages } from "./animated-image.js";
 import { createForwardReader, type ForwardImageRequest, type ForwardResult, type ForwardToolInput } from "./forward.js";
 import type { OneBotCQCode, OneBotForwardSendNode, OneBotInternal, OneBotSenderInfo } from "./onebot.js";
-
 const ONEBOT_INTERNAL_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 协议内部接口";
 const ONEBOT_REQUEST_UNAVAILABLE_ERROR = "当前频道适配器不支持 OneBot 请求接口";
 const MAX_FORWARD_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -26,18 +25,20 @@ const TOOLS = {
   SET_QQ_AVATAR: "onebot_set_qq_avatar",
 };
 const TOOL_SCHEMA = Object.entries(TOOLS).map(([key, value]) => Schema.const(value).description(key));
-
+type GroupToolResult = { success: true } | { error: string };
+type GroupUserInput = { userId: string };
+type BanUserInput = GroupUserInput & { duration: number };
+type KickUserInput = GroupUserInput & { rejectAddRequest?: boolean };
+type ForwardSendResult = { ok: true; messageId: string } | { ok: false; error: { name: string; message: string } };
 export interface OnebotUtilsConfig {
   enabledTools: (typeof TOOLS)[keyof typeof TOOLS][];
   parseImages: boolean;
   attachImageSummary: boolean;
   maxForwardPageChars: number;
 }
-
 interface OcrImageToolInput {
   image: string;
 }
-
 interface OcrImageToolOutput {
   status: "ok" | "failed";
   retcode: number;
@@ -47,13 +48,6 @@ interface OcrImageToolOutput {
   echo: unknown | null;
   stream: "normal-action" | "normal-event" | "normal-response";
 }
-
-type GroupToolResult = { success: true } | { error: string };
-type GroupUserInput = { userId: string };
-type BanUserInput = GroupUserInput & { duration: number };
-type KickUserInput = GroupUserInput & { rejectAddRequest?: boolean };
-type ForwardSendResult = { ok: true; messageId: string } | { ok: false; error: { name: string; message: string } };
-
 export default class OnebotUtilsPlugin {
   public static name = "yesimbot-onebot-utils";
   public static inject = ["yesimbot"];
@@ -98,13 +92,11 @@ export default class OnebotUtilsPlugin {
     this.dispose?.();
   }
 }
-
 function getOneBotInternal(bot: Bot): OneBotInternal {
   const internal = (bot as unknown as { internal?: OneBotInternal }).internal;
   if (!internal) throw new Error(ONEBOT_INTERNAL_UNAVAILABLE_ERROR);
   return internal;
 }
-
 async function loadForwardSendNodes(internal: OneBotInternal, forwardId: string): Promise<readonly OneBotForwardSendNode[] | undefined> {
   const response = await internal.getForwardMsg(forwardId);
   if (!Array.isArray(response)) return undefined;
@@ -121,7 +113,6 @@ async function loadForwardSendNodes(internal: OneBotInternal, forwardId: string)
     })),
   );
 }
-
 async function resolveForwardSendContent(internal: OneBotInternal, segments: readonly OneBotCQCode[]): Promise<readonly OneBotCQCode[]> {
   return Promise.all(
     segments.map(async (segment) => {
@@ -148,11 +139,9 @@ async function resolveForwardSendContent(internal: OneBotInternal, segments: rea
     }),
   );
 }
-
 function directChannelId(channelId: string): string {
   return channelId.startsWith("private:") ? channelId.slice("private:".length) : channelId;
 }
-
 async function persistForwardImages(
   ctx: Context,
   internal: OneBotInternal,
@@ -183,7 +172,6 @@ async function persistForwardImages(
   }
   return assetIds;
 }
-
 async function downloadForwardImage(ctx: Context, url: string): Promise<Uint8Array> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(new Error("Forward image download timed out")), FORWARD_IMAGE_TIMEOUT_MS);
@@ -199,7 +187,6 @@ async function downloadForwardImage(ctx: Context, url: string): Promise<Uint8Arr
     clearTimeout(timeout);
   }
 }
-
 async function readForwardImage(stream: ReadableStream<Uint8Array>, signal: AbortSignal): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
@@ -227,7 +214,6 @@ async function readForwardImage(stream: ReadableStream<Uint8Array>, signal: Abor
   }
   return bytes;
 }
-
 function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsConfig>, scope: ChannelScope, resources: ChannelResources): AgentTool[] {
   let forwardReader: ReturnType<typeof createForwardReader> | undefined;
 
@@ -434,19 +420,16 @@ function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsC
   if (enabledTools.has(TOOLS.SET_QQ_AVATAR)) tools.push(setQqAvatarTool);
   return tools;
 }
-
 function requestOneBot(bot: Bot, action: string, params: Record<string, unknown>): Promise<unknown> {
   const internal = getOneBotInternal(bot);
   if (!internal._request) throw new Error(ONEBOT_REQUEST_UNAVAILABLE_ERROR);
   return internal._request(action, params);
 }
-
 function toOneBotUserId(userId: string): number {
   const id = Number(userId);
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error(`无效的用户 ID: ${userId}`);
   return id;
 }
-
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }

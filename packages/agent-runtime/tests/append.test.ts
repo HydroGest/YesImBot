@@ -351,6 +351,7 @@ describe("append", () => {
       },
     };
     const agent = createAgent({ model: createTextModel(modelRequests), storage });
+    agent.send(createUserMessage("hello"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -411,6 +412,7 @@ describe("append", () => {
       });
     });
 
+    agent.send(createUserMessage("trigger"));
     await started;
     await agent.append(createUserMessage("observed while busy"));
     releaseTool?.();
@@ -433,6 +435,7 @@ describe("append", () => {
       model: createToolLoopModel(modelRequests),
       tools: [{ name: "lookup", inputSchema: z.object({ value: z.string() }), execute: async () => ({ ok: true }) } as never],
     });
+    agent.send(createUserMessage("trigger"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -456,6 +459,7 @@ describe("append", () => {
       model: createChainedToolLoopModel(modelRequests),
       tools: [{ name: "lookup", inputSchema: z.object({ value: z.string() }), execute: async ({ value }: { value: string }) => ({ value }) } as never],
     });
+    agent.send(createUserMessage("trigger"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -510,6 +514,7 @@ describe("append", () => {
         },
       ],
     });
+    agent.send(createUserMessage("trigger"));
 
     const started = new Promise<void>((resolve) => {
       const unsubscribe = agent.channel.subscribe("internal", (event) => {
@@ -564,6 +569,7 @@ describe("append", () => {
       });
     });
 
+    agent.send(createUserMessage("trigger"));
     await started;
     await agent.append(createUserMessage("observed while busy"));
     agent.send(createUserMessage("joined while busy"), { ifBusy: "join" });

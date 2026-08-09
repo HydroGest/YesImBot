@@ -10,6 +10,7 @@ import {
   createEvent,
   createMessage,
   formatInput,
+  parseReply,
   isEvent,
   isMessage,
   isMessageRecord,
@@ -18,9 +19,9 @@ import {
   type Message,
   type MessageRecord,
 } from "../messages/index.js";
-import { OutputQueue, parseReply, prepareOutputSegments } from "./output.js";
+import { prepareOutputSegments } from "../resources/index.js";
+import { OutputQueue } from "./output.js";
 import { buildCoreSystemPrompt, readPersona } from "./prompt.js";
-
 const MODEL_INPUT_PLUGIN: AgentPlugin = {
   name: "core.model-input",
   enforce: "pre",
@@ -32,7 +33,6 @@ export type RuntimeResult =
   | { readonly kind: "join"; readonly eventId: string; readonly turnId: string }
   | { readonly kind: "run"; readonly eventId: string; readonly output: AsyncIterable<ChannelOutput>; readonly signal: AbortSignal };
 export type PostOptions = { readonly trigger?: boolean; readonly ifBusy?: "defer" | "join" | "reject" };
-
 export interface ChannelRuntimeOptions {
   readonly channel: Channel;
   readonly bot: Bot;
@@ -44,7 +44,6 @@ export interface ChannelRuntimeOptions {
   readonly plugins: readonly AgentPlugin[];
   readonly idleTimeout?: number;
 }
-
 export class ChannelRuntime {
   public readonly scope;
   public readonly selfId: string;
@@ -67,7 +66,10 @@ export class ChannelRuntime {
     this.selfId = options.bot.selfId;
     this.logger = ctx.logger("yesimbot/channel-runtime");
     this.logger.level = options.config.logLevel ?? 2;
-    const tools: AgentToolSet = [createSendMessageTool(options.bot), createReadTool(options.channel.resources, options.imageOutputSupported)];
+    const tools: AgentToolSet = [
+      createSendMessageTool(options.bot, this.scope.channelId, options.channel.resources),
+      createReadTool(options.channel.resources, options.imageOutputSupported),
+    ];
     if (options.visionModel) tools.push(createDescribeImageTool(options.visionModel, options.channel.resources));
     this.agent = createAgent({
       id:
@@ -115,7 +117,7 @@ export class ChannelRuntime {
     });
   }
 
-  public fail(eventId: string, cause: unknown): Promise<void> {
+  public fail(eventId: string, cause: unknown, delivery?: { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number }): Promise<void> {
     return this.schedule(async () => {
       const input = createEvent({
         eventType: "delivery.failed",
@@ -125,10 +127,10 @@ export class ChannelRuntime {
         timestamp: Date.now(),
         text: "delivery failed",
         delivery: {
-          turnId: "",
-          messageId: eventId,
-          segmentIndex: 0,
-          segmentTotal: 0,
+          turnId: delivery?.turnId ?? "",
+          messageId: delivery?.messageId ?? eventId,
+          segmentIndex: delivery?.segmentIndex ?? 0,
+          segmentTotal: delivery?.segmentTotal ?? 0,
           error: { name: cause instanceof Error ? cause.name : "Error", message: cause instanceof Error ? cause.message : String(cause) },
         },
       });
@@ -250,7 +252,6 @@ export class ChannelRuntime {
     }
   }
 }
-
 function renderAssistantText(content: AssistantContent): string | undefined {
   if (typeof content === "string") return content.trim() ? content : undefined;
   if (!Array.isArray(content)) return undefined;

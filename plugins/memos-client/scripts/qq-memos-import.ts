@@ -4,24 +4,36 @@ import { basename, join } from "node:path";
 
 import { deriveMemosImportChunkIdentity } from "../src/identity.js";
 import type { MemosAddMessageRequest, MemosMessage } from "../src/types.js";
-
 const DEFAULT_MEMOS_BASE_URL = "https://memos.memtensor.cn/api/openmem/v1";
 const DEFAULT_MAX_TOKENS = 16000;
 const DEFAULT_MAX_MESSAGES = 400;
 const DEFAULT_MAX_HOURS = 168;
 const DEFAULT_OVERLAP_MESSAGES = 0;
 const PLATFORM = "onebot";
-
+const entryFileName = process.argv[1] ? basename(process.argv[1]) : "";
+if (entryFileName === "qq-memos-import.ts" || entryFileName === "qq-memos-import.js") {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}
 type QqConversationType = "group" | "private";
 type QqImportRole = "user" | "assistant";
-
+type ImportMessage = MemosMessage & { role: "system" | "user" | "assistant"; chat_time: string };
+type ImportAddMessageRequest = MemosAddMessageRequest & {
+  agent_id: string;
+  messages: ImportMessage[];
+  tags: string[];
+  info: Record<string, unknown>;
+  source: string;
+  async_mode: boolean;
+};
 interface RawQqExport {
   chatInfo: RawChatInfo;
   statistics: unknown;
   messages: RawMessage[];
   exportOptions: unknown;
 }
-
 interface RawChatInfo {
   name?: string;
   type?: string;
@@ -29,7 +41,6 @@ interface RawChatInfo {
   groupUin?: string;
   uin?: string;
 }
-
 interface RawMessage {
   id?: string;
   seq?: string;
@@ -40,7 +51,6 @@ interface RawMessage {
   recalled?: boolean;
   system?: boolean;
 }
-
 interface RawSender {
   uid?: string;
   uin?: string;
@@ -49,28 +59,23 @@ interface RawSender {
   remark?: string;
   groupCard?: string;
 }
-
 interface RawContent {
   text?: string;
   elements?: RawElement[];
   resources?: RawResource[];
   mentions?: RawMention[];
 }
-
 interface RawElement {
   type?: string;
   data?: Record<string, unknown>;
 }
-
 interface RawResource {
   url?: string;
   filename?: string;
 }
-
 interface RawMention {
   uid?: string;
 }
-
 interface ParsedMessage {
   role: QqImportRole | "system";
   messageId: string;
@@ -86,18 +91,6 @@ interface ParsedMessage {
   channelId: string;
   sourceFileName: string;
 }
-
-type ImportMessage = MemosMessage & { role: "system" | "user" | "assistant"; chat_time: string };
-
-type ImportAddMessageRequest = MemosAddMessageRequest & {
-  agent_id: string;
-  messages: ImportMessage[];
-  tags: string[];
-  info: Record<string, unknown>;
-  source: string;
-  async_mode: boolean;
-};
-
 export interface QqMemosImportConfig {
   input: string;
   botSelfId: string;
@@ -111,7 +104,6 @@ export interface QqMemosImportConfig {
   baseUrl?: string;
   apiKey?: string;
 }
-
 export interface QqMemosImportChunk {
   id: string;
   conversationType: QqConversationType;
@@ -122,7 +114,6 @@ export interface QqMemosImportChunk {
   estimatedTokens: number;
   request: ImportAddMessageRequest;
 }
-
 export interface QqMemosImportPlan {
   inputFileCount: number;
   parsedMessageCount: number;
@@ -132,14 +123,12 @@ export interface QqMemosImportPlan {
   chunks: QqMemosImportChunk[];
   defaults: { maxTokens: number; maxMessages: number; maxHours: number; overlapMessages: number };
 }
-
 interface CliRuntime {
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
   stdout?: (line: string) => void;
   stderr?: (line: string) => void;
 }
-
 interface ParsedArgs {
   input?: string;
   botSelfId?: string;
@@ -152,18 +141,15 @@ interface ParsedArgs {
   asyncMode: boolean;
   baseUrl?: string;
 }
-
 function parseBoolean(value: string, flagName: string): boolean {
   if (value === "true") return true;
   if (value === "false") return false;
   throw new Error(`${flagName} must be true or false`);
 }
-
 function requireValue(value: string | undefined, flagName: string): string {
   if (value?.trim()) return value;
   throw new Error(`Missing required ${flagName}`);
 }
-
 function parsePositiveInteger(value: string | undefined, flagName: string): number {
   const parsed = Number.parseInt(requireValue(value, flagName), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -171,7 +157,6 @@ function parsePositiveInteger(value: string | undefined, flagName: string): numb
   }
   return parsed;
 }
-
 function parseNonNegativeInteger(value: string | undefined, flagName: string): number {
   const parsed = Number.parseInt(requireValue(value, flagName), 10);
   if (!Number.isFinite(parsed) || parsed < 0) {
@@ -179,7 +164,6 @@ function parseNonNegativeInteger(value: string | undefined, flagName: string): n
   }
   return parsed;
 }
-
 function parseArgs(argv: string[]): ParsedArgs {
   const parsed: ParsedArgs = {
     dryRun: false,
@@ -245,28 +229,22 @@ function parseArgs(argv: string[]): ParsedArgs {
 
   return parsed;
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
-
 function isRawQqExport(value: unknown): value is RawQqExport {
   return isRecord(value) && isRecord(value.chatInfo) && "statistics" in value && Array.isArray(value.messages) && isRecord(value.exportOptions);
 }
-
 function normalizeConversationType(value: unknown): QqConversationType {
   if (value === "group" || value === "private") return value;
   throw new Error(`Unsupported QQ conversation type: ${String(value)}`);
 }
-
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
-
 function inferGroupChannelId(fileName: string, chatInfo: RawChatInfo): string | undefined {
   return fileName.match(/\(([^()]+)\)(?:_[^.]*)?\.json$/u)?.[1] ?? readString(chatInfo.channelId) ?? readString(chatInfo.groupUin) ?? readString(chatInfo.uin);
 }
-
 function inferPrivateChannelId(messages: RawMessage[], botSelfId: string, chatInfo: RawChatInfo): string | undefined {
   for (const message of messages) {
     const senderId = readString(message.sender?.uin);
@@ -274,20 +252,17 @@ function inferPrivateChannelId(messages: RawMessage[], botSelfId: string, chatIn
   }
   return readString(chatInfo.channelId) ?? readString(chatInfo.uin);
 }
-
 function inferChannelId(filePath: string, conversationType: QqConversationType, chatInfo: RawChatInfo, messages: RawMessage[], botSelfId: string): string {
   const fileName = basename(filePath);
   const channelId = conversationType === "group" ? inferGroupChannelId(fileName, chatInfo) : `private:${inferPrivateChannelId(messages, botSelfId, chatInfo)}`;
   if (!channelId) throw new Error(`Unable to infer QQ channel id for ${fileName}`);
   return channelId;
 }
-
 function getElementText(element: RawElement): string | undefined {
   if (element.type !== "text" && element.type !== "reply") return undefined;
   const text = readString(element.data?.text);
   return text ?? readString(element.data?.content);
 }
-
 function normalizeText(content?: RawContent): string {
   const parts: string[] = [];
   const seen = new Set<string>();
@@ -304,7 +279,6 @@ function normalizeText(content?: RawContent): string {
   }
   return parts.join("\n");
 }
-
 function normalizeResources(content?: RawContent): string[] {
   const values = new Set<string>();
   for (const resource of content?.resources ?? []) {
@@ -313,7 +287,6 @@ function normalizeResources(content?: RawContent): string[] {
   }
   return [...values];
 }
-
 function getTimestampMs(timestamp: number | string | undefined): number {
   if (typeof timestamp === "number") return timestamp >= 1_000_000_000_000 ? timestamp : timestamp * 1000;
   const trimmed = timestamp?.trim();
@@ -326,7 +299,6 @@ function getTimestampMs(timestamp: number | string | undefined): number {
   if (!Number.isFinite(parsed)) throw new Error(`Invalid QQ message timestamp: ${trimmed}`);
   return parsed;
 }
-
 function getSenderName(sender: RawSender | undefined): string {
   return (
     readString(sender?.groupCard) ??
@@ -338,7 +310,6 @@ function getSenderName(sender: RawSender | undefined): string {
     "Unknown"
   );
 }
-
 function normalizeMessage(
   message: RawMessage,
   index: number,
@@ -367,7 +338,6 @@ function normalizeMessage(
     sourceFileName: basename(filePath),
   };
 }
-
 async function parseQqExportFile(filePath: string, botSelfId: string): Promise<ParsedMessage[]> {
   const raw = await readFile(filePath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
@@ -376,7 +346,6 @@ async function parseQqExportFile(filePath: string, botSelfId: string): Promise<P
   const channelId = inferChannelId(filePath, conversationType, parsed.chatInfo, parsed.messages, botSelfId);
   return parsed.messages.map((message, index) => normalizeMessage(message, index, filePath, conversationType, channelId, botSelfId));
 }
-
 async function discoverInputFiles(input: string): Promise<string[]> {
   const inputStat = await stat(input);
   if (inputStat.isFile()) {
@@ -390,7 +359,6 @@ async function discoverInputFiles(input: string): Promise<string[]> {
     .map((entry) => join(input, entry.name))
     .sort((left, right) => left.localeCompare(right));
 }
-
 function shouldImportMessage(message: ParsedMessage): boolean {
   if (message.system || message.role === "system") return false;
   const hasText = message.text.trim().length > 0;
@@ -398,15 +366,12 @@ function shouldImportMessage(message: ParsedMessage): boolean {
   if (hasText) return true;
   return false;
 }
-
 function hashText(value: string): string {
   return createHash("sha256").update(value.trim().replace(/\s+/gu, " ").toLocaleLowerCase()).digest("hex").slice(0, 16);
 }
-
 function conversationKey(message: ParsedMessage): string {
   return `${message.conversationType}:${message.channelId}`;
 }
-
 function dedupeMessages(messages: ParsedMessage[]): { messages: ParsedMessage[]; duplicates: number } {
   const seenPrimary = new Set<string>();
   const seenFallback = new Set<string>();
@@ -428,7 +393,6 @@ function dedupeMessages(messages: ParsedMessage[]): { messages: ParsedMessage[];
 
   return { messages: kept, duplicates };
 }
-
 function formatChatTime(timestampMs: number): string {
   const date = new Date(timestampMs);
   const year = date.getUTCFullYear();
@@ -439,15 +403,12 @@ function formatChatTime(timestampMs: number): string {
   const seconds = `${date.getUTCSeconds()}`.padStart(2, "0");
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
-
 function estimateTokens(value: string): number {
   return Math.ceil(value.length / 2);
 }
-
 function estimateRequestTokens(messages: ImportMessage[]): number {
   return messages.reduce((total, message) => total + estimateTokens(`${message.role}\n${message.content}\n${message.chat_time}`), 0);
 }
-
 function createChunk(
   messages: ParsedMessage[],
   chunkIndex: number,
@@ -536,11 +497,9 @@ function createChunk(
     request,
   };
 }
-
 function compareMessages(left: ParsedMessage, right: ParsedMessage): number {
   return left.timestampMs - right.timestampMs || left.messageId.localeCompare(right.messageId);
 }
-
 function shouldSplitChunk(
   current: ParsedMessage[],
   next: ParsedMessage,
@@ -552,7 +511,6 @@ function shouldSplitChunk(
   if (first && next.timestampMs - first.timestampMs > options.maxHours * 60 * 60 * 1000) return true;
   return createChunk([...current, next], 0, { botSelfId: options.botSelfId, asyncMode: options.asyncMode }).estimatedTokens > options.maxTokens;
 }
-
 function createChunks(
   messages: ParsedMessage[],
   config: Required<Pick<QqMemosImportConfig, "botSelfId" | "asyncMode">> & {
@@ -583,7 +541,6 @@ function createChunks(
   }
   return chunks;
 }
-
 export async function buildQqMemosImportPlan(config: QqMemosImportConfig): Promise<QqMemosImportPlan> {
   const maxTokens = config.maxTokens ?? DEFAULT_MAX_TOKENS;
   const maxMessages = config.maxMessages ?? DEFAULT_MAX_MESSAGES;
@@ -610,7 +567,6 @@ export async function buildQqMemosImportPlan(config: QqMemosImportConfig): Promi
     defaults: { maxTokens, maxMessages, maxHours, overlapMessages },
   };
 }
-
 function createSummary(plan: QqMemosImportPlan, dryRun: boolean, committed = 0) {
   return {
     dryRun,
@@ -626,15 +582,12 @@ function createSummary(plan: QqMemosImportPlan, dryRun: boolean, committed = 0) 
     defaults: plan.defaults,
   };
 }
-
 function debugLog(enabled: boolean, stderr: (line: string) => void, message: string): void {
   if (enabled) stderr(`[qq-memos-import] ${message}`);
 }
-
 function sanitizeErrorMessage(message: string, apiKey: string): string {
   return message.replaceAll(`Token ${apiKey}`, "Token [REDACTED]").replaceAll(apiKey, "[REDACTED]");
 }
-
 async function postMemosRequest(request: ImportAddMessageRequest, options: { baseUrl: string; apiKey: string; fetch: typeof fetch }): Promise<void> {
   const response = await options.fetch(`${options.baseUrl.replace(/\/+$/u, "")}/add/message`, {
     method: "POST",
@@ -649,7 +602,6 @@ async function postMemosRequest(request: ImportAddMessageRequest, options: { bas
     throw new Error(`MemOS add_message failed: ${sanitizeErrorMessage(reason, options.apiKey)}`);
   }
 }
-
 export async function runQqMemosImportCli(argv: string[], runtime: CliRuntime = {}): Promise<void> {
   const env = runtime.env ?? process.env;
   const stdout = runtime.stdout ?? ((line: string) => console.log(line));
@@ -691,16 +643,6 @@ export async function runQqMemosImportCli(argv: string[], runtime: CliRuntime = 
   }
   stdout(JSON.stringify(createSummary(plan, false, committed), null, 2));
 }
-
 async function main(): Promise<void> {
   await runQqMemosImportCli(process.argv.slice(2));
-}
-
-const entryFileName = process.argv[1] ? basename(process.argv[1]) : "";
-
-if (entryFileName === "qq-memos-import.ts" || entryFileName === "qq-memos-import.js") {
-  main().catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
-  });
 }

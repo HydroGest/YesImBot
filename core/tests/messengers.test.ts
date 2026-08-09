@@ -134,7 +134,51 @@ describe("Messenger", () => {
     await messenger.post(event);
 
     expect(bot.sendMessage).toHaveBeenCalledOnce();
-    expect(runtime.fail).toHaveBeenCalledWith("event-1", expect.objectContaining({ message: "offline" }));
+    expect(runtime.fail).toHaveBeenCalledWith("event-1", expect.objectContaining({ message: "offline" }), {
+      turnId: "turn-1",
+      messageId: "assistant-1",
+      segmentIndex: 1,
+      segmentTotal: 1,
+    });
+  });
+  it("does not deliver a segment aborted during pacing delay", async () => {
+    vi.useFakeTimers();
+    try {
+      const ctx = new Context();
+      const controller = new AbortController();
+      const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
+      ctx.bots.push(bot as never);
+      const runtime = {
+        scope: { type: "shared", platform: "test", channelId: "room-1" },
+        fail: vi.fn(async () => undefined),
+        post: vi.fn(async () => ({
+          kind: "run" as const,
+          eventId: "event-1",
+          output: (async function* () {
+            yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("reply")]] };
+          })(),
+          signal: controller.signal,
+        })),
+      };
+      const channels = { resolve: vi.fn(async () => ({ scope: runtime.scope })) };
+      const runtimes = { get: vi.fn(async () => runtime) };
+      const messenger = new Messenger(
+        ctx,
+        { ...config, reply: { ...config.reply, pacing: { charactersPerSecond: 1, maxTotalDelayMs: 1_000 } } },
+        channels as never,
+        runtimes as never,
+      );
+
+      const pending = messenger.post(event);
+      for (let attempt = 0; attempt < 10 && vi.getTimerCount() === 0; attempt += 1) await Promise.resolve();
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+      controller.abort();
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toBeUndefined();
+      expect(bot.sendMessage).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects an active post without a matching Bot before Runtime creation", async () => {

@@ -1,13 +1,9 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { Context, Schema } from "koishi";
 import { type BaseProviderConfig } from "koishi-plugin-yesimbot";
-
-export interface Config extends BaseProviderConfig {}
-
 export const name = "yesimbot-provider-anthropic";
 export const usage = "Anthropic 提供商插件";
 export const inject = ["yesimbot"];
-
 export const Config: Schema<Config> = Schema.object({
   id: Schema.string().default("anthropic").description("提供商标识"),
   apiKey: Schema.string().role("secret").required().description("API Key"),
@@ -27,7 +23,7 @@ export const Config: Schema<Config> = Schema.object({
     ])
     .description("可用聊天模型列表"),
 });
-
+export interface Config extends BaseProviderConfig {}
 export function apply(ctx: Context, config: Config) {
   ctx.on("ready", () => {
     const client = createAnthropic({ apiKey: config.apiKey, baseURL: config.baseURL });

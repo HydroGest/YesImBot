@@ -1,5 +1,4 @@
 export type Decision = "wait" | "trigger";
-
 export interface PolicyRoutingConfig {
   readonly direct: Decision;
   readonly mention: Decision;
@@ -10,7 +9,6 @@ export interface PolicyRoutingConfig {
   readonly poke: Decision;
   readonly group: Decision;
 }
-
 export interface PolicyWillingnessConfig {
   readonly maxScore: number;
   readonly initialScore: number;
@@ -35,18 +33,15 @@ export interface PolicyWillingnessConfig {
   readonly quoteForce: boolean;
   readonly directForce: boolean;
 }
-
 export interface WillPolicyConfig {
   readonly engine: "routing" | "willingness";
   readonly routing: PolicyRoutingConfig;
   readonly willingness: PolicyWillingnessConfig;
   readonly priority?: number;
 }
-
 export function defaultRoutingConfig(): PolicyRoutingConfig {
   return { direct: "trigger", mention: "trigger", mentionAll: "wait", mentionHere: "wait", quote: "wait", image: "wait", poke: "wait", group: "wait" };
 }
-
 export function defaultWillingnessConfig(): PolicyWillingnessConfig {
   return {
     maxScore: 100,

@@ -7,13 +7,10 @@ import type { Bash, IFileSystem, InitialFiles, MountableFs, NetworkConfig } from
 import type { WorkspaceBashBackend } from "./bash-tool";
 import { assertValidMountConfig, DEFAULT_WORKSPACE_MOUNT } from "./mounts";
 import type { WorkspaceMountSummary } from "./types";
-
 const DEFAULT_SYSTEM_BIN_PATHS = ["/usr/local/bin", "/usr/bin", "/bin"] as const;
 const DEFAULT_SYSTEM_PATH = DEFAULT_SYSTEM_BIN_PATHS.join(":");
 const USR_LOCAL_BIN_PLACEHOLDER = "/usr/local/bin/.keep";
-
 type JustBash = typeof JustBashModule;
-
 export interface SandboxWorkspaceConfig {
   root: string;
   filesystem: {
@@ -32,7 +29,6 @@ export interface SandboxWorkspaceConfig {
     javascript?: boolean;
   };
 }
-
 export class Workspace {
   public readonly bash: Bash;
   public readonly config: SandboxWorkspaceConfig;
@@ -169,7 +165,6 @@ export class Workspace {
     return this.config.bash?.timeoutMs ?? 30000;
   }
 }
-
 function withDefaultSystemPath(env: Record<string, string> | undefined): Record<string, string> {
   const merged = { ...env };
   const pathEntries = (merged.PATH ?? DEFAULT_SYSTEM_PATH).split(":").filter(Boolean);
@@ -183,7 +178,6 @@ function withDefaultSystemPath(env: Record<string, string> | undefined): Record<
   merged.PATH = pathEntries.join(":");
   return merged;
 }
-
 function createDefaultBaseFilesystem(memoryFiles: InitialFiles, jb: JustBash): IFileSystem {
   const files: InitialFiles = { ...memoryFiles };
   // InMemoryFs creates parent directories for initial files; this keeps /usr/local/bin visible.

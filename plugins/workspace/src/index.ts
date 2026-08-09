@@ -16,7 +16,11 @@ import { formatHostWorkspacePrompt, formatWorkspacePrompt } from "./prompt";
 import { formatSkillsForPrompt, loadSkills, type Skill } from "./skills";
 import type { BashConfig, MountSpec, SandboxBashConfig, WorkspacePluginConfig } from "./types";
 import { type SandboxWorkspaceConfig, Workspace } from "./workspace";
-
+const SKILL_SCHEME_PROMPT = "读取已注册技能文件：skill://<skill-name>/<relative-path>。执行技能脚本请使用 /skills/<skill-name>/... 虚拟路径。";
+const WORKSPACE_SCHEME_PROMPT =
+  'workspace:///relative/path 是频道工作区文件的对外引用，与沙箱内的 /home/workspace/relative/path 是同一个文件。沙箱内部操作用 readFile/bash 的 /home/workspace/... 路径，bash 不接受 workspace:// 形式。把工作区文件发出去时可用作 img/file 的 src，例如 <img src="workspace:///out/chart.png"/>。';
+const HOST_TOOL_NAMES = new Set(["bash", "readFile", "writeFile"]);
+type HostIdentity = { readonly uid: number; readonly gid: number };
 export default class WorkspacePlugin {
   public static name = "yesimbot-workspace";
   public static usage = "工作区插件，提供虚拟文件系统和 Bash 沙箱环境";
@@ -456,7 +460,6 @@ export default class WorkspacePlugin {
     return { bytes, filename: basename(realFile) };
   }
 }
-
 async function readBoundedFile(filePath: string, options: { signal: AbortSignal; maxBytes: number }): Promise<Uint8Array> {
   const metadata = await stat(filePath);
   if (!metadata.isFile()) throw new Error("Resource path is not a file");
@@ -465,14 +468,6 @@ async function readBoundedFile(filePath: string, options: { signal: AbortSignal;
   if (bytes.byteLength > options.maxBytes) throw new Error("Resource file exceeds read limit");
   return bytes;
 }
-
-const SKILL_SCHEME_PROMPT = "读取已注册技能文件：skill://<skill-name>/<relative-path>。执行技能脚本请使用 /skills/<skill-name>/... 虚拟路径。";
-
-const WORKSPACE_SCHEME_PROMPT =
-  'workspace:///relative/path 是频道工作区文件的对外引用，与沙箱内的 /home/workspace/relative/path 是同一个文件。沙箱内部操作用 readFile/bash 的 /home/workspace/... 路径，bash 不接受 workspace:// 形式。把工作区文件发出去时可用作 img/file 的 src，例如 <img src="workspace:///out/chart.png"/>。';
-
-const HOST_TOOL_NAMES = new Set(["bash", "readFile", "writeFile"]);
-
 function assertNoSkillMountOverlap(mounts: readonly MountSpec[]): void {
   for (const mount of mounts) {
     if (mount.target === "/skills" || mount.target.startsWith("/skills/")) {
@@ -480,7 +475,6 @@ function assertNoSkillMountOverlap(mounts: readonly MountSpec[]): void {
     }
   }
 }
-
 function workspaceMountMaps(mounts: readonly NormalizedMountSpec[]): {
   persistPaths: Record<string, string>;
   readOnlyPaths: Record<string, string>;
@@ -494,7 +488,6 @@ function workspaceMountMaps(mounts: readonly NormalizedMountSpec[]): {
   }
   return result;
 }
-
 function parseSkillUri(uri: string): { name: string; relativePath: string } | undefined {
   const match = /^skill:\/\/([^/?#]+)\/([^?#]+)$/.exec(uri);
   if (!match) return undefined;
@@ -503,23 +496,19 @@ function parseSkillUri(uri: string): { name: string; relativePath: string } | un
   if (!/^[a-z0-9-]+$/.test(name) || !isSafeRelativePath(relativePath)) return undefined;
   return { name, relativePath };
 }
-
 function parseWorkspaceUri(uri: string): string | undefined {
   const match = /^workspace:\/\/\/([^?#]+)$/.exec(uri);
   if (!match || !isSafeRelativePath(match[1]!)) return undefined;
   return match[1]!;
 }
-
 function isSafeRelativePath(path: string): boolean {
   if (!path || path.includes("%") || path.startsWith("/") || path.endsWith("/")) return false;
   return path.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 }
-
 function isPathContained(root: string, candidate: string): boolean {
   const path = relative(resolve(root), resolve(candidate));
   return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
 }
-
 function formatHostApprovalNotification(record: HostApprovalRecord): string {
   return [
     `Host approval request ${record.requestId}`,
@@ -529,9 +518,6 @@ function formatHostApprovalNotification(record: HostApprovalRecord): string {
     "An authority-5 administrator must use yesimbot.workspace.approve <requestId> or yesimbot.workspace.reject <requestId>.",
   ].join("\n");
 }
-
-type HostIdentity = { readonly uid: number; readonly gid: number };
-
 async function hostExecutionPrerequisites(identity: HostIdentity): Promise<boolean> {
   if (process.platform === "win32") return false;
   if (!Number.isSafeInteger(identity.uid) || identity.uid < 0) return false;
@@ -553,7 +539,6 @@ async function hostExecutionPrerequisites(identity: HostIdentity): Promise<boole
     return false;
   }
 }
-
 async function hostRootsAreUsable(roots: readonly { readonly path: string; readonly mode: "ro" | "rw" }[] | undefined): Promise<boolean> {
   if (!Array.isArray(roots)) return false;
   for (const root of roots) {
@@ -570,7 +555,6 @@ async function hostRootsAreUsable(roots: readonly { readonly path: string; reado
   }
   return true;
 }
-
 async function hostIdentityCanSpawn(identity: HostIdentity): Promise<boolean> {
   if (process.platform !== "linux") return true;
   return new Promise((resolveProbe) => {
@@ -598,7 +582,6 @@ async function hostIdentityCanSpawn(identity: HostIdentity): Promise<boolean> {
     });
   });
 }
-
 function createBlockedHostAgentPlugin(reason: string): AgentPlugin {
   return {
     name: "workspace",
@@ -606,7 +589,6 @@ function createBlockedHostAgentPlugin(reason: string): AgentPlugin {
     beforeToolCall: async (call) => (HOST_TOOL_NAMES.has(call.toolName) ? ({ type: "block", reason } as const) : ({ type: "allow" } as const)),
   } satisfies AgentPlugin;
 }
-
 function createHostBackend(options: {
   scope: ChannelScope;
   workspaceDir: string;

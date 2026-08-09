@@ -1,53 +1,4 @@
 import { Schema } from "koishi";
-
-export interface ChannelAllowRule {
-  readonly platform: string;
-  readonly channelId: string;
-  readonly isDirect?: boolean;
-}
-
-export interface ImageBudget {
-  readonly maxCount: number;
-  readonly maxBytesPerImage: number;
-  readonly maxTotalBytes: number;
-}
-
-export type ImageInputConfig = false | { readonly maxCount?: number; readonly maxBytesPerImage?: number; readonly maxTotalBytes?: number };
-
-export interface PacingConfig {
-  charactersPerSecond: number;
-  maxTotalDelayMs: number;
-}
-
-export interface SessionCompactConfig {
-  threshold: number;
-  charTokenRatio: number;
-  minMessages: number;
-  maxFailures: number;
-  model: string | undefined;
-}
-
-export interface SessionIdleConfig {
-  timeout: number;
-}
-
-export interface SessionConfig {
-  compact: SessionCompactConfig;
-  idle: SessionIdleConfig;
-}
-
-export interface Config {
-  basePath: string;
-  chatModel: string;
-  visionModel: string | undefined;
-  logLevel: number;
-  allowedChannels: ChannelAllowRule[];
-  imageInput: ImageInputConfig;
-  resourceReadTimeoutMs: number;
-  reply: { pacing: PacingConfig; customInnerThought: boolean };
-  session: SessionConfig;
-}
-
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     basePath: Schema.path({ filters: ["directory"], allowCreate: true }).default("data/yesimbot"),
@@ -95,3 +46,43 @@ export const Config: Schema<Config> = Schema.intersect([
     }),
   }).description("会话管理"),
 ]) as Schema<Config>;
+export type ImageInputConfig = false | { readonly maxCount?: number; readonly maxBytesPerImage?: number; readonly maxTotalBytes?: number };
+export interface ChannelAllowRule {
+  readonly platform: string;
+  readonly channelId: string;
+  readonly isDirect?: boolean;
+}
+export interface ImageBudget {
+  readonly maxCount: number;
+  readonly maxBytesPerImage: number;
+  readonly maxTotalBytes: number;
+}
+export interface PacingConfig {
+  charactersPerSecond: number;
+  maxTotalDelayMs: number;
+}
+export interface SessionCompactConfig {
+  threshold: number;
+  charTokenRatio: number;
+  minMessages: number;
+  maxFailures: number;
+  model: string | undefined;
+}
+export interface SessionIdleConfig {
+  timeout: number;
+}
+export interface SessionConfig {
+  compact: SessionCompactConfig;
+  idle: SessionIdleConfig;
+}
+export interface Config {
+  basePath: string;
+  chatModel: string;
+  visionModel: string | undefined;
+  logLevel: number;
+  allowedChannels: ChannelAllowRule[];
+  imageInput: ImageInputConfig;
+  resourceReadTimeoutMs: number;
+  reply: { pacing: PacingConfig; customInnerThought: boolean };
+  session: SessionConfig;
+}

@@ -23,9 +23,7 @@ initialization seams exposed to plugin implementations.
 `ChannelScope` is the public current-channel context:
 
 ```ts
-type ChannelScope =
-  | { type: "shared"; platform: string; channelId: string }
-  | { type: "direct"; platform: string; selfId: string; channelId: string };
+type ChannelScope = { type: "shared"; platform: string; channelId: string } | { type: "direct"; platform: string; selfId: string; channelId: string };
 ```
 
 Core derives shared `[platform, channelId]` and direct

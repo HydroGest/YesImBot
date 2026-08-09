@@ -4,7 +4,6 @@ import { Schema } from "koishi";
 
 import type { SearchBackend, SearchRuntimeConfig, WebSearchOutput } from "../types.js";
 import { clampLimit, compileBlacklist, dedupeByUrl, filterBlockedResults } from "../utils.js";
-
 export const searxngConfigSchema: Schema<SearXNGConfig> = Schema.object({
   endpoint: Schema.string().required().description("SearXNG 实例地址"),
   engines: Schema.array(Schema.string()).default([]).description("搜索引擎列表"),
@@ -14,7 +13,6 @@ export const searxngConfigSchema: Schema<SearXNGConfig> = Schema.object({
   username: Schema.string().description("HTTP Basic 用户名"),
   password: Schema.string().description("HTTP Basic 密码"),
 });
-
 const searchInputSchema = jsonSchema<SearXNGSearchInput>({
   type: "object",
   properties: {
@@ -28,10 +26,8 @@ const searchInputSchema = jsonSchema<SearXNGSearchInput>({
   },
   required: ["query"],
 });
-
 type SearXNGSafeSearch = 0 | 1 | 2;
 type SearXNGTimeRange = "day" | "month" | "year";
-
 export interface SearXNGConfig {
   endpoint: string;
   engines?: string[];
@@ -41,9 +37,7 @@ export interface SearXNGConfig {
   username?: string;
   password?: string;
 }
-
 interface SearXNGRuntimeConfig extends SearchRuntimeConfig, SearXNGConfig {}
-
 interface SearXNGSearchInput {
   query: string;
   limit?: number;
@@ -53,7 +47,6 @@ interface SearXNGSearchInput {
   timeRange?: SearXNGTimeRange;
   safeSearch?: SearXNGSafeSearch;
 }
-
 interface SearXNGResult {
   title?: string;
   url?: string;
@@ -62,11 +55,9 @@ interface SearXNGResult {
   engine?: string;
   category?: string;
 }
-
 interface SearXNGResponse {
   results?: SearXNGResult[];
 }
-
 class SearXNGBackend implements SearchBackend {
   public readonly name = "searxng";
 
@@ -130,7 +121,6 @@ class SearXNGBackend implements SearchBackend {
     }
   }
 }
-
 export function createSearXNGBackend(ctx: Context, config: SearXNGConfig | undefined, runtime: SearchRuntimeConfig, logger: Logger): SearchBackend {
   if (!config?.endpoint) {
     throw new Error("SearXNG provider requires searxng.endpoint to be configured");
@@ -138,7 +128,6 @@ export function createSearXNGBackend(ctx: Context, config: SearXNGConfig | undef
 
   return new SearXNGBackend(ctx, { ...runtime, ...config }, logger);
 }
-
 function normalizeSearchUrl(endpoint: string): string {
   const trimmed = endpoint.replace(/\/+$/, "");
   if (trimmed.endsWith("/search")) return trimmed;

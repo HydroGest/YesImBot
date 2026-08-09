@@ -3,9 +3,8 @@ import { LanguageModelUsage } from "ai";
 import { AgentBusyError } from "./errors.js";
 import { createRandomId } from "./id.js";
 import { AgentMessage } from "./message.js";
-
 export type BusyBehavior = "defer" | "join" | "reject";
-
+export type TurnStatus = "queued" | "running" | "done" | "failed" | "aborted";
 export interface TurnRequest {
   readonly turnId: string;
   readonly submittedAt: number;
@@ -14,19 +13,14 @@ export interface TurnRequest {
   addJoined(messages: AgentMessage[], persistence?: Promise<void>): void;
   drainJoined(): Promise<AgentMessage[]>;
 }
-
 export interface TurnQueueOptions {
   onRun(request: TurnRequest): Promise<TurnResult>;
 }
-
-export type TurnStatus = "queued" | "running" | "done" | "failed" | "aborted";
-
 export interface TurnError {
   name: string;
   message: string;
   cause?: string;
 }
-
 export interface TurnResult {
   turnId: string;
   status: Exclude<TurnStatus, "queued" | "running">;
@@ -34,16 +28,13 @@ export interface TurnResult {
   error?: TurnError;
   usage?: Partial<LanguageModelUsage>;
 }
-
 export interface AgentWaitOptions {
   signal?: AbortSignal;
 }
-
 interface QueuedTurn {
   request: TurnRequest;
   controller: AbortController;
 }
-
 function createQueuedTurn(messages: AgentMessage[]): QueuedTurn {
   const controller = new AbortController();
   const joined: AgentMessage[] = [];
@@ -71,11 +62,9 @@ function createQueuedTurn(messages: AgentMessage[]): QueuedTurn {
 
   return { request, controller };
 }
-
 function createAbortError(): DOMException {
   return new DOMException("The operation was aborted.", "AbortError");
 }
-
 export function createTurnQueue(options: TurnQueueOptions) {
   const queue: QueuedTurn[] = [];
   const idleWaiters = new Set<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal; onAbort?: () => void }>();

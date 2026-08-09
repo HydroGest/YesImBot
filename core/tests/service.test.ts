@@ -38,4 +38,20 @@ describe("YesImBotService facade", () => {
     expect("assets" in service).toBe(false);
     expect("getStoragePath" in service).toBe(false);
   });
+  it("threads configured image input budget into channel resources", async () => {
+    const ctx = new Context();
+    ctx.baseDir = tmpdir();
+    Object.assign(ctx, { "yesimbot.model": {}, database: { get: vi.fn() } });
+    const basePath = join(tmpdir(), `yesimbot-service-config-${randomUUID()}`);
+    const service = new YesImBotService(ctx as never, {
+      ...config,
+      basePath,
+      imageInput: { maxCount: 2, maxBytesPerImage: 123, maxTotalBytes: 456 },
+      resourceReadTimeoutMs: 789,
+    });
+
+    await expect(service.resource.get({ type: "shared", platform: "test", channelId: "room" })).resolves.toMatchObject({
+      imageBudget: { maxCount: 2, maxBytesPerImage: 123, maxTotalBytes: 456 },
+    });
+  });
 });

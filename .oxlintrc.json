@@ -1,13 +1,15 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "import", "node", "oxc", "promise", "typescript", "vitest", "vue"],
-  "jsPlugins": ["@stylistic/eslint-plugin"],
+  "jsPlugins": ["@stylistic/eslint-plugin", "./tools/eslint-plugin-declaration-order.mjs"],
   "rules": {
     "@typescript-eslint/no-explicit-any": "error",
+    "declaration-order/module-declaration-order": "warn",
     "vitest/require-mock-type-parameters": "off",
     "vitest/require-to-throw-message": "off",
     "vitest/no-conditional-expect": "off"
   },
+  "overrides": [{ "files": ["*.test.ts", "*.spec.ts", "tests/**/*.ts"], "rules": { "declaration-order/module-declaration-order": "off" } }],
   "settings": { "vitest": { "typecheck": true } },
   "env": { "builtin": true }
 }

@@ -7,13 +7,10 @@ import { resolvePolicy } from "./policy.js";
 import { PolicyRoutingEngine } from "./routing.js";
 import type { WillPolicyConfig } from "./types.js";
 import { PolicyWillingnessEngine } from "./willingness.js";
-
 const DEBUG_COMMAND_NAME = "yesimbot.will-policy";
 const DEBUG_PROBES = new WeakMap<Context, Set<WillPolicyPlugin>>();
 const DEBUG_COMMANDS = new WeakMap<Context, Command>();
 const DEBUG_ACTION: unique symbol = Symbol("yesimbot.will-policy.debug-action");
-type DebugCommand = Command & { [DEBUG_ACTION]?: boolean };
-
 export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.object({
   engine: Schema.union([Schema.const("routing").description("固定规则（routing）"), Schema.const("willingness").description("意愿值引擎(willingness)")])
     .default("routing")
@@ -54,7 +51,7 @@ export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.object({
   }).description("意愿值引擎配置；仅在 engine 为 willingness 时生效"),
   priority: Schema.number().default(1000).description("WillEngine 优先级，数值小者先执行"),
 }).description("WillEngine 与 routing 精细化策略插件");
-
+type DebugCommand = Command & { [DEBUG_ACTION]?: boolean };
 export default class WillPolicyPlugin {
   public static readonly name = "yesimbot-will-policy";
   public static readonly reusable = true;
@@ -135,7 +132,6 @@ export default class WillPolicyPlugin {
     return [`WillPolicy[${this.instanceId.slice(0, 8)}]`, `engine=${this.config.engine}`, `priority=${this.priority}`].join(" ");
   }
 }
-
 export { PolicyRoutingEngine } from "./routing.js";
 export { PolicyWillingnessEngine } from "./willingness.js";
 export { resolvePolicy } from "./policy.js";

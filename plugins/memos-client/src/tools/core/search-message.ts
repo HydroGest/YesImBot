@@ -2,11 +2,12 @@ import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
 
 import type { MemosCloudClient } from "../../client.js";
 import type { MemosClientConfig, MemosIdentity, MemosSearchFilter } from "../../types.js";
-
+export type SearchMessageToolOutput =
+  | { outcome: "completed"; memories: SearchMemoryItem[] }
+  | { outcome: "failed"; memories: []; error: { code: string; message: string } };
 export interface SearchMessageToolInput {
   query: string;
 }
-
 export interface SearchMemoryItem {
   content: string;
   type: "memory" | "preference";
@@ -18,18 +19,12 @@ export interface SearchMemoryItem {
   relativity?: number;
   source?: { type?: string; conversationId?: string; tags?: string[] };
 }
-
-export type SearchMessageToolOutput =
-  | { outcome: "completed"; memories: SearchMemoryItem[] }
-  | { outcome: "failed"; memories: []; error: { code: string; message: string } };
-
 export interface SearchMessageToolOptions {
   client: MemosCloudClient;
   config: MemosClientConfig;
   resolveIdentity(turnId: string): MemosIdentity;
   logger?: { warn(message: string): void };
 }
-
 interface SearchMemoryData {
   memory_detail_list?: Array<{
     id?: string;
@@ -47,7 +42,6 @@ interface SearchMemoryData {
     source?: { type?: string; conversation_id?: string; tags?: string[] };
   }>;
 }
-
 function buildSearchFilter(identity: MemosIdentity, config: MemosClientConfig): MemosSearchFilter | undefined {
   if (config.searchFilterMode === "off") {
     return undefined;
@@ -73,12 +67,10 @@ function buildSearchFilter(identity: MemosIdentity, config: MemosClientConfig): 
 
   return and.length > 0 ? { and } : undefined;
 }
-
 function sanitizeErrorMessage(error: unknown, apiKey: string): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.replaceAll(`Token ${apiKey}`, "Token [REDACTED]").replaceAll(apiKey, "[REDACTED]");
 }
-
 async function searchWithIdentity(options: SearchMessageToolOptions, identity: MemosIdentity, query: string): Promise<SearchMessageToolOutput> {
   const response = await options.client.searchMemory<SearchMemoryData>({
     user_id: identity.userId,
@@ -109,7 +101,6 @@ async function searchWithIdentity(options: SearchMessageToolOptions, identity: M
 
   return { outcome: "completed", memories };
 }
-
 export function createSearchMessageTool(options: SearchMessageToolOptions): AgentTool<SearchMessageToolInput, SearchMessageToolOutput> {
   return {
     name: "search_message",

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createAgent, createEntry, createMemoryStorage } from "../src/index.js";
 import type { AgentEntry, AgentMessage } from "../src/index.js";
+import { createUserMessage } from "../src/message.js";
 
 describe("transformEntries hook", () => {
   it("plugin can filter entries before model context is built", async () => {
@@ -65,6 +66,7 @@ describe("transformEntries hook", () => {
     } as unknown as LanguageModel;
 
     const agent = createAgent({ model: mockModel, storage, plugins: [filterPlugin], systemPrompt: "test" });
+    agent.send(createUserMessage("hello"));
 
     await agent.wait();
 

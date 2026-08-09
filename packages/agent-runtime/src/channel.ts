@@ -1,20 +1,15 @@
 import type { AgentCustomChannelEvent, AgentCustomChannelEvents } from "./event.js";
-
 type AgentChannelEvent<K extends keyof AgentCustomChannelEvents> = AgentCustomChannelEvent<K>;
-
+export type AgentEventListener<T = unknown> = (event: T) => Promise<void> | void;
 export interface AgentChannel {
   /* prettier-ignore */
   emit: <K extends keyof AgentCustomChannelEvents>(channel: K, event: AgentChannelEvent<K>, options?: { save?: boolean }) => Promise<void> | void;
   /* prettier-ignore */
   subscribe: <K extends keyof AgentCustomChannelEvents>(channel: K, listener: K extends keyof AgentCustomChannelEvents ? AgentEventListener<AgentCustomChannelEvent<K>> : AgentEventListener) => () => void;
 }
-
-export type AgentEventListener<T = unknown> = (event: T) => Promise<void> | void;
-
 export interface CreateAgentChannelOptions {
   persist: (event: unknown, options?: { save?: boolean }) => Promise<void> | void;
 }
-
 export const createAgentChannel = (options?: CreateAgentChannelOptions): AgentChannel => {
   const channels = new Map<string, Set<AgentEventListener>>();
 

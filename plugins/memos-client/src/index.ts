@@ -9,19 +9,6 @@ import { formatMemosPrompt } from "./prompt.js";
 import { createAddMessageTool } from "./tools/core/add-message.js";
 import { createSearchMessageTool } from "./tools/core/search-message.js";
 import type { MemosChannelType, MemosClientConfig } from "./types.js";
-
-function captureMessageEvent(message: AgentMessage, assign: (snapshot: { authorId: string; messageId: string; channelType: MemosChannelType }) => void): void {
-  if (!isMessage(message)) {
-    return;
-  }
-
-  assign({
-    authorId: message.data.user.id,
-    messageId: message.data.messageId,
-    channelType: message.data.channel.type === Universal.Channel.Type.DIRECT ? "private" : "group",
-  });
-}
-
 export default class MemosClientPlugin {
   public static name = "yesimbot-memos-client";
   public static usage = "";
@@ -112,4 +99,15 @@ export default class MemosClientPlugin {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
   }
+}
+function captureMessageEvent(message: AgentMessage, assign: (snapshot: { authorId: string; messageId: string; channelType: MemosChannelType }) => void): void {
+  if (!isMessage(message)) {
+    return;
+  }
+
+  assign({
+    authorId: message.data.user.id,
+    messageId: message.data.messageId,
+    channelType: message.data.channel.type === Universal.Channel.Type.DIRECT ? "private" : "group",
+  });
 }

@@ -64,7 +64,7 @@ npx vitest run plugins/memos-client/tests/tools.test.ts
 
 ## Code Organization
 
-- 模块级声明顺序：imports → 常量 → 接口 → 类型 → class → function → 重新导出；同类声明（interface 与 interface、type 与 type）保持相邻。
+- 模块级声明顺序：imports → 常量 → 类型 → 接口 → class → function → 重新导出；同类声明（interface 与 interface、type 与 type）保持相邻。
 - 导入分组：外部依赖在前，仓库内部模块在后；类型导入遵循项目既有约定，不为排序改变导入方式或产生循环依赖。
 - 各声明类别内部：对外导出优先于局部声明；运行时依赖的声明保持安全且等价的初始化顺序。
 - class 成员顺序：公共静态字段/方法 → 所有实例字段（public → protected → private）→ constructor → 公共实例方法 → protected 方法 → private 方法。

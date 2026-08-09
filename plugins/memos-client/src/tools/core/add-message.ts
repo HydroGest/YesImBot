@@ -2,13 +2,10 @@ import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
 
 import type { MemosCloudClient } from "../../client.js";
 import type { MemosClientConfig, MemosIdentity } from "../../types.js";
-
+export type AddMessageToolOutput = { outcome: "persisted" | "accepted"; taskId?: string } | { outcome: "failed"; error: { code: string; message: string } };
 export interface AddMessageToolInput {
   content: string;
 }
-
-export type AddMessageToolOutput = { outcome: "persisted" | "accepted"; taskId?: string } | { outcome: "failed"; error: { code: string; message: string } };
-
 export interface AddMessageToolOptions {
   client: MemosCloudClient;
   config: MemosClientConfig;
@@ -16,16 +13,13 @@ export interface AddMessageToolOptions {
   now(): Date;
   logger?: { warn(message: string): void };
 }
-
 function formatChatTime(date: Date): string {
   return date.toISOString().slice(0, 19).replace("T", " ");
 }
-
 function sanitizeErrorMessage(error: unknown, apiKey: string): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.replaceAll(`Token ${apiKey}`, "Token [REDACTED]").replaceAll(apiKey, "[REDACTED]");
 }
-
 export function createAddMessageTool(options: AddMessageToolOptions): AgentTool<AddMessageToolInput, AddMessageToolOutput> {
   return {
     name: "add_message",

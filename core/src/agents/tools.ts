@@ -2,8 +2,8 @@ import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
 import { generateText, type LanguageModel } from "ai";
 import type { Bot } from "koishi";
 
-import { ResourceReadError, type ChannelResources } from "../resources/index.js";
-import { parseReply } from "../runtimes/output.js";
+import { parseReply } from "../messages/index.js";
+import { prepareOutputSegments, ResourceReadError, type ChannelResources } from "../resources/index.js";
 
 const READ_MAX_TEXT_CHARS = 30_000;
 
@@ -14,21 +14,31 @@ type DescribeImageOutput = { text: string } | { error: string };
 type SendMessageInput = { channelId: string; content: string };
 type SendMessageOutput = { ok: true; messageIds: string[] } | { ok: false; error: { name: string; message: string } };
 
-export function createSendMessageTool(bot: Bot): AgentTool<SendMessageInput, SendMessageOutput> {
+export function createSendMessageTool(bot: Bot, currentChannelId: string, resources: ChannelResources): AgentTool<SendMessageInput, SendMessageOutput> {
   return {
     name: "sendMessage",
-    description: "向指定频道发送一条消息。回复当前频道请直接输出文本即可。",
+    description: [
+      "向当前频道以外的指定频道发送一条消息。不要使用本工具回复当前频道；直接输出文本即可。",
+      "content 使用与直接输出相同的元素语法：<message/> 分隔消息，<text> 保留逐字内容，<inner_thought> 不会被发送。",
+      "只有 <img> 和 <file> 的 src 会按 read 工具列出的 URI 方案解析为可发送数据；资源解析失败时仅丢弃对应元素。",
+      "返回 {ok:true,messageIds} 或 {ok:false,error}；必须检查 ok，失败时不会发出消息。",
+    ].join("\n"),
     inputSchema: jsonSchema<SendMessageInput>({
       type: "object",
       properties: { channelId: { type: "string", minLength: 1 }, content: { type: "string" } },
       required: ["channelId", "content"],
     }),
-    execute: async ({ channelId, content }) => {
+    execute: async ({ channelId, content }, execution) => {
+      if (channelId === currentChannelId) {
+        return { ok: false, error: { name: "InvalidChannel", message: "sendMessage cannot target the current channel" } };
+      }
       try {
         const messageIds: string[] = [];
-        for (const segment of parseReply(content)) messageIds.push(...(await bot.sendMessage(channelId, segment)));
+        const segments = await prepareOutputSegments(parseReply(content), resources, execution.abortSignal);
+        for (const segment of segments) messageIds.push(...(await bot.sendMessage(channelId, segment)));
         return { ok: true, messageIds };
       } catch (cause) {
+        if (cause instanceof ResourceReadError) return { ok: false, error: { name: cause.code, message: cause.message } };
         return { ok: false, error: { name: cause instanceof Error ? cause.name : "Error", message: cause instanceof Error ? cause.message : String(cause) } };
       }
     },

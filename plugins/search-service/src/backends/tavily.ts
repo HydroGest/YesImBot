@@ -4,11 +4,9 @@ import { Schema } from "koishi";
 
 import type { SearchBackend, SearchRuntimeConfig, WebScrapeOutput, WebSearchOutput } from "../types";
 import { clampLimit, compileBlacklist, dedupeByUrl, filterBlockedResults, normalizeUrlList } from "../utils";
-
 const SEARCH_ENDPOINT = "https://api.tavily.com/search";
 const EXTRACT_ENDPOINT = "https://api.tavily.com/extract";
 const MAX_URLS_PER_SCRAPE = 20;
-
 export const tavilyConfigSchema: Schema<TavilyConfig> = Schema.object({
   apiKey: Schema.string().required().description("Tavily API Key"),
   searchEndpoint: Schema.string().default(SEARCH_ENDPOINT).description("Tavily 搜索端点"),
@@ -19,7 +17,6 @@ export const tavilyConfigSchema: Schema<TavilyConfig> = Schema.object({
   topic: Schema.union([Schema.const("general"), Schema.const("news"), Schema.const("finance")]).description("搜索主题"),
   timeRange: Schema.union([Schema.const("day"), Schema.const("week"), Schema.const("month"), Schema.const("year")]).description("时间范围"),
 });
-
 const searchInputSchema = jsonSchema<TavilySearchInput>({
   type: "object",
   properties: {
@@ -34,18 +31,15 @@ const searchInputSchema = jsonSchema<TavilySearchInput>({
   },
   required: ["query"],
 });
-
 const scrapeInputSchema = jsonSchema<TavilyScrapeInput>({
   type: "object",
   properties: { urls: { type: "array", items: { type: "string", format: "uri" }, minItems: 1, description: "HTTP or HTTPS URLs to extract." } },
   required: ["urls"],
 });
-
 type TavilySearchDepth = "basic" | "advanced";
 type TavilyTopic = "general" | "news" | "finance";
 type TavilyTimeRange = "day" | "week" | "month" | "year";
 type TavilyRawContent = "none" | "text" | "markdown";
-
 export interface TavilyConfig {
   apiKey: string;
   searchEndpoint?: string;
@@ -54,7 +48,6 @@ export interface TavilyConfig {
   topic?: TavilyTopic;
   timeRange?: TavilyTimeRange;
 }
-
 interface TavilyRuntimeConfig extends SearchRuntimeConfig {
   apiKey: string;
   searchEndpoint: string;
@@ -63,7 +56,6 @@ interface TavilyRuntimeConfig extends SearchRuntimeConfig {
   topic?: TavilyTopic;
   timeRange?: TavilyTimeRange;
 }
-
 interface TavilySearchInput {
   query: string;
   limit?: number;
@@ -74,11 +66,9 @@ interface TavilySearchInput {
   endDate?: string;
   includeRawContent?: TavilyRawContent;
 }
-
 interface TavilyScrapeInput {
   urls: string[];
 }
-
 interface TavilySearchResult {
   url: string;
   title: string;
@@ -88,21 +78,17 @@ interface TavilySearchResult {
   favicon?: string | null;
   published_date?: string | null;
 }
-
 interface TavilySearchResponse {
   results?: TavilySearchResult[];
 }
-
 interface TavilyExtractResult {
   url: string;
   raw_content?: string | null;
 }
-
 interface TavilyExtractResponse {
   results?: TavilyExtractResult[];
   failed_results?: Array<{ url: string; error: string }>;
 }
-
 class TavilyBackend implements SearchBackend {
   public readonly name = "tavily";
 
@@ -216,7 +202,6 @@ class TavilyBackend implements SearchBackend {
     }
   }
 }
-
 export function createTavilyBackend(ctx: Context, config: TavilyConfig | undefined, runtime: SearchRuntimeConfig, logger: Logger): SearchBackend {
   if (!config?.apiKey) {
     throw new Error("Tavily provider requires tavily.apiKey to be configured");

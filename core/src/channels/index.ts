@@ -4,19 +4,20 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { Context, Logger } from "koishi";
 
+import type { ImageBudget } from "../config.js";
 import { Conversation } from "../conversations/index.js";
 import { ChannelResources, type Disposer, type ResourceReader, type Resources } from "../resources/index.js";
-
 export type ChannelScope =
   | { readonly type: "shared"; readonly platform: string; readonly channelId: string }
   | { readonly type: "direct"; readonly platform: string; readonly selfId: string; readonly channelId: string };
+type ChannelManifest = ChannelScope & { readonly createdAt: string };
 
 export interface ChannelsOptions {
   readonly basePath: string;
   readonly logLevel?: number;
+  readonly imageBudget?: ImageBudget | null;
+  readonly readTimeoutMs?: number;
 }
-
-type ChannelManifest = ChannelScope & { readonly createdAt: string };
 
 export class Channel {
   public readonly resources: ChannelResources;
@@ -25,8 +26,10 @@ export class Channel {
   public constructor(
     public readonly scope: ChannelScope,
     public readonly root: string,
+    imageBudget: ImageBudget | null = null,
+    readTimeoutMs = 10_000,
   ) {
-    this.resources = new ChannelResources(root);
+    this.resources = new ChannelResources(root, imageBudget, readTimeoutMs);
     this.conversation = new Conversation(root);
   }
 }
@@ -38,11 +41,15 @@ export class Channels implements Resources {
   private readonly creating = new Map<string, Promise<Channel>>();
   private readonly readers = new Map<string, ResourceReader>();
   private readonly readerDisposers = new Map<ResourceReader, Map<Channel, Disposer>>();
+  private readonly imageBudget: ImageBudget | null;
+  private readonly readTimeoutMs: number;
   private readonly logger: Logger;
   private readonly started: Promise<void>;
 
   public constructor(ctx: Context, options: ChannelsOptions) {
     this.channelsPath = resolve(options.basePath, "channels");
+    this.imageBudget = options.imageBudget ?? null;
+    this.readTimeoutMs = options.readTimeoutMs ?? 10_000;
     this.logger = ctx.logger("channels");
     this.logger.level = options.logLevel ?? 2;
     this.started = this.scan();
@@ -101,7 +108,7 @@ export class Channels implements Resources {
 
   private async create(scope: ChannelScope, key: string): Promise<Channel> {
     const root = await this.ensureRoot(scope);
-    const channel = new Channel(scope, root);
+    const channel = new Channel(scope, root, this.imageBudget, this.readTimeoutMs);
     for (const reader of this.readers.values()) {
       this.readerDisposers.get(reader)!.set(channel, channel.resources.use(reader));
     }

@@ -9,6 +9,9 @@ import { executeCompact, filterEntriesForCompression } from "./compact.js";
 
 export type CompactReason = "auto" | "idle" | "manual";
 export type CompactResult = { readonly compacted: boolean; readonly reason?: string };
+export type ConversationInfo = { filename: string; isActive: boolean; size: number; createdAt: string };
+export type ConversationStatus = { active: ConversationInfo | null };
+
 export interface CompactInput {
   model: LanguageModel;
   personaName: string;
@@ -21,8 +24,6 @@ export interface ConversationCompactConfig {
   minMessages: number;
   maxFailures: number;
 }
-export type ConversationInfo = { filename: string; isActive: boolean; size: number; createdAt: string };
-export type ConversationStatus = { active: ConversationInfo | null };
 
 export class Conversation {
   private readonly root: string;

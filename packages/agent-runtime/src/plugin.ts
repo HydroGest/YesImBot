@@ -9,18 +9,15 @@ import type { AgentStateManager } from "./state.js";
 import type { AgentStorage } from "./storage.js";
 import { mergeTools, type AgentToolSet, type ToolDecision } from "./tools.js";
 import { TurnResult } from "./turn.js";
-
+export type SystemPromptBlock = string | SystemModelMessage;
+export type SystemPromptAppend = SystemPromptBlock | readonly SystemPromptBlock[];
+type Awaitable<T> = T | Promise<T>;
 export interface AgentPluginRuntime {
   readonly id: string;
   readonly channel: AgentChannel;
   readonly state: AgentStateManager;
   readonly storage: AgentStorage<AgentEntry>;
 }
-
-export type SystemPromptBlock = string | SystemModelMessage;
-export type SystemPromptAppend = SystemPromptBlock | readonly SystemPromptBlock[];
-type Awaitable<T> = T | Promise<T>;
-
 export interface AgentPlugin {
   name: string;
   version?: string;
@@ -43,7 +40,6 @@ export interface AgentPlugin {
   onTurnFinish?(result: TurnResult, context: TurnFinishContext): Awaitable<void>;
   prepareStep?(messages: readonly ModelMessage[], context: PrepareStepContext): Awaitable<readonly ModelMessage[] | void>;
 }
-
 export interface HookContextBase {
   readonly runtime: { id: string };
   readonly channel: AgentChannel;
@@ -51,57 +47,45 @@ export interface HookContextBase {
   readonly signal?: AbortSignal;
   readonly pluginName?: string;
 }
-
 export interface AppendHookContext extends HookContextBase {
   readonly storage: AgentStorage;
 }
-
 export interface MessageTransformContext extends HookContextBase {
   readonly turnId?: string;
 }
-
 export interface ModelMessageContext extends HookContextBase {
   readonly turnId?: string;
   readonly history: readonly AgentMessage[];
   readonly current: readonly AgentMessage[];
 }
-
 export interface PromptContext extends HookContextBase {
   readonly turnId?: string;
 }
-
 export interface ToolExtensionContext extends HookContextBase {
   readonly turnId?: string;
 }
-
 export interface ToolHookContext extends HookContextBase {
   readonly turnId: string;
 }
-
 export interface TurnFinishContext extends HookContextBase {
   readonly turnId: string;
 }
-
 export interface PrepareStepContext extends HookContextBase {
   readonly turnId: string;
   readonly stepNumber: number;
 }
-
 export interface ToolCallContext {
   toolCallId: string;
   toolName: string;
   args: unknown;
 }
-
 export interface ToolResultContext extends ToolCallContext {
   result: unknown;
   isError: boolean;
 }
-
 export interface PluginHostRuntime extends AgentPluginRuntime {
   readonly storage: AgentStorage<AgentEntry>;
 }
-
 export interface PluginHostHelpers {
   onAppend(entries: AgentEntry[], context: AppendHookContext): Promise<AgentEntry[]>;
   transformEntries(entries: readonly AgentEntry[]): Promise<readonly AgentEntry[]>;
@@ -112,13 +96,11 @@ export interface PluginHostHelpers {
   afterToolCall(result: ToolResultContext, context: ToolHookContext): Promise<ToolResultContext>;
   onTurnFinish(result: TurnResult, context: TurnFinishContext): Promise<void>;
 }
-
 export interface PluginHostInitOptions {
   legacySystemPrompt?: string;
   baseTools?: AgentToolSet;
   terminalTools?: AgentToolSet;
 }
-
 export interface PluginHost {
   readonly plugins: readonly AgentPlugin[];
   readonly activePlugins: readonly AgentPlugin[];
@@ -130,7 +112,6 @@ export interface PluginHost {
   stop(): Promise<void>;
   emitPluginError(pluginName: string, error: unknown): void;
 }
-
 export function orderPlugins(plugins: readonly AgentPlugin[]): AgentPlugin[] {
   const pre = plugins.filter((plugin) => plugin.enforce === "pre");
   const normal = plugins.filter((plugin) => plugin.enforce !== "pre" && plugin.enforce !== "post");
@@ -433,7 +414,6 @@ export function createPluginHost(options: { plugins: readonly AgentPlugin[]; run
     emitPluginError,
   };
 }
-
 export async function runHookPipeline<T>(items: readonly AgentPlugin[], runner: (plugin: AgentPlugin) => Awaitable<T | undefined>, fallback: T): Promise<T> {
   let current = fallback;
 

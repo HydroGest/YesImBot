@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - **agent-runtime**: Added the standalone `@yesimbot/agent-runtime` package for turn lifecycle, message storage, ordered plugins, tools, and streamed model execution.
 - **plugins**: Added optional workspace, MCP, skills, MemOS, search, OneBot utilities, and sticker integrations around the named AgentPlugin boundary.
 

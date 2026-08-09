@@ -14,9 +14,7 @@ import {
   type StickerRow,
   type TagSummary,
 } from "./types.js";
-
 export const STICKER_TABLE = "yesimbot_sticker";
-
 const STICKER_FIELDS = {
   id: "string(512)",
   contentId: "string(64)",
@@ -31,23 +29,13 @@ const STICKER_FIELDS = {
   createdAt: "string",
   updatedAt: "string",
 } satisfies Field.Extension<StickerRow, Types>;
-
+const registeredModels = new WeakSet<object>();
+type StoreModel = Pick<Context["model"], "extend" | "get" | "create" | "set" | "remove">;
 declare module "koishi" {
   interface Tables {
     [STICKER_TABLE]: StickerRow;
   }
 }
-
-type StoreModel = Pick<Context["model"], "extend" | "get" | "create" | "set" | "remove">;
-
-const registeredModels = new WeakSet<object>();
-
-export function registerStickerModel(model: StoreModel): void {
-  if (registeredModels.has(model)) return;
-  registeredModels.add(model);
-  model.extend(STICKER_TABLE, STICKER_FIELDS, { primary: "id" });
-}
-
 export class StickerStore {
   private mutationTail: Promise<void> = Promise.resolve();
 
@@ -314,4 +302,9 @@ export class StickerStore {
     );
     return next;
   }
+}
+export function registerStickerModel(model: StoreModel): void {
+  if (registeredModels.has(model)) return;
+  registeredModels.add(model);
+  model.extend(STICKER_TABLE, STICKER_FIELDS, { primary: "id" });
 }

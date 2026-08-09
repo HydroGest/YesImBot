@@ -178,9 +178,11 @@ describe("tools", () => {
         },
       ],
     });
+    agent.send(createUserMessage("hello"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
+    agent.send(createUserMessage("second"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -384,6 +386,7 @@ describe("tools", () => {
         { name: "allow-later", beforeToolCall: () => ({ type: "allow" }) },
       ],
     });
+    agent.send(createUserMessage("inspect"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -436,6 +439,7 @@ describe("tools", () => {
         },
       ],
     });
+    agent.send(createUserMessage("inspect"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -475,6 +479,7 @@ describe("tools", () => {
         pluginErrors.push(`${event.plugin}:${event.error.message}`);
       }
     });
+    agent.send(createUserMessage("inspect"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -578,6 +583,7 @@ describe("terminal tool", () => {
   it("does not add finalize_response unless enabled", async () => {
     const model = createObservedToolModel();
     const agent = createAgent({ model, tools: [] });
+    agent.send(createUserMessage("hello"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
@@ -588,6 +594,7 @@ describe("terminal tool", () => {
     const model = createObservedToolModel();
     const agent = createAgent({ model, tools: [], terminalTool: true });
 
+    agent.send(createUserMessage("hello"));
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
     expect(model.observedToolNames).toEqual([["finalize"]]);
@@ -608,6 +615,7 @@ describe("terminal tool", () => {
   it("supports custom terminal tool names", async () => {
     const model = createTerminalToolCallModel("finish_turn");
     const agent = createAgent({ model, tools: [], terminalTool: { name: "finish_turn" } });
+    agent.send(createUserMessage("hello"));
 
     await agent.wait();
     expect(agent.isIdle()).toBe(true);

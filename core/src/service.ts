@@ -35,7 +35,19 @@ export default class YesImBotService extends Service<Config> {
     this.config = config;
     this.logger.level = config.logLevel ?? 2;
     this.model = new ModelService(ctx, { basePath: config.basePath, logLevel: config.logLevel });
-    this.channels = new Channels(ctx, { basePath: config.basePath || ctx.baseDir, logLevel: config.logLevel });
+    this.channels = new Channels(ctx, {
+      basePath: config.basePath || ctx.baseDir,
+      logLevel: config.logLevel,
+      imageBudget:
+        config.imageInput === false
+          ? null
+          : {
+              maxCount: config.imageInput.maxCount ?? 3,
+              maxBytesPerImage: config.imageInput.maxBytesPerImage ?? 5 * 1024 * 1024,
+              maxTotalBytes: config.imageInput.maxTotalBytes ?? 10 * 1024 * 1024,
+            },
+      readTimeoutMs: config.resourceReadTimeoutMs,
+    });
     const agents = new Agents();
     this.runtimes = new Runtimes(ctx, this.channels, this.model, config, agents);
     this.messengerOwner = new Messenger(ctx, config, this.channels, this.runtimes);
