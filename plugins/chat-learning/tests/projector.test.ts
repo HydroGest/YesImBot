@@ -74,6 +74,7 @@ function state(): ChatLearningState {
     ],
     responsePatterns: [{ intent: "agree", phrase: "确实", frequency: 1, sampleIds: ["t2"] }],
     initiationPatterns: [{ intent: "question", phrase: "有人试过吗", frequency: 1, sampleIds: ["t1"] }],
+    memeTemplates: [],
   };
 }
 
@@ -126,6 +127,28 @@ describe("buildPromptBlock", () => {
     expect(block).toContain("这个方案靠谱吗");
     expect(block).not.toContain("请复读");
     expect(block).not.toContain("权限不足");
+  });
+
+  it("injects learned meme templates", () => {
+    const base = state();
+    const next: ChatLearningState = {
+      ...base,
+      memeTemplates: [
+        {
+          template: "？！{X}！？",
+          examples: ["？！强强！？", "？！弱弱！？"],
+          usage: "把状态词套进感叹模板，可类推新词。",
+          frequency: 3,
+          firstSeenAt: 1,
+          lastSeenAt: 2,
+        },
+      ],
+    };
+
+    const block = buildPromptBlock(next, undefined, config);
+
+    expect(block).toContain("<meme_templates>");
+    expect(block).toContain("<template>？！{X}！？</template>");
   });
 
   it("injects initiation patterns for proactive events", () => {

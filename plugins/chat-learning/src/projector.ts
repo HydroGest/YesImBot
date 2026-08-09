@@ -7,6 +7,7 @@ import type {
   ConversationSegment,
   GlobalChainPattern,
   GlobalPattern,
+  MemeTemplate,
   MessageTurn,
   ProactiveEventKind,
 } from "./types.js";
@@ -64,6 +65,7 @@ export function buildPromptBlock(
   if (state) {
     push(renderExamples(selectExamples(state, config), config));
     push(renderPatterns(state, eventKind));
+    push(renderMemeTemplates(state.memeTemplates));
   }
   push(renderGlobalPatterns(globalPatterns, eventKind, config));
   push(renderGlobalChains(globalChains, globalStylePatterns, config));
@@ -107,6 +109,17 @@ function renderGlobalPatterns(patterns: readonly GlobalPattern[], eventKind: Pro
 
   const lines = relevant.map((pattern) => renderPatternLine(pattern.intent, pattern.phrase, 0));
   return `<global_patterns>\n${lines.join("\n")}\n</global_patterns>`;
+}
+
+function renderMemeTemplates(templates: readonly MemeTemplate[]): string | undefined {
+  if (templates.length === 0) return undefined;
+  const lines = templates.map(
+    (template) =>
+      `<template>${escapeXml(template.template)}</template>\n<usage>${escapeXml(template.usage)}</usage>\n<examples>${template.examples
+        .map(escapeSampleText)
+        .join("、")}</examples>`,
+  );
+  return `<meme_templates>\n${lines.join("\n\n")}\n</meme_templates>`;
 }
 
 function renderGlobalChains(

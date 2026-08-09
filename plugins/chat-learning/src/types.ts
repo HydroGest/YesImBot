@@ -115,6 +115,15 @@ export interface GlobalRuleBank {
   readonly chains: readonly GlobalChainPattern[];
 }
 
+export interface MemeTemplate {
+  readonly template: string;
+  readonly examples: readonly string[];
+  readonly usage: string;
+  readonly frequency: number;
+  readonly firstSeenAt: number;
+  readonly lastSeenAt: number;
+}
+
 export interface ChatLearningState {
   readonly lastEntryId: string | undefined;
   readonly builtAt: number;
@@ -123,6 +132,7 @@ export interface ChatLearningState {
   readonly segments: readonly ConversationSegment[];
   readonly responsePatterns: readonly ResponsePattern[];
   readonly initiationPatterns: readonly InitiationPattern[];
+  readonly memeTemplates: readonly MemeTemplate[];
 }
 
 export interface ChatLearningConfig {

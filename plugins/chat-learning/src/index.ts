@@ -26,6 +26,7 @@ import {
 } from "./global-store.js";
 import { createChatHistoryStore, type ChatHistoryStore } from "./history.js";
 import { buildLinks } from "./links.js";
+import { buildMemeTemplates } from "./memes.js";
 import { classifyPatternsWithModel, generateChainSemantics } from "./patterns.js";
 import { detectProactiveEvent } from "./proactive.js";
 import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.js";
@@ -232,7 +233,12 @@ export default class ChatLearningPlugin {
             current = await enrichWithModel(next, config, this.ctx, logger);
             lastModelEnrichAt = Date.now();
           } else if (state) {
-            current = { ...next, responsePatterns: state.responsePatterns, initiationPatterns: state.initiationPatterns };
+            current = {
+              ...next,
+              responsePatterns: state.responsePatterns,
+              initiationPatterns: state.initiationPatterns,
+              memeTemplates: state.memeTemplates,
+            };
           }
           state = current;
           await store.update(current);
@@ -950,7 +956,16 @@ function buildSnapshot(
   const segments = segmentTurns(turns);
   const links = applyCorrections(buildLinks(turns, { selfId: scope.selfId }), turns, corrections);
   const lastEntry = [...entries].reverse().find((entry) => entry.type === "message");
-  return { lastEntryId: lastEntry?.id, builtAt: now, turns, links, segments, responsePatterns: [], initiationPatterns: [] };
+  return {
+    lastEntryId: lastEntry?.id,
+    builtAt: now,
+    turns,
+    links,
+    segments,
+    responsePatterns: [],
+    initiationPatterns: [],
+    memeTemplates: [],
+  };
 }
 
 async function enrichWithModel(state: ChatLearningState, config: ChatLearningConfig, ctx: Context, logger: Logger): Promise<ChatLearningState> {
@@ -963,7 +978,14 @@ async function enrichWithModel(state: ChatLearningState, config: ChatLearningCon
       maxThreadMessages: config.maxModelThreadMessages,
     });
     if (!patterns) return state;
-    return { ...state, responsePatterns: patterns.responsePatterns, initiationPatterns: patterns.initiationPatterns, builtAt: Date.now() };
+    const memeTemplates = await buildMemeTemplates(ref.model, patterns.responsePatterns, patterns.initiationPatterns);
+    return {
+      ...state,
+      responsePatterns: patterns.responsePatterns,
+      initiationPatterns: patterns.initiationPatterns,
+      memeTemplates,
+      builtAt: Date.now(),
+    };
   } catch (cause) {
     logger.warn("chat_learning.model_enrich_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
     return state;
