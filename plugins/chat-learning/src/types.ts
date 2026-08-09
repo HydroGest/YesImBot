@@ -78,6 +78,8 @@ export interface LocalChainPattern {
   readonly chain: readonly string[];
   readonly frequency: number;
   readonly sample?: LocalChainSample;
+  readonly style?: string;
+  readonly styleSampleId?: string;
   readonly semantics?: string;
 }
 
@@ -105,6 +107,8 @@ export interface GlobalChainSample {
 export interface GlobalChainPattern {
   readonly chain: readonly string[];
   readonly samples?: readonly GlobalChainSample[];
+  readonly style?: string;
+  readonly styleSampleId?: string;
   readonly semantics?: string;
   readonly channels: readonly GlobalChannelStat[];
   readonly firstSeenAt: number;

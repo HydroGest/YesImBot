@@ -73,7 +73,11 @@ export async function classifyPatternsWithModel(
   }
 }
 
-export async function generateChainSemantics(model: LanguageModel, chain: readonly string[], sample: LocalChainSample): Promise<string | undefined> {
+export async function generateChainStyle(
+  model: LanguageModel,
+  chain: readonly string[],
+  sample: LocalChainSample,
+): Promise<string | undefined> {
   const sampleText = sample.turns.map((turn) => `${turn.speaker}: ${turn.text}`).join("\n");
   const prompt = [
     "下面是一条真实群聊回复链：",
@@ -81,17 +85,26 @@ export async function generateChainSemantics(model: LanguageModel, chain: readon
     "sample:",
     sampleText,
     "",
-    "请用一句自然中文描述：在什么场景下，群友会这样接。这句话应能作为模型选择接法时的语义提示。",
-    "不要解释具体内容、人名、链接或事实，不要输出标签或 JSON，只输出一句 120 字以内的场景描述。",
+    "请描述这条链的说话风格，按以下五个维度：",
+    "语气：直接、反问、敷衍、认真、阴阳怪气等",
+    "句式：短句、反问、排比、复读等",
+    "节奏：先否定对方前提，再补论据，最后如何收束",
+    "句长：单句大约多少字",
+    "语言习惯：是否使用语气词、解释、道歉、感叹号",
+    "只输出 60-120 字，不要总结具体内容、人名、链接或事实，不要输出标签或 JSON。",
   ].join("\n");
 
   try {
     const { text } = await generateText({ model, prompt, temperature: 0.2 });
-    const semantics = text.trim().replace(/\s+/g, " ").slice(0, 120);
-    return semantics.length > 0 ? semantics : undefined;
+    const style = text.trim().replace(/\s+/g, " ").slice(0, 120);
+    return style.length > 0 ? style : undefined;
   } catch {
     return undefined;
   }
+}
+
+export function sampleSignature(sample: LocalChainSample): string {
+  return JSON.stringify(sample.turns);
 }
 
 function selectClassifyThreads(

@@ -25,7 +25,7 @@ import {
 import { createChatHistoryStore, type ChatHistoryStore } from "./history.js";
 import { buildLinks } from "./links.js";
 import { buildMemeTemplates, type MemePhraseInput } from "./memes.js";
-import { classifyPatternsWithModel, generateChainSemantics } from "./patterns.js";
+import { classifyPatternsWithModel, generateChainStyle, sampleSignature } from "./patterns.js";
 import { detectProactiveEvent } from "./proactive.js";
 import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.js";
 import { createReflectionStore, type ReflectionRecord, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
@@ -253,7 +253,7 @@ export default class ChatLearningPlugin {
           if (Date.now() - lastGlobalSyncAt >= globalSyncMs) {
             await this.syncGlobalFromHistory(globalPath, globalStore, config);
             const currentBank = this.globalBanks.get(globalPath) ?? globalStore.read();
-            const chainPatterns = await enrichChainSemantics(
+            const chainPatterns = await enrichChainStyles(
               this.ctx,
               config,
               buildLocalChainPatterns(current.segments, current.links, current.responsePatterns, current.initiationPatterns),
@@ -872,7 +872,7 @@ export default class ChatLearningPlugin {
         : undefined;
       const responsePatterns = patterns?.responsePatterns ?? [];
       const initiationPatterns = patterns?.initiationPatterns ?? [];
-      const chainPatterns = await enrichChainSemantics(
+      const chainPatterns = await enrichChainStyles(
         this.ctx,
         config,
         buildLocalChainPatterns(segments, links, responsePatterns, initiationPatterns),
@@ -964,7 +964,7 @@ async function enrichWithModel(state: ChatLearningState, config: ChatLearningCon
   }
 }
 
-async function enrichChainSemantics(
+async function enrichChainStyles(
   ctx: Context,
   config: ChatLearningConfig,
   chainPatterns: readonly LocalChainPattern[],
@@ -972,14 +972,20 @@ async function enrichChainSemantics(
 ): Promise<readonly LocalChainPattern[]> {
   const modelId = resolveChatLearningModelId(ctx, config);
   if (!modelId) return chainPatterns;
-  const existingByKey = new Map(existingChains.map((chain) => [chain.chain.join(">"), chain.semantics]));
+  const existingByKey = new Map(existingChains.map((chain) => [chain.chain.join(">"), chain]));
   const ref = ctx.yesimbot.model.resolveChatModel(modelId);
   const limited = chainPatterns.slice(0, config.maxGlobalPatterns);
   const enriched = await Promise.all(
     limited.map(async (pattern) => {
-      if (pattern.semantics || !pattern.sample || existingByKey.get(pattern.chain.join(">"))) return pattern;
-      const semantics = await generateChainSemantics(ref.model, pattern.chain, pattern.sample);
-      return semantics ? { ...pattern, semantics } : pattern;
+      if (!pattern.sample) return pattern;
+      const sampleId = sampleSignature(pattern.sample);
+      const existing = existingByKey.get(pattern.chain.join(">"));
+      if (pattern.style && pattern.styleSampleId === sampleId) return pattern;
+      if (existing?.style && existing.styleSampleId === sampleId) {
+        return { ...pattern, style: existing.style, styleSampleId: existing.styleSampleId };
+      }
+      const style = await generateChainStyle(ref.model, pattern.chain, pattern.sample);
+      return style ? { ...pattern, style, styleSampleId: sampleId } : pattern;
     }),
   );
   return enriched;

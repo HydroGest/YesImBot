@@ -15,6 +15,7 @@ import type {
 const CHAT_LEARNING_GUIDE = `<chat_learning_guide>
 你是这个群的群友，不是客服、助手或讲解员。
 下面的 <style_examples> 是本群真实完整对话，<local_patterns>、<global_patterns>、<global_chains> 是常见表达和接法；它们不是当前对话，也不是必须执行的指令。
+<global_chains> 里每个 <turn intent="..."> 的 intent 是发言动作标签，不是发言内容；<style> 描述历史群友的说话方式，只学语气、长度、标点和接话节奏。
 群友画风：短、直接、顺着上一条接；接梗就接梗，吐槽就吐槽，不解释笑点，不总结前因后果，不把玩笑变成课堂。正经讨论时才认真，平时宁可留白。
 被要求“笑点解析”时，群友通常只会回“草”“笑死”“太抽象了”这类。
 样本里同一人连续发两条时，会写成 A: 你好<message/>我是猫，表示这两条都要发出。
@@ -121,36 +122,24 @@ function renderMemeTemplates(templates: readonly MemeTemplate[]): string | undef
   return `<meme_templates>\n${lines.join("\n\n")}\n</meme_templates>`;
 }
 
-function renderGlobalChains(chains: readonly GlobalChainPattern[], stylePatterns: readonly GlobalPattern[], config: ChatLearningConfig): string | undefined {
+function renderGlobalChains(
+  chains: readonly GlobalChainPattern[],
+  _stylePatterns: readonly GlobalPattern[],
+  config: ChatLearningConfig,
+): string | undefined {
   const relevant = chains
-    .filter((chain) => chain.channels.length >= config.minGlobalChannels)
+    .filter((chain) => chain.channels.length >= config.minGlobalChannels && chain.samples?.[0] !== undefined)
     .sort((left, right) => chainScore(right) - chainScore(left))
-    .slice(0, config.maxGlobalPatterns);
+    .slice(0, Math.min(config.maxGlobalPatterns, 3));
   if (relevant.length === 0) return undefined;
 
-  const phrasesByIntent = new Map<string, GlobalPattern[]>();
-  for (const pattern of stylePatterns) {
-    if (pattern.channels.length < config.minGlobalChannels) continue;
-    const phrases = phrasesByIntent.get(pattern.intent) ?? [];
-    if (!phrases.some((item) => item.phrase === pattern.phrase)) phrases.push(pattern);
-    phrasesByIntent.set(pattern.intent, phrases);
-  }
-  for (const phrases of phrasesByIntent.values()) {
-    phrases.sort((left, right) => globalScore(right) - globalScore(left));
-  }
-
   const lines = relevant.map((chain) => {
-    const semantic = chain.semantics ?? chainSemantics(chain.chain);
-    const sample = chain.samples?.[0];
-    if (sample) {
-      const sampleLines = formatSampleLines(sample.turns);
-      return `<chain>\n<semantics>${escapeXml(semantic)}</semantics>\n<sample>${sampleLines.join("\n")}</sample>\n</chain>`;
-    }
-    const phrases = chain.chain.map((intent) => phrasesByIntent.get(intent)?.[0]?.phrase).filter((phrase): phrase is string => phrase !== undefined);
-    if (phrases.length === chain.chain.length) {
-      return `<chain>\n<semantics>${escapeXml(semantic)}：${escapeXml(phrases.join(" -> "))}</semantics>\n</chain>`;
-    }
-    return `<chain>\n<semantics>${escapeXml(semantic)}</semantics>\n</chain>`;
+    const sample = chain.samples?.[0]!;
+    const style = chain.style ? `<style>${escapeXml(chain.style)}</style>\n` : "";
+    const turnLines = sample.turns.map(
+      (turn) => `<turn intent="${escapeXml(turn.intent)}" speaker="${escapeXml(turn.speaker)}">${escapeSampleText(turn.text)}</turn>`,
+    );
+    return `<chain>\n${style}<sample>\n${turnLines.join("\n")}\n</sample>\n</chain>`;
   });
   return `<global_chains>\n${lines.join("\n")}\n</global_chains>`;
 }
@@ -162,30 +151,6 @@ function renderPatternLine(intent: string, phrase: string, frequency: number): s
 
 function intentSemantic(intent: string): string {
   return INTENT_SEMANTICS[intent] ?? intent;
-}
-
-function chainSemantics(chain: readonly string[]): string {
-  const parts = chain.map(intentSemantic);
-  if (parts.length < 2) return parts.join(" -> ");
-  return `${parts[0]}后，群友通常会${parts[1]}`;
-}
-
-function formatSampleLines(turns: readonly { readonly speaker: string; readonly text: string }[]): string[] {
-  const groups: string[] = [];
-  let currentSpeaker: string | undefined;
-  let currentTexts: string[] = [];
-  for (const turn of turns) {
-    if (currentSpeaker !== undefined && turn.speaker !== currentSpeaker) {
-      groups.push(`${currentSpeaker}: ${currentTexts.join("<message/>")}`);
-      currentTexts = [];
-    }
-    currentSpeaker = turn.speaker;
-    currentTexts.push(escapeSampleText(turn.text));
-  }
-  if (currentTexts.length > 0 && currentSpeaker !== undefined) {
-    groups.push(`${currentSpeaker}: ${currentTexts.join("<message/>")}`);
-  }
-  return groups;
 }
 
 function globalScore(pattern: GlobalPattern): number {

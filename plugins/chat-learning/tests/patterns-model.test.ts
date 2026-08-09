@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ generateText: vi.fn<() => Promise<{ text: stri
 
 vi.mock("ai", () => ({ generateText: mocks.generateText }));
 
-import { classifyPatternsWithModel, generateChainSemantics } from "../src/patterns.js";
+import { classifyPatternsWithModel, generateChainStyle } from "../src/patterns.js";
 import type { ConversationSegment, MessageLink, MessageTurn } from "../src/types.js";
 
 function turn(id: string, timestamp: number, text: string): MessageTurn {
@@ -106,18 +106,24 @@ describe("classifyPatternsWithModel", () => {
   });
 });
 
-describe("generateChainSemantics", () => {
-  it("uses the model to describe a real global chain", async () => {
-    mocks.generateText.mockResolvedValue({ text: "有人在分享时，群友通常短接一句认可。" });
+describe("generateChainStyle", () => {
+  it("uses the model to describe a chain style without summarizing content", async () => {
+    mocks.generateText.mockResolvedValue({ text: "语气直接，带反问；短句；先否前提再补论据，最后条件句收束。" });
 
-    const semantics = await generateChainSemantics({} as never, ["share", "agree"], {
+    const style = await generateChainStyle({} as never, ["share", "agree"], {
       turns: [
         { intent: "share", speaker: "A", text: "我的控制台全是这玩意" },
         { intent: "agree", speaker: "B", text: "我也是" },
       ],
     });
 
-    expect(semantics).toBe("有人在分享时，群友通常短接一句认可。");
-    expect(mocks.generateText).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("chain: share -> agree") }));
+    expect(style).toBe("语气直接，带反问；短句；先否前提再补论据，最后条件句收束。");
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringMatching(
+          /chain: share -> agree[\s\S]*语气：直接、反问、敷衍、认真、阴阳怪气等[\s\S]*不要总结具体内容、人名、链接或事实/,
+        ),
+      }),
+    );
   });
 });

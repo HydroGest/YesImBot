@@ -170,6 +170,16 @@ describe("buildPromptBlock", () => {
     const globalChains: GlobalChainPattern[] = [
       {
         chain: ["question", "agree"],
+        style: "直接、短句；先提问再短接认可。",
+        samples: [
+          {
+            turns: [
+              { intent: "question", speaker: "A", text: "有人试过吗" },
+              { intent: "agree", speaker: "B", text: "确实" },
+            ],
+            channelKey: "a",
+          },
+        ],
         channels: [
           { key: "a", frequency: 2, lastSeenAt: 1 },
           { key: "b", frequency: 1, lastSeenAt: 1 },
@@ -206,13 +216,17 @@ describe("buildPromptBlock", () => {
     const block = buildPromptBlock(state(), undefined, config, [], globalChains, globalPatterns);
 
     expect(block).toContain("<global_chains>");
-    expect(block).toContain("<semantics>提问或反问后，群友通常会同意：有人试过吗 -&gt; 确实</semantics>");
+    expect(block).toContain("<style>直接、短句；先提问再短接认可。</style>");
+    expect(block).toContain('<turn intent="question" speaker="A">有人试过吗</turn>');
+    expect(block).not.toContain('intents="');
+    expect(block).not.toContain("<semantics>提问或反问后");
   });
 
   it("renders global chain samples as complete dialogue", () => {
     const globalChains: GlobalChainPattern[] = [
       {
         chain: ["question", "agree"],
+        style: "短句，直接认可。",
         samples: [
           {
             turns: [
@@ -233,10 +247,12 @@ describe("buildPromptBlock", () => {
 
     const block = buildPromptBlock(state(), undefined, config, [], globalChains);
 
-    expect(block).toContain("<sample>A: 有人试过吗\nB: 确实</sample>");
+    expect(block).toContain("<sample>");
+    expect(block).toContain('<turn intent="question" speaker="A">有人试过吗</turn>');
+    expect(block).toContain('<turn intent="agree" speaker="B">确实</turn>');
   });
 
-  it("uses inline message separators for consecutive same-speaker turns", () => {
+  it("keeps consecutive same-speaker turns as separate labeled turns", () => {
     const globalChains: GlobalChainPattern[] = [
       {
         chain: ["share", "question"],
@@ -261,7 +277,9 @@ describe("buildPromptBlock", () => {
 
     const block = buildPromptBlock(state(), undefined, config, [], globalChains);
 
-    expect(block).toContain("<sample>A: 你好<message/>我是猫\nB: 喵</sample>");
+    expect(block).toContain('<turn intent="share" speaker="A">你好</turn>');
+    expect(block).toContain('<turn intent="question" speaker="A">我是猫</turn>');
+    expect(block).toContain('<turn intent="question" speaker="B">喵</turn>');
   });
 
   it("renders sticker placeholders unescaped", () => {
@@ -288,7 +306,8 @@ describe("buildPromptBlock", () => {
 
     const block = buildPromptBlock(state(), undefined, config, [], globalChains);
 
-    expect(block).toContain("A: 草<message/><sticker />");
+    expect(block).toContain('<turn intent="react" speaker="A">草</turn>');
+    expect(block).toContain('<turn intent="ack" speaker="A"><sticker /></turn>');
   });
 
   it("shows global content even when there is no local state", () => {

@@ -21,7 +21,7 @@
 | `globalSyncIntervalMinutes` | `60`    | 跨群全局规律同步最小间隔分钟数                                             |
 | `minGlobalChannels`         | `2`     | 全局规律至少出现的频道数                                                   |
 | `maxGlobalPatterns`         | `8`     | 每轮最多注入的全局规律数                                                   |
-| `summaryModel`              | 留空    | 使用 Core 注册的模型 ID；留空则使用默认 chat 模型进行意图分类              |
+| `summaryModel`              | 留空    | 使用 Core 注册的模型 ID；留空则使用默认 chat 模型进行意图分类和链级风格提炼  |
 | `embeddingModel`            | 留空    | 可选 embedding 模型；配置后用于语义归并全局规律，留空则精确匹配            |
 | `embeddingSimilarity`       | `0.92`  | embedding 语义归并阈值，越高要求越相似                                     |
 | `maxModelThreads`           | `3`     | 每次模型标注最多使用几条完整对话线程                                       |
@@ -44,7 +44,7 @@
 - quote/reply/@/相邻/实体关系的置信度图；
 - 本地回应规律和话题发起规律；
 - 模型驱动的响应/发起意图分类，并按真实样本频率聚合规律；
-- 有界注入 `<style_examples>` 完整对话样本，以及 `<local_patterns>`、`<global_patterns>`、`<global_chains>` 语言风格样本。
+- 有界注入 `<style_examples>` 完整对话样本，以及 `<local_patterns>`、`<global_patterns>`、`<global_chains>` 风格与带 intent 的真实发言样本。
 
 响应规律只从图中有明确边或处于同一回复链的消息对提取；仅时间相邻但没有关系边的消息不会进入 response pattern。
 
@@ -56,7 +56,7 @@
 
 启用 `observeAllChannels` 后，插件会在未开启 yesimbot 的频道采集真实消息，写入全局历史，并按频道聚合到 `chat-learning-global.json`。原始全局历史会在聚合成功后清空，避免无限增长。
 
-注入块前面会固定附带 `<chat_learning_guide>`，明确告诉模型 `<style_examples>` 是本群完整对话样本，`<local_patterns>` 是本群语言风格样本；`<global_patterns>` 和 `<global_chains>` 是跨群弱先验，只用于补充表达和接话节奏。要求模仿表达节奏，不复制内容；同时禁止“笑点解析/分析/总结”式长篇解释、连续刷多条说明和复读群友原句，也不把这些标签写进对外回复。
+注入块前面会固定附带 `<chat_learning_guide>`，明确告诉模型 `<style_examples>` 是本群完整对话样本，`<local_patterns>` 是本群语言风格样本；`<global_patterns>` 和 `<global_chains>` 是跨群弱先验，只用于补充表达和接话节奏。`<global_chains>` 中的 `<style>` 描述链级说话风格，`<turn intent="...">` 是发言动作标签，真实发言只作为风格证据。要求模仿表达节奏，不复制内容；同时禁止“笑点解析/分析/总结”式长篇解释、连续刷多条说明和复读群友原句，也不把这些标签写进对外回复。
 
 ## 人工纠错
 
@@ -77,7 +77,7 @@ yesimbot.chat-learning.reflect [note] --score -1|0|1
 
 `reflect` 用于人工标注 bot 的最终发言：先引用 bot 的一条已发送消息，再运行 `yesimbot.chat-learning.reflect 保持 --score=1` 或 `yesimbot.chat-learning.reflect 太长太正式 --score=-1`；`score` 支持 `-1|0|1`。人工反思会持久化到 `chat-learning-reflections.jsonl`，并优先于自动反思注入。
 
-`global` 查看跨群全局规则库，包含高频短语、跨群回复链结构以及链上代表短语；`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<style_examples>`、`<local_patterns>`、`<global_patterns>`、`<global_chains>` 等 prompt 块，配置 `reflectionModel` 时还会在末尾显示反思历史。预览头部会显示 `globalPatterns=选中数/全局库总数`，方便区分“没有全局数据”和“未达到 `minGlobalChannels`”。`<style_examples>` 会标注 `chain` 路径，便于审计样本来自哪条历史回复链；`<global_chains>` 会优先渲染一条真实完整短对话 `<sample>`，旧数据没有样本时再回退到 `phrases` 代表短语。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
+`global` 查看跨群全局规则库，包含高频短语、跨群回复链结构以及链级风格和真实样本；`preview` 会读取当前频道持久化后的学习状态，并输出实际会注入模型的 `<style_examples>`、`<local_patterns>`、`<global_patterns>`、`<global_chains>` 等 prompt 块，配置 `reflectionModel` 时还会在末尾显示反思历史。预览头部会显示 `globalPatterns=选中数/全局库总数`，方便区分“没有全局数据”和“未达到 `minGlobalChannels`”。`<style_examples>` 会标注 `chain` 路径，便于审计样本来自哪条历史回复链；`<global_chains>` 只渲染带真实样本的链，输出 `<style>` 和逐条 `<turn intent="...">` 真实发言，旧 `semantics` 字段不再进入 prompt。合并转发中保留原始标签；回退为普通文本时会把标签转义，避免被 Koishi/Satori 当元素解析。传 `--event` 可以预览 global-brain/schedule 主动事件下的发起规律版本。
 
 `status` 和 `preview` 的长回复在 OneBot 适配器支持时使用合并转发发送，避免长文本直接刷屏；适配器不支持时回退为普通文本。
 
