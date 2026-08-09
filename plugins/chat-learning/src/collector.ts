@@ -4,6 +4,8 @@ import { isMessage } from "koishi-plugin-yesimbot";
 
 import type { ConversationSegment, MessageTurn } from "./types.js";
 
+const DEFAULT_BOT_PATTERNS = ["bot", "机器人", "小助手", "官方", "客服", "通知", "公告"];
+
 export interface CollectOptions {
   readonly maxHistoryAgeDays?: number;
   readonly maxScanMessages?: number;
@@ -48,8 +50,6 @@ export function collectTurns(entries: readonly AgentEntry[], options: CollectOpt
 
   return turns.sort((left, right) => left.timestamp - right.timestamp).slice(-maxScanMessages);
 }
-
-const DEFAULT_BOT_PATTERNS = ["bot", "机器人", "小助手", "官方", "客服", "通知", "公告"];
 
 function matchesBlockedPattern(userId: string, userName: string | undefined, patterns: readonly string[]): boolean {
   if (patterns.length === 0) return false;

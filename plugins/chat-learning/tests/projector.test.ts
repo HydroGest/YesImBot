@@ -29,14 +29,7 @@ const config: ChatLearningConfig = {
   injectStyleAsSystem: false,
 };
 
-function turn(
-  id: string,
-  messageId: string,
-  timestamp: number,
-  text: string,
-  userId = "u1",
-  userName = "Alice",
-): MessageTurn {
+function turn(id: string, messageId: string, timestamp: number, text: string, userId = "u1", userName = "Alice"): MessageTurn {
   return {
     id,
     messageId,
@@ -54,11 +47,7 @@ function turn(
 
 function state(): ChatLearningState {
   const historical = [turn("h1", "h1", 100, "历史消息"), turn("h2", "h2", 200, "历史回应", "u2", "Bob")];
-  const turns = [
-    ...historical,
-    turn("t1", "m1", 1000, "这个方案靠谱吗"),
-    turn("t2", "m2", 2000, "确实", "u2", "Bob"),
-  ];
+  const turns = [...historical, turn("t1", "m1", 1000, "这个方案靠谱吗"), turn("t2", "m2", 2000, "确实", "u2", "Bob")];
   const links: MessageLink[] = [
     { from: "h2", to: "h1", kind: "reply", confidence: 1, evidence: ["quote"] },
     { from: "t2", to: "t1", kind: "reply", confidence: 1, evidence: ["quote"] },
@@ -107,18 +96,8 @@ describe("buildPromptBlock", () => {
       ...base,
       turns,
       segments: [
-        {
-          id: "good",
-          startTime: 1000,
-          endTime: 2000,
-          turns: [turns[0]!, turns[1]!],
-        },
-        {
-          id: "bad",
-          startTime: 3000,
-          endTime: 4000,
-          turns: [turns[2]!, turns[3]!],
-        },
+        { id: "good", startTime: 1000, endTime: 2000, turns: [turns[0]!, turns[1]!] },
+        { id: "bad", startTime: 3000, endTime: 4000, turns: [turns[2]!, turns[3]!] },
       ],
     };
 
@@ -152,10 +131,7 @@ describe("buildPromptBlock", () => {
   });
 
   it("tolerates legacy state without memeTemplates", () => {
-    const legacy = {
-      ...state(),
-      memeTemplates: undefined as unknown as ChatLearningState["memeTemplates"],
-    };
+    const legacy = { ...state(), memeTemplates: undefined as unknown as ChatLearningState["memeTemplates"] };
 
     const block = buildPromptBlock(legacy, undefined, config);
 
@@ -230,9 +206,7 @@ describe("buildPromptBlock", () => {
     const block = buildPromptBlock(state(), undefined, config, [], globalChains, globalPatterns);
 
     expect(block).toContain("<global_chains>");
-    expect(block).toContain(
-      "<semantics>提问或反问后，群友通常会同意：有人试过吗 -&gt; 确实</semantics>",
-    );
+    expect(block).toContain("<semantics>提问或反问后，群友通常会同意：有人试过吗 -&gt; 确实</semantics>");
   });
 
   it("renders global chain samples as complete dialogue", () => {

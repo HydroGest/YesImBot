@@ -2,7 +2,6 @@ import { createCustomMessage, type AgentMessage, type CustomMessageBase } from "
 import type { UserModelMessage } from "ai";
 import { h, type Element, type Universal } from "koishi";
 const MARK = "\u0000";
-
 export type MessageRecord = Readonly<RecordBase & { readonly messageId: string; readonly elements: readonly Element[] }>;
 export type EventBase = Readonly<{
   readonly platform: string;
@@ -15,14 +14,12 @@ export type EventBase = Readonly<{
 export type EventRecord<K extends keyof EventMap = keyof EventMap> = K extends K ? Readonly<EventBase & { readonly eventType: K } & EventMap[K]> : never;
 export type Message = CustomMessageBase<"yesimbot.message", Omit<MessageRecord, "timestamp">>;
 export type Event<K extends keyof EventMap = keyof EventMap> = CustomMessageBase<"yesimbot.event", K extends K ? Omit<EventRecord<K>, "timestamp"> : never>;
-
 export interface EventMap {
   "delivery.failed": {
     channel: Universal.Channel;
     delivery: { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number; error: { name: string; message: string; code?: string } };
   };
 }
-
 export interface RecordBase {
   readonly platform: string;
   readonly selfId: string;
@@ -30,14 +27,6 @@ export interface RecordBase {
   readonly user: Universal.User;
   readonly timestamp: number;
 }
-
-declare module "@yesimbot/agent-runtime" {
-  interface AgentCustomMessages {
-    "yesimbot.event": Event;
-    "yesimbot.message": Message;
-  }
-}
-
 export interface DeliveredPayload {
   readonly platform: string;
   readonly selfId: string;
@@ -46,7 +35,12 @@ export interface DeliveredPayload {
   readonly turnId: string;
   readonly text: string;
 }
-
+declare module "@yesimbot/agent-runtime" {
+  interface AgentCustomMessages {
+    "yesimbot.event": Event;
+    "yesimbot.message": Message;
+  }
+}
 declare module "koishi" {
   interface Events {
     "yesimbot/event": (input: Event) => void;
@@ -54,41 +48,33 @@ declare module "koishi" {
     "yesimbot/delivered": (payload: DeliveredPayload) => void;
   }
 }
-
 export function assembleEvent<K extends keyof EventMap>(
   base: RecordBase,
   payload: { readonly eventType: K; readonly text: string } & Omit<EventMap[K], keyof EventBase>,
 ): EventRecord<K> {
   return { platform: base.platform, selfId: base.selfId, channel: base.channel, timestamp: base.timestamp, ...payload } as EventRecord<K>;
 }
-
 export function isMessageRecord(record: MessageRecord | EventRecord): record is MessageRecord {
   return "messageId" in record;
 }
-
 export function isEventRecord<K extends keyof EventMap>(record: MessageRecord | EventRecord<K>): record is EventRecord<K> {
   return "eventType" in record;
 }
-
 export function createMessage(record: MessageRecord): Message {
   const { timestamp: _timestamp, ...data } = record;
   return createCustomMessage("yesimbot.message", data, { timestamp: record.timestamp });
 }
-
 export function createEvent<K extends keyof EventMap>(record: EventRecord<K>): Event<K>;
 export function createEvent(record: EventRecord): Event {
   const { timestamp: _timestamp, ...data } = record;
   return createCustomMessage("yesimbot.event", data, { timestamp: record.timestamp });
 }
-
 export function isMessage(message: AgentMessage): message is Message {
   return message.role === "custom" && message.type === "yesimbot.message";
 }
-
 export function isEvent(message: AgentMessage): message is Event {
   return message.role === "custom" && message.type === "yesimbot.event";
 }
-
 export function formatInput(input: Message | Event): UserModelMessage {
   if (isMessage(input)) {
     const time = new Intl.DateTimeFormat("zh-CN", {
@@ -116,7 +102,6 @@ export function formatInput(input: Message | Event): UserModelMessage {
     ].join("\n"),
   };
 }
-
 function formatElement(element: Element): string {
   if (element.type === "img" || element.type === "file") {
     const id = element.attrs.id;
@@ -128,7 +113,6 @@ function formatElement(element: Element): string {
   }
   return String(h(element.type, element.attrs, element.children.map(formatElement)));
 }
-
 export function parseReply(raw: string): Element[][] {
   const source = raw.replaceAll(MARK, "");
   const nonce = `${MARK}t${Math.random().toString(36).slice(2)}`;

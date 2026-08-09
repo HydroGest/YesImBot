@@ -118,10 +118,6 @@ describe("generateChainSemantics", () => {
     });
 
     expect(semantics).toBe("有人在分享时，群友通常短接一句认可。");
-    expect(mocks.generateText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: expect.stringContaining("chain: share -> agree"),
-      }),
-    );
+    expect(mocks.generateText).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("chain: share -> agree") }));
   });
 });

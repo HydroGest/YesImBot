@@ -27,7 +27,7 @@ describe("sanitizeForDisplay", () => {
 
 describe("formatReflectionTarget", () => {
   it("replaces image data and html with a short media summary", () => {
-    const target = '&lt;img src=&quot;data:image/png;base64,iVBORw0KGgoAAAANSUhEUg&quot;&gt;';
+    const target = "&lt;img src=&quot;data:image/png;base64,iVBORw0KGgoAAAANSUhEUg&quot;&gt;";
     expect(formatReflectionTarget(target)).toBe("[图片]");
   });
 

@@ -280,11 +280,25 @@ function buildReorderedSource(programNode, sourceCode) {
   }
   if (!changed) return null;
 
-  // Rebuild source text
+  // Rebuild source text:
+  // - Imports are kept dense (no blank lines between them)
+  // - One blank line between all other top-level declarations
+  // Each stmtText from getStatementText already ends with \n
   const parts = [];
+  let prevCategory = null;
   for (const seg of sorted) {
     for (const item of seg.items) {
-      parts.push(getStatementText(item, sourceCode));
+      const stmtText = getStatementText(item, sourceCode);
+      const itemCat = classify(item);
+      // Insert blank line unless both prev and current are imports
+      if (parts.length > 0) {
+        const bothImports = prevCategory === "import" && itemCat === "import";
+        if (!bothImports) {
+          parts.push("\n");
+        }
+      }
+      parts.push(stmtText);
+      if (itemCat !== null) prevCategory = itemCat;
     }
   }
 

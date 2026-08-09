@@ -14,6 +14,18 @@ import type {
   ResponsePattern,
 } from "./types.js";
 
+const RESPONSE_INTENTS = ["ack", "agree", "question", "joke", "roast", "empathy", "refuse"] as const;
+
+const INITIATION_INTENTS = ["share", "question", "react", "recall", "opinion"] as const;
+
+const messageAnnotationSchema = z.object({ id: z.string(), role: z.enum(["response", "initiation", "noise"]), intent: z.string() });
+
+const modelOutputSchema = z.object({ messages: z.array(messageAnnotationSchema).optional() });
+
+const MAX_MODEL_MESSAGES = 80;
+
+const MAX_MODEL_CHARS = 12_000;
+
 export interface PatternSnapshot {
   readonly responsePatterns: readonly ResponsePattern[];
   readonly initiationPatterns: readonly InitiationPattern[];
@@ -24,13 +36,9 @@ export interface ClassifyModelOptions {
   readonly maxThreadMessages?: number;
 }
 
-const RESPONSE_INTENTS = ["ack", "agree", "question", "joke", "roast", "empathy", "refuse"] as const;
-const INITIATION_INTENTS = ["share", "question", "react", "recall", "opinion"] as const;
-const messageAnnotationSchema = z.object({ id: z.string(), role: z.enum(["response", "initiation", "noise"]), intent: z.string() });
-const modelOutputSchema = z.object({ messages: z.array(messageAnnotationSchema).optional() });
-
-const MAX_MODEL_MESSAGES = 80;
-const MAX_MODEL_CHARS = 12_000;
+interface ClassifyThread {
+  readonly turns: readonly MessageTurn[];
+}
 
 export async function classifyPatternsWithModel(
   model: LanguageModel,
@@ -65,11 +73,7 @@ export async function classifyPatternsWithModel(
   }
 }
 
-export async function generateChainSemantics(
-  model: LanguageModel,
-  chain: readonly string[],
-  sample: LocalChainSample,
-): Promise<string | undefined> {
+export async function generateChainSemantics(model: LanguageModel, chain: readonly string[], sample: LocalChainSample): Promise<string | undefined> {
   const sampleText = sample.turns.map((turn) => `${turn.speaker}: ${turn.text}`).join("\n");
   const prompt = [
     "下面是一条真实群聊回复链：",
@@ -88,10 +92,6 @@ export async function generateChainSemantics(
   } catch {
     return undefined;
   }
-}
-
-interface ClassifyThread {
-  readonly turns: readonly MessageTurn[];
 }
 
 function selectClassifyThreads(

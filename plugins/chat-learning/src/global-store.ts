@@ -139,23 +139,14 @@ export function selectGlobalMemeTemplates(bank: GlobalRuleBank, max: number): re
   return (bank.templates ?? []).slice(0, max);
 }
 
-export function selectRelevantGlobalChains(
-  bank: GlobalRuleBank,
-  currentText: string,
-  minChannels: number,
-  max: number,
-): readonly GlobalChainPattern[] {
+export function selectRelevantGlobalChains(bank: GlobalRuleBank, currentText: string, minChannels: number, max: number): readonly GlobalChainPattern[] {
   const query = normalizeRelevanceText(currentText);
   if (query.length === 0) return [];
   return bank.chains
     .filter((chain) => chain.channels.length >= minChannels)
     .map((chain) => ({ chain, score: chainRelevanceScore(chain, query) }))
     .filter((candidate) => candidate.score > 0)
-    .sort(
-      (left, right) =>
-        right.score - left.score ||
-        chainScore(right.chain) - chainScore(left.chain),
-    )
+    .sort((left, right) => right.score - left.score || chainScore(right.chain) - chainScore(left.chain))
     .slice(0, max)
     .map((candidate) => candidate.chain);
 }
@@ -271,13 +262,7 @@ function mergeChainPattern(
   if (sample && !samples.some((item) => sameSample(item, sample))) {
     samples.push({ ...sample, channelKey });
   }
-  byKey.set(key, {
-    ...existing,
-    semantics: existing.semantics ?? semantics,
-    samples: samples.slice(-2),
-    channels,
-    lastSeenAt: now,
-  });
+  byKey.set(key, { ...existing, semantics: existing.semantics ?? semantics, samples: samples.slice(-2), channels, lastSeenAt: now });
 }
 
 function cloneGlobalChain(chain: GlobalChainPattern): GlobalChainPattern {
@@ -292,9 +277,7 @@ function cloneGlobalChain(chain: GlobalChainPattern): GlobalChainPattern {
 
 function sameSample(left: GlobalChainSample, right: LocalChainSample): boolean {
   if (left.turns.length !== right.turns.length) return false;
-  return left.turns.every(
-    (turn, index) => turn.text === right.turns[index]?.text && turn.speaker === right.turns[index]?.speaker,
-  );
+  return left.turns.every((turn, index) => turn.text === right.turns[index]?.text && turn.speaker === right.turns[index]?.speaker);
 }
 
 function chainRelevanceScore(chain: GlobalChainPattern, query: string): number {

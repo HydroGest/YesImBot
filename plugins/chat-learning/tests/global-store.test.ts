@@ -178,16 +178,7 @@ describe("selectGlobalMemeTemplates", () => {
       updatedAt: 1,
       patterns: [],
       chains: [],
-      templates: [
-        {
-          template: "？！{X}！？",
-          examples: ["？！强强！？"],
-          usage: "把状态词套进感叹模板。",
-          frequency: 3,
-          firstSeenAt: 1,
-          lastSeenAt: 2,
-        },
-      ],
+      templates: [{ template: "？！{X}！？", examples: ["？！强强！？"], usage: "把状态词套进感叹模板。", frequency: 3, firstSeenAt: 1, lastSeenAt: 2 }],
     };
 
     expect(selectGlobalMemeTemplates(bank, 1)).toHaveLength(1);

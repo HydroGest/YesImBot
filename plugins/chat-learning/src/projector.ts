@@ -21,13 +21,7 @@ const CHAT_LEARNING_GUIDE = `<chat_learning_guide>
 生成回复时，模仿样本中的长度、语气、标点和接话节奏，不要复制具体内容、人名、日期或事实；示例、标签和本段说明也不要写进对外回复。
 </chat_learning_guide>`;
 
-const LOW_QUALITY_STYLE_PATTERNS = [
-  /请\s*(复读|分析|解释|证明)/,
-  /权限不足/,
-  /你是\s*(bot|机器人|ai)/i,
-  /调戏/,
-  /笑点解析/,
-] as const;
+const LOW_QUALITY_STYLE_PATTERNS = [/请\s*(复读|分析|解释|证明)/, /权限不足/, /你是\s*(bot|机器人|ai)/i, /调戏/, /笑点解析/] as const;
 
 const INTENT_SEMANTICS: Readonly<Record<string, string>> = {
   ack: "认可或接话",
@@ -127,11 +121,7 @@ function renderMemeTemplates(templates: readonly MemeTemplate[]): string | undef
   return `<meme_templates>\n${lines.join("\n\n")}\n</meme_templates>`;
 }
 
-function renderGlobalChains(
-  chains: readonly GlobalChainPattern[],
-  stylePatterns: readonly GlobalPattern[],
-  config: ChatLearningConfig,
-): string | undefined {
+function renderGlobalChains(chains: readonly GlobalChainPattern[], stylePatterns: readonly GlobalPattern[], config: ChatLearningConfig): string | undefined {
   const relevant = chains
     .filter((chain) => chain.channels.length >= config.minGlobalChannels)
     .sort((left, right) => chainScore(right) - chainScore(left))
@@ -156,9 +146,7 @@ function renderGlobalChains(
       const sampleLines = formatSampleLines(sample.turns);
       return `<chain>\n<semantics>${escapeXml(semantic)}</semantics>\n<sample>${sampleLines.join("\n")}</sample>\n</chain>`;
     }
-    const phrases = chain.chain
-      .map((intent) => phrasesByIntent.get(intent)?.[0]?.phrase)
-      .filter((phrase): phrase is string => phrase !== undefined);
+    const phrases = chain.chain.map((intent) => phrasesByIntent.get(intent)?.[0]?.phrase).filter((phrase): phrase is string => phrase !== undefined);
     if (phrases.length === chain.chain.length) {
       return `<chain>\n<semantics>${escapeXml(semantic)}：${escapeXml(phrases.join(" -> "))}</semantics>\n</chain>`;
     }
@@ -237,28 +225,18 @@ function selectExamples(state: ChatLearningState, config: ChatLearningConfig): r
   }));
 }
 
-function scoreChain(
-  turns: readonly MessageTurn[],
-  intentByTurnId: ReadonlyMap<string, string>,
-  config: ChatLearningConfig,
-): number {
+function scoreChain(turns: readonly MessageTurn[], intentByTurnId: ReadonlyMap<string, string>, config: ChatLearningConfig): number {
   if (!isUsableStyleExample(turns, config)) return 0;
   const selected = turns.slice(-config.maxMessagesPerExample);
-  const texts = selected
-    .map((turn) => sanitizeForDisplay(turn.text).trim())
-    .filter((text) => text.length > 0);
-  const intents = new Set(
-    selected.map((turn) => intentByTurnId.get(turn.id)).filter((intent): intent is string => intent !== undefined),
-  );
+  const texts = selected.map((turn) => sanitizeForDisplay(turn.text).trim()).filter((text) => text.length > 0);
+  const intents = new Set(selected.map((turn) => intentByTurnId.get(turn.id)).filter((intent): intent is string => intent !== undefined));
 
   return texts.length + intents.size * 2;
 }
 
 function isUsableStyleExample(turns: readonly MessageTurn[], config: ChatLearningConfig): boolean {
   const selected = turns.slice(-config.maxMessagesPerExample);
-  const texts = selected
-    .map((turn) => sanitizeForDisplay(turn.text).trim())
-    .filter((text) => text.length > 0);
+  const texts = selected.map((turn) => sanitizeForDisplay(turn.text).trim()).filter((text) => text.length > 0);
   if (texts.length < 2) return false;
 
   const userIds = new Set(selected.map((turn) => turn.userId));

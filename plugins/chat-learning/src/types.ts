@@ -1,5 +1,15 @@
 export type LinkKind = "quote" | "reply" | "at" | "adjacent" | "entity";
 
+export type LinkCorrectionAction = "add" | "remove";
+
+export type ResponseIntent = "ack" | "agree" | "question" | "joke" | "roast" | "empathy" | "refuse";
+
+export type InitiationIntent = "share" | "question" | "react" | "recall" | "opinion";
+
+export type GlobalPatternKind = "response" | "initiation";
+
+export type ProactiveEventKind = "global-brain" | "schedule" | "chat-learning";
+
 export interface MessageTurn {
   readonly id: string;
   readonly messageId: string;
@@ -22,8 +32,6 @@ export interface MessageLink {
   readonly evidence: readonly string[];
 }
 
-export type LinkCorrectionAction = "add" | "remove";
-
 export interface LinkCorrection {
   readonly id: string;
   readonly action: LinkCorrectionAction;
@@ -41,9 +49,6 @@ export interface ConversationSegment {
   readonly endTime: number;
   readonly turns: readonly MessageTurn[];
 }
-
-export type ResponseIntent = "ack" | "agree" | "question" | "joke" | "roast" | "empathy" | "refuse";
-export type InitiationIntent = "share" | "question" | "react" | "recall" | "opinion";
 
 export interface ResponsePattern {
   readonly intent: ResponseIntent;
@@ -75,8 +80,6 @@ export interface LocalChainPattern {
   readonly sample?: LocalChainSample;
   readonly semantics?: string;
 }
-
-export type GlobalPatternKind = "response" | "initiation";
 
 export interface GlobalChannelStat {
   readonly key: string;
@@ -161,5 +164,3 @@ export interface ChatLearningConfig {
   readonly maxInjectedReflections: number;
   readonly injectStyleAsSystem: boolean;
 }
-
-export type ProactiveEventKind = "global-brain" | "schedule" | "chat-learning";

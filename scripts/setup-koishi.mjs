@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -17,7 +17,7 @@ const TURBO_CONCURRENCY = process.env.YESIMBOT_TURBO_CONCURRENCY ?? "2";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const yesimbotRoot = path.resolve(scriptDir, "..");
-const yesimbotMeta = JSON.parse(fs.readFileSync(path.join(yesimbotRoot, "package.json"), "utf8"));
+
 const stateFile = path.join(yesimbotRoot, ".koishi-app-path");
 const setupLogPath = path.join(yesimbotRoot, "yesimbot-setup.log");
 
@@ -125,13 +125,7 @@ function log(message) {
 }
 
 function writeSetupLog(content) {
-  const body = [
-    `[${new Date().toISOString()}] yesimbot-setup failed`,
-    `cwd: ${process.cwd()}`,
-    `command: ${process.argv.join(" ")}`,
-    "",
-    content,
-  ].join("\n");
+  const body = [`[${new Date().toISOString()}] yesimbot-setup failed`, `cwd: ${process.cwd()}`, `command: ${process.argv.join(" ")}`, "", content].join("\n");
   fs.writeFileSync(setupLogPath, `${body}\n`, { encoding: "utf8", flag: "a" });
 }
 
@@ -296,13 +290,7 @@ function ensureAppYarnConfig(directory) {
   const file = path.join(directory, ".yarnrc.yml");
   const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
   if (existing.includes("supportedArchitectures:")) return;
-  const block = [
-    "supportedArchitectures:",
-    "  os:",
-    "    - current",
-    "  cpu:",
-    "    - current",
-  ].join("\n");
+  const block = ["supportedArchitectures:", "  os:", "    - current", "  cpu:", "    - current"].join("\n");
   fs.writeFileSync(file, `${existing.trimEnd() ? `${existing.trimEnd()}\n\n` : ""}${block}\n`);
 }
 
@@ -647,10 +635,7 @@ function main() {
   const manifestChanged = JSON.stringify(manifestBefore) !== JSON.stringify(manifestAfter);
 
   ensureAppYarnConfig(appRoot);
-  runInstallIfMissing(appRoot, "Koishi app", {
-    force: manifestChanged,
-    extraFingerprint: repoFingerprint,
-  });
+  runInstallIfMissing(appRoot, "Koishi app", { force: manifestChanged, extraFingerprint: repoFingerprint });
 
   log("updating koishi.yml");
   updateKoishi(plugins);

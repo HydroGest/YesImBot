@@ -178,8 +178,8 @@ yarn-error.log
 references/
 
 .koishi-app-path
-yesimbot-setup.log
 .mcp.json
 *.o
 skills-lock.json
 yarn.lock
+yesimbot-setup.log

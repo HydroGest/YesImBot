@@ -3,6 +3,12 @@ import { z } from "zod";
 
 import type { MemeTemplate } from "./types.js";
 
+const memeUsageSchema = z.object({ usage: z.string().min(1).max(140) });
+
+const semanticTemplateSchema = z.object({
+  templates: z.array(z.object({ template: z.string().min(1).max(60), examples: z.array(z.string()).min(2).max(5), usage: z.string().min(1).max(140) })).max(3),
+});
+
 interface TemplateCandidate {
   readonly template: string;
   readonly examples: readonly string[];
@@ -15,29 +21,12 @@ export interface MemePhraseInput {
   readonly frequency: number;
 }
 
-const memeUsageSchema = z.object({
-  usage: z.string().min(1).max(140),
-});
-
-const semanticTemplateSchema = z.object({
-  templates: z
-    .array(
-      z.object({
-        template: z.string().min(1).max(60),
-        examples: z.array(z.string()).min(2).max(5),
-        usage: z.string().min(1).max(140),
-      }),
-    )
-    .max(3),
-});
-
 export async function buildMemeTemplates(
   model: LanguageModel | undefined,
   phrases: readonly MemePhraseInput[],
   now = Date.now(),
 ): Promise<readonly MemeTemplate[]> {
-  const normalized = phrases
-    .filter((item) => item.phrase.length >= 3 && !item.phrase.includes("[") && !item.phrase.includes("]"));
+  const normalized = phrases.filter((item) => item.phrase.length >= 3 && !item.phrase.includes("[") && !item.phrase.includes("]"));
   const heuristic = [...findTemplateCandidates(normalized), ...findRepetitionCandidates(normalized)];
   const semantic = model ? await summarizeSemanticTemplates(model, normalized) : [];
   const candidates = [...heuristic, ...semantic]
@@ -50,10 +39,9 @@ export async function buildMemeTemplates(
     let usage = candidate.usage;
     if (!usage && model) usage = await summarizeUsage(model, candidate);
     if (!usage) {
-      usage =
-        candidate.template.includes("× N")
-          ? `本群近期高频复读 ${candidate.template.replace(" × N", "")}，重复次数可随情绪增加。`
-          : `本群近期高频使用 ${candidate.template.replace("{X}", "状态词")}，可替换 {X} 类推新变体。`;
+      usage = candidate.template.includes("× N")
+        ? `本群近期高频复读 ${candidate.template.replace(" × N", "")}，重复次数可随情绪增加。`
+        : `本群近期高频使用 ${candidate.template.replace("{X}", "状态词")}，可替换 {X} 类推新变体。`;
     }
     if (!usage) continue;
     templates.push({
@@ -99,10 +87,7 @@ function findTemplateCandidates(items: readonly { readonly phrase: string; reado
 
   return [...candidates.values()]
     .filter((candidate) => candidate.slots.size >= 2)
-    .map(({ slots: _slots, ...candidate }) => ({
-      ...candidate,
-      examples: [...new Set(candidate.examples)].slice(0, 4),
-    }))
+    .map(({ slots: _slots, ...candidate }) => ({ ...candidate, examples: [...new Set(candidate.examples)].slice(0, 4) }))
     .sort((left, right) => right.frequency - left.frequency);
 }
 
@@ -121,11 +106,7 @@ function findRepetitionCandidates(items: readonly { readonly phrase: string; rea
 
   return [...byUnit.values()]
     .filter((candidate) => candidate.repeatCounts.size >= 2)
-    .map(({ unit, examples, frequency }) => ({
-      template: `${unit} × N`,
-      examples: [...new Set(examples)].slice(0, 4),
-      frequency,
-    }));
+    .map(({ unit, examples, frequency }) => ({ template: `${unit} × N`, examples: [...new Set(examples)].slice(0, 4), frequency }));
 }
 
 function minimalRepeatUnit(value: string): string | undefined {
@@ -161,7 +142,11 @@ async function summarizeUsage(model: LanguageModel, candidate: TemplateCandidate
 
   try {
     const { text } = await generateText({ model, prompt, temperature: 0.2 });
-    const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    const cleaned = text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
     const parsed = JSON.parse(cleaned);
     const result = memeUsageSchema.safeParse(parsed);
     return result.success ? result.data.usage : undefined;
@@ -170,10 +155,7 @@ async function summarizeUsage(model: LanguageModel, candidate: TemplateCandidate
   }
 }
 
-async function summarizeSemanticTemplates(
-  model: LanguageModel,
-  phrases: readonly MemePhraseInput[],
-): Promise<TemplateCandidate[]> {
+async function summarizeSemanticTemplates(model: LanguageModel, phrases: readonly MemePhraseInput[]): Promise<TemplateCandidate[]> {
   const allowed = new Set(phrases.map((item) => item.phrase));
   const prompt = [
     "以下是某个群聊的高频短语：",
@@ -185,7 +167,11 @@ async function summarizeSemanticTemplates(
 
   try {
     const { text } = await generateText({ model, prompt, temperature: 0.2 });
-    const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    const cleaned = text
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
     const parsed = JSON.parse(cleaned);
     const result = semanticTemplateSchema.safeParse(parsed);
     if (!result.success) return [];

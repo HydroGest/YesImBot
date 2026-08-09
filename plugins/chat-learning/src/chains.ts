@@ -1,14 +1,6 @@
 import { buildConversationChains } from "./links.js";
 import { sanitizeForDisplay } from "./text.js";
-import type {
-  ConversationSegment,
-  InitiationPattern,
-  LocalChainSample,
-  LocalChainPattern,
-  MessageLink,
-  MessageTurn,
-  ResponsePattern,
-} from "./types.js";
+import type { ConversationSegment, InitiationPattern, LocalChainSample, LocalChainPattern, MessageLink, MessageTurn, ResponsePattern } from "./types.js";
 
 export function buildLocalChainPatterns(
   segments: readonly ConversationSegment[],
@@ -29,9 +21,7 @@ export function buildLocalChainPatterns(
     counts.set(key, existing);
   }
 
-  return [...counts.values()]
-    .map(({ chain, frequency, sample }) => ({ chain, frequency, sample }))
-    .sort((left, right) => right.frequency - left.frequency);
+  return [...counts.values()].map(({ chain, frequency, sample }) => ({ chain, frequency, sample })).sort((left, right) => right.frequency - left.frequency);
 }
 
 export function buildIntentByTurnId(responsePatterns: readonly ResponsePattern[], initiationPatterns: readonly InitiationPattern[]): Map<string, string> {
@@ -45,10 +35,7 @@ export function buildIntentByTurnId(responsePatterns: readonly ResponsePattern[]
   return intentByTurnId;
 }
 
-function createChainSample(
-  turns: readonly MessageTurn[],
-  intentByTurnId: ReadonlyMap<string, string>,
-): LocalChainSample | undefined {
+function createChainSample(turns: readonly MessageTurn[], intentByTurnId: ReadonlyMap<string, string>): LocalChainSample | undefined {
   const speakers = new Map<string, string>();
   let nextSpeaker = 0;
   const sampleTurns = turns
@@ -57,11 +44,7 @@ function createChainSample(
       const text = sanitizeForDisplay(turn.text).trim().slice(0, 80);
       const speaker = speakers.get(turn.userId) ?? String.fromCharCode(65 + nextSpeaker++);
       speakers.set(turn.userId, speaker);
-      return {
-        intent: intentByTurnId.get(turn.id) ?? "",
-        speaker,
-        text: text.length > 0 ? text : turn.hasImage ? "[图片]" : "",
-      };
+      return { intent: intentByTurnId.get(turn.id) ?? "", speaker, text: text.length > 0 ? text : turn.hasImage ? "[图片]" : "" };
     })
     .filter((turn) => turn.intent.length > 0 && turn.text.length > 0);
   return sampleTurns.length >= 2 ? { turns: sampleTurns } : undefined;

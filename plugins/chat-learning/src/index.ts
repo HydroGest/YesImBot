@@ -3,11 +3,8 @@ import { dirname, join, resolve } from "node:path";
 import type { AgentEntry, AgentPlugin, AgentPluginRuntime, AgentStorage, PrepareStepContext } from "@yesimbot/agent-runtime";
 import { createMessageEntry } from "@yesimbot/agent-runtime";
 import type { ModelMessage } from "ai";
-import { Context, Logger, Schema, Universal, type Bot, type Command, type Session } from "koishi";
+import { Context, Logger, Schema, Universal, type Command, type Session } from "koishi";
 import { createMessage, isMessage, type DeliveredPayload } from "koishi-plugin-yesimbot";
-
-/** Internal scope that always carries selfId for keying purposes. */
-type FullScope = { readonly type: "shared" | "direct"; readonly platform: string; readonly selfId: string; readonly channelId: string };
 
 import { buildLocalChainPatterns } from "./chains.js";
 import { collectTurns, segmentTurns } from "./collector.js";
@@ -73,10 +70,13 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
   maxModelThreadMessages: Schema.number().min(4).max(100).default(30).description("每条线程最多送入模型的消息数"),
   reflectionModel: Schema.dynamic("registry.chatModels").default("").description("可选：用独立模型评价 bot 最近发言并生成风格反思；留空则关闭"),
   maxInjectedReflections: Schema.number().min(1).max(10).default(3).description("每次注入提示词末尾的最近反思条数"),
-  injectStyleAsSystem: Schema.boolean()
-    .default(false)
-    .description("将 chat-learning 风格参考作为 system 消息注入；默认使用尾部 user 消息以兼容更多 provider"),
+  injectStyleAsSystem: Schema.boolean().default(false).description("将 chat-learning 风格参考作为 system 消息注入；默认使用尾部 user 消息以兼容更多 provider"),
 });
+
+const LINK_KINDS = new Set<LinkKind | "*">(["quote", "reply", "at", "adjacent", "entity", "*"]);
+
+/** Internal scope that always carries selfId for keying purposes. */
+type FullScope = { readonly type: "shared" | "direct"; readonly platform: string; readonly selfId: string; readonly channelId: string };
 
 export default class ChatLearningPlugin {
   public static readonly name = "yesimbot-chat-learning";
@@ -264,22 +264,15 @@ export default class ChatLearningPlugin {
               localEmbeddings,
               embeddingSimilarity: config.embeddingSimilarity,
             });
-            const mergedWithTemplates = {
-              ...mergedBank,
-              templates: await buildGlobalMemeTemplates(this.ctx, config, mergedBank),
-            };
+            const mergedWithTemplates = { ...mergedBank, templates: await buildGlobalMemeTemplates(this.ctx, config, mergedBank) };
             await globalStore.update(mergedWithTemplates);
             this.globalBanks.set(globalPath, mergedWithTemplates);
-            globalPatterns = [
-              ...selectGlobalPatterns(mergedWithTemplates, "response", config.minGlobalChannels, config.maxGlobalPatterns),
-            ];
+            globalPatterns = [...selectGlobalPatterns(mergedWithTemplates, "response", config.minGlobalChannels, config.maxGlobalPatterns)];
             globalStylePatterns = [
               ...selectGlobalPatterns(mergedWithTemplates, "response", config.minGlobalChannels, config.maxGlobalPatterns),
               ...selectGlobalPatterns(mergedWithTemplates, "initiation", config.minGlobalChannels, config.maxGlobalPatterns),
             ];
-            globalChains = [
-              ...selectGlobalChains(mergedWithTemplates, config.minGlobalChannels, config.maxGlobalPatterns),
-            ];
+            globalChains = [...selectGlobalChains(mergedWithTemplates, config.minGlobalChannels, config.maxGlobalPatterns)];
             globalMemeTemplates = selectGlobalMemeTemplates(mergedWithTemplates, Math.min(config.maxGlobalPatterns, 3));
             lastGlobalSyncAt = Date.now();
             logger.debug("chat_learning.global_sync", {
@@ -340,15 +333,7 @@ export default class ChatLearningPlugin {
           if (!current) break;
           this.reflectionPending.delete(key);
           if (this.reflectionLatestMessage.get(key) !== current.messageId) continue;
-          const styleBlock = buildPromptBlock(
-            state,
-            undefined,
-            config,
-            globalPatterns,
-            globalChains,
-            globalStylePatterns,
-            globalMemeTemplates,
-          );
+          const styleBlock = buildPromptBlock(state, undefined, config, globalPatterns, globalChains, globalStylePatterns, globalMemeTemplates);
           if (!styleBlock) continue;
           try {
             const ref = ctx.yesimbot.model.resolveChatModel(modelId);
@@ -408,39 +393,17 @@ export default class ChatLearningPlugin {
         const eventKind = currentEvent;
         currentEvent = undefined;
         const bank = this.globalBanks.get(globalPath) ?? globalStore.read();
-        globalPatterns = [
-          ...selectGlobalPatterns(
-            bank,
-            eventKind ? "initiation" : "response",
-            config.minGlobalChannels,
-            config.maxGlobalPatterns,
-          ),
-        ];
+        globalPatterns = [...selectGlobalPatterns(bank, eventKind ? "initiation" : "response", config.minGlobalChannels, config.maxGlobalPatterns)];
         globalStylePatterns = [
           ...selectGlobalPatterns(bank, "response", config.minGlobalChannels, config.maxGlobalPatterns),
           ...selectGlobalPatterns(bank, "initiation", config.minGlobalChannels, config.maxGlobalPatterns),
         ];
         const currentText = latestUserText(messages);
         globalChains = currentText
-          ? [
-              ...selectRelevantGlobalChains(
-                bank,
-                currentText,
-                config.minGlobalChannels,
-                Math.min(config.maxGlobalPatterns, 3),
-              ),
-            ]
+          ? [...selectRelevantGlobalChains(bank, currentText, config.minGlobalChannels, Math.min(config.maxGlobalPatterns, 3))]
           : [...selectGlobalChains(bank, config.minGlobalChannels, config.maxGlobalPatterns)];
         globalMemeTemplates = selectGlobalMemeTemplates(bank, Math.min(config.maxGlobalPatterns, 3));
-        const block = buildPromptBlock(
-          state,
-          eventKind,
-          config,
-          globalPatterns,
-          globalChains,
-          globalStylePatterns,
-          globalMemeTemplates,
-        );
+        const block = buildPromptBlock(state, eventKind, config, globalPatterns, globalChains, globalStylePatterns, globalMemeTemplates);
         logger.debug("chat_learning.prepare_step", {
           scope,
           turnId: context.turnId,
@@ -596,21 +559,9 @@ export default class ChatLearningPlugin {
               ...selectGlobalPatterns(bank, "response", this.config.minGlobalChannels, this.config.maxGlobalPatterns),
               ...selectGlobalPatterns(bank, "initiation", this.config.minGlobalChannels, this.config.maxGlobalPatterns),
             ];
-            const globalChains = selectGlobalChains(
-              bank,
-              this.config.minGlobalChannels,
-              this.config.maxGlobalPatterns,
-            );
+            const globalChains = selectGlobalChains(bank, this.config.minGlobalChannels, this.config.maxGlobalPatterns);
             const globalMemeTemplates = selectGlobalMemeTemplates(bank, Math.min(this.config.maxGlobalPatterns, 3));
-            const block = buildPromptBlock(
-              state,
-              eventKind,
-              this.config,
-              globalPatterns,
-              globalChains,
-              globalStylePatterns,
-              globalMemeTemplates,
-            );
+            const block = buildPromptBlock(state, eventKind, this.config, globalPatterns, globalChains, globalStylePatterns, globalMemeTemplates);
             const reflection = await this.reflectionForPreview(scope, block);
             if (!block) return "当前没有可注入的学习上下文";
             this.logger.debug("chat_learning.preview", {
@@ -979,16 +930,7 @@ function buildSnapshot(
   const segments = segmentTurns(turns);
   const links = applyCorrections(buildLinks(turns, { selfId: scope.selfId }), turns, corrections);
   const lastEntry = [...entries].reverse().find((entry) => entry.type === "message");
-  return {
-    lastEntryId: lastEntry?.id,
-    builtAt: now,
-    turns,
-    links,
-    segments,
-    responsePatterns: [],
-    initiationPatterns: [],
-    memeTemplates: [],
-  };
+  return { lastEntryId: lastEntry?.id, builtAt: now, turns, links, segments, responsePatterns: [], initiationPatterns: [], memeTemplates: [] };
 }
 
 function buildFallbackPhrases(turns: ChatLearningState["turns"]): MemePhraseInput[] {
@@ -1015,13 +957,7 @@ async function enrichWithModel(state: ChatLearningState, config: ChatLearningCon
       ...patterns.responsePatterns.map((pattern) => ({ phrase: pattern.phrase, frequency: pattern.frequency })),
       ...patterns.initiationPatterns.map((pattern) => ({ phrase: pattern.phrase, frequency: pattern.frequency })),
     ]);
-    return {
-      ...state,
-      responsePatterns: patterns.responsePatterns,
-      initiationPatterns: patterns.initiationPatterns,
-      memeTemplates,
-      builtAt: Date.now(),
-    };
+    return { ...state, responsePatterns: patterns.responsePatterns, initiationPatterns: patterns.initiationPatterns, memeTemplates, builtAt: Date.now() };
   } catch (cause) {
     logger.warn("chat_learning.model_enrich_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
     return state;
@@ -1155,8 +1091,6 @@ function scopeKeyFromEntry(entry: AgentEntry): string | undefined {
   const data = entry.data.data;
   return `${data.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared"}:${data.platform}:${data.selfId}:${data.channel.id}`;
 }
-
-const LINK_KINDS = new Set<LinkKind | "*">(["quote", "reply", "at", "adjacent", "entity", "*"]);
 
 function parseLinkKind(value: string): LinkKind | "*" | undefined {
   return LINK_KINDS.has(value as LinkKind | "*") ? (value as LinkKind | "*") : undefined;
