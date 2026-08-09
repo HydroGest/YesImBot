@@ -237,7 +237,7 @@ export default class ChatLearningPlugin {
               ...next,
               responsePatterns: state.responsePatterns,
               initiationPatterns: state.initiationPatterns,
-              memeTemplates: state.memeTemplates,
+              memeTemplates: state.memeTemplates ?? [],
             };
           }
           state = current;

@@ -112,7 +112,7 @@ function renderGlobalPatterns(patterns: readonly GlobalPattern[], eventKind: Pro
 }
 
 function renderMemeTemplates(templates: readonly MemeTemplate[]): string | undefined {
-  if (templates.length === 0) return undefined;
+  if (!templates || templates.length === 0) return undefined;
   const lines = templates.map(
     (template) =>
       `<template>${escapeXml(template.template)}</template>\n<usage>${escapeXml(template.usage)}</usage>\n<examples>${template.examples

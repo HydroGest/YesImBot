@@ -151,6 +151,17 @@ describe("buildPromptBlock", () => {
     expect(block).toContain("<template>？！{X}！？</template>");
   });
 
+  it("tolerates legacy state without memeTemplates", () => {
+    const legacy = {
+      ...state(),
+      memeTemplates: undefined as unknown as ChatLearningState["memeTemplates"],
+    };
+
+    const block = buildPromptBlock(legacy, undefined, config);
+
+    expect(block).toContain("<style_examples>");
+  });
+
   it("injects initiation patterns for proactive events", () => {
     const block = buildPromptBlock(state(), "global-brain", config);
 
