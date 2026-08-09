@@ -408,7 +408,7 @@ export default class ChatLearningPlugin {
           stateLinks: state?.links.length ?? 0,
           blockLength: block?.length ?? 0,
         });
-        const prepared: ModelMessage[] = block ? [{ role: "system", content: block }, ...messages] : [...messages];
+        const prepared: ModelMessage[] = block ? [...messages, { role: "system", content: block }] : [...messages];
         const reflectionBlock = buildReflectionHistory(reflectionStore, config.maxInjectedReflections);
         if (reflectionBlock) {
           const reflectionMessage: ModelMessage = { role: "system", content: reflectionBlock };
