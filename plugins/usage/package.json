@@ -1,0 +1,71 @@
+{
+  "name": "koishi-plugin-yesimbot-usage",
+  "version": "0.0.1",
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "require": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "npx tsc -p tsconfig.json && npx koishi-console build .",
+    "check-types": "tsc --noEmit",
+    "clean": "rimraf lib && rimraf dist && rimraf tsconfig.tsbuildinfo",
+    "fmt": "oxfmt",
+    "lint": "oxlint",
+    "pub": "yarn npm publish --access public",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/provider": "^3.0.14",
+    "@koishijs/console": "^5.30.4",
+    "ai": "^6.0.0",
+    "echarts": "^5.5.0"
+  },
+  "devDependencies": {
+    "@koishijs/client": "^5.30.4",
+    "@koishijs/plugin-console": "^5.30.4",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^",
+    "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "@koishijs/plugin-analytics": "^2.0.6",
+    "@koishijs/plugin-console": "^5.30.4",
+    "@koishijs/plugin-status": "^7.4.10",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@koishijs/plugin-analytics": {
+      "optional": true
+    },
+    "@koishijs/plugin-status": {
+      "optional": true
+    }
+  },
+  "koishi": {
+    "description": {
+      "zh": "统计 YesImBot 模型调用 Token 消耗并注入 Koishi 首页和状态栏",
+      "en": "Track YesImBot model token usage in the Koishi dashboard and status bar"
+    },
+    "service": {
+      "required": [
+        "yesimbot",
+        "database",
+        "console"
+      ]
+    }
+  }
+}
