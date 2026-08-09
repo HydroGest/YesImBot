@@ -44,7 +44,7 @@
     "oxlint": "^1.77.0",
     "pkgroll": "^2.27.1",
     "rimraf": "^6.1.2",
-    "turbo": "^2.9.6",
+    "turbo": "2.10.8",
     "typescript": "^5.9.3"
   },
   "lint-staged": {
