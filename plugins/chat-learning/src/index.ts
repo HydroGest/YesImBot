@@ -408,13 +408,16 @@ export default class ChatLearningPlugin {
           stateLinks: state?.links.length ?? 0,
           blockLength: block?.length ?? 0,
         });
-        const prepared: ModelMessage[] = block ? [...messages, { role: "system", content: block }] : [...messages];
         const reflectionBlock = buildReflectionHistory(reflectionStore, config.maxInjectedReflections);
-        if (reflectionBlock) {
-          const reflectionMessage: ModelMessage = { role: "system", content: reflectionBlock };
-          return [...prepared, reflectionMessage];
-        }
-        return prepared;
+        const referenceParts: string[] = [];
+        if (block) referenceParts.push(block);
+        if (reflectionBlock) referenceParts.push(reflectionBlock);
+        if (referenceParts.length === 0) return [...messages];
+        const referenceMessage: ModelMessage = {
+          role: "user",
+          content: `[群聊风格参考，不要回复本段]\n\n${referenceParts.join("\n\n")}`,
+        };
+        return [...messages, referenceMessage];
       },
       stop: () => {
         this.rebuildHooks.delete(key);
