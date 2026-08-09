@@ -1,0 +1,49 @@
+{
+  "name": "koishi-plugin-yesimbot-command-bridge",
+  "version": "0.0.1",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "npx pkgroll --sourcemap=inline",
+    "check-types": "tsc --noEmit",
+    "clean": "rimraf dist && rimraf tsconfig.tsbuildinfo",
+    "fmt": "oxfmt",
+    "lint": "oxlint",
+    "pub": "yarn npm publish --access public",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@satorijs/element": "^3.2.0",
+    "@yesimbot/agent-runtime": "workspace:^",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^",
+    "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "@yesimbot/agent-runtime": "workspace:^",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^"
+  },
+  "koishi": {
+    "description": {
+      "zh": "让主 LLM 调用 Koishi 生态命令并接管输入输出",
+      "en": "Let the LLM invoke Koishi commands and control their I/O"
+    }
+  }
+}

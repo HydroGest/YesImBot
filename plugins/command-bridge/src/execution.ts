@@ -1,0 +1,223 @@
+import { h, type Bot, type Logger, type Session } from "koishi";
+import type { ChannelScope } from "koishi-plugin-yesimbot";
+
+import type {
+  CommandActor,
+  CommandExecutionEvent,
+  InteractiveMode,
+} from "./types.js";
+
+type Element = ReturnType<typeof h.normalize>[number];
+type ElementFragment = Parameters<typeof h.normalize>[0];
+type PromptRequest = {
+  prompt: string;
+  resolve: (value: string) => void;
+  reject: (reason: Error) => void;
+};
+
+export interface CommandExecutionOptions {
+  id: string;
+  command: string;
+  bot: Bot;
+  scope: ChannelScope;
+  actor: CommandActor;
+  interactive: InteractiveMode;
+  channelId?: string;
+  guildId?: string;
+  authority?: number;
+  permissions?: readonly string[];
+  timeoutMs: number;
+  maxTranscriptChars: number;
+  logger: Pick<Logger, "debug" | "info" | "warn">;
+}
+
+export class CommandExecution {
+  public readonly id: string;
+
+  private readonly session: Session;
+  private readonly transcript: Element[] = [];
+  private readonly waiters: Array<() => void> = [];
+  private readonly abortController = new AbortController();
+  private pendingPrompt?: PromptRequest;
+  private terminal?: CommandExecutionEvent;
+  private timer?: NodeJS.Timeout;
+
+  public constructor(private readonly options: CommandExecutionOptions) {
+    this.id = options.id;
+    this.session = this.createSession(options);
+    this.overrideSessionMethods(options);
+  }
+
+  public start(): void {
+    this.timer = setTimeout(() => {
+      this.abort(new Error("command timed out"));
+    }, this.options.timeoutMs);
+
+    void this.run().finally(() => {
+      if (this.timer) clearTimeout(this.timer);
+    });
+  }
+
+  public async next(): Promise<CommandExecutionEvent> {
+    for (;;) {
+      if (this.terminal) return this.terminal;
+
+      if (this.pendingPrompt) {
+        return {
+          status: "awaiting_prompt",
+          executionId: this.id,
+          prompt: this.pendingPrompt.prompt,
+          transcript: this.serializeTranscript(),
+        };
+      }
+
+      await new Promise<void>((resolve) => {
+        this.waiters.push(resolve);
+      });
+    }
+  }
+
+  public async answer(answer: string): Promise<CommandExecutionEvent> {
+    const prompt = this.pendingPrompt;
+    if (!prompt) throw new Error(`no pending prompt for execution '${this.id}'`);
+
+    this.pendingPrompt = undefined;
+    prompt.resolve(answer);
+    this.notify();
+    return this.next();
+  }
+
+  public abort(reason: Error = new Error("command aborted")): void {
+    this.abortController.abort(reason);
+    const prompt = this.pendingPrompt;
+    if (prompt) {
+      this.pendingPrompt = undefined;
+      prompt.reject(reason);
+    }
+    this.notify();
+  }
+
+  private async run(): Promise<void> {
+    try {
+      await this.applyActorPermissions();
+      const output = await this.session.execute(this.options.command, true);
+      this.terminal = {
+        status: "done",
+        executionId: this.id,
+        transcript: this.serializeTranscript(),
+        returnValue: serializeElements(h.normalize(output as ElementFragment), this.options.maxTranscriptChars),
+      };
+    } catch (error) {
+      this.terminal = {
+        status: "done",
+        executionId: this.id,
+        transcript: this.serializeTranscript(),
+        error: formatError(error),
+      };
+    } finally {
+      this.notify();
+    }
+  }
+
+  private createSession(options: CommandExecutionOptions): Session {
+    const userId = options.actor.kind === "user"
+      ? options.actor.userId
+      : `yesimbot:agent:${options.bot.selfId}`;
+    const channelId = options.channelId ?? options.scope.channelId;
+
+    const session = options.bot.session({
+      type: "message-created",
+      platform: options.bot.platform,
+      selfId: options.bot.selfId,
+      channel: {
+        id: channelId,
+        type: options.scope.type === "direct" ? 1 : 0,
+      },
+      ...(options.guildId ? { guild: { id: options.guildId } } : {}),
+      user: { id: userId },
+    }) as Session;
+    session.bot = createSilentBotProxy(options.bot, (content) => {
+      this.transcript.push(...h.normalize(content as ElementFragment));
+    }) as Session["bot"];
+    return session;
+  }
+
+  private overrideSessionMethods(options: CommandExecutionOptions): void {
+    const session = this.session as Session & {
+      prompt: (...args: unknown[]) => Promise<string | undefined>;
+    };
+
+    session.send = async (fragment: Parameters<Session["send"]>[0]) => {
+      this.transcript.push(...h.normalize(fragment as ElementFragment));
+      return [];
+    };
+
+    session.sendQueued = async (fragment: Parameters<Session["sendQueued"]>[0]) => {
+      this.transcript.push(...h.normalize(fragment as ElementFragment));
+      return [];
+    };
+
+    session.prompt = async (...args: unknown[]) => {
+      if (options.interactive !== "ask") {
+        throw new Error("interactive command is not allowed");
+      }
+      if (typeof args[0] === "function") {
+        throw new Error("callback prompt form is not supported");
+      }
+
+      return new Promise<string>((resolve, reject) => {
+        this.pendingPrompt = {
+          prompt: "命令要求用户输入，请调用 koishi.prompt.answer 提供答案。",
+          resolve,
+          reject,
+        };
+        this.notify();
+      });
+    };
+  }
+
+  private async applyActorPermissions(): Promise<void> {
+    const { authority, permissions } = this.options;
+    if (authority === undefined && permissions === undefined) return;
+
+    const user = await this.session.observeUser(["id", "authority", "permissions", "locales"] as never);
+    const target = user as unknown as { authority: number; permissions: string[] };
+    if (authority !== undefined) target.authority = authority;
+    if (permissions !== undefined) target.permissions = [...permissions];
+  }
+
+  private serializeTranscript(): string {
+    return serializeElements(this.transcript, this.options.maxTranscriptChars);
+  }
+
+  private notify(): void {
+    for (const resolve of this.waiters.splice(0)) resolve();
+  }
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function serializeElements(elements: readonly Element[], maxChars: number): string {
+  return elements
+    .map((element) => element.toString())
+    .join("")
+    .trim()
+    .slice(0, maxChars);
+}
+
+function createSilentBotProxy(bot: Bot, onSend: (content: ElementFragment) => void): Bot {
+  return new Proxy(bot, {
+    get(target, property, receiver) {
+      if (property === "sendMessage") {
+        return async (_channelId: string, content: ElementFragment) => {
+          onSend(content);
+          return [];
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as Bot;
+}
