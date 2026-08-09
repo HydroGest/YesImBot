@@ -18,19 +18,31 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const yesimbotRoot = path.resolve(scriptDir, "..");
 const yesimbotMeta = JSON.parse(fs.readFileSync(path.join(yesimbotRoot, "package.json"), "utf8"));
 const stateFile = path.join(yesimbotRoot, ".koishi-app-path");
+const setupLogPath = path.join(yesimbotRoot, "yesimbot-setup.log");
 
 const parsed = parseArgs();
-if (!parsed.help) {
-  ensureNode();
-  ensureGit();
-  ensureYarn({ prepare: !parsed.check });
+let appRoot;
+let requireApp;
+try {
+  if (!parsed.help) {
+    ensureNode();
+    ensureGit();
+    ensureYarn({ prepare: !parsed.check });
+  }
+  appRoot = resolveAppRoot();
+  requireApp = createRequire(path.join(appRoot, "package.json"));
+  if (!parsed.help) main();
+} catch (error) {
+  const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  writeSetupLog(detail);
+  console.error(`[yesimbot-setup] setup failed; log written to ${setupLogPath}`);
+  console.error(detail);
+  process.exit(1);
 }
-const appRoot = resolveAppRoot();
-const requireApp = createRequire(path.join(appRoot, "package.json"));
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const options = { app: null, createApp: null, repo: DEFAULT_REPO, check: false, pull: false, start: false, help: false };
+  const options = { app: null, createApp: null, repo: DEFAULT_REPO, check: false, pull: false, noPull: false, start: false, help: false };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -38,6 +50,8 @@ function parseArgs() {
       options.check = true;
     } else if (arg === "--pull") {
       options.pull = true;
+    } else if (arg === "--no-pull") {
+      options.noPull = true;
     } else if (arg === "--start") {
       options.start = true;
     } else if (arg === "--help") {
@@ -109,7 +123,19 @@ function log(message) {
   console.log(`[yesimbot-setup] ${message}`);
 }
 
+function writeSetupLog(content) {
+  const body = [
+    `[${new Date().toISOString()}] yesimbot-setup failed`,
+    `cwd: ${process.cwd()}`,
+    `command: ${process.argv.join(" ")}`,
+    "",
+    content,
+  ].join("\n");
+  fs.writeFileSync(setupLogPath, `${body}\n`, { encoding: "utf8", flag: "a" });
+}
+
 function fail(message) {
+  writeSetupLog(message);
   console.error(`[yesimbot-setup] ${message}`);
   process.exit(1);
 }
@@ -315,6 +341,40 @@ function ensureDevBranch() {
     runChecked("git", ["-C", yesimbotRoot, "merge", "--ff-only", `origin/${BRANCH}`]);
   } else {
     runChecked("git", ["-C", yesimbotRoot, "checkout", "-b", BRANCH, `origin/${BRANCH}`]);
+  }
+}
+
+function syncRepository() {
+  const dirty = run("git", ["-C", yesimbotRoot, "status", "--porcelain"], { quiet: true });
+  if (dirty.errorMessage || dirty.stdout.trim()) {
+    log("local yesimbot has uncommitted changes; using it as-is");
+    return;
+  }
+
+  const current = run("git", ["-C", yesimbotRoot, "rev-parse", "--abbrev-ref", "HEAD"], { quiet: true });
+  if (current.errorMessage || current.stdout.trim() !== BRANCH) {
+    log(`local yesimbot is not on ${BRANCH}; skipping auto-sync`);
+    return;
+  }
+
+  const remote = run("git", ["-C", yesimbotRoot, "rev-parse", "--verify", "--quiet", `origin/${BRANCH}`], { quiet: true });
+  if (remote.errorMessage || !remote.stdout.trim()) {
+    log(`no ${BRANCH} remote ref; skipping auto-sync`);
+    return;
+  }
+
+  const local = run("git", ["-C", yesimbotRoot, "rev-parse", "HEAD"], { quiet: true });
+  if (local.errorMessage || local.stdout.trim() === remote.stdout.trim()) {
+    log(`local yesimbot is up to date with ${BRANCH}`);
+    return;
+  }
+
+  try {
+    log(`local yesimbot is behind ${BRANCH}; fast-forwarding`);
+    runChecked("git", ["-C", yesimbotRoot, "fetch", "origin", BRANCH]);
+    runChecked("git", ["-C", yesimbotRoot, "merge", "--ff-only", `origin/${BRANCH}`]);
+  } catch (cause) {
+    log(`could not sync yesimbot repository: ${cause instanceof Error ? cause.message : String(cause)}`);
   }
 }
 
@@ -550,6 +610,7 @@ function main() {
         "  --create-app <dir> create a Koishi app (reuses an existing valid app)",
         "  --check          verify the current setup without changing files",
         "  --pull           fetch and fast-forward yesimbot to origin/dev first",
+        "  --no-pull        use the local yesimbot repository without syncing",
         "  --start          run `yarn start` after setup",
         "  --repo <url>     git URL used when no origin remote exists",
       ].join("\n"),
@@ -559,6 +620,8 @@ function main() {
 
   if (parsed.pull) {
     ensureDevBranch();
+  } else if (!parsed.noPull) {
+    syncRepository();
   } else {
     log("using local yesimbot repository without updating");
   }
