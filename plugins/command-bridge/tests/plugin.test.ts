@@ -38,16 +38,14 @@ describe("CommandBridgePlugin", () => {
     await plugin.start();
     expect(use).toHaveBeenCalledOnce();
 
-    const agent = await plugin.setup(
-      { type: "shared", platform: "test", channelId: "room" },
-      { platform: "test", selfId: "bot" } as never,
-    );
+    const agent = await plugin.setup({ type: "shared", platform: "test", channelId: "room" }, { platform: "test", selfId: "bot" } as never);
     const tools = agent.tools ? await agent.tools({} as never) : [];
     expect(tools.map((tool) => tool.name)).toEqual([
-      "koishi.execute.list",
-      "koishi.execute",
-      "koishi.prompt.answer",
-      "koishi.execute.abort",
+      "koishi_execute_list",
+      "koishi_execute_help",
+      "koishi_execute",
+      "koishi_prompt_answer",
+      "koishi_execute_abort",
     ]);
 
     await plugin.stop();
@@ -61,27 +59,14 @@ describe("CommandBridgePlugin", () => {
       yesimbot: { agent: { use: vi.fn(() => vi.fn()) } },
       $commander: {
         _commandList: [
-          {
-            parent: null,
-            displayName: "weather",
-            _aliases: {},
-            toJSON: () => ({ name: "weather", description: { zh: "天气" }, children: [] }),
-          },
-          {
-            parent: null,
-            displayName: "lottery",
-            _aliases: {},
-            toJSON: () => ({ name: "lottery", description: { zh: "抽卡" }, children: [] }),
-          },
+          { parent: null, displayName: "weather", _aliases: {}, toJSON: () => ({ name: "weather", description: { zh: "天气" }, children: [] }) },
+          { parent: null, displayName: "lottery", _aliases: {}, toJSON: () => ({ name: "lottery", description: { zh: "抽卡" }, children: [] }) },
         ],
       },
     };
     const plugin = new CommandBridgePlugin(ctx as never, createConfig() as never);
-    const tools = plugin.createTools(
-      { type: "shared", platform: "test", channelId: "room" },
-      { platform: "test", selfId: "bot" } as never,
-    );
-    const listTool = tools.find((tool) => tool.name === "koishi.execute.list");
+    const tools = plugin.createTools({ type: "shared", platform: "test", channelId: "room" }, { platform: "test", selfId: "bot" } as never);
+    const listTool = tools.find((tool) => tool.name === "koishi_execute_list");
     expect(listTool).toBeDefined();
 
     const output = await listTool!.execute({} as never);

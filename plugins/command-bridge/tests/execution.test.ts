@@ -19,22 +19,12 @@ type FakeSession = {
 };
 
 function createFakeBot(session: FakeSession) {
-  const bot = {
-    platform: "test",
-    selfId: "bot",
-    sendMessage: vi.fn(async () => []),
-    session: vi.fn(() => session),
-  };
+  const bot = { platform: "test", selfId: "bot", sendMessage: vi.fn(async () => []), session: vi.fn(() => session) };
   session.bot = bot;
   return bot;
 }
 
-function createOptions(overrides: {
-  command?: string;
-  actor?: CommandActor;
-  interactive?: InteractiveMode;
-  session: FakeSession;
-}) {
+function createOptions(overrides: { command?: string; actor?: CommandActor; interactive?: InteractiveMode; session: FakeSession }) {
   return {
     id: "exec-1",
     command: overrides.command ?? "echo",
@@ -44,11 +34,7 @@ function createOptions(overrides: {
     interactive: overrides.interactive ?? "reject",
     timeoutMs: 1000,
     maxTranscriptChars: 1000,
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-    },
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
   };
 }
 
@@ -93,7 +79,7 @@ describe("CommandExecution", () => {
     expect(event.transcript).toContain("direct");
   });
 
-  it("returns awaiting_prompt and resumes with koishi.prompt.answer", async () => {
+  it("returns awaiting_prompt and resumes with koishi_prompt_answer", async () => {
     const session: FakeSession = {
       execute: async () => {
         const answer = await session.prompt();

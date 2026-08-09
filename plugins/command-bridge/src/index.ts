@@ -4,8 +4,8 @@ import { jsonSchema, type AgentPlugin, type AgentTool } from "@yesimbot/agent-ru
 import { Context, Logger, Schema, type Bot } from "koishi";
 import type { ChannelScope } from "koishi-plugin-yesimbot";
 
+import { collectCommandCatalog, filterCommandCatalog, formatCommandCatalog, formatCommandHelp } from "./catalog.js";
 import { CommandExecution } from "./execution.js";
-import { collectCommandCatalog, filterCommandCatalog, formatCommandCatalog } from "./catalog.js";
 import { validateCommandCall } from "./policy.js";
 import type {
   AbortCommandInput,
@@ -13,14 +13,16 @@ import type {
   CommandActor,
   CommandBridgeConfig,
   CommandExecutionEvent,
+  CommandHelpInput,
   ExecuteCommandInput,
   ListCommandsInput,
 } from "./types.js";
 
 const COMMAND_TOOL_GUIDANCE =
-  "koishi.execute 可以静默调用 Koishi 生态中的命令。命令输出只会返回给主模型，不会自动发送到群里；" +
-  "是否转述、如何转述由主模型决定。先使用 koishi.execute.list 查看可用命令；" +
-  "若命令返回 awaiting_prompt，请调用 koishi.prompt.answer 继续执行。";
+  "koishi_execute 可以静默调用 Koishi 生态中的命令。命令输出只会返回给主模型，不会自动发送到群里；" +
+  "是否转述、如何转述由主模型决定。先使用 koishi_execute_list 查看可用命令，" +
+  "使用 koishi_execute_help 了解命令的参数和选项；" +
+  "若命令返回 awaiting_prompt，请调用 koishi_prompt_answer 继续执行。";
 
 export default class CommandBridgePlugin {
   public static name = "yesimbot-command-bridge";
@@ -30,12 +32,10 @@ export default class CommandBridgePlugin {
   public static Config: Schema<CommandBridgeConfig> = Schema.object({
     trustMode: Schema.union(["locked", "full"]).default("locked").description("locked 仅允许 allowCommands，full 允许全部命令"),
     allowCommands: Schema.array(Schema.string()).default([]).role("table").description("locked 模式下允许执行的命令"),
-    hardDeny: Schema.array(Schema.string()).default([
-      "yesimbot",
-      "koishi.execute",
-      "koishi.execute.abort",
-      "koishi.prompt.answer",
-    ]).role("table").description("始终禁止的命令前缀"),
+    hardDeny: Schema.array(Schema.string())
+      .default(["yesimbot", "koishi.execute", "koishi.execute.abort", "koishi.prompt.answer"])
+      .role("table")
+      .description("始终禁止的命令前缀"),
     agentAuthority: Schema.number().default(0).description("agent 身份 authority，full 模式下为 0 时默认使用 4"),
     agentPermissions: Schema.array(Schema.string()).default([]).role("table").description("locked 模式下 agent 身份额外拥有的权限"),
     userActor: Schema.union(["disabled", "any"]).default("disabled").description("是否允许以用户身份代执行命令"),
@@ -84,20 +84,30 @@ export default class CommandBridgePlugin {
   public createTools(scope: ChannelScope, bot: Bot): AgentTool[] {
     return [
       {
-        name: "koishi.execute.list",
+        name: "koishi_execute_list",
         description: "列出当前策略下可用的 Koishi 命令",
         inputSchema: jsonSchema({
           type: "object",
-          properties: {
-            filter: { type: "string" },
-          },
+          properties: { filter: { type: "string", description: "按名称或描述过滤的关键字" } },
           additionalProperties: false,
         }),
         execute: async (input: ListCommandsInput) => this.listCommands(input),
         toModelOutput: async (options) => ({ type: "text", value: String((options as { output: string }).output) }),
       },
       {
-        name: "koishi.execute",
+        name: "koishi_execute_help",
+        description: "查看某个 Koishi 命令的详细帮助信息，包括参数、选项、示例和子命令。使用 koishi_execute 前先调用此工具了解参数格式。",
+        inputSchema: jsonSchema({
+          type: "object",
+          properties: { command: { type: "string", description: "要查询的命令名称" } },
+          required: ["command"],
+          additionalProperties: false,
+        }),
+        execute: async (input: CommandHelpInput) => this.commandHelp(input),
+        toModelOutput: async (options) => ({ type: "text", value: String((options as { output: string }).output) }),
+      },
+      {
+        name: "koishi_execute",
         description: "静默执行一条 Koishi 命令，把输出返回给主模型；支持 ask 交互模式",
         inputSchema: jsonSchema({
           type: "object",
@@ -105,10 +115,7 @@ export default class CommandBridgePlugin {
             command: { type: "string" },
             actor: {
               type: "object",
-              properties: {
-                kind: { type: "string", enum: ["agent", "user"] },
-                userId: { type: "string" },
-              },
+              properties: { kind: { type: "string", enum: ["agent", "user"] }, userId: { type: "string" } },
               required: ["kind"],
               additionalProperties: false,
             },
@@ -123,14 +130,11 @@ export default class CommandBridgePlugin {
         toModelOutput: async (options) => formatToolOutput(options as { output: CommandExecutionEvent }),
       },
       {
-        name: "koishi.prompt.answer",
-        description: "回答 koishi.execute 返回的 awaiting_prompt，并返回命令后续事件",
+        name: "koishi_prompt_answer",
+        description: "回答 koishi_execute 返回的 awaiting_prompt，并返回命令后续事件",
         inputSchema: jsonSchema({
           type: "object",
-          properties: {
-            executionId: { type: "string" },
-            answer: { type: "string" },
-          },
+          properties: { executionId: { type: "string" }, answer: { type: "string" } },
           required: ["executionId", "answer"],
           additionalProperties: false,
         }),
@@ -138,16 +142,9 @@ export default class CommandBridgePlugin {
         toModelOutput: async (options) => formatToolOutput(options as { output: CommandExecutionEvent }),
       },
       {
-        name: "koishi.execute.abort",
+        name: "koishi_execute_abort",
         description: "中止一个正在等待输入或超时的 Koishi 命令执行",
-        inputSchema: jsonSchema({
-          type: "object",
-          properties: {
-            executionId: { type: "string" },
-          },
-          required: ["executionId"],
-          additionalProperties: false,
-        }),
+        inputSchema: jsonSchema({ type: "object", properties: { executionId: { type: "string" } }, required: ["executionId"], additionalProperties: false }),
         execute: async (input: AbortCommandInput) => this.abortCommand(input),
         toModelOutput: async (options) => formatToolOutput(options as { output: CommandExecutionEvent }),
       },
@@ -194,12 +191,17 @@ export default class CommandBridgePlugin {
   }
 
   private listCommands(_input: ListCommandsInput): string {
-    const commander = (this.ctx as unknown as {
-      $commander: { _commandList: readonly import("koishi").Command[] };
-    }).$commander;
+    const commander = (this.ctx as unknown as { $commander: { _commandList: readonly import("koishi").Command[] } }).$commander;
     const catalog = collectCommandCatalog(commander);
     const allowed = filterCommandCatalog(catalog, this.config);
     return formatCommandCatalog(allowed) || "(no commands available)";
+  }
+
+  private commandHelp(input: CommandHelpInput): string {
+    const commander = (this.ctx as unknown as { $commander: { get(name: string): import("koishi").Command | undefined } }).$commander;
+    const command = commander.get(input.command);
+    if (!command) return `未找到命令: ${input.command}`;
+    return formatCommandHelp(command);
   }
 
   private async answerPrompt(input: AnswerPromptInput): Promise<CommandExecutionEvent> {

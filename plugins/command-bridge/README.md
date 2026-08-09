@@ -4,11 +4,12 @@
 
 ## 设计
 
-- `koishi.execute` 静默执行 Koishi 命令。
-- `koishi.execute.list` 列出当前策略下可用的 Koishi 命令。
+- `koishi_execute` 静默执行 Koishi 命令。
+- `koishi_execute_list` 列出当前策略下可用的 Koishi 命令。
+- `koishi_execute_help` 查看命令的详细帮助信息（参数、选项、示例）。
 - 命令内部通过 `session.send` / `session.sendQueued` 产生的输出会被捕获，不会自动发送到群里。
 - 通过 `session.bot.sendMessage()` 产生的输出也会被捕获。
-- `session.prompt` 在 `interactive: "ask"` 时返回 `awaiting_prompt`，主模型调用 `koishi.prompt.answer` 继续命令。
+- `session.prompt` 在 `interactive: "ask"` 时返回 `awaiting_prompt`，主模型调用 `koishi_prompt_answer` 继续命令。
 - 是否把命令结果转述到群里由主 LLM 决定。
 
 ## 配置
