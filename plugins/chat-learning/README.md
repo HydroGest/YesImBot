@@ -22,13 +22,13 @@
 | `minGlobalChannels`         | `2`     | 全局规律至少出现的频道数                                                   |
 | `maxGlobalPatterns`         | `8`     | 每轮最多注入的全局规律数                                                   |
 | `summaryModel`              | 留空    | 使用 Core 注册的模型 ID；留空则使用默认 chat 模型进行意图分类              |
-| `embeddingModel`            | 留空    | 可选 embedding 模型；配置后用于语义归并全局规律，留空则精确匹配             |
-| `embeddingSimilarity`       | `0.92`  | embedding 语义归并阈值，越高要求越相似                                      |
-| `maxModelThreads`           | `3`     | 每次模型标注最多使用几条完整对话线程                                        |
-| `maxModelThreadMessages`    | `30`    | 每条线程最多送入模型的消息数                                                |
-| `reflectionModel`           | 留空    | 可选独立模型；用于评价 bot 最近发言并生成风格反思，留空则关闭                 |
-| `maxInjectedReflections`    | `3`     | 每次注入提示词末尾的最近反思条数                                             |
-| `injectStyleAsSystem`       | `false` | 将风格参考作为 system 消息注入；默认用尾部 user 消息以兼容更多 provider       |
+| `embeddingModel`            | 留空    | 可选 embedding 模型；配置后用于语义归并全局规律，留空则精确匹配            |
+| `embeddingSimilarity`       | `0.92`  | embedding 语义归并阈值，越高要求越相似                                     |
+| `maxModelThreads`           | `3`     | 每次模型标注最多使用几条完整对话线程                                       |
+| `maxModelThreadMessages`    | `30`    | 每条线程最多送入模型的消息数                                               |
+| `reflectionModel`           | 留空    | 可选独立模型；用于评价 bot 最近发言并生成风格反思，留空则关闭              |
+| `maxInjectedReflections`    | `3`     | 每次注入提示词末尾的最近反思条数                                           |
+| `injectStyleAsSystem`       | `false` | 将风格参考作为 system 消息注入；默认用尾部 user 消息以兼容更多 provider    |
 
 `summaryModel` 使用与 Core `chatModel` 相同的 `registry.chatModels` schema，可以直接填 `provider:model`；没有可用模型时不生成 `local_patterns`。
 
