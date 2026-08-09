@@ -108,7 +108,7 @@ export function mergeLocalPatterns(
     );
   }
   for (const chain of chainPatterns) {
-    mergeChainPattern(byChainKey, chain.chain, chain.frequency, channelKey, now, chain.sample);
+    mergeChainPattern(byChainKey, chain.chain, chain.frequency, channelKey, now, chain.sample, chain.semantics);
   }
 
   return { version: bank.version, updatedAt: now, patterns: [...byKey.values()].sort(byScore), chains: [...byChainKey.values()].sort(byChainScore) };
@@ -233,6 +233,7 @@ function mergeChainPattern(
   channelKey: string,
   now: number,
   sample: LocalChainSample | undefined,
+  semantics: string | undefined,
 ): void {
   const key = chainKey(chain);
   const existing = byKey.get(key);
@@ -240,6 +241,7 @@ function mergeChainPattern(
     byKey.set(key, {
       chain: [...chain],
       samples: sample ? [{ ...sample, channelKey }] : [],
+      semantics,
       channels: [{ key: channelKey, frequency, lastSeenAt: now }],
       firstSeenAt: now,
       lastSeenAt: now,
@@ -258,13 +260,20 @@ function mergeChainPattern(
   if (sample && !samples.some((item) => sameSample(item, sample))) {
     samples.push({ ...sample, channelKey });
   }
-  byKey.set(key, { ...existing, samples: samples.slice(-2), channels, lastSeenAt: now });
+  byKey.set(key, {
+    ...existing,
+    semantics: existing.semantics ?? semantics,
+    samples: samples.slice(-2),
+    channels,
+    lastSeenAt: now,
+  });
 }
 
 function cloneGlobalChain(chain: GlobalChainPattern): GlobalChainPattern {
   return {
     ...chain,
     chain: [...chain.chain],
+    semantics: chain.semantics,
     samples: chain.samples?.map((sample) => ({ ...sample, turns: sample.turns.map((turn) => ({ ...turn })) })),
     channels: chain.channels.map((channel) => ({ ...channel })),
   };

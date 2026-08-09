@@ -27,6 +27,20 @@ const LOW_QUALITY_STYLE_PATTERNS = [
   /笑点解析/,
 ] as const;
 
+const INTENT_SEMANTICS: Readonly<Record<string, string>> = {
+  ack: "认可或接话",
+  agree: "同意",
+  question: "提问或反问",
+  joke: "接梗",
+  roast: "吐槽",
+  empathy: "共情",
+  refuse: "拒绝",
+  share: "分享",
+  react: "做出反应",
+  recall: "回忆",
+  opinion: "表达看法",
+};
+
 export function buildPromptBlock(
   state: ChatLearningState | undefined,
   eventKind: ProactiveEventKind | undefined,
@@ -73,10 +87,10 @@ function renderPatterns(state: ChatLearningState, eventKind: ProactiveEventKind 
   const initiation = eventKind ? state.initiationPatterns.slice(0, 8) : [];
   const lines: string[] = [];
   for (const pattern of response) {
-    lines.push(`<pattern kind="response" intent="${pattern.intent}" phrase="${escapeXml(pattern.phrase)}" count="${pattern.frequency}"/>`);
+    lines.push(renderPatternLine(pattern.intent, pattern.phrase, pattern.frequency));
   }
   for (const pattern of initiation) {
-    lines.push(`<pattern kind="initiation" intent="${pattern.intent}" phrase="${escapeXml(pattern.phrase)}" count="${pattern.frequency}"/>`);
+    lines.push(renderPatternLine(pattern.intent, pattern.phrase, pattern.frequency));
   }
   if (lines.length === 0) return undefined;
   return `<local_patterns>\n${lines.join("\n")}\n</local_patterns>`;
@@ -90,10 +104,7 @@ function renderGlobalPatterns(patterns: readonly GlobalPattern[], eventKind: Pro
     .slice(0, config.maxGlobalPatterns);
   if (relevant.length === 0) return undefined;
 
-  const lines = relevant.map(
-    (pattern) =>
-      `<pattern kind="global:${pattern.kind}" intent="${pattern.intent}" phrase="${escapeXml(pattern.phrase)}" channels="${pattern.channels.length}"/>`,
-  );
+  const lines = relevant.map((pattern) => renderPatternLine(pattern.intent, pattern.phrase, 0));
   return `<global_patterns>\n${lines.join("\n")}\n</global_patterns>`;
 }
 
@@ -120,21 +131,36 @@ function renderGlobalChains(
   }
 
   const lines = relevant.map((chain) => {
-    const attributes = [`channels="${chain.channels.length}"`, `steps="${escapeXml(chain.chain.join(" -> "))}"`];
+    const semantic = chain.semantics ?? chainSemantics(chain.chain);
     const sample = chain.samples?.[0];
     if (sample) {
       const sampleLines = sample.turns.map((turn) => `${turn.speaker}: ${escapeXml(turn.text)}`);
-      return `<chain ${attributes.join(" ")}>\n<sample>${sampleLines.join("\n")}</sample>\n</chain>`;
+      return `<chain>\n<semantics>${escapeXml(semantic)}</semantics>\n<sample>${sampleLines.join("\n")}</sample>\n</chain>`;
     }
     const phrases = chain.chain
       .map((intent) => phrasesByIntent.get(intent)?.[0]?.phrase)
       .filter((phrase): phrase is string => phrase !== undefined);
     if (phrases.length === chain.chain.length) {
-      attributes.push(`phrases="${escapeXml(phrases.join(" -> "))}"`);
+      return `<chain>\n<semantics>${escapeXml(semantic)}：${escapeXml(phrases.join(" -> "))}</semantics>\n</chain>`;
     }
-    return `<chain ${attributes.join(" ")}/>`;
+    return `<chain>\n<semantics>${escapeXml(semantic)}</semantics>\n</chain>`;
   });
   return `<global_chains>\n${lines.join("\n")}\n</global_chains>`;
+}
+
+function renderPatternLine(intent: string, phrase: string, frequency: number): string {
+  const count = frequency > 1 ? `（${frequency} 次）` : "";
+  return `<pattern><semantics>${intentSemantic(intent)}时常用：${escapeXml(phrase)}${count}</semantics></pattern>`;
+}
+
+function intentSemantic(intent: string): string {
+  return INTENT_SEMANTICS[intent] ?? intent;
+}
+
+function chainSemantics(chain: readonly string[]): string {
+  const parts = chain.map(intentSemantic);
+  if (parts.length < 2) return parts.join(" -> ");
+  return `${parts[0]}后，群友通常会${parts[1]}`;
 }
 
 function globalScore(pattern: GlobalPattern): number {

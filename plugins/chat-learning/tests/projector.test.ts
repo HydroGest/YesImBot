@@ -132,7 +132,7 @@ describe("buildPromptBlock", () => {
     const block = buildPromptBlock(state(), "global-brain", config);
 
     expect(block).not.toContain("<event_context>");
-    expect(block).toContain('kind="initiation"');
+    expect(block).toContain("提问或反问时常用：有人试过吗");
   });
 
   it("injects cross-group global patterns when they pass the channel threshold", () => {
@@ -153,7 +153,7 @@ describe("buildPromptBlock", () => {
     const block = buildPromptBlock(state(), undefined, config, globalPatterns);
 
     expect(block).toContain("<global_patterns>");
-    expect(block).toContain('kind="global:response"');
+    expect(block).toContain("<semantics>同意时常用：确实</semantics>");
   });
 
   it("injects cross-group chain structures", () => {
@@ -196,8 +196,9 @@ describe("buildPromptBlock", () => {
     const block = buildPromptBlock(state(), undefined, config, [], globalChains, globalPatterns);
 
     expect(block).toContain("<global_chains>");
-    expect(block).toContain('steps="question -&gt; agree"');
-    expect(block).toContain('phrases="有人试过吗 -&gt; 确实"');
+    expect(block).toContain(
+      "<semantics>提问或反问后，群友通常会同意：有人试过吗 -&gt; 确实</semantics>",
+    );
   });
 
   it("renders global chain samples as complete dialogue", () => {
@@ -245,7 +246,7 @@ describe("buildPromptBlock", () => {
     const block = buildPromptBlock(undefined, undefined, config, globalPatterns, []);
 
     expect(block).toContain("<global_patterns>");
-    expect(block).toContain('kind="global:response"');
+    expect(block).toContain("<semantics>同意时常用：确实</semantics>");
   });
 
   it("escapes prompt tags for chat preview output", () => {

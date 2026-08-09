@@ -97,6 +97,7 @@ describe("global chains", () => {
         {
           chain: ["question", "agree"],
           frequency: 1,
+          semantics: "有人在提问后，群友通常会短接一句认可。",
           sample: {
             turns: [
               { intent: "question", speaker: "C", text: "这个能用吗" },
@@ -112,6 +113,7 @@ describe("global chains", () => {
     expect(selectGlobalChains(crossed, 2, 8)).toHaveLength(1);
     expect(crossed.chains[0]?.channels[0]).toMatchObject({ frequency: 2 });
     expect(crossed.chains[0]?.samples).toHaveLength(2);
+    expect(crossed.chains[0]?.semantics).toBe("有人在提问后，群友通常会短接一句认可。");
   });
 });
 

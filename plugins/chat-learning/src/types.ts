@@ -73,6 +73,7 @@ export interface LocalChainPattern {
   readonly chain: readonly string[];
   readonly frequency: number;
   readonly sample?: LocalChainSample;
+  readonly semantics?: string;
 }
 
 export type GlobalPatternKind = "response" | "initiation";
@@ -101,6 +102,7 @@ export interface GlobalChainSample {
 export interface GlobalChainPattern {
   readonly chain: readonly string[];
   readonly samples?: readonly GlobalChainSample[];
+  readonly semantics?: string;
   readonly channels: readonly GlobalChannelStat[];
   readonly firstSeenAt: number;
   readonly lastSeenAt: number;

@@ -26,14 +26,23 @@ import {
 } from "./global-store.js";
 import { createChatHistoryStore, type ChatHistoryStore } from "./history.js";
 import { buildLinks } from "./links.js";
-import { classifyPatternsWithModel } from "./patterns.js";
+import { classifyPatternsWithModel, generateChainSemantics } from "./patterns.js";
 import { detectProactiveEvent } from "./proactive.js";
 import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.js";
 import { createReflectionStore, type ReflectionRecord, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
 import { reflectOnSentMessage } from "./reflection.js";
 import { createChatLearningStore } from "./store.js";
 import { formatReflectionTarget } from "./text.js";
-import type { ChatLearningConfig, ChatLearningState, GlobalChainPattern, GlobalPattern, LinkCorrection, LinkKind, ProactiveEventKind } from "./types.js";
+import type {
+  ChatLearningConfig,
+  ChatLearningState,
+  GlobalChainPattern,
+  GlobalPattern,
+  LinkCorrection,
+  LinkKind,
+  LocalChainPattern,
+  ProactiveEventKind,
+} from "./types.js";
 
 export const Config: Schema<ChatLearningConfig> = Schema.object({
   maxExamples: Schema.number().min(1).max(10).default(4).description("每轮最多注入几个示例对话段"),
@@ -233,7 +242,12 @@ export default class ChatLearningPlugin {
           if (Date.now() - lastGlobalSyncAt >= globalSyncMs) {
             await this.syncGlobalFromHistory(globalPath, globalStore, config);
             const currentBank = this.globalBanks.get(globalPath) ?? globalStore.read();
-            const chainPatterns = buildLocalChainPatterns(current.segments, current.links, current.responsePatterns, current.initiationPatterns);
+            const chainPatterns = await enrichChainSemantics(
+              this.ctx,
+              config,
+              buildLocalChainPatterns(current.segments, current.links, current.responsePatterns, current.initiationPatterns),
+              currentBank.chains,
+            );
             const localEmbeddings = await buildPatternEmbeddingMap(this.ctx, config, current.responsePatterns, current.initiationPatterns);
             const mergedBank = mergeLocalPatterns(currentBank, current.responsePatterns, current.initiationPatterns, chainPatterns, key, Date.now(), {
               localEmbeddings,
@@ -879,7 +893,12 @@ export default class ChatLearningPlugin {
         : undefined;
       const responsePatterns = patterns?.responsePatterns ?? [];
       const initiationPatterns = patterns?.initiationPatterns ?? [];
-      const chainPatterns = buildLocalChainPatterns(segments, links, responsePatterns, initiationPatterns);
+      const chainPatterns = await enrichChainSemantics(
+        this.ctx,
+        config,
+        buildLocalChainPatterns(segments, links, responsePatterns, initiationPatterns),
+        bank.chains,
+      );
       const localEmbeddings = await buildPatternEmbeddingMap(this.ctx, config, responsePatterns, initiationPatterns);
       bank = mergeLocalPatterns(bank, responsePatterns, initiationPatterns, chainPatterns, scopeKeyValue, Date.now(), {
         localEmbeddings,
@@ -949,6 +968,27 @@ async function enrichWithModel(state: ChatLearningState, config: ChatLearningCon
     logger.warn("chat_learning.model_enrich_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
     return state;
   }
+}
+
+async function enrichChainSemantics(
+  ctx: Context,
+  config: ChatLearningConfig,
+  chainPatterns: readonly LocalChainPattern[],
+  existingChains: readonly GlobalChainPattern[],
+): Promise<readonly LocalChainPattern[]> {
+  const modelId = resolveChatLearningModelId(ctx, config);
+  if (!modelId) return chainPatterns;
+  const existingByKey = new Map(existingChains.map((chain) => [chain.chain.join(">"), chain.semantics]));
+  const ref = ctx.yesimbot.model.resolveChatModel(modelId);
+  const limited = chainPatterns.slice(0, config.maxGlobalPatterns);
+  const enriched = await Promise.all(
+    limited.map(async (pattern) => {
+      if (pattern.semantics || !pattern.sample || existingByKey.get(pattern.chain.join(">"))) return pattern;
+      const semantics = await generateChainSemantics(ref.model, pattern.chain, pattern.sample);
+      return semantics ? { ...pattern, semantics } : pattern;
+    }),
+  );
+  return enriched;
 }
 
 function resolveChatLearningModelId(ctx: Context, config: ChatLearningConfig): string | undefined {

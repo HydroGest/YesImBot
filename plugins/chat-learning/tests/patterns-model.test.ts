@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({ generateText: vi.fn<() => Promise<{ text: stri
 
 vi.mock("ai", () => ({ generateText: mocks.generateText }));
 
-import { classifyPatternsWithModel } from "../src/patterns.js";
+import { classifyPatternsWithModel, generateChainSemantics } from "../src/patterns.js";
 import type { ConversationSegment, MessageLink, MessageTurn } from "../src/types.js";
 
 function turn(id: string, timestamp: number, text: string): MessageTurn {
@@ -103,5 +103,25 @@ describe("classifyPatternsWithModel", () => {
     const patterns = await classifyPatternsWithModel({} as never, turns, segments, links);
 
     expect(patterns).toEqual({ responsePatterns: [], initiationPatterns: [] });
+  });
+});
+
+describe("generateChainSemantics", () => {
+  it("uses the model to describe a real global chain", async () => {
+    mocks.generateText.mockResolvedValue({ text: "有人在分享时，群友通常短接一句认可。" });
+
+    const semantics = await generateChainSemantics({} as never, ["share", "agree"], {
+      turns: [
+        { intent: "share", speaker: "A", text: "我的控制台全是这玩意" },
+        { intent: "agree", speaker: "B", text: "我也是" },
+      ],
+    });
+
+    expect(semantics).toBe("有人在分享时，群友通常短接一句认可。");
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("chain: share -> agree"),
+      }),
+    );
   });
 });

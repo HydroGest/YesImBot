@@ -3,7 +3,16 @@ import { z } from "zod";
 
 import { buildConversationChains } from "./links.js";
 import { patternPhrase, sanitizeForDisplay } from "./text.js";
-import type { ConversationSegment, InitiationIntent, InitiationPattern, MessageLink, MessageTurn, ResponseIntent, ResponsePattern } from "./types.js";
+import type {
+  ConversationSegment,
+  InitiationIntent,
+  InitiationPattern,
+  LocalChainSample,
+  MessageLink,
+  MessageTurn,
+  ResponseIntent,
+  ResponsePattern,
+} from "./types.js";
 
 export interface PatternSnapshot {
   readonly responsePatterns: readonly ResponsePattern[];
@@ -51,6 +60,31 @@ export async function classifyPatternsWithModel(
   try {
     const { text } = await generateText({ model, system, prompt, temperature: 0.1 });
     return parseModelAnnotations(text, messageByPromptId);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function generateChainSemantics(
+  model: LanguageModel,
+  chain: readonly string[],
+  sample: LocalChainSample,
+): Promise<string | undefined> {
+  const sampleText = sample.turns.map((turn) => `${turn.speaker}: ${turn.text}`).join("\n");
+  const prompt = [
+    "下面是一条真实群聊回复链：",
+    `chain: ${chain.join(" -> ")}`,
+    "sample:",
+    sampleText,
+    "",
+    "请用一句自然中文描述：在什么场景下，群友会这样接。这句话应能作为模型选择接法时的语义提示。",
+    "不要解释具体内容、人名、链接或事实，不要输出标签或 JSON，只输出一句 120 字以内的场景描述。",
+  ].join("\n");
+
+  try {
+    const { text } = await generateText({ model, prompt, temperature: 0.2 });
+    const semantics = text.trim().replace(/\s+/g, " ").slice(0, 120);
+    return semantics.length > 0 ? semantics : undefined;
   } catch {
     return undefined;
   }
