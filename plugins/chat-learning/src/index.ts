@@ -27,14 +27,14 @@ import {
 } from "./global-store.js";
 import { createChatHistoryStore, type ChatHistoryStore } from "./history.js";
 import { buildLinks } from "./links.js";
-import { buildMemeTemplates } from "./memes.js";
+import { buildMemeTemplates, type MemePhraseInput } from "./memes.js";
 import { classifyPatternsWithModel, generateChainSemantics } from "./patterns.js";
 import { detectProactiveEvent } from "./proactive.js";
 import { buildPromptBlock, escapePromptText, estimateTokens } from "./projector.js";
 import { createReflectionStore, type ReflectionRecord, type ReflectionScore, type ReflectionStore } from "./reflection-store.js";
 import { reflectOnSentMessage } from "./reflection.js";
 import { createChatLearningStore } from "./store.js";
-import { formatReflectionTarget } from "./text.js";
+import { formatReflectionTarget, patternPhrase } from "./text.js";
 import type {
   ChatLearningConfig,
   ChatLearningState,
@@ -237,11 +237,12 @@ export default class ChatLearningPlugin {
             current = await enrichWithModel(next, config, this.ctx, logger);
             lastModelEnrichAt = Date.now();
           } else if (state) {
+            const fallbackMemeTemplates = await buildMemeTemplates(undefined, buildFallbackPhrases(next.turns));
             current = {
               ...next,
               responsePatterns: state.responsePatterns,
               initiationPatterns: state.initiationPatterns,
-              memeTemplates: state.memeTemplates ?? [],
+              memeTemplates: fallbackMemeTemplates.length > 0 ? fallbackMemeTemplates : (state.memeTemplates ?? []),
             };
           }
           state = current;
@@ -988,6 +989,16 @@ function buildSnapshot(
     initiationPatterns: [],
     memeTemplates: [],
   };
+}
+
+function buildFallbackPhrases(turns: ChatLearningState["turns"]): MemePhraseInput[] {
+  const counts = new Map<string, number>();
+  for (const turn of turns) {
+    const phrase = patternPhrase(turn.text);
+    if (phrase.length < 2 || /^[@\d]+$/.test(phrase)) continue;
+    counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([phrase, frequency]) => ({ phrase, frequency }));
 }
 
 async function enrichWithModel(state: ChatLearningState, config: ChatLearningConfig, ctx: Context, logger: Logger): Promise<ChatLearningState> {
