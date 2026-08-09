@@ -256,6 +256,33 @@ describe("buildPromptBlock", () => {
     expect(block).toContain("<sample>A: 你好<message/>我是猫\nB: 喵</sample>");
   });
 
+  it("renders sticker placeholders unescaped", () => {
+    const globalChains: GlobalChainPattern[] = [
+      {
+        chain: ["react", "ack"],
+        samples: [
+          {
+            turns: [
+              { intent: "react", speaker: "A", text: "草" },
+              { intent: "ack", speaker: "A", text: "<sticker />" },
+            ],
+            channelKey: "a",
+          },
+        ],
+        channels: [
+          { key: "a", frequency: 2, lastSeenAt: 1 },
+          { key: "b", frequency: 1, lastSeenAt: 1 },
+        ],
+        firstSeenAt: 1,
+        lastSeenAt: 1,
+      },
+    ];
+
+    const block = buildPromptBlock(state(), undefined, config, [], globalChains);
+
+    expect(block).toContain("A: 草<message/><sticker />");
+  });
+
   it("shows global content even when there is no local state", () => {
     const globalPatterns: GlobalPattern[] = [
       {

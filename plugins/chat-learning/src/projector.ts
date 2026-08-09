@@ -151,7 +151,7 @@ function renderGlobalChains(
 
 function renderPatternLine(intent: string, phrase: string, frequency: number): string {
   const count = frequency > 1 ? `（${frequency} 次）` : "";
-  return `<pattern><semantics>${intentSemantic(intent)}时常用：${escapeXml(phrase)}${count}</semantics></pattern>`;
+  return `<pattern><semantics>${intentSemantic(intent)}时常用：${escapeSampleText(phrase)}${count}</semantics></pattern>`;
 }
 
 function intentSemantic(intent: string): string {
@@ -174,7 +174,7 @@ function formatSampleLines(turns: readonly { readonly speaker: string; readonly 
       currentTexts = [];
     }
     currentSpeaker = turn.speaker;
-    currentTexts.push(escapeXml(turn.text));
+    currentTexts.push(escapeSampleText(turn.text));
   }
   if (currentTexts.length > 0 && currentSpeaker !== undefined) {
     groups.push(`${currentSpeaker}: ${currentTexts.join("<message/>")}`);
@@ -274,7 +274,7 @@ function renderExample(segment: ConversationSegment, config: ChatLearningConfig)
       currentTexts = [];
     }
     currentSpeaker = speaker;
-    currentTexts.push(escapeXml(display));
+    currentTexts.push(escapeSampleText(display));
     messageCount += 1;
   }
   if (currentTexts.length > 0 && currentSpeaker !== undefined) {
@@ -307,4 +307,8 @@ function shortId(id: string): string {
 
 function escapeXml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
+}
+
+function escapeSampleText(value: string): string {
+  return escapeXml(value).replaceAll("&lt;sticker /&gt;", "<sticker />");
 }

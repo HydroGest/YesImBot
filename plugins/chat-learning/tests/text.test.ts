@@ -5,7 +5,7 @@ import { formatReflectionTarget, patternPhrase, sanitizeForDisplay } from "../sr
 describe("patternPhrase", () => {
   it("ignores media, urls, mentions, hashtags and bot status text", () => {
     expect(patternPhrase("[图片]")).toBe("");
-    expect(patternPhrase("[动画表情: [动画表情] asset://abc]")).toBe("");
+    expect(patternPhrase("[动画表情: 猫猫 asset://abc]")).toBe("<sticker />");
     expect(patternPhrase("https://x.com/status/123")).toBe("");
     expect(patternPhrase("@1272742391 ")).toBe("");
     expect(patternPhrase("#nailong")).toBe("");
@@ -21,7 +21,7 @@ describe("patternPhrase", () => {
 describe("sanitizeForDisplay", () => {
   it("shortens urls and asset references for preview context", () => {
     expect(sanitizeForDisplay("https://x.com/status/123 [图片]")).toContain("[链接]");
-    expect(sanitizeForDisplay("[动画表情: [动画表情] asset://abc]")).not.toContain("asset://");
+    expect(sanitizeForDisplay("[动画表情: 猫猫 asset://abc]")).toContain("<sticker />");
   });
 });
 

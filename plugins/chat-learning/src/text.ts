@@ -1,5 +1,7 @@
+const ANIMATED_STICKER = /\[动画表情[^\]]*\]/g;
+
 export function sanitizeForDisplay(value: string): string {
-  let result = value;
+  let result = value.replace(ANIMATED_STICKER, "<sticker />");
   for (let index = 0; index < 3; index += 1) {
     result = result.replace(/\[[^\]]*\]/g, " ");
   }
@@ -17,6 +19,7 @@ export function formatReflectionTarget(value: string, maxLength = 120): string {
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&")
+    .replace(ANIMATED_STICKER, "<sticker />")
     .replace(/data:[^"'\s>]+/gi, " ")
     .replace(/<img\b[^>]*>/gi, " [图片] ")
     .replace(/<[^>]+>/g, " ")
@@ -30,7 +33,7 @@ export function formatReflectionTarget(value: string, maxLength = 120): string {
 }
 
 export function patternPhrase(value: string): string {
-  let result = value;
+  let result = value.replace(ANIMATED_STICKER, "<sticker />");
   for (let index = 0; index < 3; index += 1) {
     result = result.replace(/\[[^\]]*\]/g, " ");
   }
