@@ -4,7 +4,14 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createEmptyGlobalRuleBank, createGlobalRuleStore, mergeLocalPatterns, selectGlobalChains, selectGlobalPatterns } from "../src/global-store.js";
+import {
+  createEmptyGlobalRuleBank,
+  createGlobalRuleStore,
+  mergeLocalPatterns,
+  selectGlobalChains,
+  selectGlobalPatterns,
+  selectRelevantGlobalChains,
+} from "../src/global-store.js";
 import type { InitiationPattern, ResponsePattern } from "../src/types.js";
 
 const roots: string[] = [];
@@ -105,6 +112,58 @@ describe("global chains", () => {
     expect(selectGlobalChains(crossed, 2, 8)).toHaveLength(1);
     expect(crossed.chains[0]?.channels[0]).toMatchObject({ frequency: 2 });
     expect(crossed.chains[0]?.samples).toHaveLength(2);
+  });
+});
+
+describe("selectRelevantGlobalChains", () => {
+  it("selects chains whose samples match the current message", () => {
+    const bank = {
+      version: 1,
+      updatedAt: 1,
+      patterns: [],
+      chains: [
+        {
+          chain: ["question", "agree"],
+          samples: [
+            {
+              turns: [
+                { intent: "question", speaker: "A", text: "话说真有必要去淘个这吗" },
+                { intent: "agree", speaker: "B", text: "有必要" },
+              ],
+              channelKey: "a",
+            },
+          ],
+          channels: [
+            { key: "a", frequency: 2, lastSeenAt: 1 },
+            { key: "b", frequency: 1, lastSeenAt: 1 },
+          ],
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+        },
+        {
+          chain: ["react", "ack"],
+          samples: [
+            {
+              turns: [
+                { intent: "react", speaker: "A", text: "草" },
+                { intent: "ack", speaker: "B", text: "笑死" },
+              ],
+              channelKey: "a",
+            },
+          ],
+          channels: [
+            { key: "a", frequency: 2, lastSeenAt: 1 },
+            { key: "b", frequency: 1, lastSeenAt: 1 },
+          ],
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+        },
+      ],
+    };
+
+    const selected = selectRelevantGlobalChains(bank, "草 @bot 笑点解析", 2, 3);
+
+    expect(selected.map((chain) => chain.chain)).toEqual([["react", "ack"]]);
   });
 });
 

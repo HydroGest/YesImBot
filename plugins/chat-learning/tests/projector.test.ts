@@ -84,9 +84,9 @@ describe("buildPromptBlock", () => {
     expect(block).not.toContain("<message_links>");
     expect(block).not.toContain("<active_chain>");
     expect(block).toContain("<chat_learning_guide>");
-    expect(block).toContain("风格样本");
-    expect(block).toContain("模仿样本中的表达节奏");
-    expect(block).toContain("不要输出“笑点解析”");
+    expect(block).toContain("常见表达和接法");
+    expect(block).toContain("模仿样本中的长度");
+    expect(block).toContain("被要求“笑点解析”时");
     expect(block).toContain("<local_patterns>");
     expect(block).toContain('<style_examples historical="true">');
     expect(block).toContain('chain="h1 -&gt; h2"');

@@ -128,6 +128,27 @@ export function selectGlobalChains(bank: GlobalRuleBank, minChannels: number, ma
     .slice(0, max);
 }
 
+export function selectRelevantGlobalChains(
+  bank: GlobalRuleBank,
+  currentText: string,
+  minChannels: number,
+  max: number,
+): readonly GlobalChainPattern[] {
+  const query = normalizeRelevanceText(currentText);
+  if (query.length === 0) return [];
+  return bank.chains
+    .filter((chain) => chain.channels.length >= minChannels)
+    .map((chain) => ({ chain, score: chainRelevanceScore(chain, query) }))
+    .filter((candidate) => candidate.score > 0)
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        chainScore(right.chain) - chainScore(left.chain),
+    )
+    .slice(0, max)
+    .map((candidate) => candidate.chain);
+}
+
 function mergePattern(
   byKey: Map<string, GlobalPattern>,
   kind: GlobalPatternKind,
@@ -254,6 +275,44 @@ function sameSample(left: GlobalChainSample, right: LocalChainSample): boolean {
   return left.turns.every(
     (turn, index) => turn.text === right.turns[index]?.text && turn.speaker === right.turns[index]?.speaker,
   );
+}
+
+function chainRelevanceScore(chain: GlobalChainPattern, query: string): number {
+  let best = 0;
+  for (const sample of chain.samples ?? []) {
+    for (const turn of sample.turns) {
+      const candidate = normalizeRelevanceText(turn.text);
+      if (candidate.length === 0) continue;
+      best = Math.max(best, textSimilarity(query, candidate));
+    }
+  }
+  return best;
+}
+
+function normalizeRelevanceText(value: string): string {
+  return value
+    .replace(/\[time=[^\]]*\]/g, " ")
+    .replace(/data:[^"'\s>]+/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/asset:\/\/[a-f0-9]+/gi, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/@\S+/g, "@")
+    .replace(/[\s\p{P}\p{S}\p{C}]+/gu, "")
+    .toLowerCase();
+}
+
+function textSimilarity(left: string, right: string): number {
+  if (left === right) return 1;
+  if (left.length === 0 || right.length === 0) return 0;
+  if (left.includes(right) || right.includes(left)) return 0.6;
+  const leftChars = new Set(left);
+  const rightChars = new Set(right);
+  let intersection = 0;
+  for (const char of leftChars) {
+    if (rightChars.has(char)) intersection += 1;
+  }
+  const union = leftChars.size + rightChars.size - intersection;
+  return union === 0 ? 0 : intersection / union;
 }
 
 function patternKey(pattern: GlobalPattern): string {

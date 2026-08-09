@@ -21,6 +21,7 @@ import {
   mergeLocalPatterns,
   selectGlobalChains,
   selectGlobalPatterns,
+  selectRelevantGlobalChains,
   type GlobalRuleStore,
 } from "./global-store.js";
 import { createChatHistoryStore, type ChatHistoryStore } from "./history.js";
@@ -385,7 +386,17 @@ export default class ChatLearningPlugin {
           ...selectGlobalPatterns(bank, "response", config.minGlobalChannels, config.maxGlobalPatterns),
           ...selectGlobalPatterns(bank, "initiation", config.minGlobalChannels, config.maxGlobalPatterns),
         ];
-        globalChains = [...selectGlobalChains(bank, config.minGlobalChannels, config.maxGlobalPatterns)];
+        const currentText = latestUserText(messages);
+        globalChains = currentText
+          ? [
+              ...selectRelevantGlobalChains(
+                bank,
+                currentText,
+                config.minGlobalChannels,
+                Math.min(config.maxGlobalPatterns, 3),
+              ),
+            ]
+          : [...selectGlobalChains(bank, config.minGlobalChannels, config.maxGlobalPatterns)];
         const block = buildPromptBlock(state, eventKind, config, globalPatterns, globalChains, globalStylePatterns);
         logger.debug("chat_learning.prepare_step", {
           scope,
@@ -953,6 +964,30 @@ function formatGlobalPattern(pattern: GlobalPattern): string {
 function formatGlobalChain(chain: GlobalChainPattern): string {
   const total = chain.channels.reduce((sum, channel) => sum + channel.frequency, 0);
   return `- ${chain.chain.join(" -> ")} channels=${chain.channels.length} total=${total}`;
+}
+
+function latestUserText(messages: readonly ModelMessage[]): string {
+  for (const message of [...messages].reverse()) {
+    if (message.role !== "user") continue;
+    const content = message.content;
+    if (typeof content === "string") {
+      return content.replace(/^\[time=[^\]]*\]\s*/, "").trim();
+    }
+    if (Array.isArray(content)) {
+      const text = content
+        .map((part) => {
+          if (typeof part === "string") return part;
+          if (typeof part === "object" && part !== null && "text" in part) {
+            return String((part as { text?: unknown }).text ?? "");
+          }
+          return "";
+        })
+        .join(" ")
+        .trim();
+      if (text) return text;
+    }
+  }
+  return "";
 }
 
 function buildReflectionHistory(store: ReflectionStore, limit: number): string | undefined {
