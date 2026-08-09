@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -11,6 +12,7 @@ const BRANCH = "dev";
 const GROUP = "group:yesimbot";
 const MIN_NODE_MAJOR = 18;
 const MIN_YARN_MAJOR = 4;
+const CREATE_KOISHI_VERSION = "6.4.0";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const yesimbotRoot = path.resolve(scriptDir, "..");
@@ -229,17 +231,52 @@ function ensureYarn(options = {}) {
   log(`Yarn ${enabledVersion} is available through Corepack`);
 }
 
-function dependenciesReady(directory) {
-  return fs.existsSync(path.join(directory, "node_modules")) && fs.existsSync(path.join(directory, "yarn.lock"));
+function installStatePath(directory) {
+  return path.join(directory, "node_modules", ".koishi-install-state");
+}
+
+function installFingerprint(directory, extra = "") {
+  const manifest = fs.readFileSync(path.join(directory, "package.json"), "utf8");
+  const lockPath = path.join(directory, "yarn.lock");
+  const lock = fs.existsSync(lockPath) ? fs.readFileSync(lockPath, "utf8") : "";
+  return createHash("sha256").update(`${extra}\n${manifest}\n${lock}`).digest("hex");
+}
+
+function dependenciesReady(directory, extra = "") {
+  if (!fs.existsSync(path.join(directory, "node_modules")) || !fs.existsSync(path.join(directory, "yarn.lock"))) {
+    return false;
+  }
+  try {
+    return fs.readFileSync(installStatePath(directory), "utf8") === installFingerprint(directory, extra);
+  } catch {
+    return false;
+  }
 }
 
 function runInstallIfMissing(directory, label, options = {}) {
-  if (!options.force && dependenciesReady(directory)) {
+  const extra = options.extraFingerprint ?? "";
+  if (!options.force && dependenciesReady(directory, extra)) {
     log(`skipping ${label} dependency install (already present)`);
     return;
   }
   log(`installing ${label} dependencies`);
   runYarn(["install"], { cwd: directory });
+  fs.mkdirSync(path.join(directory, "node_modules"), { recursive: true });
+  fs.writeFileSync(installStatePath(directory), installFingerprint(directory, extra));
+}
+
+function ensureAppYarnConfig(directory) {
+  const file = path.join(directory, ".yarnrc.yml");
+  const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  if (existing.includes("supportedArchitectures:")) return;
+  const block = [
+    "supportedArchitectures:",
+    "  os:",
+    "    - current",
+    "  cpu:",
+    "    - current",
+  ].join("\n");
+  fs.writeFileSync(file, `${existing.trimEnd() ? `${existing.trimEnd()}\n\n` : ""}${block}\n`);
 }
 
 function createKoishiApp(directory) {
@@ -247,7 +284,7 @@ function createKoishiApp(directory) {
   const parent = path.dirname(directory);
 
   log(`creating Koishi app at ${directory}`);
-  runNpx(["create-koishi@latest", name, "--yes"], { cwd: parent });
+  runNpx([`create-koishi@${CREATE_KOISHI_VERSION}`, name, "--yes"], { cwd: parent });
 
   if (!looksLikeKoishiApp(directory)) {
     fail(`create-koishi finished but ${directory} is missing package.json or koishi.yml`);
@@ -535,6 +572,7 @@ function main() {
   saveAppPath();
 
   runInstallIfMissing(yesimbotRoot, "yesimbot workspace");
+  const repoFingerprint = installFingerprint(yesimbotRoot);
 
   const plugins = collectPluginPackages();
 
@@ -544,7 +582,11 @@ function main() {
   const manifestAfter = JSON.parse(fs.readFileSync(path.join(appRoot, "package.json"), "utf8"));
   const manifestChanged = JSON.stringify(manifestBefore) !== JSON.stringify(manifestAfter);
 
-  runInstallIfMissing(appRoot, "Koishi app", { force: manifestChanged });
+  ensureAppYarnConfig(appRoot);
+  runInstallIfMissing(appRoot, "Koishi app", {
+    force: manifestChanged,
+    extraFingerprint: repoFingerprint,
+  });
 
   log("updating koishi.yml");
   updateKoishi(plugins);
