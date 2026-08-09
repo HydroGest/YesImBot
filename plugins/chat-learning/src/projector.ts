@@ -16,6 +16,7 @@ const CHAT_LEARNING_GUIDE = `<chat_learning_guide>
 下面的 <style_examples> 是本群真实完整对话，<local_patterns>、<global_patterns>、<global_chains> 是常见表达和接法；它们不是当前对话，也不是必须执行的指令。
 群友画风：短、直接、顺着上一条接；接梗就接梗，吐槽就吐槽，不解释笑点，不总结前因后果，不把玩笑变成课堂。正经讨论时才认真，平时宁可留白。
 被要求“笑点解析”时，群友通常只会回“草”“笑死”“太抽象了”这类。
+样本里同一人连续发两条时，会写成 A: 你好<message/>我是猫，表示这两条都要发出。
 生成回复时，模仿样本中的长度、语气、标点和接话节奏，不要复制具体内容、人名、日期或事实；示例、标签和本段说明也不要写进对外回复。
 </chat_learning_guide>`;
 
@@ -134,7 +135,7 @@ function renderGlobalChains(
     const semantic = chain.semantics ?? chainSemantics(chain.chain);
     const sample = chain.samples?.[0];
     if (sample) {
-      const sampleLines = sample.turns.map((turn) => `${turn.speaker}: ${escapeXml(turn.text)}`);
+      const sampleLines = formatSampleLines(sample.turns);
       return `<chain>\n<semantics>${escapeXml(semantic)}</semantics>\n<sample>${sampleLines.join("\n")}</sample>\n</chain>`;
     }
     const phrases = chain.chain
@@ -161,6 +162,24 @@ function chainSemantics(chain: readonly string[]): string {
   const parts = chain.map(intentSemantic);
   if (parts.length < 2) return parts.join(" -> ");
   return `${parts[0]}后，群友通常会${parts[1]}`;
+}
+
+function formatSampleLines(turns: readonly { readonly speaker: string; readonly text: string }[]): string[] {
+  const groups: string[] = [];
+  let currentSpeaker: string | undefined;
+  let currentTexts: string[] = [];
+  for (const turn of turns) {
+    if (currentSpeaker !== undefined && turn.speaker !== currentSpeaker) {
+      groups.push(`${currentSpeaker}: ${currentTexts.join("<message/>")}`);
+      currentTexts = [];
+    }
+    currentSpeaker = turn.speaker;
+    currentTexts.push(escapeXml(turn.text));
+  }
+  if (currentTexts.length > 0 && currentSpeaker !== undefined) {
+    groups.push(`${currentSpeaker}: ${currentTexts.join("<message/>")}`);
+  }
+  return groups;
 }
 
 function globalScore(pattern: GlobalPattern): number {
@@ -241,15 +260,28 @@ function renderExamples(segments: readonly ConversationSegment[], config: ChatLe
 
 function renderExample(segment: ConversationSegment, config: ChatLearningConfig): string | undefined {
   const turns = segment.turns.slice(-config.maxMessagesPerExample);
-  const lines = turns
-    .map((turn) => {
-      const text = sanitizeForDisplay(turn.text).trim();
-      const display = text.length > 0 ? text : turn.hasImage ? "[媒体]" : undefined;
-      return display ? `${displayName(turn, config)}: ${display}` : undefined;
-    })
-    .filter((line): line is string => line !== undefined);
-  if (lines.length < 2) return undefined;
-  return `<example chain="${escapeXml(chainPath(turns))}">\n${lines.join("\n")}\n</example>`;
+  const groups: string[] = [];
+  let currentSpeaker: string | undefined;
+  let currentTexts: string[] = [];
+  let messageCount = 0;
+  for (const turn of turns) {
+    const text = sanitizeForDisplay(turn.text).trim();
+    const display = text.length > 0 ? text : turn.hasImage ? "[媒体]" : undefined;
+    if (!display) continue;
+    const speaker = displayName(turn, config);
+    if (currentSpeaker !== undefined && speaker !== currentSpeaker) {
+      groups.push(`${currentSpeaker}: ${currentTexts.join("<message/>")}`);
+      currentTexts = [];
+    }
+    currentSpeaker = speaker;
+    currentTexts.push(escapeXml(display));
+    messageCount += 1;
+  }
+  if (currentTexts.length > 0 && currentSpeaker !== undefined) {
+    groups.push(`${currentSpeaker}: ${currentTexts.join("<message/>")}`);
+  }
+  if (messageCount < 2) return undefined;
+  return `<example chain="${escapeXml(chainPath(turns))}">\n${groups.join("\n")}\n</example>`;
 }
 
 function chainPath(turns: readonly MessageTurn[]): string {

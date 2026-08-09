@@ -228,6 +228,34 @@ describe("buildPromptBlock", () => {
     expect(block).toContain("<sample>A: 有人试过吗\nB: 确实</sample>");
   });
 
+  it("uses inline message separators for consecutive same-speaker turns", () => {
+    const globalChains: GlobalChainPattern[] = [
+      {
+        chain: ["share", "question"],
+        samples: [
+          {
+            turns: [
+              { intent: "share", speaker: "A", text: "你好" },
+              { intent: "question", speaker: "A", text: "我是猫" },
+              { intent: "question", speaker: "B", text: "喵" },
+            ],
+            channelKey: "a",
+          },
+        ],
+        channels: [
+          { key: "a", frequency: 2, lastSeenAt: 1 },
+          { key: "b", frequency: 1, lastSeenAt: 1 },
+        ],
+        firstSeenAt: 1,
+        lastSeenAt: 1,
+      },
+    ];
+
+    const block = buildPromptBlock(state(), undefined, config, [], globalChains);
+
+    expect(block).toContain("<sample>A: 你好<message/>我是猫\nB: 喵</sample>");
+  });
+
   it("shows global content even when there is no local state", () => {
     const globalPatterns: GlobalPattern[] = [
       {
