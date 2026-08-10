@@ -1,9 +1,9 @@
-import { isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage } from "ai";
+import { isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
 import { createEventEntry, createMessageEntry } from "./entry.js";
-import { formatErrorCause } from "./errors.js";
+import { formatErrorCause, ToolConflictError } from "./errors.js";
 import type { AgentInternalEvent, AgentInternalEventInit } from "./event.js";
 import { createDiagnostic, createInternalEvent } from "./event.js";
 import type { AgentMessage } from "./message.js";
@@ -27,6 +27,7 @@ export interface AgentConfig {
   model: LanguageModel;
   systemPrompt?: SystemPromptAppend | ((runtime: AgentPluginRuntime) => Promise<SystemPromptAppend | void> | SystemPromptAppend | void);
   tools?: AgentToolSet;
+  providerTools?: ToolSet;
   storage?: AgentStorage<AgentEntry>;
   plugins?: AgentPlugin[];
   initialState?: AgentState;
@@ -82,6 +83,7 @@ export function createAgent(config: AgentConfig): Agent {
   const baseTools = config.tools ?? [];
   let frozenSystemPrompt: string | SystemModelMessage[] | undefined;
   let frozenTools: AgentToolSet = [];
+  let frozenProviderTools: ToolSet = {};
 
   const pluginHost = createPluginHost({ plugins: config.plugins ?? [], runtime: { id, channel, state, storage } });
 
@@ -170,6 +172,12 @@ export function createAgent(config: AgentConfig): Agent {
             ? blocks
             : undefined;
       frozenTools = [...pluginHost.stableTools];
+      frozenProviderTools = {};
+      const toolNames = new Set(frozenTools.map((tool) => tool.name));
+      for (const [name, tool] of Object.entries(config.providerTools ?? {})) {
+        if (toolNames.has(name)) throw new ToolConflictError(name);
+        frozenProviderTools[name] = { ...tool };
+      }
       initialized = true;
       await emitInternal({ type: "agent.init" });
     })().finally(() => {
@@ -383,7 +391,7 @@ export function createAgent(config: AgentConfig): Agent {
           model,
           system: frozenSystemPrompt,
           messages: modelMessages,
-          tools: toAiToolSet(resolveTools(request.turnId, abortSignal)),
+          tools: { ...toAiToolSet(resolveTools(request.turnId, abortSignal)), ...frozenProviderTools },
           stopWhen: isLoopFinished(),
           abortSignal,
           prepareStep: async ({ stepNumber }) => {

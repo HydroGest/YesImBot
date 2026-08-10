@@ -1,5 +1,5 @@
 import { AgentBusyError, createAgent, type Agent, type AgentInternalEvent, type AgentPlugin, type AgentToolSet } from "@yesimbot/agent-runtime";
-import type { AssistantContent, LanguageModel } from "ai";
+import type { AssistantContent, LanguageModel, ToolSet } from "ai";
 import { type Bot, type Context, type Element, type Logger } from "koishi";
 
 import { createDescribeImageTool, createReadTool, createSendMessageTool } from "../agents/tools.js";
@@ -28,22 +28,27 @@ const MODEL_INPUT_PLUGIN: AgentPlugin = {
   toModelMessages: async (message) => (isMessage(message) || isEvent(message) ? [formatInput(message)] : []),
 };
 export type ChannelOutput = { readonly turnId: string; readonly messageId: string; readonly segments: readonly Element[][] };
+
 export type RuntimeResult =
   | { readonly kind: "wait"; readonly eventId: string }
   | { readonly kind: "join"; readonly eventId: string; readonly turnId: string }
   | { readonly kind: "run"; readonly eventId: string; readonly output: AsyncIterable<ChannelOutput>; readonly signal: AbortSignal };
+
 export type PostOptions = { readonly trigger?: boolean; readonly ifBusy?: "defer" | "join" | "reject" };
+
 export interface ChannelRuntimeOptions {
   readonly channel: Channel;
   readonly bot: Bot;
   readonly will: WillEngine;
   readonly model: LanguageModel;
+  readonly providerTools?: ToolSet;
   readonly visionModel?: LanguageModel;
   readonly imageOutputSupported: boolean;
   readonly config: Config;
   readonly plugins: readonly AgentPlugin[];
   readonly idleTimeout?: number;
 }
+
 export class ChannelRuntime {
   public readonly context: ChannelContext;
   public readonly selfId: string;
@@ -84,6 +89,7 @@ export class ChannelRuntime {
           customInnerThought: options.config.reply.customInnerThought,
         }),
       tools,
+      providerTools: options.providerTools,
       plugins: [MODEL_INPUT_PLUGIN, ...options.plugins],
     });
   }
@@ -117,13 +123,7 @@ export class ChannelRuntime {
       if (trigger && ifBusy === "reject" && this.agent.getActiveTurnId() !== null) throw new AgentBusyError();
       const input = await this.commit(event);
       const result = !trigger ? { kind: "wait" as const, eventId: input.id } : this.start(input, false, ifBusy);
-      this.logger.debug("runtime.post", {
-        eventId: input.id,
-        eventType: event.eventType,
-        trigger,
-        ifBusy,
-        result: result.kind,
-      });
+      this.logger.debug("runtime.post", { eventId: input.id, eventType: event.eventType, trigger, ifBusy, result: result.kind });
       return result;
     });
   }
@@ -234,12 +234,7 @@ export class ChannelRuntime {
           continue;
         }
         if (event.type === "tool.failed") {
-          this.logger.warn("runtime.tool.failed", {
-            turnId: event.turnId,
-            toolName: event.toolName,
-            toolCallId: event.toolCallId,
-            error: event.error.message,
-          });
+          this.logger.warn("runtime.tool.failed", { turnId: event.turnId, toolName: event.toolName, toolCallId: event.toolCallId, error: event.error.message });
           continue;
         }
         if (event.type === "message.appended" && "turnId" in event && event.message.role === "assistant") {
@@ -305,6 +300,7 @@ export class ChannelRuntime {
     }
   }
 }
+
 function renderAssistantText(content: AssistantContent): string | undefined {
   if (typeof content === "string") return content.trim() ? content : undefined;
   if (!Array.isArray(content)) return undefined;

@@ -7,7 +7,7 @@ import type { Context, Logger } from "koishi";
 import type { ImageBudget } from "../config.js";
 import { Conversation } from "../conversations/index.js";
 import { ChannelResources, type Disposer, type ResourceReader, type Resources } from "../resources/index.js";
-import { type ChannelContext, type ChannelKey, deriveChannelKey, contextFromSession, contextFromRecord } from "./context.js";
+import { type ChannelContext, type ChannelKey, deriveChannelKey } from "./context.js";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 

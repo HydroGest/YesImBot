@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
+import type { ToolSet } from "ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -114,5 +115,16 @@ describe("models.json modalities", () => {
     const service = await createModelService(JSON.parse(await readFile(path, "utf8")), path.slice(0, -"/models.json".length), createProviderWithImage());
 
     expect(service.resolveChatModel("openai:gpt-4o").entry.modalities?.input).toBeUndefined();
+  });
+  it("includes a provider tool set with the resolved chat model", async () => {
+    const tools = { web_search: { type: "provider", id: "test.web_search", inputSchema: {} as never } } as ToolSet;
+    const provider = { ...createProvider(), tools: vi.fn(() => tools) } as ModelProvider & { tools(modelId: string): ToolSet };
+    const service = await createModelService({}, undefined, provider);
+
+    const resolved = service.resolveChatModel("openai:gpt-4o");
+
+    expect(provider.tools).toHaveBeenCalledWith("gpt-4o");
+    expect(resolved.tools).toEqual(tools);
+    expect(resolved.tools).not.toBe(tools);
   });
 });

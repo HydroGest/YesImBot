@@ -27,7 +27,9 @@ const searchInputSchema = jsonSchema<SearXNGSearchInput>({
   required: ["query"],
 });
 type SearXNGSafeSearch = 0 | 1 | 2;
+
 type SearXNGTimeRange = "day" | "month" | "year";
+
 export interface SearXNGConfig {
   endpoint: string;
   engines?: string[];
@@ -37,7 +39,9 @@ export interface SearXNGConfig {
   username?: string;
   password?: string;
 }
+
 interface SearXNGRuntimeConfig extends SearchRuntimeConfig, SearXNGConfig {}
+
 interface SearXNGSearchInput {
   query: string;
   limit?: number;
@@ -47,6 +51,7 @@ interface SearXNGSearchInput {
   timeRange?: SearXNGTimeRange;
   safeSearch?: SearXNGSafeSearch;
 }
+
 interface SearXNGResult {
   title?: string;
   url?: string;
@@ -55,6 +60,7 @@ interface SearXNGResult {
   engine?: string;
   category?: string;
 }
+
 interface SearXNGResponse {
   results?: SearXNGResult[];
 }
@@ -73,7 +79,7 @@ class SearXNGBackend implements SearchBackend {
 
   public createSearchTool(): AgentTool<SearXNGSearchInput, WebSearchOutput> {
     return {
-      name: "web_search",
+      name: "searxng_web_search",
       description: "Search the web for current information, news, facts, or web content. " + "Returns structured JSON with titles, URLs, and snippets.",
       inputSchema: searchInputSchema,
       execute: async (input) => this.search(input),
@@ -128,6 +134,7 @@ export function createSearXNGBackend(ctx: Context, config: SearXNGConfig | undef
 
   return new SearXNGBackend(ctx, { ...runtime, ...config }, logger);
 }
+
 function normalizeSearchUrl(endpoint: string): string {
   const trimmed = endpoint.replace(/\/+$/, "");
   if (trimmed.endsWith("/search")) return trimmed;

@@ -196,6 +196,7 @@ const moduleDeclarationOrder = {
 
 const plugin = { meta: { name: "declaration-order", version: "2.0.0" }, rules: { "module-declaration-order": moduleDeclarationOrder } };
 export default plugin;
+
 /**
  * Classify a top-level statement into a category.
  * Returns null for unclassifiable statements (bare expressions, control flow, etc.).
@@ -291,6 +292,7 @@ function getFullRange(node, sourceCode) {
   else if (text[end] === "\r" && text[end + 1] === "\n") end += 2;
   return [start, end];
 }
+
 /**
  * Extract full text for a statement (including leading comments and trailing newline).
  */
@@ -299,6 +301,7 @@ function getStatementText(node, sourceCode) {
   const range = getFullRange(node, sourceCode);
   return text.slice(range[0], range[1]);
 }
+
 /**
  * Build sorted source by re-arranging all classified statements to canonical order.
  * Preserves relative order within each category (stable sort).

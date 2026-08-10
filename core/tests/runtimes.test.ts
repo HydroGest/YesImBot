@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
+import type { ToolSet } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ active: null as string | null, append: vi.fn(), send: vi.fn(), run: vi.fn(), decide: vi.fn(), observe: vi.fn() }));
@@ -25,6 +26,8 @@ vi.mock("@yesimbot/agent-runtime", async (original) => {
     })),
   };
 });
+
+import { createAgent } from "@yesimbot/agent-runtime";
 
 import { Agents } from "../src/agents/index.js";
 import { Channel, Channels } from "../src/channels/index.js";
@@ -58,7 +61,7 @@ const event = {
 // ChannelRuntime scheduling
 // ---------------------------------------------------------------------------
 
-async function runtime() {
+async function runtime(providerTools?: ToolSet) {
   const root = await mkdtemp(join(tmpdir(), "yesimbot-runtime-"));
   const channel = new Channel({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, root);
   await channel.conversation.init();
@@ -70,6 +73,7 @@ async function runtime() {
     imageOutputSupported: false,
     config,
     plugins: [],
+    providerTools,
   });
   await value.init();
   return { value, root };
@@ -78,11 +82,23 @@ async function runtime() {
 describe("ChannelRuntime scheduling", () => {
   beforeEach(() => {
     state.active = null;
+    vi.mocked(createAgent).mockClear();
     state.append.mockReset().mockResolvedValue(undefined);
     state.send.mockReset();
     state.run.mockReset().mockReturnValue((async function* () {})());
     state.decide.mockReset().mockResolvedValue("wait");
     state.observe.mockReset();
+  });
+  it("passes provider-executed tools to the Agent without local execution", async () => {
+    const providerTools = { web_search: { type: "provider", id: "test.web_search", inputSchema: {} as never } } as ToolSet;
+    const { value, root } = await runtime(providerTools);
+    try {
+      const config = vi.mocked(createAgent).mock.calls.at(-1)?.[0];
+      expect(config?.providerTools).toBe(providerTools);
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
   });
   it("commits trigger false without Will or a turn", async () => {
     const { value, root } = await runtime();

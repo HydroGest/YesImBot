@@ -119,7 +119,7 @@ class TavilyBackend implements SearchBackend {
 
   public createSearchTool(): AgentTool<TavilySearchInput, WebSearchOutput> {
     return {
-      name: "web_search",
+      name: "tavily_web_search",
       description: "Search the web for current information, news, facts, or web content. " + "Returns structured JSON with titles, URLs, and snippets.",
 
       inputSchema: searchInputSchema,
@@ -129,8 +129,8 @@ class TavilyBackend implements SearchBackend {
 
   public createScrapeTool(): AgentTool<TavilyScrapeInput, WebScrapeOutput> {
     return {
-      name: "web_scrape",
-      description: "Extract readable content from one or more web pages. " + "Use after web_search when full page text is needed.",
+      name: "tavily_web_scrape",
+      description: "Extract readable content from one or more web pages. " + "Use after tavily_web_search when full page text is needed.",
       inputSchema: scrapeInputSchema,
       execute: async (input) => {
         const normalized = normalizeUrlList(input.urls, MAX_URLS_PER_SCRAPE);

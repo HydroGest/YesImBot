@@ -47,6 +47,7 @@ export class Runtimes {
         bot,
         will: await this.agents.setupWill(channel.context, session),
         model: chat.model,
+        providerTools: chat.tools,
         visionModel: vision,
         imageOutputSupported: chat.entry.modalities?.input?.includes("image") ?? false,
         config: this.config,
