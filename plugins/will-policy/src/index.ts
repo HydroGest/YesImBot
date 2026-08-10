@@ -119,14 +119,32 @@ export default class WillPolicyPlugin {
   }
 
   public matchContext(context: ChannelContext): boolean {
-    const session = {
+    const bot = this.ctx.bots.find(
+      (candidate) => candidate.platform === context.platform && (!context.selfId || candidate.selfId === context.selfId),
+    ) ?? this.ctx.bots[0];
+    if (!bot) {
+      this.logger.debug("will_policy.match_context", {
+        instanceId: this.instanceId,
+        priority: this.priority,
+        engine: this.config.engine,
+        platform: context.platform,
+        channelId: context.channelId,
+        guildId: context.type === "direct" ? undefined : context.guildId,
+        matched: false,
+        reason: "no_bot",
+      });
+      return false;
+    }
+    const session = bot.session({
+      type: "message-created",
+      subtype: context.type === "direct" ? "private" : "group",
       platform: context.platform,
-      channelId: context.channelId,
-      guildId: context.type === "direct" ? undefined : context.guildId,
-      userId: context.type === "direct" ? context.userId : undefined,
       selfId: context.selfId,
-      isDirect: context.type === "direct",
-    } as unknown as Session;
+      timestamp: Date.now(),
+      channel: { id: context.channelId, type: context.type === "direct" ? 1 : 0 },
+      ...(context.type !== "direct" && context.guildId ? { guild: { id: context.guildId } } : {}),
+      ...(context.type === "direct" ? { user: { id: context.userId, ...(context.userName ? { name: context.userName } : {}) } } : {}),
+    } as never) as Session;
     const matched = this.ctx.filter(session);
     this.logger.debug("will_policy.match_context", {
       instanceId: this.instanceId,
