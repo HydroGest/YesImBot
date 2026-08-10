@@ -130,7 +130,7 @@ function renderGlobalChains(chains: readonly GlobalChainPattern[], _stylePattern
   if (relevant.length === 0) return undefined;
 
   const lines = relevant.map((chain) => {
-    const sample = chain.samples?.[0];
+    const sample = chain.samples!.at(0)!;
     const style = chain.style ? `<style>${escapeXml(chain.style)}</style>\n` : "";
     const turnLines = sample.turns.map(
       (turn) => `<turn intent="${escapeXml(turn.intent)}" speaker="${escapeXml(turn.speaker)}">${escapeSampleText(turn.text)}</turn>`,
