@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import type { ReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
-import { h, type Context, type Element } from "koishi";
+import { h, type Context, type Element, type Logger } from "koishi";
 
 import type { AssetStore } from "./asset.js";
 import type { ChannelResources } from "./index.js";
@@ -34,7 +34,14 @@ interface ResourceProbe {
 /** Persists inbound image and restricted text-file elements while the Session is live. */
 export async function persistElements(ctx: Context, elements: readonly Element[], resources: ChannelResources): Promise<Element[]> {
   const budget: ResourceBudget = { images: 0, files: 0, bytes: 0 };
-  return Promise.all(elements.map((element) => persistElement(ctx, element, resources.assets, budget)));
+  const prepared = await Promise.all(elements.map((element) => persistElement(ctx, element, resources.assets, budget)));
+  const logger = resourceLogger(ctx);
+  const imageCount = countElements(prepared, "img");
+  const fileCount = countElements(prepared, "file");
+  if ((imageCount || fileCount) && logger) {
+    logger.debug("resources.input.persisted", { imageCount, fileCount });
+  }
+  return prepared;
 }
 async function persistElement(ctx: Context, element: Element, store: AssetStore, budget: ResourceBudget): Promise<Element> {
   if (element.type === "img") return storeImage(ctx, element, store, budget);
@@ -195,4 +202,22 @@ function decodeBase64Url(src: string, maxBytes: number): Uint8Array | null {
   const decoded = new Uint8Array(Buffer.from(payload, "base64"));
   if (decoded.byteLength > maxBytes) throw new Error("Resource exceeds byte limit");
   return decoded;
+}
+
+function resourceLogger(ctx: Context): Pick<Logger, "debug"> | undefined {
+  try {
+    return ctx.logger("yesimbot.resources");
+  } catch {
+    return undefined;
+  }
+}
+
+function countElements(elements: readonly Element[], type: string): number {
+  let count = 0;
+  const visit = (element: Element): void => {
+    if (element.type === type) count += 1;
+    for (const child of element.children) visit(child);
+  };
+  for (const element of elements) visit(element);
+  return count;
 }

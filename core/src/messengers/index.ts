@@ -49,8 +49,12 @@ export class Messenger {
       throw new Error(`Translator for platform "${translator.platform}" is already registered`);
     }
     this.translators.set(translator.platform, translator);
+    this.logger.debug("messenger.translator_registered", { platform: translator.platform });
     return () => {
-      if (this.translators.get(translator.platform) === translator) this.translators.delete(translator.platform);
+      if (this.translators.get(translator.platform) === translator) {
+        this.translators.delete(translator.platform);
+        this.logger.debug("messenger.translator_unregistered", { platform: translator.platform });
+      }
     };
   }
 
@@ -61,6 +65,13 @@ export class Messenger {
     const channel = await this.channels.resolve(contextFromRecord(event)!);
     const runtime = await this.runtimes.get(channel, bot);
     const result = await runtime.post(event, options ?? { trigger: true, ifBusy: "defer" });
+    this.logger.debug("messenger.post", {
+      eventType: event.eventType,
+      platform: event.platform,
+      channelId: event.channel.id,
+      result: result.kind,
+      eventId: result.eventId,
+    });
     if (result.kind === "run") await this.track(this.deliverActive(bot, event.channel.id, runtime, result));
   }
 
@@ -84,18 +95,49 @@ export class Messenger {
 
   private async route(session: Session): Promise<void> {
     const ctx = contextFromSession(session);
-    if (!ctx || !matchesAllowedChannel(ctx, this.config.allowedChannels)) return;
+    const routeId = session.messageId ?? String(session.id);
+    this.logger.debug("messenger.route.start", {
+      routeId,
+      platform: session.platform,
+      channelId: session.channelId,
+      userId: session.userId,
+      isDirect: session.isDirect,
+    });
+    if (!ctx || !matchesAllowedChannel(ctx, this.config.allowedChannels)) {
+      this.logger.debug("messenger.route.skip", {
+        routeId,
+        platform: session.platform,
+        channelId: session.channelId,
+        reason: ctx ? "channel_not_allowed" : "invalid_context",
+      });
+      return;
+    }
     try {
       await this.channels.start();
       await assertAssignee(this.ctx, ctx, session.selfId);
       const channel = await this.channels.resolve(ctx);
       const translator = this.translators.get(session.platform) ?? this.translators.get("*");
       const record = translator ? await translator.translate(session, channel.resources) : await translateDefault(this.ctx, session, channel.resources);
-      if (!record) return;
+      if (!record) {
+        this.logger.debug("messenger.route.no_record", { routeId, platform: session.platform, channelId: session.channelId });
+        return;
+      }
+      this.logger.debug("messenger.route.record", {
+        routeId,
+        recordType: "messageId" in record ? "message" : "event",
+        platform: record.platform,
+        selfId: record.selfId,
+        channelId: record.channel.id,
+      });
       const bot = this.ctx.bots.find((candidate) => candidate.platform === record.platform && candidate.selfId === record.selfId);
       if (!bot) throw new Error(`No Bot is available for ${record.platform}:${record.selfId}`);
       const runtime = await this.runtimes.get(channel, bot, session);
       const result = await runtime.handle(record);
+      this.logger.debug("messenger.route.result", {
+        routeId,
+        result: result.kind,
+        eventId: result.eventId,
+      });
       if (result.kind === "run") await this.deliverPassive(session, runtime, result);
     } catch (cause) {
       this.warn("messenger.route_failed", cause, session.platform);
@@ -129,6 +171,12 @@ export class Messenger {
     for await (const output of result.output) {
       for (const [index, segment] of output.segments.entries()) {
         if (result.signal.aborted) return;
+        this.logger.debug("messenger.delivery.segment", {
+          turnId: output.turnId,
+          messageId: output.messageId,
+          segmentIndex: index + 1,
+          segmentTotal: output.segments.length,
+        });
         const delay = pacedDelay(segment, this.config.reply.pacing, elapsed);
         const startedAt = Date.now();
         await sleep(delay, result.signal);

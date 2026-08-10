@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { jsonSchema, type AgentPlugin, type AgentTool } from "@yesimbot/agent-runtime";
-import { Context, Logger, Schema, type Bot } from "koishi";
+import { Context, Logger, Schema, type Bot, type Element } from "koishi";
 import type { ChannelContext, ChannelResources } from "koishi-plugin-yesimbot";
 
 import { collectCommandCatalog, filterCommandCatalog, formatCommandCatalog, formatCommandHelp } from "./catalog.js";
@@ -48,6 +48,7 @@ export default class CommandBridgePlugin {
   private readonly executions = new Map<string, CommandExecution>();
   public readonly logger: Logger;
   private disposeAgentPlugin?: () => void;
+  private commandEventDisposers: Array<() => unknown> = [];
 
   public constructor(
     private readonly ctx: Context,
@@ -61,14 +62,32 @@ export default class CommandBridgePlugin {
   public async start(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
+    for (const dispose of this.commandEventDisposers.splice(0)) dispose?.();
+    this.commandEventDisposers = [
+      this.ctx.on("command-added", (command) => {
+        this.logger.debug("command_bridge.command_added", { name: command.displayName });
+      }),
+      this.ctx.on("command-updated", (command) => {
+        this.logger.debug("command_bridge.command_updated", { name: command.displayName });
+      }),
+      this.ctx.on("command-removed", (command) => {
+        this.logger.debug("command_bridge.command_removed", { name: command.displayName });
+      }),
+    ];
     this.logger.info("command bridge plugin started");
   }
 
   public async setup(context: ChannelContext, bot: Bot): Promise<AgentPlugin> {
     const resources = await this.ctx.yesimbot.resource.get(context);
+    const tools = this.createTools(context, bot, resources);
+    this.logger.debug("command_bridge.tools_ready", {
+      channelId: context.channelId,
+      toolCount: tools.length,
+      toolNames: tools.map((tool) => tool.name),
+    });
     return {
       name: "command-bridge",
-      tools: (): AgentTool[] => this.createTools(context, bot, resources),
+      tools: (): AgentTool[] => tools,
       appendSystemPrompt: () => COMMAND_TOOL_GUIDANCE,
     } satisfies AgentPlugin;
   }
@@ -76,6 +95,7 @@ export default class CommandBridgePlugin {
   public async stop(): Promise<void> {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
+    for (const dispose of this.commandEventDisposers.splice(0)) dispose?.();
     for (const execution of this.executions.values()) {
       execution.abort(new Error("command bridge plugin stopped"));
     }
@@ -155,7 +175,14 @@ export default class CommandBridgePlugin {
 
   private async executeCommand(context: ChannelContext, bot: Bot, resources: ChannelResources, input: ExecuteCommandInput): Promise<CommandExecutionEvent> {
     const policyError = validateCommandCall(input.command, this.config);
-    if (policyError) throw new Error(policyError);
+    if (policyError) {
+      this.logger.warn("command_bridge.execute.denied", {
+        channelId: context.channelId,
+        command: input.command,
+        reason: policyError,
+      });
+      throw new Error(policyError);
+    }
 
     const actor = input.actor ?? { kind: "agent" as const };
     if (actor.kind === "user") {
@@ -169,8 +196,9 @@ export default class CommandBridgePlugin {
 
     const authority = this.resolveAuthority(actor);
     const permissions = await this.resolvePermissions(actor);
+    const executionId = randomUUID();
     const execution = new CommandExecution({
-      id: randomUUID(),
+      id: executionId,
       command: input.command,
       bot,
       scope: context,
@@ -183,12 +211,32 @@ export default class CommandBridgePlugin {
       timeoutMs: this.config.timeoutMs,
       maxTranscriptChars: this.config.maxTranscriptChars,
       logger: this.logger,
-      persistElements: (elements) => resources.persistElements(this.ctx, elements),
+      persistElements: async (elements) => {
+        const prepared = await resources.persistElements(this.ctx, elements);
+        const assetIds = collectAssetIds(prepared);
+        if (assetIds.length) {
+          this.logger.debug("command_bridge.output.assets", { executionId, assetIds });
+        }
+        return prepared;
+      },
     });
 
+    this.logger.debug("command_bridge.execute.start", {
+      executionId,
+      channelId: context.channelId,
+      command: input.command,
+      actor: actor.kind,
+      interactive: input.interactive ?? "reject",
+    });
     this.executions.set(execution.id, execution);
     execution.start();
     const event = await execution.next();
+    this.logger.debug("command_bridge.execute.event", {
+      executionId,
+      status: event.status,
+      prompt: event.prompt !== undefined,
+      error: event.error,
+    });
     this.scheduleCleanup(execution, event);
     return event;
   }
@@ -211,6 +259,7 @@ export default class CommandBridgePlugin {
     const execution = this.executions.get(input.executionId);
     if (!execution) throw new Error(`execution '${input.executionId}' not found or expired`);
 
+    this.logger.debug("command_bridge.prompt_answer", { executionId: input.executionId });
     const event = await execution.answer(input.answer);
     this.scheduleCleanup(execution, event);
     return event;
@@ -220,6 +269,7 @@ export default class CommandBridgePlugin {
     const execution = this.executions.get(input.executionId);
     if (!execution) throw new Error(`execution '${input.executionId}' not found or expired`);
 
+    this.logger.debug("command_bridge.abort", { executionId: input.executionId });
     execution.abort();
     const event = await execution.next();
     this.scheduleCleanup(execution, event);
@@ -268,4 +318,14 @@ async function formatToolOutput(options: { output: CommandExecutionEvent }): Pro
   if (event.returnValue) lines.push(`命令返回值:\n${event.returnValue}`);
   if (event.error) lines.push(`错误: ${event.error}`);
   return { type: "text", value: lines.join("\n") };
+}
+
+function collectAssetIds(elements: readonly Element[]): string[] {
+  const ids: string[] = [];
+  const visit = (element: Element): void => {
+    if (element.type === "img" && typeof element.attrs.id === "string") ids.push(element.attrs.id);
+    for (const child of element.children) visit(child);
+  };
+  for (const element of elements) visit(element);
+  return ids;
 }

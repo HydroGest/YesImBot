@@ -31,6 +31,7 @@ export interface CommandExecutionOptions {
 export class CommandExecution {
   public readonly id: string;
 
+  private readonly logger: Pick<Logger, "debug" | "info" | "warn">;
   private readonly session: Session;
   private readonly transcript: Element[] = [];
   private readonly waiters: Array<() => void> = [];
@@ -41,12 +42,20 @@ export class CommandExecution {
 
   public constructor(private readonly options: CommandExecutionOptions) {
     this.id = options.id;
+    this.logger = options.logger;
     this.session = this.createSession(options);
     this.overrideSessionMethods(options);
   }
 
   public start(): void {
+    this.logger.debug("command.execution.start", {
+      executionId: this.id,
+      command: this.options.command,
+      channelId: this.options.channelId ?? this.options.scope.channelId,
+      timeoutMs: this.options.timeoutMs,
+    });
     this.timer = setTimeout(() => {
+      this.logger.warn("command.execution.timeout", { executionId: this.id });
       this.abort(new Error("command timed out"));
     }, this.options.timeoutMs);
 
@@ -60,7 +69,13 @@ export class CommandExecution {
       if (this.terminal) return this.terminal;
 
       if (this.pendingPrompt) {
-        return { status: "awaiting_prompt", executionId: this.id, prompt: this.pendingPrompt.prompt, transcript: this.serializeTranscript() };
+        this.logger.debug("command.execution.awaiting_prompt", { executionId: this.id });
+        return {
+          status: "awaiting_prompt",
+          executionId: this.id,
+          prompt: this.pendingPrompt.prompt,
+          transcript: this.serializeTranscript(),
+        };
       }
 
       await new Promise<void>((resolve) => {
@@ -73,6 +88,7 @@ export class CommandExecution {
     const prompt = this.pendingPrompt;
     if (!prompt) throw new Error(`no pending prompt for execution '${this.id}'`);
 
+    this.logger.debug("command.execution.answer", { executionId: this.id });
     this.pendingPrompt = undefined;
     prompt.resolve(answer);
     this.notify();
@@ -80,6 +96,7 @@ export class CommandExecution {
   }
 
   public abort(reason: Error = new Error("command aborted")): void {
+    this.logger.debug("command.execution.abort", { executionId: this.id, reason: reason.message });
     this.abortController.abort(reason);
     const prompt = this.pendingPrompt;
     if (prompt) {
@@ -90,6 +107,7 @@ export class CommandExecution {
   }
 
   private async run(): Promise<void> {
+    const startedAt = Date.now();
     try {
       await this.applyActorPermissions();
       const output = await this.session.execute(this.options.command, true);
@@ -100,14 +118,32 @@ export class CommandExecution {
         this.transcript.splice(0, this.transcript.length, ...prepared.slice(0, transcriptLength));
         outputElements.splice(0, outputElements.length, ...prepared.slice(transcriptLength));
       }
+      const transcript = this.serializeTranscript();
+      const returnValue = serializeElements(outputElements, this.options.maxTranscriptChars);
+      this.terminal = {
+        status: "done",
+        executionId: this.id,
+        transcript,
+        returnValue,
+      };
+      this.logger.debug("command.execution.done", {
+        executionId: this.id,
+        durationMs: Date.now() - startedAt,
+        transcriptChars: transcript.length,
+        returnValueChars: returnValue.length,
+      });
+    } catch (error) {
       this.terminal = {
         status: "done",
         executionId: this.id,
         transcript: this.serializeTranscript(),
-        returnValue: serializeElements(outputElements, this.options.maxTranscriptChars),
+        error: formatError(error),
       };
-    } catch (error) {
-      this.terminal = { status: "done", executionId: this.id, transcript: this.serializeTranscript(), error: formatError(error) };
+      this.logger.warn("command.execution.failed", {
+        executionId: this.id,
+        durationMs: Date.now() - startedAt,
+        error: formatError(error),
+      });
     } finally {
       this.notify();
     }

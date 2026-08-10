@@ -69,7 +69,10 @@ export class Channels implements Resources {
     await this.started;
     const key = deriveChannelKey(ctx);
     const cached = this.channels.get(key);
-    if (cached) return cached;
+    if (cached) {
+      this.logger.debug("channels.resolve.cached", { key });
+      return cached;
+    }
     const creating = this.creating.get(key);
     if (creating) return creating;
     const task = this.create(ctx, key);
@@ -103,6 +106,7 @@ export class Channels implements Resources {
 
   public async reset(ctx: ChannelContext): Promise<void> {
     const channel = await this.resolve(ctx);
+    this.logger.debug("channels.reset", { key: deriveChannelKey(ctx), root: channel.root });
     await Promise.all([
       fs.rm(join(channel.root, "sessions"), { recursive: true, force: true }),
       channel.resources.assets.clear(),
@@ -119,6 +123,7 @@ export class Channels implements Resources {
     }
     await channel.conversation.init();
     this.channels.set(key, channel);
+    this.logger.debug("channels.resolve.created", { key, root });
     return channel;
   }
 

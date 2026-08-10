@@ -1,4 +1,4 @@
-import type { Bot, Context, Session } from "koishi";
+import type { Bot, Context, Logger, Session } from "koishi";
 
 import { Agents } from "../agents/index.js";
 import type { Channel, Channels } from "../channels/index.js";
@@ -9,6 +9,7 @@ import { ChannelRuntime } from "./channel.js";
 import { readPersona } from "./prompt.js";
 
 export class Runtimes {
+  private readonly logger: Logger;
   private readonly runtimes = new Map<string, ChannelRuntime>();
   private readonly tails = new Map<string, Promise<void>>();
   private stopped = false;
@@ -20,7 +21,10 @@ export class Runtimes {
     private readonly model: ModelService,
     private readonly config: Config,
     private readonly agents: Agents,
-  ) {}
+  ) {
+    this.logger = ctx.logger("yesimbot.runtimes");
+    this.logger.level = config.logLevel ?? 2;
+  }
 
   public async get(channel: Channel, bot: Bot, session?: Session): Promise<ChannelRuntime> {
     const key = runtimeKey(channel.context);
@@ -29,10 +33,14 @@ export class Runtimes {
       this.assertOpen();
       const current = this.runtimes.get(key);
       if (current && (channel.context.type === "direct" || current.selfId === bot.selfId)) {
+        this.logger.debug("runtimes.get.cached", { key, selfId: bot.selfId });
         value = current;
         return;
       }
-      if (current) await current.stop();
+      if (current) {
+        this.logger.debug("runtimes.get.recreate", { key, oldSelfId: current.selfId, newSelfId: bot.selfId });
+        await current.stop();
+      }
       const chat = this.model.resolveChatModel(this.config.chatModel);
       const vision = this.resolveVision();
       const runtime = new ChannelRuntime(this.ctx, {
@@ -53,6 +61,7 @@ export class Runtimes {
         throw cause;
       }
       this.runtimes.set(key, runtime);
+      this.logger.debug("runtimes.get.created", { key, selfId: bot.selfId, runtimeCount: this.runtimeCount() });
       value = runtime;
     });
     return value;
@@ -62,7 +71,10 @@ export class Runtimes {
     const key = runtimeKey(ctx);
     await this.serialize(key, async () => {
       const current = this.runtimes.get(key);
-      if (current) await current.stop();
+      if (current) {
+        this.logger.debug("runtimes.reset", { key });
+        await current.stop();
+      }
       this.runtimes.delete(key);
       await this.channels.reset(ctx);
     });
@@ -71,6 +83,7 @@ export class Runtimes {
   public stop(): Promise<void> {
     if (this.stopTask) return this.stopTask;
     this.stopped = true;
+    this.logger.debug("runtimes.stop", { runtimeCount: this.runtimes.size });
     this.stopTask = Promise.allSettled([...this.runtimes.values()].map((runtime) => runtime.stop())).then(() => {
       this.runtimes.clear();
       this.tails.clear();
@@ -141,6 +154,10 @@ export class Runtimes {
 
   private assertOpen(): void {
     if (this.stopped) throw new Error("Runtimes are stopped");
+  }
+
+  private runtimeCount(): number {
+    return [...this.runtimes.values()].length;
   }
 }
 

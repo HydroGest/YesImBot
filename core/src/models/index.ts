@@ -265,6 +265,13 @@ export class ModelService {
       throw new Error(`Provider "${record.providerId}" not found`);
     }
 
+    this.logger.debug("model.resolve_chat", {
+      input: fullId,
+      fullId: record.fullId,
+      provider: record.providerId,
+      model: record.modelId,
+      modalities: record.config.modalities,
+    });
     return {
       fullId: record.fullId,
       providerId: record.providerId,
@@ -278,6 +285,12 @@ export class ModelService {
     const record = this.getEmbeddingRecord(fullId);
     const provider = this.providers.get(record.providerId);
     if (!provider) throw new Error(`Provider "${record.providerId}" not found`);
+    this.logger.debug("model.resolve_embedding", {
+      input: fullId,
+      fullId: record.fullId,
+      provider: record.providerId,
+      model: record.modelId,
+    });
     return provider.embedding!(record.modelId);
   }
 

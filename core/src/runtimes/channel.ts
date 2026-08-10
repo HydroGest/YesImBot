@@ -97,7 +97,14 @@ export class ChannelRuntime {
     return this.schedule(async () => {
       const input = await this.commit(record);
       const decision = await this.options.will.decide(input, this.state());
-      return decision === "wait" ? { kind: "wait", eventId: input.id } : this.start(input, true, "join");
+      const result = decision === "wait" ? { kind: "wait" as const, eventId: input.id } : this.start(input, true, "join");
+      this.logger.debug("runtime.handle", {
+        eventId: input.id,
+        eventType: "messageId" in record ? "message" : "event",
+        decision,
+        result: result.kind,
+      });
+      return result;
     });
   }
 
@@ -108,8 +115,15 @@ export class ChannelRuntime {
       this.assertOpen();
       if (trigger && ifBusy === "reject" && this.agent.getActiveTurnId() !== null) throw new AgentBusyError();
       const input = await this.commit(event);
-      if (!trigger) return { kind: "wait", eventId: input.id };
-      return this.start(input, false, ifBusy);
+      const result = !trigger ? { kind: "wait" as const, eventId: input.id } : this.start(input, false, ifBusy);
+      this.logger.debug("runtime.post", {
+        eventId: input.id,
+        eventType: event.eventType,
+        trigger,
+        ifBusy,
+        result: result.kind,
+      });
+      return result;
     });
   }
 
@@ -192,19 +206,55 @@ export class ChannelRuntime {
     let turnId = "";
     try {
       for await (const event of stream) {
+        if (event.type === "turn.start") {
+          this.logger.debug("runtime.turn.start", { turnId: event.turnId });
+          continue;
+        }
+        if (event.type === "turn.step") {
+          this.logger.debug("runtime.turn.step", { turnId: event.turnId, stepNumber: event.step });
+          continue;
+        }
+        if (event.type === "turn.done") {
+          this.logger.debug("runtime.turn.done", { turnId: event.turnId });
+          continue;
+        }
+        if (event.type === "tool.start") {
+          this.logger.debug("runtime.tool.start", { turnId: event.turnId, toolName: event.toolName, toolCallId: event.toolCallId });
+          continue;
+        }
+        if (event.type === "tool.done") {
+          this.logger.debug("runtime.tool.done", { turnId: event.turnId, toolName: event.toolName, toolCallId: event.toolCallId });
+          continue;
+        }
+        if (event.type === "tool.failed") {
+          this.logger.warn("runtime.tool.failed", {
+            turnId: event.turnId,
+            toolName: event.toolName,
+            toolCallId: event.toolCallId,
+            error: event.error.message,
+          });
+          continue;
+        }
         if (event.type === "message.appended" && "turnId" in event && event.message.role === "assistant") {
           turnId = event.turnId;
           const content = renderAssistantText(event.message.content);
           if (content !== undefined) {
             const segments = await prepareOutputSegments(parseReply(content), this.options.channel.resources, controller.signal);
             if (segments.length) {
+              this.logger.debug("runtime.output.segments", { turnId, messageId: event.message.id, segmentCount: segments.length });
               output.push({ turnId, messageId: event.message.id, segments });
               assistant = true;
             }
           }
         }
-        if (event.type === "turn.failed") throw new Error(event.error.message);
-        if (event.type === "turn.aborted") throw new Error("Agent turn aborted");
+        if (event.type === "turn.failed") {
+          this.logger.warn("runtime.turn.failed", { turnId: event.turnId, error: event.error.message });
+          throw new Error(event.error.message);
+        }
+        if (event.type === "turn.aborted") {
+          this.logger.warn("runtime.turn.aborted", { turnId: event.turnId, reason: event.reason });
+          throw new Error("Agent turn aborted");
+        }
       }
       if (passive && assistant) await this.options.will.observe?.({ turnId, status: "done", messages: [] });
       output.close();
