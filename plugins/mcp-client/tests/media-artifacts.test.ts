@@ -84,7 +84,7 @@ async function buildPlugin() {
   mocks.connectMcpServer.mockResolvedValueOnce({ client, transport: { close: vi.fn(async () => undefined) } });
   const plugin = new McpClientPlugin(ctx as never, { mcpServers: { tools: { type: "http", url: "https://example.test/mcp" } } });
   await plugin.start();
-  const agentPlugin = await plugins[0]!.setup({ type: "shared", platform: "test", channelId: "room" } as never, {} as never);
+  const agentPlugin = await plugins[0]!.setup({ type: "guild", platform: "test", channelId: "room", guildId: "room" } as never, {} as never);
   if (!agentPlugin) throw new Error("MCP runtime plugin was not created");
   return { client, agentPlugin, artifactForTool, artifactPut };
 }

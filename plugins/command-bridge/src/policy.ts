@@ -8,16 +8,11 @@ export function commandMatches(pattern: string, command: string): boolean {
   const normalizedPattern = normalizeCommand(pattern);
   const normalizedCommand = normalizeCommand(command);
   return (
-    normalizedCommand === normalizedPattern
-    || normalizedCommand.startsWith(`${normalizedPattern}.`)
-    || normalizedCommand.startsWith(`${normalizedPattern} `)
+    normalizedCommand === normalizedPattern || normalizedCommand.startsWith(`${normalizedPattern}.`) || normalizedCommand.startsWith(`${normalizedPattern} `)
   );
 }
 
-export function validateCommandCall(
-  command: string,
-  config: Pick<CommandBridgeConfig, "trustMode" | "allowCommands" | "hardDeny">,
-): string | null {
+export function validateCommandCall(command: string, config: Pick<CommandBridgeConfig, "trustMode" | "allowCommands" | "hardDeny">): string | null {
   if (!command.trim()) return "command is required";
 
   for (const deny of config.hardDeny) {

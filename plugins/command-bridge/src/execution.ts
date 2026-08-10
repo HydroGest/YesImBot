@@ -1,25 +1,17 @@
 import { h, type Bot, type Logger, type Session } from "koishi";
-import { formatElements, type ChannelScope } from "koishi-plugin-yesimbot";
+import { formatElements, type ChannelContext } from "koishi-plugin-yesimbot";
 
-import type {
-  CommandActor,
-  CommandExecutionEvent,
-  InteractiveMode,
-} from "./types.js";
+import type { CommandActor, CommandExecutionEvent, InteractiveMode } from "./types.js";
 
 type Element = ReturnType<typeof h.normalize>[number];
 type ElementFragment = Parameters<typeof h.normalize>[0];
-type PromptRequest = {
-  prompt: string;
-  resolve: (value: string) => void;
-  reject: (reason: Error) => void;
-};
+type PromptRequest = { prompt: string; resolve: (value: string) => void; reject: (reason: Error) => void };
 
 export interface CommandExecutionOptions {
   id: string;
   command: string;
   bot: Bot;
-  scope: ChannelScope;
+  scope: ChannelContext;
   actor: CommandActor;
   interactive: InteractiveMode;
   channelId?: string;
@@ -68,12 +60,7 @@ export class CommandExecution {
       if (this.terminal) return this.terminal;
 
       if (this.pendingPrompt) {
-        return {
-          status: "awaiting_prompt",
-          executionId: this.id,
-          prompt: this.pendingPrompt.prompt,
-          transcript: this.serializeTranscript(),
-        };
+        return { status: "awaiting_prompt", executionId: this.id, prompt: this.pendingPrompt.prompt, transcript: this.serializeTranscript() };
       }
 
       await new Promise<void>((resolve) => {
@@ -120,28 +107,19 @@ export class CommandExecution {
         returnValue: serializeElements(outputElements, this.options.maxTranscriptChars),
       };
     } catch (error) {
-      this.terminal = {
-        status: "done",
-        executionId: this.id,
-        transcript: this.serializeTranscript(),
-        error: formatError(error),
-      };
+      this.terminal = { status: "done", executionId: this.id, transcript: this.serializeTranscript(), error: formatError(error) };
     } finally {
       this.notify();
     }
   }
 
   private createSession(options: CommandExecutionOptions): Session {
-    const userId = options.actor.kind === "user"
-      ? options.actor.userId
-      : `yesimbot:agent:${options.bot.selfId}`;
+    const userId = options.actor.kind === "user" ? options.actor.userId : `yesimbot:agent:${options.bot.selfId}`;
     const channelId = options.channelId ?? options.scope.channelId;
-    const guildId = options.guildId
-      ?? (options.scope.type === "shared" ? options.scope.guildId ?? channelId : undefined);
-    const userName = options.userName
-      ?? (options.actor.kind === "user" ? userId : `yesimbot:agent:${options.bot.selfId}`);
-    const channelName = options.channelName ?? (options.scope.type === "shared" ? options.scope.channelName : undefined);
-    const guildName = options.guildName ?? (options.scope.type === "shared" ? options.scope.guildName : undefined);
+    const guildId = options.guildId ?? (options.scope.type !== "direct" ? options.scope.guildId : undefined);
+    const userName = options.userName ?? (options.actor.kind === "user" ? userId : `yesimbot:agent:${options.bot.selfId}`);
+    const channelName = options.channelName ?? (options.scope.type === "channel" ? options.scope.channelName : undefined);
+    const guildName = options.guildName ?? (options.scope.type !== "direct" ? options.scope.guildName : undefined);
     const messageId = options.messageId ?? `yesimbot:${options.id}`;
 
     const session = options.bot.session({
@@ -150,11 +128,7 @@ export class CommandExecution {
       platform: options.bot.platform,
       selfId: options.bot.selfId,
       timestamp: Date.now(),
-      channel: {
-        id: channelId,
-        type: options.scope.type === "direct" ? 1 : 0,
-        ...(channelName ? { name: channelName } : {}),
-      },
+      channel: { id: channelId, type: options.scope.type === "direct" ? 1 : 0, ...(channelName ? { name: channelName } : {}) },
       ...(guildId ? { guild: { id: guildId, ...(guildName ? { name: guildName } : {}) } } : {}),
       user: { id: userId, name: userName },
       member: { name: userName },
@@ -167,9 +141,7 @@ export class CommandExecution {
   }
 
   private overrideSessionMethods(options: CommandExecutionOptions): void {
-    const session = this.session as Session & {
-      prompt: (...args: unknown[]) => Promise<string | undefined>;
-    };
+    const session = this.session as Session & { prompt: (...args: unknown[]) => Promise<string | undefined> };
 
     session.send = async (fragment: Parameters<Session["send"]>[0]) => {
       this.transcript.push(...h.normalize(fragment as ElementFragment));
@@ -190,11 +162,7 @@ export class CommandExecution {
       }
 
       return new Promise<string>((resolve, reject) => {
-        this.pendingPrompt = {
-          prompt: "命令要求用户输入，请调用 koishi_prompt_answer 提供答案。",
-          resolve,
-          reject,
-        };
+        this.pendingPrompt = { prompt: "命令要求用户输入，请调用 koishi_prompt_answer 提供答案。", resolve, reject };
         this.notify();
       });
     };

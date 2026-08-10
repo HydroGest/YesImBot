@@ -1,11 +1,12 @@
 import { URL } from "node:url";
 
-import { h, type Element } from "koishi";
+import { h, type Context, type Element } from "koishi";
 
-import type { ChannelScope } from "../channels/index.js";
+import type { ChannelContext } from "../channels/index.js";
 import type { ImageBudget } from "../config.js";
 import { ChannelArtifactStore, type ArtifactStore } from "./artifact.js";
 import { ChannelAssetStore, type AssetStore } from "./asset.js";
+import { persistElements as persistInboundElements } from "./input.js";
 const READ_MAX_BYTES = 5 * 1024 * 1024;
 const COMPLETE_ASSET_ID = /^[a-f0-9]{32}$/;
 const URI_SHAPE = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#]*)(?:\/([^?#]*))?$/;
@@ -34,7 +35,7 @@ export interface ResourceReader {
   setup(resources: ChannelResources, uri: URL, options: ResourceOpenOptions): Promise<ResourceOpenResult>;
 }
 export interface Resources {
-  get(scope: ChannelScope): Promise<ChannelResources>;
+  get(ctx: ChannelContext): Promise<ChannelResources>;
   use(reader: ResourceReader): Disposer;
 }
 export class ResourceReadError extends Error {
@@ -145,6 +146,11 @@ export class ChannelResources {
       signal?.removeEventListener("abort", onAbort);
     }
   }
+
+  /** Persists inbound image and restricted text-file elements while the Session is live. */
+  public async persistElements(ctx: Context, elements: readonly Element[]): Promise<Element[]> {
+    return persistInboundElements(ctx, elements, this);
+  }
 }
 export async function prepareOutputSegments(
   segments: readonly (readonly Element[])[],
@@ -239,4 +245,3 @@ function normalize(value: unknown): ResourceOpenResult {
 }
 export { type ArtifactOpenResult, type ArtifactStore, type ArtifactWriter } from "./artifact.js";
 export { type AssetStore } from "./asset.js";
-export { persistElements } from "./input.js";

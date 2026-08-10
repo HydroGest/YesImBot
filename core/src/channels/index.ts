@@ -7,17 +7,11 @@ import type { Context, Logger } from "koishi";
 import type { ImageBudget } from "../config.js";
 import { Conversation } from "../conversations/index.js";
 import { ChannelResources, type Disposer, type ResourceReader, type Resources } from "../resources/index.js";
-export type ChannelScope =
-  | {
-      readonly type: "shared";
-      readonly platform: string;
-      readonly channelId: string;
-      readonly guildId?: string;
-      readonly channelName?: string;
-      readonly guildName?: string;
-    }
-  | { readonly type: "direct"; readonly platform: string; readonly selfId: string; readonly channelId: string };
-type ChannelManifest = ChannelScope & { readonly createdAt: string };
+import { type ChannelContext, type ChannelKey, deriveChannelKey, contextFromSession, contextFromRecord } from "./context.js";
+
+// ─── Types ─────────────────────────────────────────────────────────────────
+
+type ChannelManifest = ChannelContext & { readonly createdAt: string };
 
 export interface ChannelsOptions {
   readonly basePath: string;
@@ -26,12 +20,14 @@ export interface ChannelsOptions {
   readonly readTimeoutMs?: number;
 }
 
+// ─── Channel ───────────────────────────────────────────────────────────────
+
 export class Channel {
   public readonly resources: ChannelResources;
   public readonly conversation: Conversation;
 
   public constructor(
-    public readonly scope: ChannelScope,
+    public readonly context: ChannelContext,
     public readonly root: string,
     imageBudget: ImageBudget | null = null,
     readTimeoutMs = 10_000,
@@ -40,6 +36,8 @@ export class Channel {
     this.conversation = new Conversation(root);
   }
 }
+
+// ─── Channels ──────────────────────────────────────────────────────────────
 
 export class Channels implements Resources {
   private readonly channelsPath: string;
@@ -66,15 +64,15 @@ export class Channels implements Resources {
     return this.started;
   }
 
-  public async resolve(scope: ChannelScope): Promise<Channel> {
-    assertScope(scope);
+  public async resolve(ctx: ChannelContext): Promise<Channel> {
+    ctx = normalizeLegacyScope(ctx);
     await this.started;
-    const key = scopeMapKey(scope);
+    const key = deriveChannelKey(ctx);
     const cached = this.channels.get(key);
     if (cached) return cached;
     const creating = this.creating.get(key);
     if (creating) return creating;
-    const task = this.create(scope, key);
+    const task = this.create(ctx, key);
     this.creating.set(key, task);
     try {
       return await task;
@@ -83,8 +81,8 @@ export class Channels implements Resources {
     }
   }
 
-  public async get(scope: ChannelScope): Promise<ChannelResources> {
-    return (await this.resolve(scope)).resources;
+  public async get(ctx: ChannelContext): Promise<ChannelResources> {
+    return (await this.resolve(ctx)).resources;
   }
 
   public use(reader: ResourceReader): Disposer {
@@ -103,19 +101,19 @@ export class Channels implements Resources {
     };
   }
 
-  public async reset(scope: ChannelScope): Promise<void> {
-    const channel = await this.resolve(scope);
+  public async reset(ctx: ChannelContext): Promise<void> {
+    const channel = await this.resolve(ctx);
     await Promise.all([
       fs.rm(join(channel.root, "sessions"), { recursive: true, force: true }),
       channel.resources.assets.clear(),
       channel.resources.artifacts.clear(),
     ]);
-    this.channels.delete(scopeKey(scope));
+    this.channels.delete(deriveChannelKey(ctx));
   }
 
-  private async create(scope: ChannelScope, key: string): Promise<Channel> {
-    const root = await this.ensureRoot(scope);
-    const channel = new Channel(scope, root, this.imageBudget, this.readTimeoutMs);
+  private async create(ctx: ChannelContext, key: ChannelKey): Promise<Channel> {
+    const root = await this.ensureRoot(ctx);
+    const channel = new Channel(ctx, root, this.imageBudget, this.readTimeoutMs);
     for (const reader of this.readers.values()) {
       this.readerDisposers.get(reader)!.set(channel, channel.resources.use(reader));
     }
@@ -134,28 +132,28 @@ export class Channels implements Resources {
       try {
         const manifest = parseManifest(JSON.parse(await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")));
         if (channelDirectoryName(manifest) !== entry.name) throw new Error("Manifest directory name does not match directory");
-        this.manifests.set(scopeKey(manifest), manifest);
+        this.manifests.set(deriveChannelKey(manifest), manifest);
       } catch (cause) {
         this.logger.error("storage.manifest_invalid", { directoryName: entry.name, cause });
       }
     }
   }
 
-  private async ensureRoot(scope: ChannelScope): Promise<string> {
-    const key = scopeKey(scope);
+  private async ensureRoot(ctx: ChannelContext): Promise<string> {
+    const key = deriveChannelKey(ctx);
     if (!this.manifests.has(key)) {
-      const directory = channelDirectoryName(scope);
+      const directory = channelDirectoryName(ctx);
       const root = join(this.channelsPath, directory);
       try {
         const stat = await fs.lstat(root);
         if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Channel storage destination is not a directory");
         const manifest = parseManifest(JSON.parse(await fs.readFile(join(root, "channel.json"), "utf8")));
-        if (scopeKey(manifest) !== key) throw new Error("Channel storage integrity mismatch");
+        if (deriveChannelKey(manifest) !== key) throw new Error("Channel storage integrity mismatch");
         this.manifests.set(key, manifest);
       } catch (cause) {
         if (!(typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")) throw cause;
         const temporary = join(this.channelsPath, `.${directory}.${randomUUID()}.tmp`);
-        const manifest = { ...scope, createdAt: new Date().toISOString() } as ChannelManifest;
+        const manifest = { ...ctx, createdAt: new Date().toISOString() } as ChannelManifest;
         try {
           await fs.mkdir(temporary);
           await fs.writeFile(join(temporary, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
@@ -166,7 +164,7 @@ export class Channels implements Resources {
         this.manifests.set(key, manifest);
       }
     }
-    const root = join(this.channelsPath, channelDirectoryName(scope));
+    const root = join(this.channelsPath, channelDirectoryName(ctx));
     if ((await fs.lstat(root)).isSymbolicLink()) throw new Error("Channel directory is a symbolic link");
     const realRoot = await fs.realpath(root);
     const rel = relative(this.channelsPath, realRoot);
@@ -175,44 +173,104 @@ export class Channels implements Resources {
   }
 }
 
-export function scopeMapKey(scope: ChannelScope): string {
-  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
-}
+// ─── Helpers ───────────────────────────────────────────────────────────────
 
-export function channelDirectoryName(scope: ChannelScope): string {
-  assertScope(scope);
+export function channelDirectoryName(ctx: ChannelContext): string {
   const encode = (value: string): string => [...value].map((char) => (/[A-Za-z0-9]/.test(char) ? char : `%${char.codePointAt(0)!.toString(16)}%`)).join("");
-  return (
-    scope.type === "direct"
-      ? ["direct", encode(scope.platform), encode(scope.channelId), encode(scope.selfId)]
-      : ["shared", encode(scope.platform), encode(scope.channelId)]
-  ).join("-");
+  switch (ctx.type) {
+    case "channel": {
+      const guildId = ctx.guildId;
+      return ["channel", encode(ctx.platform), encode(guildId), encode(ctx.channelId)].join("-");
+    }
+    case "guild": {
+      const guildId = ctx.guildId;
+      return ["guild", encode(ctx.platform), encode(guildId)].join("-");
+    }
+    case "direct": {
+      const userId = ctx.userId;
+      const selfId = ctx.selfId;
+      return ["direct", encode(ctx.platform), encode(userId), encode(selfId)].join("-");
+    }
+  }
 }
 
-function scopeKey(scope: ChannelScope): string {
-  return scopeMapKey(scope);
+/**
+ * Normalise a legacy ChannelContext (type: "shared" | "direct" without userId)
+ * to the canonical ChannelContext shape so old callers keep working during migration.
+ */
+function normalizeLegacyScope(ctx: ChannelContext): ChannelContext {
+  const raw = ctx as ChannelContext & { type: string };
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime migration for old "shared" type
+  if ((raw.type as string) === "shared") {
+    const legacy = ctx as unknown as { platform: string; channelId: string; guildId?: string };
+    const guildId = legacy.guildId ?? legacy.channelId;
+    if (guildId !== legacy.channelId) {
+      return { type: "channel", platform: legacy.platform, channelId: legacy.channelId, guildId };
+    }
+    return { type: "guild", platform: legacy.platform, channelId: legacy.channelId, guildId };
+  }
+  if (raw.type === "direct") {
+    const legacy = ctx as unknown as { platform: string; channelId: string; selfId: string; userId?: string };
+    if (!legacy.userId) {
+      return { type: "direct", platform: legacy.platform, channelId: legacy.channelId, selfId: legacy.selfId, userId: legacy.channelId };
+    }
+  }
+  return ctx;
 }
 
-function assertScope(scope: ChannelScope): void {
-  if (scope.type !== "shared" && scope.type !== "direct") throw new TypeError("ChannelScope.type must be 'shared' or 'direct'");
-  if (typeof scope.platform !== "string" || scope.platform.length === 0) throw new TypeError("ChannelScope.platform must be a non-empty string");
-  if (typeof scope.channelId !== "string" || scope.channelId.length === 0) throw new TypeError("ChannelScope.channelId must be a non-empty string");
-  if (scope.type === "direct" && (typeof scope.selfId !== "string" || scope.selfId.length === 0))
-    throw new TypeError("ChannelScope.selfId must be a non-empty string");
-  if (scope.type === "shared" && scope.guildId !== undefined && (typeof scope.guildId !== "string" || scope.guildId.length === 0))
-    throw new TypeError("ChannelScope.guildId must be a non-empty string when present");
-  if (scope.type === "shared" && scope.channelName !== undefined && (typeof scope.channelName !== "string" || scope.channelName.length === 0))
-    throw new TypeError("ChannelScope.channelName must be a non-empty string when present");
-  if (scope.type === "shared" && scope.guildName !== undefined && (typeof scope.guildName !== "string" || scope.guildName.length === 0))
-    throw new TypeError("ChannelScope.guildName must be a non-empty string when present");
+function assertContext(ctx: ChannelContext): void {
+  if (ctx.type !== "channel" && ctx.type !== "guild" && ctx.type !== "direct")
+    throw new TypeError("ChannelContext.type must be 'channel', 'guild', or 'direct'");
+  if (typeof ctx.platform !== "string" || ctx.platform.length === 0) throw new TypeError("ChannelContext.platform must be a non-empty string");
+  if (typeof ctx.channelId !== "string" || ctx.channelId.length === 0) throw new TypeError("ChannelContext.channelId must be a non-empty string");
+  if (ctx.type === "channel" && (typeof ctx.guildId !== "string" || ctx.guildId.length === 0))
+    throw new TypeError("ChannelContext.guildId must be a non-empty string for type 'channel'");
+  if (ctx.type === "guild" && (typeof ctx.guildId !== "string" || ctx.guildId.length === 0))
+    throw new TypeError("ChannelContext.guildId must be a non-empty string for type 'guild'");
+  if (ctx.type === "direct" && (typeof ctx.selfId !== "string" || ctx.selfId.length === 0))
+    throw new TypeError("ChannelContext.selfId must be a non-empty string for type 'direct'");
+  if (ctx.type === "direct" && (typeof ctx.userId !== "string" || ctx.userId.length === 0))
+    throw new TypeError("ChannelContext.userId must be a non-empty string for type 'direct'");
 }
 
 function parseManifest(value: unknown): ChannelManifest {
   if (typeof value !== "object" || value === null) throw new Error("Channel manifest is not an object");
-  const manifest = value as Partial<ChannelManifest>;
-  if (manifest.type !== "shared" && manifest.type !== "direct") throw new Error("Channel manifest type is invalid");
-  if (typeof manifest.platform !== "string" || typeof manifest.channelId !== "string" || typeof manifest.createdAt !== "string")
-    throw new Error("Channel manifest is invalid");
-  if (manifest.type === "direct" && typeof manifest.selfId !== "string") throw new Error("Channel manifest selfId is invalid");
-  return manifest as ChannelManifest;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.platform !== "string" || typeof raw.createdAt !== "string") throw new Error("Channel manifest is invalid");
+
+  // Legacy "shared" type migration
+  if (raw.type === "shared") {
+    const channelId = raw.channelId as string;
+    const rawGuildId = raw.guildId;
+    const guildId = (rawGuildId as string | undefined) ?? channelId;
+    if (guildId !== channelId) {
+      return { type: "channel", platform: raw.platform, channelId, guildId, createdAt: raw.createdAt } as ChannelManifest;
+    }
+    return { type: "guild", platform: raw.platform, channelId, guildId, createdAt: raw.createdAt } as ChannelManifest;
+  }
+
+  if (raw.type === "direct") {
+    const selfId = raw.selfId as string;
+    const channelId = raw.channelId as string;
+    // Legacy manifests don't have userId — use channelId as fallback
+    const userId = (raw.userId as string) ?? channelId;
+    if (!selfId) throw new Error("Channel manifest selfId is invalid");
+    return { type: "direct", platform: raw.platform, channelId, selfId, userId, createdAt: raw.createdAt } as ChannelManifest;
+  }
+
+  // New format — validate and pass through
+  if (raw.type === "channel") {
+    if (typeof raw.guildId !== "string" || typeof raw.channelId !== "string") throw new Error("Channel manifest is invalid");
+    return raw as unknown as ChannelManifest;
+  }
+  if (raw.type === "guild") {
+    if (typeof raw.guildId !== "string") throw new Error("Channel manifest is invalid");
+    // Ensure channelId is present (= guildId for guild type)
+    const channelId = (raw.channelId as string) ?? (raw.guildId as string);
+    return { ...raw, channelId } as unknown as ChannelManifest;
+  }
+
+  throw new Error("Channel manifest type is invalid");
 }
+
+export { type ChannelContext, type ChannelKey, deriveChannelKey, contextFromSession, contextFromRecord } from "./context.js";

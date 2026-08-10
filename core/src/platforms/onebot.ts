@@ -4,7 +4,6 @@ import { Universal } from "koishi";
 import { assembleEvent, type EventRecord, type MessageRecord, type RecordBase } from "../messages/index.js";
 import type { Translator } from "../messengers/index.js";
 import type { ChannelResources } from "../resources/index.js";
-import { persistElements } from "../resources/input.js";
 
 type OneBotEventType = "notice.poke";
 
@@ -41,7 +40,7 @@ export function translateOneBotEvent(base: RecordBase, session: Session): EventR
 export async function translateOneBotMessage(ctx: Context, base: RecordBase, session: Session, resources: ChannelResources): Promise<MessageRecord | null> {
   if (session.type !== "message-created" || !Array.isArray(session.elements)) return null;
   if (typeof session.messageId !== "string" || session.messageId.length === 0) return null;
-  return { ...base, messageId: session.messageId, elements: await persistElements(ctx, session.elements, resources) };
+  return { ...base, messageId: session.messageId, elements: await resources.persistElements(ctx, session.elements) };
 }
 
 function recordBase(session: Session): RecordBase {

@@ -1,4 +1,4 @@
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 export type MemosChannelType = "private" | "group";
 export type MemosMemoryScope = "auto" | "channel" | "user";
 export type ResolvedMemosMemoryScope = Exclude<MemosMemoryScope, "auto">;
@@ -25,7 +25,7 @@ export interface MemosClientConfig {
   includeRawIdentityInfo: boolean;
 }
 export interface MemosIdentityInput {
-  channelScope: ChannelScope;
+  channelScope: ChannelContext;
   channelType: MemosChannelType;
   authorId: string;
   messageId?: string;
@@ -34,7 +34,7 @@ export interface MemosIdentityInput {
   includeRawIdentityInfo?: boolean;
 }
 export interface MemosImportChunkIdentityInput {
-  channelScope: ChannelScope;
+  channelScope: ChannelContext;
   channelType: MemosChannelType;
   chunkStartIso: string;
   chunkEndIso: string;

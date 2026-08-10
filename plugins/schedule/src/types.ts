@@ -9,7 +9,7 @@ export type ScheduleLastResult = {
 
 export type Schedule = {
   id: string;
-  type: "shared" | "direct";
+  type: "channel" | "guild" | "direct" | "shared";
   platform: string;
   selfId: string;
   channelId: string;
@@ -51,7 +51,7 @@ export type ScheduleProjection = {
  */
 export type ScheduleRow = {
   id: string;
-  type: "shared" | "direct";
+  type: "channel" | "guild" | "direct" | "shared";
   platform: string;
   selfId: string;
   channelId: string;

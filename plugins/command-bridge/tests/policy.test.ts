@@ -14,21 +14,13 @@ describe("command bridge policy", () => {
   });
 
   it("enforces hard deny before allowlist", () => {
-    const config = {
-      trustMode: "full" as const,
-      allowCommands: ["weather"],
-      hardDeny: ["yesimbot"],
-    };
+    const config = { trustMode: "full" as const, allowCommands: ["weather"], hardDeny: ["yesimbot"] };
 
     expect(validateCommandCall("yesimbot.session.status", config)).toContain("hard-denied");
   });
 
   it("rejects commands outside locked allowlist", () => {
-    const config = {
-      trustMode: "locked" as const,
-      allowCommands: ["weather"],
-      hardDeny: [],
-    };
+    const config = { trustMode: "locked" as const, allowCommands: ["weather"], hardDeny: [] };
 
     expect(validateCommandCall("lottery", config)).toContain("not allowed");
     expect(validateCommandCall("weather 上海", config)).toBeNull();

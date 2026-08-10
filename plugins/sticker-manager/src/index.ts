@@ -1,6 +1,6 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, type Bot } from "koishi";
-import type { ChannelResources, ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelResources, ChannelContext } from "koishi-plugin-yesimbot";
 
 import { ModelStickerClassifier } from "./classifier.js";
 import { registerStickerCommands } from "./commands.js";
@@ -56,14 +56,14 @@ export default class StickerManagerPlugin {
     }
   }
 
-  public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin | null> {
+  public async setup(scope: ChannelContext, bot: Bot): Promise<AgentPlugin | null> {
     const classifier = this.classifier;
     if (!classifier) return null;
     const resources = await this.ctx.yesimbot.resource.get(scope);
     return this.createAgentPlugin(scope, bot, resources, classifier);
   }
 
-  private createAgentPlugin(scope: ChannelScope, bot: Bot, resources: ChannelResources, classifier: ModelStickerClassifier): AgentPlugin {
+  private createAgentPlugin(scope: ChannelContext, bot: Bot, resources: ChannelResources, classifier: ModelStickerClassifier): AgentPlugin {
     const artifactIds = new Map<string, string>();
     return {
       name: "sticker-manager",

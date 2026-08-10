@@ -5,8 +5,6 @@ import { Schema } from "koishi";
 import type { SearchBackend, SearchRuntimeConfig, WebScrapeOutput, WebSearchOutput } from "../types";
 import { clampLimit, compileBlacklist, dedupeByUrl, filterBlockedResults, normalizeUrlList } from "../utils";
 
-const MAX_URLS_PER_SCRAPE = 20;
-
 export const tavilyConfigSchema: Schema<TavilyConfig> = Schema.object({
   apiKey: Schema.string().required().description("Tavily API Key"),
   searchEndpoint: Schema.string().default("https://api.tavily.com/search").description("Tavily 搜索端点"),
@@ -17,6 +15,8 @@ export const tavilyConfigSchema: Schema<TavilyConfig> = Schema.object({
   topic: Schema.union([Schema.const("general"), Schema.const("news"), Schema.const("finance")]).description("搜索主题"),
   timeRange: Schema.union([Schema.const("day"), Schema.const("week"), Schema.const("month"), Schema.const("year")]).description("时间范围"),
 });
+
+const MAX_URLS_PER_SCRAPE = 20;
 
 const searchInputSchema = jsonSchema<TavilySearchInput>({
   type: "object",

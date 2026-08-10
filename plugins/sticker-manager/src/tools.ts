@@ -1,5 +1,5 @@
 import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
-import type { AssetStore, ChannelScope } from "koishi-plugin-yesimbot";
+import type { AssetStore, ChannelContext } from "koishi-plugin-yesimbot";
 
 import type { StickerClassifier } from "./classifier.js";
 import { detectImageMediaType, sha256Hex } from "./files.js";
@@ -15,7 +15,7 @@ export interface StickerToolsOptions {
   classifier: StickerClassifier;
   sender: StickerSender;
   assets: AssetStore;
-  scope: ChannelScope;
+  scope: ChannelContext;
   config: StickerConfig;
 }
 

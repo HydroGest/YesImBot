@@ -120,9 +120,7 @@ describe("generateChainStyle", () => {
     expect(style).toBe("语气直接，带反问；短句；先否前提再补论据，最后条件句收束。");
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.stringMatching(
-          /chain: share -> agree[\s\S]*语气：直接、反问、敷衍、认真、阴阳怪气等[\s\S]*不要总结具体内容、人名、链接或事实/,
-        ),
+        prompt: expect.stringMatching(/chain: share -> agree[\s\S]*语气：直接、反问、敷衍、认真、阴阳怪气等[\s\S]*不要总结具体内容、人名、链接或事实/),
       }),
     );
   });

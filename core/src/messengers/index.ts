@@ -1,11 +1,11 @@
 import type { Awaitable, Bot, Context, Element, Logger, Session } from "koishi";
 import { Universal } from "koishi";
 
-import type { ChannelScope, Channels } from "../channels/index.js";
+import type { Channels } from "../channels/index.js";
+import { type ChannelContext, deriveChannelKey, contextFromSession, contextFromRecord } from "../channels/index.js";
 import type { ChannelAllowRule, Config, PacingConfig } from "../config.js";
 import type { EventRecord, MessageRecord, RecordBase } from "../messages/index.js";
 import type { ChannelResources } from "../resources/index.js";
-import { persistElements } from "../resources/input.js";
 import type { ChannelRuntime, PostOptions, RuntimeResult, Runtimes } from "../runtimes/index.js";
 type RunResult = Extract<RuntimeResult, { readonly kind: "run" }>;
 type DeliveryContext = { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number };
@@ -58,7 +58,7 @@ export class Messenger {
     if (this.closed) return;
     const bot = this.ctx.bots.find((candidate) => candidate.platform === event.platform && candidate.selfId === event.selfId);
     if (!bot) throw new Error(`No Bot is available for ${event.platform}:${event.selfId}`);
-    const channel = await this.channels.resolve(scopeFromRecord(event));
+    const channel = await this.channels.resolve(contextFromRecord(event)!);
     const runtime = await this.runtimes.get(channel, bot);
     const result = await runtime.post(event, options ?? { trigger: true, ifBusy: "defer" });
     if (result.kind === "run") await this.track(this.deliverActive(bot, event.channel.id, runtime, result));
@@ -83,12 +83,12 @@ export class Messenger {
   }
 
   private async route(session: Session): Promise<void> {
-    const scope = scopeFromSession(session);
-    if (!scope || !matchesAllowedChannel(scope, this.config.allowedChannels)) return;
+    const ctx = contextFromSession(session);
+    if (!ctx || !matchesAllowedChannel(ctx, this.config.allowedChannels)) return;
     try {
       await this.channels.start();
-      await assertAssignee(this.ctx, scope, session.selfId);
-      const channel = await this.channels.resolve(scope);
+      await assertAssignee(this.ctx, ctx, session.selfId);
+      const channel = await this.channels.resolve(ctx);
       const translator = this.translators.get(session.platform) ?? this.translators.get("*");
       const record = translator ? await translator.translate(session, channel.resources) : await translateDefault(this.ctx, session, channel.resources);
       if (!record) return;
@@ -104,7 +104,7 @@ export class Messenger {
 
   private async deliverPassive(session: Session, runtime: ChannelRuntime, result: RunResult): Promise<void> {
     const delivery = emptyDeliveryContext(result.eventId);
-    await this.serializeDelivery(runtime.scope, async () => {
+    await this.serializeDelivery(runtime.context, async () => {
       try {
         for await (const segment of this.pacedSegments(result, delivery)) await session.send([...segment]);
       } catch (cause) {
@@ -115,7 +115,7 @@ export class Messenger {
 
   private async deliverActive(bot: Bot, channelId: string, runtime: ChannelRuntime, result: RunResult): Promise<void> {
     const delivery = emptyDeliveryContext(result.eventId);
-    await this.serializeDelivery(runtime.scope, async () => {
+    await this.serializeDelivery(runtime.context, async () => {
       try {
         for await (const segment of this.pacedSegments(result, delivery)) await bot.sendMessage(channelId, [...segment]);
       } catch (cause) {
@@ -145,11 +145,11 @@ export class Messenger {
 
   private async failDelivery(runtime: ChannelRuntime, result: RunResult, delivery: DeliveryContext, cause: unknown): Promise<void> {
     await runtime.fail(result.eventId, cause, delivery);
-    this.warn("delivery.failed", cause, runtime.scope.platform);
+    this.warn("delivery.failed", cause, runtime.context.platform);
   }
 
-  private async serializeDelivery(scope: ChannelScope, task: () => Promise<void>): Promise<void> {
-    const key = deliveryKey(scope);
+  private async serializeDelivery(ctx: ChannelContext, task: () => Promise<void>): Promise<void> {
+    const key = deliveryKey(ctx);
     const previous = this.deliveryTails.get(key) ?? Promise.resolve();
     const next = previous.then(task, task);
     const settled = next.then(
@@ -179,41 +179,20 @@ export class Messenger {
     } catch {}
   }
 }
-export function matchesAllowedChannel(scope: ChannelScope, rules: readonly ChannelAllowRule[] | undefined): boolean {
+export function matchesAllowedChannel(ctx: ChannelContext, rules: readonly ChannelAllowRule[] | undefined): boolean {
   return (
     rules?.some(
       (rule) =>
-        (rule.platform === "*" || rule.platform === scope.platform) &&
-        (rule.channelId === "*" || rule.channelId === scope.channelId) &&
-        (rule.isDirect === undefined || rule.isDirect === (scope.type === "direct")),
+        (rule.platform === "*" || rule.platform === ctx.platform) &&
+        (rule.channelId === "*" || rule.channelId === ctx.channelId) &&
+        (rule.isDirect === undefined || rule.isDirect === (ctx.type === "direct")),
     ) ?? false
   );
 }
-async function assertAssignee(ctx: Context, scope: ChannelScope, selfId: string): Promise<void> {
-  if (scope.type === "direct") return;
-  const [channel] = await ctx.database.get("channel", { platform: scope.platform, id: scope.channelId }, ["assignee"]);
+async function assertAssignee(koishiCtx: Context, ctx: ChannelContext, selfId: string): Promise<void> {
+  if (ctx.type === "direct") return;
+  const [channel] = await koishiCtx.database.get("channel", { platform: ctx.platform, id: ctx.channelId }, ["assignee"]);
   if (!channel?.assignee || channel.assignee !== selfId) throw new Error("Shared channel assignee admission failed");
-}
-function scopeFromRecord(record: MessageRecord | EventRecord): ChannelScope {
-  return record.channel.type === Universal.Channel.Type.DIRECT
-    ? { type: "direct", platform: record.platform, selfId: record.selfId, channelId: record.channel.id }
-    : { type: "shared", platform: record.platform, channelId: record.channel.id };
-}
-function scopeFromSession(session: Session): ChannelScope | undefined {
-  if (!session.platform || !session.selfId || !session.channelId) return;
-  const event = session as Session & {
-    event?: { channel?: { name?: string }; guild?: { name?: string } };
-  };
-  return session.isDirect
-    ? { type: "direct", platform: session.platform, selfId: session.selfId, channelId: session.channelId }
-    : {
-        type: "shared",
-        platform: session.platform,
-        channelId: session.channelId,
-        ...(session.guildId ? { guildId: session.guildId } : {}),
-        ...(event.event?.channel?.name ? { channelName: event.event.channel.name } : {}),
-        ...(event.event?.guild?.name ? { guildName: event.event.guild.name } : {}),
-      };
 }
 async function translateDefault(ctx: Context, session: Session, resources: ChannelResources): Promise<MessageRecord | null> {
   if (session.type !== "message-created" || !session.messageId || !session.channelId || !Array.isArray(session.elements)) return null;
@@ -231,10 +210,10 @@ async function translateDefault(ctx: Context, session: Session, resources: Chann
       ...((session.event.user?.name ?? session.author?.name) === undefined ? {} : { name: session.event.user?.name ?? session.author?.name }),
     },
   };
-  return { ...base, messageId: session.messageId, elements: await persistElements(ctx, session.elements, resources) };
+  return { ...base, messageId: session.messageId, elements: await resources.persistElements(ctx, session.elements) };
 }
-function deliveryKey(scope: ChannelScope): string {
-  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
+function deliveryKey(ctx: ChannelContext): string {
+  return deriveChannelKey(ctx);
 }
 function emptyDeliveryContext(eventId: string): DeliveryContext {
   return { turnId: "", messageId: eventId, segmentIndex: 0, segmentTotal: 0 };

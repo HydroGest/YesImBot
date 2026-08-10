@@ -122,11 +122,7 @@ function renderMemeTemplates(templates: readonly MemeTemplate[]): string | undef
   return `<meme_templates>\n${lines.join("\n\n")}\n</meme_templates>`;
 }
 
-function renderGlobalChains(
-  chains: readonly GlobalChainPattern[],
-  _stylePatterns: readonly GlobalPattern[],
-  config: ChatLearningConfig,
-): string | undefined {
+function renderGlobalChains(chains: readonly GlobalChainPattern[], _stylePatterns: readonly GlobalPattern[], config: ChatLearningConfig): string | undefined {
   const relevant = chains
     .filter((chain) => chain.channels.length >= config.minGlobalChannels && chain.samples?.[0] !== undefined)
     .sort((left, right) => chainScore(right) - chainScore(left))
@@ -134,7 +130,7 @@ function renderGlobalChains(
   if (relevant.length === 0) return undefined;
 
   const lines = relevant.map((chain) => {
-    const sample = chain.samples?.[0]!;
+    const sample = chain.samples?.[0];
     const style = chain.style ? `<style>${escapeXml(chain.style)}</style>\n` : "";
     const turnLines = sample.turns.map(
       (turn) => `<turn intent="${escapeXml(turn.intent)}" speaker="${escapeXml(turn.speaker)}">${escapeSampleText(turn.text)}</turn>`,

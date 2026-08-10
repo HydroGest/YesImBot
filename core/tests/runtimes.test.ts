@@ -60,7 +60,7 @@ const event = {
 
 async function runtime() {
   const root = await mkdtemp(join(tmpdir(), "yesimbot-runtime-"));
-  const channel = new Channel({ type: "shared", platform: "test", channelId: "room" }, root);
+  const channel = new Channel({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, root);
   await channel.conversation.init();
   const value = new ChannelRuntime(new Context(), {
     channel,
@@ -231,7 +231,7 @@ const idleConfig: Config = {
 
 async function createIdleRuntime() {
   const root = await mkdtemp(join(tmpdir(), "yesimbot-idle-"));
-  const channel = new Channel({ type: "shared", platform: "test", channelId: "room" }, root);
+  const channel = new Channel({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, root);
   await channel.conversation.init();
   const value = new ChannelRuntime(new Context(), {
     channel,
@@ -324,14 +324,14 @@ describe("Runtimes identity", () => {
       const channels = new Channels(ctx, { basePath: root });
       const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
       const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
-      const channel = await channels.resolve({ type: "shared", platform: "test", channelId: "room" });
+      const channel = await channels.resolve({ type: "guild", platform: "test", channelId: "room", guildId: "room" });
       const botOne = { selfId: "one", platform: "test", sendMessage: vi.fn() };
       const botTwo = { selfId: "two", platform: "test", sendMessage: vi.fn() };
       const [first, same] = await Promise.all([runtimes.get(channel, botOne as never), runtimes.get(channel, botOne as never)]);
       expect(first).toBe(same);
       const replacement = await runtimes.get(channel, botTwo as never);
       expect(replacement).not.toBe(first);
-      expect(replacement.scope).toEqual({ type: "shared", platform: "test", channelId: "room" });
+      expect(replacement.context).toEqual({ type: "guild", platform: "test", channelId: "room", guildId: "room" });
       await runtimes.stop();
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -344,15 +344,15 @@ describe("Runtimes identity", () => {
       const channels = new Channels(ctx, { basePath: root });
       const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
       const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
-      const scopeOne = { type: "direct", platform: "test", selfId: "one", channelId: "room" } as const;
-      const scopeTwo = { type: "direct", platform: "test", selfId: "two", channelId: "room" } as const;
+      const scopeOne = { type: "direct", platform: "test", selfId: "one", userId: "user-1", channelId: "room" } as const;
+      const scopeTwo = { type: "direct", platform: "test", selfId: "two", userId: "user-1", channelId: "room" } as const;
       const [first, second] = await Promise.all([
         runtimes.get(await channels.resolve(scopeOne), { platform: "test", selfId: "one" } as never),
         runtimes.get(await channels.resolve(scopeTwo), { platform: "test", selfId: "two" } as never),
       ]);
       expect(first).not.toBe(second);
-      expect(first.scope).toEqual(scopeOne);
-      expect(second.scope).toEqual(scopeTwo);
+      expect(first.context).toEqual(scopeOne);
+      expect(second.context).toEqual(scopeTwo);
       await runtimes.stop();
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -366,7 +366,7 @@ describe("Runtimes identity", () => {
       const channels = new Channels(ctx, { basePath: root });
       const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
       const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
-      const scope = { type: "shared", platform: "test", channelId: "room" } as const;
+      const scope = { type: "guild", platform: "test", channelId: "room", guildId: "room" } as const;
       const bot = { platform: "test", selfId: "one" };
       const first = await runtimes.get(await channels.resolve(scope), bot as never);
       await runtimes.reset(scope);
@@ -385,13 +385,13 @@ describe("Runtimes identity", () => {
       const channels = new Channels(ctx, { basePath: root });
       const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
       const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
-      const one = { type: "shared", platform: "test", channelId: "one" } as const;
-      const two = { type: "shared", platform: "test", channelId: "two" } as const;
+      const one = { type: "guild", platform: "test", channelId: "one", guildId: "one" } as const;
+      const two = { type: "guild", platform: "test", channelId: "two", guildId: "two" } as const;
       const first = await runtimes.get(await channels.resolve(one), { platform: "test", selfId: "bot" } as never);
       const second = await runtimes.get(await channels.resolve(two), { platform: "test", selfId: "bot" } as never);
       expect(first).not.toBe(second);
-      expect(first.scope).toEqual(one);
-      expect(second.scope).toEqual(two);
+      expect(first.context).toEqual(one);
+      expect(second.context).toEqual(two);
       await runtimes.stop();
     } finally {
       await rm(root, { recursive: true, force: true });

@@ -1,4 +1,4 @@
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 export type StickerScopeMode = "global" | "channel";
 export type StickerSourceKind = "steal" | "import" | "v3" | "migrate";
 export type SaveStickerResult = { status: "created"; sticker: StickerProjection } | { status: "duplicate"; sticker: StickerProjection };
@@ -90,9 +90,9 @@ export interface MigrationResult {
   failedItems: string[];
   removedSource: number;
 }
-export function scopeKeyFor(scope: ChannelScope, config: Pick<StickerConfig, "scope">): string {
+export function scopeKeyFor(scope: ChannelContext, config: Pick<StickerConfig, "scope">): string {
   if (config.scope === "global") return "global";
-  return scope.type === "shared" ? `shared:${scope.platform}:${scope.channelId}` : `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`;
+  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `group:${scope.platform}:${scope.channelId}`;
 }
 export function normalizeCategory(value: string): string {
   const cleaned = [...value]

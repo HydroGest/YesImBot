@@ -1,6 +1,6 @@
 /* eslint-disable vitest/require-mock-type-parameters */
 import type { AgentTool } from "@yesimbot/agent-runtime";
-import type { AssetStore, ChannelScope } from "koishi-plugin-yesimbot";
+import type { AssetStore, ChannelContext } from "koishi-plugin-yesimbot";
 import { PNG } from "pngjs";
 import { describe, expect, it, vi } from "vitest";
 
@@ -10,7 +10,7 @@ import type { StickerStore } from "../src/store.js";
 import { createStickerTools } from "../src/tools.js";
 import type { StickerConfig, StickerProjection } from "../src/types.js";
 
-const scope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
+const scope: ChannelContext = { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" };
 
 const config: StickerConfig = {
   scope: "global",

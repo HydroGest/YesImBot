@@ -1,7 +1,8 @@
 import type { Bot, Context, Session } from "koishi";
 
 import { Agents } from "../agents/index.js";
-import type { Channel, Channels, ChannelScope } from "../channels/index.js";
+import type { Channel, Channels } from "../channels/index.js";
+import { type ChannelContext, type ChannelKey, deriveChannelKey } from "../channels/index.js";
 import type { Config } from "../config.js";
 import { ModelService } from "../models/index.js";
 import { ChannelRuntime } from "./channel.js";
@@ -22,12 +23,12 @@ export class Runtimes {
   ) {}
 
   public async get(channel: Channel, bot: Bot, session?: Session): Promise<ChannelRuntime> {
-    const key = runtimeKey(channel.scope);
+    const key = runtimeKey(channel.context);
     let value!: ChannelRuntime;
     await this.serialize(key, async () => {
       this.assertOpen();
       const current = this.runtimes.get(key);
-      if (current && (channel.scope.type === "direct" || current.selfId === bot.selfId)) {
+      if (current && (channel.context.type === "direct" || current.selfId === bot.selfId)) {
         value = current;
         return;
       }
@@ -37,12 +38,12 @@ export class Runtimes {
       const runtime = new ChannelRuntime(this.ctx, {
         channel,
         bot,
-        will: await this.agents.setupWill(channel.scope, session),
+        will: await this.agents.setupWill(channel.context, session),
         model: chat.model,
         visionModel: vision,
         imageOutputSupported: chat.entry.modalities?.input?.includes("image") ?? false,
         config: this.config,
-        plugins: await this.agents.setup(channel.scope, bot),
+        plugins: await this.agents.setup(channel.context, bot),
         idleTimeout: this.config.session.idle.timeout,
       });
       try {
@@ -57,13 +58,13 @@ export class Runtimes {
     return value;
   }
 
-  public async reset(scope: ChannelScope): Promise<void> {
-    const key = runtimeKey(scope);
+  public async reset(ctx: ChannelContext): Promise<void> {
+    const key = runtimeKey(ctx);
     await this.serialize(key, async () => {
       const current = this.runtimes.get(key);
       if (current) await current.stop();
       this.runtimes.delete(key);
-      await this.channels.reset(scope);
+      await this.channels.reset(ctx);
     });
   }
 
@@ -77,20 +78,20 @@ export class Runtimes {
     return this.stopTask;
   }
 
-  public async compact(scope: ChannelScope): Promise<string> {
-    const runtime = this.runtimes.get(runtimeKey(scope));
+  public async compact(ctx: ChannelContext): Promise<string> {
+    const runtime = this.runtimes.get(runtimeKey(ctx));
     if (!runtime) throw new Error("No active Runtime is available to compact this conversation");
     const result = (await runtime.compact("manual")) as { compacted: boolean };
     return result.compacted ? "已压缩当前会话。" : "消息不足，未压缩。";
   }
 
-  public async archive(scope: ChannelScope, noSummary = false): Promise<string> {
-    const key = runtimeKey(scope);
+  public async archive(ctx: ChannelContext, noSummary = false): Promise<string> {
+    const key = runtimeKey(ctx);
     await this.serialize(key, async () => {
       const runtime = this.runtimes.get(key);
       if (runtime) await runtime.stop();
       this.runtimes.delete(key);
-      const channel = await this.channels.resolve(scope);
+      const channel = await this.channels.resolve(ctx);
       const input = noSummary
         ? undefined
         : {
@@ -103,17 +104,17 @@ export class Runtimes {
     return "已归档当前会话。";
   }
 
-  public clear(scope: ChannelScope): Promise<void> {
-    return this.reset(scope);
+  public clear(ctx: ChannelContext): Promise<void> {
+    return this.reset(ctx);
   }
 
-  public async status(scope: ChannelScope): Promise<string> {
-    const active = await (await this.channels.resolve(scope)).conversation.status();
+  public async status(ctx: ChannelContext): Promise<string> {
+    const active = await (await this.channels.resolve(ctx)).conversation.status();
     return active.active ? `活动会话：${active.active.filename}` : "无会话记录。";
   }
 
-  public async list(scope: ChannelScope): Promise<string> {
-    const sessions = await (await this.channels.resolve(scope)).conversation.list();
+  public async list(ctx: ChannelContext): Promise<string> {
+    const sessions = await (await this.channels.resolve(ctx)).conversation.list();
     return sessions.length ? sessions.map((session) => `${session.isActive ? "→ " : "  "}${session.filename}`).join("\n") : "无会话记录。";
   }
 
@@ -143,8 +144,8 @@ export class Runtimes {
   }
 }
 
-function runtimeKey(scope: ChannelScope): string {
-  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
+function runtimeKey(ctx: ChannelContext): ChannelKey {
+  return deriveChannelKey(ctx);
 }
 
 export { type RuntimeResult, type PostOptions, type ChannelOutput, ChannelRuntime } from "./channel.js";

@@ -116,7 +116,7 @@ export class ScheduleScheduler {
   }
 }
 
-function toUniversalChannelType(type: "shared" | "direct"): Universal.Channel.Type {
+function toUniversalChannelType(type: string): Universal.Channel.Type {
   return type === "direct" ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT;
 }
 

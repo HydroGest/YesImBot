@@ -6,9 +6,6 @@ import { h, type Session } from "koishi";
 
 import { OneBotTranslator } from "../src/platforms/onebot.js";
 
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
-const id = "0123456789abcdef0123456789abcdef";
-
 function createSession(overrides: Record<string, unknown> = {}): Session {
   return {
     type: "message-created",
@@ -27,25 +24,19 @@ function createSession(overrides: Record<string, unknown> = {}): Session {
 
 describe("OneBotTranslator", () => {
   it("persists live-session images through ChannelResources", async () => {
-    const http = Object.assign(
-      vi.fn(async () => ({
-        data: new ReadableStream({
-          start(controller) {
-            controller.enqueue(PNG);
-            controller.close();
-          },
-        }),
-      })),
-      { head: vi.fn(async () => ({ get: (name: string) => ({ "content-type": "image/png", "content-length": "4" })[name] ?? null })) },
-    );
-    const resources = { assets: { put: vi.fn(async () => id) } };
+    const id = "0123456789abcdef0123456789abcdef";
+    const resources = {
+      persistElements: vi.fn(async (_ctx: unknown, elements: readonly { type: string; attrs: Record<string, unknown> }[]) =>
+        elements.map((el) => (el.type === "img" ? h("img", { ...el.attrs, id }) : el)),
+      ),
+    };
 
-    const record = await new OneBotTranslator({ http } as never).translate(
+    const record = await new OneBotTranslator({ http: vi.fn() } as never).translate(
       createSession({ elements: [h("img", { src: "https://onebot.example/image" })] }),
       resources as never,
     );
 
-    expect(resources.assets.put).toHaveBeenCalledWith(PNG);
+    expect(resources.persistElements).toHaveBeenCalledOnce();
     expect(record).toMatchObject({ platform: "onebot", selfId: "10000", messageId: "40000", elements: [h("img", { id })] });
   });
 

@@ -1,17 +1,17 @@
 import { Context } from "cordis";
 import { clone, makeArray, pick } from "cosmokit";
 import { Universal } from "koishi";
-import type { ChannelScope, EventRecord } from "koishi-plugin-yesimbot";
+import type { EventRecord } from "koishi-plugin-yesimbot";
 import { Database, Driver, Eval, executeEval, executeQuery, executeSort, executeUpdate, Field, RuntimeError, Selection } from "minato";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { MAX_CONCURRENT_TRIGGERS, ScheduleScheduler } from "../src/scheduler.js";
-import { ScheduleStore, registerScheduleModel } from "../src/store.js";
+import { ScheduleStore, registerScheduleModel, type ScheduleScope } from "../src/store.js";
 import type { Schedule } from "../src/types.js";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-const sharedScope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
+const sharedScope = { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1", selfId: "bot-1" } satisfies ScheduleScope;
 
 const T0 = "2026-08-01T00:00:00.000Z";
 

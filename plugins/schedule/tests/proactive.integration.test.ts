@@ -14,7 +14,7 @@ import type { EventRecord } from "../../../core/src/messages.js";
 import SchedulePlugin from "../src/index.js";
 import { ScheduleStore } from "../src/store.js";
 
-const SCOPE = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" } as const;
+const SCOPE = { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1", selfId: "bot-1" } as const;
 
 type Row = Record<string, unknown>;
 

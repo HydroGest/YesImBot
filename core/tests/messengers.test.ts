@@ -37,7 +37,7 @@ describe("Messenger", () => {
     const decoy = { platform: "test", selfId: "bot-2", sendMessage: vi.fn(async () => []) };
     ctx.bots.push(decoy as never, exact as never);
     const runtime = {
-      scope: { type: "shared", platform: "test", channelId: "room-1" },
+      context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" },
       fail: vi.fn(async () => undefined),
       post: vi.fn(async () => ({
         kind: "run" as const,
@@ -48,7 +48,7 @@ describe("Messenger", () => {
         signal: new AbortController().signal,
       })),
     };
-    const channels = { resolve: vi.fn(async () => ({ scope: { type: "shared", platform: "test", channelId: "room-1" } })) };
+    const channels = { resolve: vi.fn(async () => ({ context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" } })) };
     const runtimes = { get: vi.fn(async () => runtime) };
 
     const messenger = new Messenger(ctx, config, channels as never, runtimes as never);
@@ -67,8 +67,14 @@ describe("Messenger", () => {
     const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
     ctx.bots.push(bot as never);
     Object.assign(ctx, { database: { get: vi.fn(async () => [{ assignee: "bot-1" }]) } });
-    const resources = { assets: { put: vi.fn(async () => "0123456789abcdef0123456789abcdef") } };
-    const channel = { scope: { type: "shared", platform: "test", channelId: "room-1" }, resources };
+    const put = vi.fn(async () => "0123456789abcdef0123456789abcdef");
+    const resources = {
+      assets: { put },
+      persistElements: vi.fn(async (_ctx: unknown, elements: readonly { type: string; attrs: Record<string, unknown> }[]) =>
+        elements.map((el) => (el.type === "img" ? h("img", { id: "0123456789abcdef0123456789abcdef" }) : el)),
+      ),
+    };
+    const channel = { context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" }, resources };
     const runtime = { handle: vi.fn(async () => ({ kind: "wait" as const, eventId: "event-1" })) };
     const channels = { start: vi.fn(async () => undefined), resolve: vi.fn(async () => channel) };
     const runtimes = { get: vi.fn(async () => runtime) };
@@ -90,6 +96,7 @@ describe("Messenger", () => {
       platform: "test",
       selfId: "bot-1",
       channelId: "room-1",
+      guildId: "room-1",
       userId: "user-1",
       timestamp: 1,
       messageId: "message-1",
@@ -101,7 +108,7 @@ describe("Messenger", () => {
 
     await messenger["handle"](session as never);
 
-    expect(resources.assets.put).toHaveBeenCalledOnce();
+    expect(resources.persistElements).toHaveBeenCalledOnce();
     expect(runtime.handle).toHaveBeenCalledWith(expect.objectContaining({ elements: [h("img", { id: "0123456789abcdef0123456789abcdef" })] }));
     expect(runtimes.get).toHaveBeenCalledWith(channel, bot, session);
   });
@@ -111,7 +118,7 @@ describe("Messenger", () => {
     const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => Promise.reject(new Error("offline"))) };
     ctx.bots.push(bot as never);
     const runtime = {
-      scope: { type: "shared", platform: "test", channelId: "room-1" },
+      context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" },
       fail: vi.fn(async () => undefined),
       post: vi.fn(async () => ({
         kind: "run" as const,
@@ -122,7 +129,7 @@ describe("Messenger", () => {
         signal: new AbortController().signal,
       })),
     };
-    const channels = { resolve: vi.fn(async () => ({ scope: runtime.scope })) };
+    const channels = { resolve: vi.fn(async () => ({ context: runtime.context })) };
     const runtimes = { get: vi.fn(async () => runtime) };
     const messenger = new Messenger(
       ctx,
@@ -149,7 +156,7 @@ describe("Messenger", () => {
       const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
       ctx.bots.push(bot as never);
       const runtime = {
-        scope: { type: "shared", platform: "test", channelId: "room-1" },
+        context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" },
         fail: vi.fn(async () => undefined),
         post: vi.fn(async () => ({
           kind: "run" as const,
@@ -160,7 +167,7 @@ describe("Messenger", () => {
           signal: controller.signal,
         })),
       };
-      const channels = { resolve: vi.fn(async () => ({ scope: runtime.scope })) };
+      const channels = { resolve: vi.fn(async () => ({ context: runtime.context })) };
       const runtimes = { get: vi.fn(async () => runtime) };
       const messenger = new Messenger(
         ctx,

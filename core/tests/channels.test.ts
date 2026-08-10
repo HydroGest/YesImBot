@@ -18,7 +18,7 @@ describe("Channels", () => {
     const root = await mkdtemp(join(tmpdir(), "yesimbot-channels-"));
     roots.push(root);
     const channels = new Channels(new Context(), { basePath: root });
-    const shared = { type: "shared", platform: "test", channelId: "room" } as const;
+    const shared = { type: "guild", platform: "test", channelId: "room", guildId: "room" } as const;
     const direct = { type: "direct", platform: "test", selfId: "bot", channelId: "room" } as const;
 
     const [first, second] = await Promise.all([channels.get(shared), channels.get(shared)]);
@@ -37,7 +37,7 @@ describe("Channels", () => {
       setup: async (_resources, _uri, { signal }) =>
         new Promise<never>((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true })),
     });
-    const resources = await channels.get({ type: "shared", platform: "test", channelId: "room" });
+    const resources = await channels.get({ type: "guild", platform: "test", channelId: "room", guildId: "room" });
 
     expect(resources.imageBudget).toEqual(imageBudget);
     await expect(resources.open("slow:///file")).resolves.toBeUndefined();

@@ -1,6 +1,6 @@
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 import { createSearXNGBackend, searxngConfigSchema, type SearXNGConfig } from "./backends/searxng";
 import { createTavilyBackend, tavilyConfigSchema, type TavilyConfig } from "./backends/tavily";
@@ -90,7 +90,7 @@ export default class SearchService {
     this.logger.info(`Search service started with provider: ${provider}`);
   }
 
-  public setup(_scope: ChannelScope, _bot: Bot): AgentPlugin | null {
+  public setup(_scope: ChannelContext, _bot: Bot): AgentPlugin | null {
     const backend = this.backend;
     if (!backend) return null;
     return {

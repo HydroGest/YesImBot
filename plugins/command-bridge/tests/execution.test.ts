@@ -38,7 +38,7 @@ function createOptions(overrides: {
     id: "exec-1",
     command: overrides.command ?? "echo",
     bot: (overrides.bot ?? createFakeBot(overrides.session)) as never,
-    scope: { type: "shared" as const, platform: "test", channelId: "room" },
+    scope: { type: "guild" as const, platform: "test", channelId: "room", guildId: "room" },
     actor: overrides.actor ?? { kind: "agent" as const },
     interactive: overrides.interactive ?? "reject",
     timeoutMs: 1000,
@@ -134,11 +134,7 @@ describe("CommandExecution", () => {
       }),
     };
     session.bot = bot;
-    const execution = new CommandExecution(createOptions({
-      session,
-      command: "ccb",
-      bot,
-    }));
+    const execution = new CommandExecution(createOptions({ session, command: "ccb", bot }));
     execution.start();
 
     await execution.next();

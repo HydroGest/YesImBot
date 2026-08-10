@@ -18,7 +18,7 @@ import { generateText } from "ai";
 import { Agents, type ChannelPlugin } from "../src/agents/index.js";
 import { createDescribeImageTool } from "../src/agents/tools.js";
 import { type WillEngine, type WillPlugin } from "../src/agents/will.js";
-import type { ChannelScope } from "../src/channels/index.js";
+import type { ChannelContext } from "../src/channels/index.js";
 import { createMessage, type MessageRecord } from "../src/messages/index.js";
 import { ChannelResources } from "../src/resources/index.js";
 import { PNG_BYTES } from "./helpers/index.js";
@@ -113,9 +113,9 @@ describe("createDescribeImageTool", () => {
 // Agents
 // ---------------------------------------------------------------------------
 
-const scope: ChannelScope = { type: "shared", platform: "test", channelId: "room-1" };
+const scope: ChannelContext = { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" };
 
-const directScope: ChannelScope = { type: "direct", platform: "test", selfId: "bot-1", channelId: "room-1" };
+const directScope: ChannelContext = { type: "direct", platform: "test", selfId: "bot-1", channelId: "room-1", userId: "user-1" };
 
 function message(channelType: Universal.Channel.Type, elements = [h.text("hello")]) {
   return createMessage({
@@ -135,7 +135,7 @@ class TestChannelPlugin implements ChannelPlugin {
     private readonly failure?: Error,
   ) {}
 
-  public setup(_scope: ChannelScope, _bot: Bot): AgentPlugin | null {
+  public setup(_scope: ChannelContext, _bot: Bot): AgentPlugin | null {
     if (this.failure) throw this.failure;
     return this.plugin;
   }
@@ -152,7 +152,7 @@ class TestWillPlugin implements WillPlugin {
     return this.matches;
   }
 
-  public setup(_scope: ChannelScope): WillEngine {
+  public setup(_scope: ChannelContext): WillEngine {
     return this.will;
   }
 }

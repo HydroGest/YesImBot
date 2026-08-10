@@ -1,9 +1,8 @@
 import type { AgentTool } from "@yesimbot/agent-runtime";
 import Ajv from "ajv";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
-import type { ScheduleStore } from "../src/store.js";
+import type { ScheduleStore, ScheduleScope } from "../src/store.js";
 import { createScheduleTools } from "../src/tools.js";
 import type { Schedule, ScheduleProjection } from "../src/types.js";
 
@@ -11,7 +10,7 @@ const ajv = new Ajv({ strict: false, allErrors: true });
 
 const TOOL_NAMES = ["schedule_create", "schedule_list", "schedule_update", "schedule_pause", "schedule_resume", "schedule_cancel"] as const;
 
-const scope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
+const scope = { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1", selfId: "bot-1" } satisfies ScheduleScope;
 
 type StoreDouble = { create: Mock; list: Mock; update: Mock; pause: Mock; resume: Mock; cancel: Mock };
 

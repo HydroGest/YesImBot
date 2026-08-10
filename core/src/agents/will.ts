@@ -1,7 +1,7 @@
 import type { TurnResult } from "@yesimbot/agent-runtime";
 import type { Awaitable, Session, Universal } from "koishi";
 
-import type { ChannelScope } from "../channels/index.js";
+import type { ChannelContext } from "../channels/index.js";
 import { isMessage, type Event, type Message } from "../messages/index.js";
 
 export const defaultWillEngine: WillEngine = {
@@ -22,5 +22,5 @@ export interface WillEngine {
 export interface WillPlugin {
   readonly priority: number;
   match(session: Session): boolean;
-  setup(scope: ChannelScope): Awaitable<WillEngine>;
+  setup(context: ChannelContext): Awaitable<WillEngine>;
 }

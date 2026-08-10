@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Context, Field, Types } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 import {
   MAX_ENABLED_SCHEDULES,
@@ -32,7 +32,7 @@ const SCHEDULE_FIELDS = {
   createdAt: "string",
   updatedAt: "string",
 } satisfies Field.Extension<ScheduleRow, Types>;
-export type ScheduleScope = ChannelScope & { readonly selfId: string };
+export type ScheduleScope = ChannelContext & { readonly selfId: string; readonly channelId: string };
 /** The database surface the Store needs: the raw Minato model service. */
 type ScheduleModel = Pick<Context["model"], "extend" | "get" | "create" | "set" | "remove">;
 /**

@@ -57,7 +57,7 @@ describe("WillPolicyPlugin", () => {
 
     expect(registered).toHaveLength(1);
     expect(plugin.match({} as never)).toBe(true);
-    expect(plugin.setup({ type: "shared", platform: "test", channelId: "room-1" } as never)).toBeTruthy();
+    expect(plugin.setup({ type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" } as never)).toBeTruthy();
   });
 
   it("declines when its Koishi filter does not match", async () => {

@@ -1,6 +1,6 @@
 /* eslint-disable vitest/require-mock-type-parameters */
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", () => {
@@ -24,7 +24,7 @@ import StickerManagerPlugin from "../src/index.js";
 import type { StickerConfig, StickerRow } from "../src/types.js";
 import { createMemoryModel } from "./helpers.js";
 
-type Factory = (context: { readonly scope: ChannelScope; readonly bot: unknown }) => AgentPlugin;
+type Factory = (context: { readonly scope: ChannelContext; readonly bot: unknown }) => AgentPlugin;
 
 interface CommandRecord {
   name: string;
@@ -115,7 +115,7 @@ describe("StickerManagerPlugin", () => {
     expect(commands.length).toBeGreaterThan(0);
     expect(commands.map((record) => record.name)).toContain("yesimbot.sticker.reclassify");
 
-    const agentPlugin = await plugins[0]!.setup({ type: "shared", platform: "test", channelId: "room" }, { selfId: "bot" } as never);
+    const agentPlugin = await plugins[0]!.setup({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, { selfId: "bot" } as never);
     const tools = typeof agentPlugin?.tools === "function" ? ((await agentPlugin.tools({} as never)) ?? []) : [];
     expect(tools.map((tool) => tool.name)).toEqual(["sticker_steal", "sticker_send", "sticker_categories", "sticker_search"]);
 

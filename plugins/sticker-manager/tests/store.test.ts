@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { StickerFileStore } from "../src/files.js";
@@ -10,7 +10,7 @@ import { StickerStore } from "../src/store.js";
 import { scopeKeyFor, type StickerRow } from "../src/types.js";
 import { createMemoryModel } from "./helpers.js";
 
-const sharedScope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
+const sharedScope: ChannelContext = { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" };
 
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 const webpBytes = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38]);
@@ -108,8 +108,8 @@ describe("StickerStore", () => {
   });
 
   it("keeps shared channel scope keys independent of selfId", () => {
-    expect(scopeKeyFor(sharedScope, { scope: "channel" })).toBe("shared:test:room-1");
-    expect(scopeKeyFor({ ...sharedScope, selfId: "bot-2" }, { scope: "channel" })).toBe("shared:test:room-1");
+    expect(scopeKeyFor(sharedScope, { scope: "channel" })).toBe("group:test:room-1");
+    expect(scopeKeyFor({ ...sharedScope, selfId: "bot-2" }, { scope: "channel" })).toBe("group:test:room-1");
   });
 
   it("isolates global and channel rows while sharing content files", async () => {

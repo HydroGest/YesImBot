@@ -32,8 +32,8 @@ describe("session commands", () => {
     };
     registerSessionCommands(ctx as never, runtimes as never, { authority: 4 });
     const action = commands.get("yesimbot.session.compact")!.action.mock.calls[0]![0];
-    await expect(action({ session: { platform: "test", selfId: "bot", channelId: "room", isDirect: false } })).resolves.toBe("ok");
-    expect(runtimes.compact).toHaveBeenCalledWith({ type: "shared", platform: "test", channelId: "room" });
+    await expect(action({ session: { platform: "test", selfId: "bot", channelId: "room", guildId: "room", isDirect: false } })).resolves.toBe("ok");
+    expect(runtimes.compact).toHaveBeenCalledWith({ type: "guild", platform: "test", channelId: "room", guildId: "room", selfId: "bot" });
   });
 
   it("lists the active session and switches to a persisted session", async () => {

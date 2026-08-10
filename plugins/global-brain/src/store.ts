@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 import {
   type BrainContent,
@@ -32,7 +32,7 @@ export interface GlobalBrainStoreOptions {
 
 export interface BrainDepositInput {
   readonly kind: BrainThread["kind"];
-  readonly sourceScope: ChannelScope;
+  readonly sourceScope: ChannelContext;
   readonly content: string;
   readonly payload?: BrainContent;
   readonly tags?: readonly string[];
@@ -40,7 +40,7 @@ export interface BrainDepositInput {
 
 export interface BrainReplyInput {
   readonly threadId: string;
-  readonly sourceScope: ChannelScope;
+  readonly sourceScope: ChannelContext;
   readonly content: string;
   readonly replySource?: BrainReply["replySource"];
   readonly author?: BrainReply["author"];
@@ -52,11 +52,11 @@ export interface GlobalBrainStore {
   getBlob(id: string): Promise<Uint8Array>;
   deposit(input: BrainDepositInput): Promise<BrainThread>;
   reply(input: BrainReplyInput): Promise<BrainReply>;
-  read(threadId: string, readerScope?: ChannelScope): Promise<BrainThreadView | undefined>;
-  resolve(threadId: string, callerScope: ChannelScope): Promise<BrainThread>;
-  status(sourceScope: ChannelScope): Promise<BrainThreadStatus[]>;
-  participantScopes(): Promise<ChannelScope[]>;
-  digest(scope: ChannelScope): Promise<BrainDigest>;
+  read(threadId: string, readerScope?: ChannelContext): Promise<BrainThreadView | undefined>;
+  resolve(threadId: string, callerScope: ChannelContext): Promise<BrainThread>;
+  status(sourceScope: ChannelContext): Promise<BrainThreadStatus[]>;
+  participantScopes(): Promise<ChannelContext[]>;
+  digest(scope: ChannelContext): Promise<BrainDigest>;
 }
 
 interface BrainSeenRecord {
@@ -314,7 +314,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
     async participantScopes() {
       await this.init();
       return serialize(async () => {
-        const scopes = new Map<string, ChannelScope>();
+        const scopes = new Map<string, ChannelContext>();
         for (const thread of threads.values()) {
           scopes.set(scopeKey(thread.sourceScope), { ...thread.sourceScope });
         }
@@ -424,7 +424,8 @@ function isReply(value: unknown): value is BrainReply {
 function isScope(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const scope = value as Record<string, unknown>;
-  if (scope.type === "shared") return typeof scope.platform === "string" && typeof scope.channelId === "string";
+  if (scope.type === "guild" || scope.type === "channel" || scope.type === "shared")
+    return typeof scope.platform === "string" && typeof scope.channelId === "string";
   return scope.type === "direct" && typeof scope.platform === "string" && typeof scope.selfId === "string" && typeof scope.channelId === "string";
 }
 

@@ -109,17 +109,7 @@ export function mergeLocalPatterns(
     );
   }
   for (const chain of chainPatterns) {
-    mergeChainPattern(
-      byChainKey,
-      chain.chain,
-      chain.frequency,
-      channelKey,
-      now,
-      chain.sample,
-      chain.style,
-      chain.styleSampleId,
-      chain.semantics,
-    );
+    mergeChainPattern(byChainKey, chain.chain, chain.frequency, channelKey, now, chain.sample, chain.style, chain.styleSampleId, chain.semantics);
   }
 
   return {
@@ -277,8 +267,8 @@ function mergeChainPattern(
     samples.push({ ...sample, channelKey });
   }
   const styleChanged = style !== undefined && styleSampleId !== undefined && existing.styleSampleId !== styleSampleId;
-  const nextStyle = styleChanged ? style : existing.style ?? style;
-  const nextStyleSampleId = styleChanged ? styleSampleId : existing.styleSampleId ?? styleSampleId;
+  const nextStyle = styleChanged ? style : (existing.style ?? style);
+  const nextStyleSampleId = styleChanged ? styleSampleId : (existing.styleSampleId ?? styleSampleId);
   byKey.set(key, {
     ...existing,
     style: nextStyle,

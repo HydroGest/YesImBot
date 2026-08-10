@@ -5,7 +5,7 @@ import type { AgentEntry, AgentPlugin, AgentPluginRuntime, AgentStorage, Prepare
 import { createMessageEntry } from "@yesimbot/agent-runtime";
 import type { ModelMessage } from "ai";
 import { Context, Logger, Schema, Universal, type Command, type Session } from "koishi";
-import { createMessage, isMessage, type DeliveredPayload } from "koishi-plugin-yesimbot";
+import { createMessage, isMessage, type ChannelContext, type DeliveredPayload } from "koishi-plugin-yesimbot";
 
 import { buildLocalChainPatterns } from "./chains.js";
 import { collectTurns, segmentTurns } from "./collector.js";
@@ -58,9 +58,7 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
   blockedUserIds: Schema.array(Schema.string()).default([]).description("不参与学习、也不进入 few-shot 的 user id 黑名单"),
   blockedUserPatterns: Schema.array(Schema.string()).default([]).description("按昵称或 user id 子串过滤其他 bot"),
   autoBlockBotNames: Schema.boolean().default(false).description("启用常见 bot 名称自动过滤，例如 bot、机器人、小助手、官方"),
-  ignoreBotMentions: Schema.boolean()
-    .default(true)
-    .description("学习时忽略 @ 本 bot 的消息，降低提示词注入内容进入风格样本的风险"),
+  ignoreBotMentions: Schema.boolean().default(true).description("学习时忽略 @ 本 bot 的消息，降低提示词注入内容进入风格样本的风险"),
   observeAllChannels: Schema.boolean().default(false).description("在未启用 yesimbot 的频道也采集消息，用于跨群全局规律学习"),
   globalRulePath: Schema.string().default("").description("跨群全局规则文件路径；留空时放在频道根目录的上一级"),
   globalSyncIntervalMinutes: Schema.number().min(1).max(1440).default(60).description("跨群规则同步最小间隔分钟数"),
@@ -81,7 +79,7 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
 const LINK_KINDS = new Set<LinkKind | "*">(["quote", "reply", "at", "adjacent", "entity", "*"]);
 
 /** Internal scope that always carries selfId for keying purposes. */
-type FullScope = { readonly type: "shared" | "direct"; readonly platform: string; readonly selfId: string; readonly channelId: string };
+type FullScope = ChannelContext & { readonly selfId: string };
 
 export default class ChatLearningPlugin {
   public static readonly name = "yesimbot-chat-learning";
@@ -127,12 +125,11 @@ export default class ChatLearningPlugin {
   }
 
   private async onDelivered(payload: DeliveredPayload): Promise<void> {
-    const scope: FullScope = {
-      type: payload.channel.type === Universal.Channel.Type.DIRECT ? "direct" : "shared",
-      platform: payload.platform,
-      selfId: payload.selfId,
-      channelId: payload.channel.id,
-    };
+    if (!payload.platform || !payload.selfId || !payload.channel.id) return;
+    const isDirect = payload.channel.type === Universal.Channel.Type.DIRECT;
+    const scope: FullScope = isDirect
+      ? { type: "direct", platform: payload.platform, selfId: payload.selfId, channelId: payload.channel.id, userId: payload.channel.id }
+      : { type: "guild", platform: payload.platform, selfId: payload.selfId, channelId: payload.channel.id, guildId: payload.channel.id };
     const hook = this.reflectHooks.get(scopeKey(scope));
     if (hook) await hook(payload);
   }
@@ -1114,7 +1111,14 @@ function humanReflectionText(score: ReflectionScore): string {
 
 function scopeOf(session: Session | undefined): FullScope | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
-  return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId };
+  if (session.isDirect) {
+    return { type: "direct", platform: session.platform, selfId: session.selfId, channelId: session.channelId, userId: session.userId ?? session.channelId };
+  }
+  const guildId = session.guildId ?? session.channelId;
+  if (guildId !== session.channelId) {
+    return { type: "channel", platform: session.platform, selfId: session.selfId, channelId: session.channelId, guildId };
+  }
+  return { type: "guild", platform: session.platform, selfId: session.selfId, channelId: session.channelId, guildId };
 }
 
 function scopeKey(scope: FullScope): string {

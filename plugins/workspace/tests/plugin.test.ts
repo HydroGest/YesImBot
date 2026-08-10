@@ -63,10 +63,10 @@ describe("WorkspacePlugin", () => {
     const fixture = await createWorkspace();
     try {
       await fixture.plugin.start();
-      const agentPlugin = await fixture.plugins[0]!.setup({ type: "shared", platform: "test", channelId: "room" }, { selfId: "bot" } as never);
+      const agentPlugin = await fixture.plugins[0]!.setup({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, { selfId: "bot" } as never);
 
       expect(agentPlugin).toBeTruthy();
-      expect(fixture.ctx.yesimbot.resource.get).toHaveBeenCalledWith({ type: "shared", platform: "test", channelId: "room" });
+      expect(fixture.ctx.yesimbot.resource.get).toHaveBeenCalledWith({ type: "guild", platform: "test", channelId: "room", guildId: "room" });
       const tools = typeof agentPlugin?.tools === "function" ? ((await agentPlugin.tools({} as never)) ?? []) : [];
       expect(tools.map((tool) => tool.name)).toEqual(["bash", "readFile", "writeFile", "editFile"]);
     } finally {
@@ -79,7 +79,7 @@ describe("WorkspacePlugin", () => {
     const fixture = await createWorkspace();
     try {
       await fixture.plugin.start();
-      const agentPlugin = await fixture.plugins[0]!.setup({ type: "shared", platform: "test", channelId: "room" }, { selfId: "bot" } as never);
+      const agentPlugin = await fixture.plugins[0]!.setup({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, { selfId: "bot" } as never);
       const tools = typeof agentPlugin?.tools === "function" ? ((await agentPlugin.tools({} as never)) ?? []) : [];
 
       expect(tools).toHaveLength(4);

@@ -41,6 +41,6 @@ describe("formatReflectionTarget", () => {
   });
 
   it("normalizes mention markup in reflection targets", () => {
-    expect(formatReflectionTarget("<at id=\"1328387967\"/> 收到")).toBe("@成员 收到");
+    expect(formatReflectionTarget('<at id="1328387967"/> 收到')).toBe("@成员 收到");
   });
 });

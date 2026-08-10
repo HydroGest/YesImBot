@@ -1,5 +1,5 @@
 import type { Universal } from "koishi";
-import type { ChannelScope, EventRecord } from "koishi-plugin-yesimbot";
+import type { ChannelContext, EventRecord } from "koishi-plugin-yesimbot";
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 const TEXT_CHANNEL_TYPE = 0 satisfies Universal.Channel.Type;
 export type BrainPostKind = "share" | "question" | "insight";
@@ -13,7 +13,7 @@ export type BrainContent =
 export interface BrainThread {
   readonly id: string;
   readonly kind: BrainPostKind;
-  readonly sourceScope: ChannelScope;
+  readonly sourceScope: ChannelContext;
   readonly content: string;
   readonly payload?: BrainContent;
   readonly tags: readonly string[];
@@ -24,7 +24,7 @@ export interface BrainThread {
 export interface BrainReply {
   readonly id: string;
   readonly threadId: string;
-  readonly sourceScope: ChannelScope;
+  readonly sourceScope: ChannelContext;
   readonly replySource: BrainReplySource;
   readonly author?: { readonly id: string; readonly name?: string };
   readonly content: string;
@@ -64,7 +64,7 @@ declare module "koishi-plugin-yesimbot" {
     "global-brain.immediate": { thread: BrainImmediateShare };
   }
 }
-export function buildImmediateShareEvent(scope: ChannelScope, selfId: string, thread: BrainThread): EventRecord<"global-brain.immediate"> {
+export function buildImmediateShareEvent(scope: ChannelContext, selfId: string, thread: BrainThread): EventRecord<"global-brain.immediate"> {
   const summary = thread.content.length > 160 ? `${thread.content.slice(0, 160)}...` : thread.content;
   return {
     eventType: "global-brain.immediate",
@@ -76,6 +76,8 @@ export function buildImmediateShareEvent(scope: ChannelScope, selfId: string, th
     thread: { id: thread.id, kind: thread.kind, content: thread.content, tags: [...thread.tags] },
   };
 }
-export function scopeKey(scope: ChannelScope): string {
-  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
+export function scopeKey(scope: ChannelContext): string {
+  if (scope.type === "direct") return `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`;
+  // guild and channel use the same key as the old "shared" type for JSONL backward compat
+  return `shared:${scope.platform}:${scope.channelId}`;
 }

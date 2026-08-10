@@ -2,7 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { jsonSchema, type AgentPlugin, type AgentTool } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
-import type { ArtifactStore, ChannelScope } from "koishi-plugin-yesimbot";
+import type { ArtifactStore, ChannelContext } from "koishi-plugin-yesimbot";
 
 import { connectMcpServer } from "./transports.js";
 import type { McpClientConfig, McpClientTransport } from "./types.js";
@@ -77,7 +77,7 @@ export default class McpClientPlugin {
     ctx.on("dispose", this.stop.bind(this));
   }
 
-  public async setup(scope: ChannelScope, _bot: Bot): Promise<AgentPlugin> {
+  public async setup(scope: ChannelContext, _bot: Bot): Promise<AgentPlugin> {
     const resources = await this.ctx.yesimbot.resource.get(scope);
     const channelTools = this.registeredTools.map((tool) => wrapToolWithArtifacts(tool, resources.artifacts));
     return { name: "mcp-client", tools: channelTools, appendSystemPrompt: () => MCP_ARTIFACT_GUIDANCE } satisfies AgentPlugin;

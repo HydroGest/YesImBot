@@ -97,7 +97,7 @@ function createContext() {
 }
 
 function channelContext() {
-  return { scope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw", type: "shared" } };
+  return { scope: { platform: "onebot", channelId: "group-raw", guildId: "group-raw", type: "guild" } };
 }
 
 function toolContext(turnId = "turn-real"): AgentToolExecuteContext {
@@ -172,7 +172,7 @@ describe("MemosClientPlugin", () => {
 
     const body = post.mock.calls[0]?.[1] as { user_id: string; conversation_id: string; info: Record<string, unknown> };
     const groupIdentity = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw", type: "shared" },
+      channelScope: { platform: "onebot", channelId: "group-raw", guildId: "group-raw", type: "guild" },
       channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
       channelType: "group",
       authorId: "author-raw",
@@ -201,7 +201,7 @@ describe("MemosClientPlugin", () => {
     await addTool?.execute?.({ content: "私聊偏好" }, toolContext("turn-direct"));
 
     const directIdentity = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw", type: "shared" },
+      channelScope: { platform: "onebot", channelId: "group-raw", guildId: "group-raw", type: "guild" },
       channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
       channelType: "group",
       authorId: "direct-author",
@@ -261,7 +261,7 @@ describe("MemosClientPlugin", () => {
     await addTool?.execute?.({ content: "仍归属原作者" }, toolContext("turn-real"));
 
     const expected = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "bot-raw", channelId: "group-raw", type: "shared" },
+      channelScope: { platform: "onebot", channelId: "group-raw", guildId: "group-raw", type: "guild" },
       channelHash: "ol3rc4aeenbqa4z4ob5dtnd5du",
       channelType: "group",
       authorId: "author-raw",

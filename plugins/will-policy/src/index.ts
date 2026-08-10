@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { Context, Logger, Schema, type Command, type Session } from "koishi";
-import type { ChannelScope, WillEngine } from "koishi-plugin-yesimbot";
+import type { ChannelContext, WillEngine } from "koishi-plugin-yesimbot";
 
 import { resolvePolicy } from "./policy.js";
 import { PolicyRoutingEngine } from "./routing.js";
@@ -108,7 +108,7 @@ export default class WillPolicyPlugin {
     return this.ctx.filter(session);
   }
 
-  public setup(_scope: ChannelScope): WillEngine {
+  public setup(_scope: ChannelContext): WillEngine {
     const resolved = resolvePolicy(this.config);
     this.logger.debug("resolve_will_policy", { engine: resolved.engine, routing: resolved.routing, willingness: resolved.willingness });
     return resolved.engine === "routing" ? new PolicyRoutingEngine(resolved.routing) : new PolicyWillingnessEngine(resolved.willingness);

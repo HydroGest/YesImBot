@@ -4,7 +4,7 @@ import { type Bot, type Context, type Element, type Logger } from "koishi";
 
 import { createDescribeImageTool, createReadTool, createSendMessageTool } from "../agents/tools.js";
 import type { WillEngine, WillState } from "../agents/will.js";
-import type { Channel } from "../channels/index.js";
+import { type Channel, type ChannelContext, deriveChannelKey } from "../channels/index.js";
 import type { Config } from "../config.js";
 import {
   createEvent,
@@ -45,7 +45,7 @@ export interface ChannelRuntimeOptions {
   readonly idleTimeout?: number;
 }
 export class ChannelRuntime {
-  public readonly scope;
+  public readonly context: ChannelContext;
   public readonly selfId: string;
 
   private readonly agent: Agent;
@@ -62,26 +62,23 @@ export class ChannelRuntime {
     private readonly ctx: Context,
     private readonly options: ChannelRuntimeOptions,
   ) {
-    this.scope = options.channel.scope;
+    this.context = options.channel.context;
     this.selfId = options.bot.selfId;
     this.logger = ctx.logger("yesimbot/channel-runtime");
     this.logger.level = options.config.logLevel ?? 2;
     const tools: AgentToolSet = [
-      createSendMessageTool(options.bot, this.scope.channelId, options.channel.resources),
+      createSendMessageTool(options.bot, this.context.channelId, options.channel.resources),
       createReadTool(options.channel.resources, options.imageOutputSupported),
     ];
     if (options.visionModel) tools.push(createDescribeImageTool(options.visionModel, options.channel.resources));
     this.agent = createAgent({
-      id:
-        this.scope.type === "direct"
-          ? `direct:${this.scope.platform}:${this.scope.selfId}:${this.scope.channelId}`
-          : `shared:${this.scope.platform}:${this.scope.channelId}`,
+      id: deriveChannelKey(this.context),
       model: options.model,
       storage: options.channel.conversation.storage,
       systemPrompt: () =>
         buildCoreSystemPrompt({
           basePath: options.config.basePath,
-          channel: this.scope,
+          channel: this.context,
           selfId: this.selfId,
           logger: this.logger,
           customInnerThought: options.config.reply.customInnerThought,
@@ -120,9 +117,9 @@ export class ChannelRuntime {
     return this.schedule(async () => {
       const input = createEvent({
         eventType: "delivery.failed",
-        platform: this.scope.platform,
+        platform: this.context.platform,
         selfId: this.selfId,
-        channel: { id: this.scope.channelId, type: this.scope.type === "direct" ? 1 : 0 },
+        channel: { id: this.context.channelId, type: this.context.type === "direct" ? 1 : 0 },
         timestamp: Date.now(),
         text: "delivery failed",
         delivery: {

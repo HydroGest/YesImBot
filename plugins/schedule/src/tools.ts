@@ -58,7 +58,7 @@ type IdToolInput = { id: string };
 
 /**
  * Builds the six current-channel Schedule management tools for an AgentPlugin
- * runtime. Every tool operates on the factory's captured ChannelScope only:
+ * runtime. Every tool operates on the factory's captured ChannelContext only:
  * no schema accepts a scope, channel, or Session parameter, and every Store
  * call passes the captured scope.
  */

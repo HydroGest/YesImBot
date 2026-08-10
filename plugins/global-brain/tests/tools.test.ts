@@ -8,9 +8,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createGlobalBrainStore } from "../src/store.js";
 import { createBrainTools } from "../src/tools.js";
 
-const scopeA = { type: "shared", platform: "onebot", selfId: "bot-a", channelId: "group-a" };
+const scopeA = { type: "guild", platform: "onebot", channelId: "group-a", guildId: "group-a" };
 
-const scopeB = { type: "shared", platform: "onebot", selfId: "bot-a", channelId: "group-b" };
+const scopeB = { type: "guild", platform: "onebot", channelId: "group-b", guildId: "group-b" };
 
 function toolContext(): AgentToolExecuteContext {
   return { runtime: { id: "runtime" }, channel: {} as never, state: {} as never, storage: {} as never, turnId: "turn-real", toolCallId: "tool-call" };

@@ -38,7 +38,7 @@ describe("CommandBridgePlugin", () => {
     await plugin.start();
     expect(use).toHaveBeenCalledOnce();
 
-    const agent = await plugin.setup({ type: "shared", platform: "test", channelId: "room" }, { platform: "test", selfId: "bot" } as never);
+    const agent = await plugin.setup({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, { platform: "test", selfId: "bot" } as never);
     const tools = agent.tools ? await agent.tools({} as never) : [];
     expect(tools.map((tool) => tool.name)).toEqual([
       "koishi_execute_list",
@@ -65,7 +65,11 @@ describe("CommandBridgePlugin", () => {
       },
     };
     const plugin = new CommandBridgePlugin(ctx as never, createConfig() as never);
-    const tools = plugin.createTools({ type: "shared", platform: "test", channelId: "room" }, { platform: "test", selfId: "bot" } as never, {} as never);
+    const tools = plugin.createTools(
+      { type: "guild", platform: "test", channelId: "room", guildId: "room" },
+      { platform: "test", selfId: "bot" } as never,
+      {} as never,
+    );
     const listTool = tools.find((tool) => tool.name === "koishi_execute_list");
     expect(listTool).toBeDefined();
 

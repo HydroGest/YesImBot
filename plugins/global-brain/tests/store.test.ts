@@ -6,9 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createGlobalBrainStore, type GlobalBrainStore } from "../src/store.js";
 
-const scopeA = { type: "shared", platform: "onebot", selfId: "bot-a", channelId: "group-a" };
+const scopeA = { type: "guild", platform: "onebot", channelId: "group-a", guildId: "group-a" };
 
-const scopeB = { type: "shared", platform: "onebot", selfId: "bot-a", channelId: "group-b" };
+const scopeB = { type: "guild", platform: "onebot", channelId: "group-b", guildId: "group-b" };
 
 async function makeStore(dir: string, now = 1_000): Promise<GlobalBrainStore> {
   const store = createGlobalBrainStore({

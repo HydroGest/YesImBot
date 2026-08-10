@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { SystemModelMessage } from "ai";
 import type { Logger } from "koishi";
 
-import type { ChannelScope } from "../channels/index.js";
+import type { ChannelContext } from "../channels/index.js";
 
 export const DEFAULT_PERSONA = `# Athena
 你的名字是 Athena。你有自己的注意力、偏好、感受和判断。你不以满足每个人为目标，也不把每次交谈都变成任务。
@@ -26,7 +26,7 @@ export const DEFAULT_PERSONA = `# Athena
 
 export interface CoreSystemPromptOptions {
   readonly basePath: string;
-  readonly channel: ChannelScope;
+  readonly channel: ChannelContext;
   readonly selfId: string;
   readonly customInnerThought: boolean;
   readonly logger?: Logger;
@@ -156,7 +156,7 @@ function wrap(tag: "agents" | "persona", content: string): SystemModelMessage {
   return { role: "system", content: `<${tag}>\n${content}\n</${tag}>` };
 }
 
-function formatRuntimeContext(channel: ChannelScope, selfId: string): SystemModelMessage {
+function formatRuntimeContext(channel: ChannelContext, selfId: string): SystemModelMessage {
   return {
     role: "system",
     content: [

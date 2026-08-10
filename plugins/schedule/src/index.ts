@@ -1,6 +1,6 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, type Bot, type Command, type Session } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 import { ScheduleScheduler } from "./scheduler.js";
 import { registerScheduleModel, ScheduleStore, type ScheduleScope } from "./store.js";
@@ -56,7 +56,7 @@ export default class SchedulePlugin {
     }
   }
 
-  public setup(scope: ChannelScope, bot: Bot): AgentPlugin | null {
+  public setup(scope: ChannelContext, bot: Bot): AgentPlugin | null {
     if (!this.scheduler) return null;
     const scheduleScope = { ...scope, selfId: bot.selfId } as ScheduleScope;
     return {
@@ -205,10 +205,23 @@ export default class SchedulePlugin {
   }
 }
 
-/** Builds the current ChannelScope from the live Session fields only. */
+/** Builds the current ChannelContext from the live Session fields only. */
 function scopeOf(session: Session | undefined): ScheduleScope | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
-  return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId } as ScheduleScope;
+  if (session.isDirect) {
+    return {
+      type: "direct",
+      platform: session.platform,
+      selfId: session.selfId,
+      channelId: session.channelId,
+      userId: session.userId ?? session.channelId,
+    } as ScheduleScope;
+  }
+  const guildId = session.guildId ?? session.channelId;
+  if (guildId !== session.channelId) {
+    return { type: "channel", platform: session.platform, selfId: session.selfId, channelId: session.channelId, guildId } as ScheduleScope;
+  }
+  return { type: "guild", platform: session.platform, selfId: session.selfId, channelId: session.channelId, guildId } as ScheduleScope;
 }
 
 function formatSchedule(schedule: Schedule): string {

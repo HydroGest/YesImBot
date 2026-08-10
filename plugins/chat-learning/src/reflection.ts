@@ -14,11 +14,7 @@ export function buildReflectionHistory(store: ReflectionStore, limit: number): s
   const human = all.filter((record) => record.source === "human").slice(-limit);
   const humanKeys = new Set(human.map((record) => reflectionTextKey(record.text)));
   const remaining = Math.max(0, limit - human.length);
-  const auto = remaining === 0
-    ? []
-    : all
-        .filter((record) => record.source === "auto" && !humanKeys.has(reflectionTextKey(record.text)))
-        .slice(-remaining);
+  const auto = remaining === 0 ? [] : all.filter((record) => record.source === "auto" && !humanKeys.has(reflectionTextKey(record.text))).slice(-remaining);
   const records: readonly ReflectionRecord[] = [...human, ...auto];
   if (records.length === 0) return undefined;
   const lines = records.map((record) => {
@@ -28,19 +24,6 @@ export function buildReflectionHistory(store: ReflectionStore, limit: number): s
     return `<reflection source="${record.source}"${score}>${targetLine}${escapePromptText(record.reflection)}</reflection>`;
   });
   return `<reflection_history>\n${lines.join("\n")}\n</reflection_history>`;
-}
-
-function reflectionTextKey(value: string): string {
-  return value
-    .replace(/<at\b[^>]*>/gi, "@")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/data:[^"'\s>]+/gi, " ")
-    .replace(/asset:\/\/[a-f0-9]+/gi, " ")
-    .replace(/https?:\/\/\S+/gi, " ")
-    .replace(/@\S*/g, "@")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
 }
 
 export async function reflectOnSentMessage(model: LanguageModel, styleBlock: string, sentText: string): Promise<string | undefined> {
@@ -94,6 +77,19 @@ export async function generateReflection(
   } catch {
     return undefined;
   }
+}
+
+function reflectionTextKey(value: string): string {
+  return value
+    .replace(/<at\b[^>]*>/gi, "@")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/data:[^"'\s>]+/gi, " ")
+    .replace(/asset:\/\/[a-f0-9]+/gi, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/@\S*/g, "@")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 function isAssistantEntry(entry: AgentEntry): entry is AgentEntry & { data: { role: "assistant"; content: unknown } } {

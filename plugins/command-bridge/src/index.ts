@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { jsonSchema, type AgentPlugin, type AgentTool } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
-import { persistElements, type ChannelResources, type ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext, ChannelResources } from "koishi-plugin-yesimbot";
 
 import { collectCommandCatalog, filterCommandCatalog, formatCommandCatalog, formatCommandHelp } from "./catalog.js";
 import { CommandExecution } from "./execution.js";
@@ -64,11 +64,11 @@ export default class CommandBridgePlugin {
     this.logger.info("command bridge plugin started");
   }
 
-  public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin> {
-    const resources = await this.ctx.yesimbot.resource.get(scope);
+  public async setup(context: ChannelContext, bot: Bot): Promise<AgentPlugin> {
+    const resources = await this.ctx.yesimbot.resource.get(context);
     return {
       name: "command-bridge",
-      tools: (): AgentTool[] => this.createTools(scope, bot, resources),
+      tools: (): AgentTool[] => this.createTools(context, bot, resources),
       appendSystemPrompt: () => COMMAND_TOOL_GUIDANCE,
     } satisfies AgentPlugin;
   }
@@ -83,7 +83,7 @@ export default class CommandBridgePlugin {
     this.logger.info("command bridge plugin stopped");
   }
 
-  public createTools(scope: ChannelScope, bot: Bot, resources: ChannelResources): AgentTool[] {
+  public createTools(context: ChannelContext, bot: Bot, resources: ChannelResources): AgentTool[] {
     return [
       {
         name: "koishi_execute_list",
@@ -128,7 +128,7 @@ export default class CommandBridgePlugin {
           required: ["command"],
           additionalProperties: false,
         }),
-        execute: async (input: ExecuteCommandInput) => this.executeCommand(scope, bot, resources, input),
+        execute: async (input: ExecuteCommandInput) => this.executeCommand(context, bot, resources, input),
         toModelOutput: async (options) => formatToolOutput(options as { output: CommandExecutionEvent }),
       },
       {
@@ -153,7 +153,7 @@ export default class CommandBridgePlugin {
     ];
   }
 
-  private async executeCommand(scope: ChannelScope, bot: Bot, resources: ChannelResources, input: ExecuteCommandInput): Promise<CommandExecutionEvent> {
+  private async executeCommand(context: ChannelContext, bot: Bot, resources: ChannelResources, input: ExecuteCommandInput): Promise<CommandExecutionEvent> {
     const policyError = validateCommandCall(input.command, this.config);
     if (policyError) throw new Error(policyError);
 
@@ -173,7 +173,7 @@ export default class CommandBridgePlugin {
       id: randomUUID(),
       command: input.command,
       bot,
-      scope,
+      scope: context,
       actor,
       interactive: input.interactive ?? "reject",
       channelId: input.channelId,
@@ -183,7 +183,7 @@ export default class CommandBridgePlugin {
       timeoutMs: this.config.timeoutMs,
       maxTranscriptChars: this.config.maxTranscriptChars,
       logger: this.logger,
-      persistElements: (elements) => persistElements(this.ctx, elements, resources),
+      persistElements: (elements) => resources.persistElements(this.ctx, elements),
     });
 
     this.executions.set(execution.id, execution);
