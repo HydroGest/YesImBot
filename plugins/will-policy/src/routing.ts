@@ -14,11 +14,7 @@ export class PolicyRoutingEngine implements WillEngine {
 
   public async decide(input: Message | Event, _state: Parameters<WillEngine["decide"]>[1]): Promise<"wait" | "trigger"> {
     const decision: "wait" | "trigger" = this.resolve(input);
-    this.logger?.debug("will_policy.routing", {
-      messageId: input.id,
-      channelId: input.data.channel.id,
-      decision,
-    });
+    this.logger?.debug("will_policy.routing", { messageId: input.id, channelId: input.data.channel.id, decision });
     return decision;
   }
 

@@ -59,14 +59,7 @@ export class PolicyWillingnessEngine implements WillEngine {
     this.lastDecayAt = now;
 
     const decision: "wait" | "trigger" = Math.random() < probability ? "trigger" : "wait";
-    this.logger?.debug("will_policy.willingness", {
-      messageId: input.id,
-      channelId: input.data.channel.id,
-      score: next,
-      probability,
-      decision,
-      forced: true,
-    });
+    this.logger?.debug("will_policy.willingness", { messageId: input.id, channelId: input.data.channel.id, score: next, probability, decision, forced: true });
     return decision;
   }
 

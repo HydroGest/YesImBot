@@ -4,7 +4,9 @@ import { formatElements, type ChannelContext } from "koishi-plugin-yesimbot";
 import type { CommandActor, CommandExecutionEvent, InteractiveMode } from "./types.js";
 
 type Element = ReturnType<typeof h.normalize>[number];
+
 type ElementFragment = Parameters<typeof h.normalize>[0];
+
 type PromptRequest = { prompt: string; resolve: (value: string) => void; reject: (reason: Error) => void };
 
 export interface CommandExecutionOptions {
@@ -70,12 +72,7 @@ export class CommandExecution {
 
       if (this.pendingPrompt) {
         this.logger.debug("command.execution.awaiting_prompt", { executionId: this.id });
-        return {
-          status: "awaiting_prompt",
-          executionId: this.id,
-          prompt: this.pendingPrompt.prompt,
-          transcript: this.serializeTranscript(),
-        };
+        return { status: "awaiting_prompt", executionId: this.id, prompt: this.pendingPrompt.prompt, transcript: this.serializeTranscript() };
       }
 
       await new Promise<void>((resolve) => {
@@ -120,12 +117,7 @@ export class CommandExecution {
       }
       const transcript = this.serializeTranscript();
       const returnValue = serializeElements(outputElements, this.options.maxTranscriptChars);
-      this.terminal = {
-        status: "done",
-        executionId: this.id,
-        transcript,
-        returnValue,
-      };
+      this.terminal = { status: "done", executionId: this.id, transcript, returnValue };
       this.logger.debug("command.execution.done", {
         executionId: this.id,
         durationMs: Date.now() - startedAt,
@@ -133,17 +125,8 @@ export class CommandExecution {
         returnValueChars: returnValue.length,
       });
     } catch (error) {
-      this.terminal = {
-        status: "done",
-        executionId: this.id,
-        transcript: this.serializeTranscript(),
-        error: formatError(error),
-      };
-      this.logger.warn("command.execution.failed", {
-        executionId: this.id,
-        durationMs: Date.now() - startedAt,
-        error: formatError(error),
-      });
+      this.terminal = { status: "done", executionId: this.id, transcript: this.serializeTranscript(), error: formatError(error) };
+      this.logger.warn("command.execution.failed", { executionId: this.id, durationMs: Date.now() - startedAt, error: formatError(error) });
     } finally {
       this.notify();
     }

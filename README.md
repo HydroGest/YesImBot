@@ -93,13 +93,13 @@ allowedChannels:
 4. 保存并重启 Koishi，或等对应 Runtime 被替换。活动 Runtime 在创建时快照模型能力，不会热更新。
 5. 检查启动日志。若模型 ID 未注册或拼写错误，该覆盖项会被忽略并记录 warning，此时仍按纯文本处理。
 
-`models.json` 控制“模型是否支持图片输入”，`imageInput` 控制模型调用时的全局开关和预算，两者同时生效：
+`models.json` 控制“模型是否支持图片输入”，`imageInput` 控制模型调用时是否允许图片输入，两者同时生效：
 
-- 模型未声明 `image`：即使 `imageInput` 未关闭，也只发送文本。
-- 模型声明了 `image` 且 `imageInput` 未关闭：允许按 `imageInput` 配置的预算读取图片。
+- 模型未声明 `image`：即使 `imageInput: true`，也只发送文本。
+- 模型声明了 `image` 且 `imageInput: true`：模型可通过 `read` 工具显式读取图片。
 - `imageInput: false`：无论模型是否声明，都禁用图片输入。
 
-模型调用不会自动扫描历史图片；图片只会在模型通过 `read` 工具读取资源后，按当前调用步骤的预算投影。PlatformTranslator 自己决定入站图片下载与持久化。
+模型调用不会自动扫描历史图片；只有模型通过 `read` 工具显式读取的图片才会投影到当前调用。PlatformTranslator 自己决定入站图片下载与持久化。
 
 活动 Runtime 会在创建时快照模型能力、`imageInput`、Will、提示词与插件。Core 不提供 `reload()`：配置、模型或插件变化会在 Runtime 因停止或 shared Bot 变更而替换后生效。
 

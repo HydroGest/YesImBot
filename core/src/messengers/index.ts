@@ -8,11 +8,14 @@ import type { EventRecord, MessageRecord, RecordBase } from "../messages/index.j
 import type { ChannelResources } from "../resources/index.js";
 import type { ChannelRuntime, PostOptions, RuntimeResult, Runtimes } from "../runtimes/index.js";
 type RunResult = Extract<RuntimeResult, { readonly kind: "run" }>;
+
 type DeliveryContext = { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number };
+
 export interface Translator {
   readonly platform: string;
   translate(session: Session, resources: ChannelResources): Awaitable<MessageRecord | EventRecord | null>;
 }
+
 export class Messenger {
   private readonly logger: Logger;
   private readonly translators = new Map<string, Translator>();
@@ -115,11 +118,7 @@ export class Messenger {
       if (!bot) throw new Error(`No Bot is available for ${record.platform}:${record.selfId}`);
       const runtime = await this.runtimes.get(channel, bot, session);
       const result = await runtime.handle(record);
-      this.logger.debug("messenger.route.result", {
-        routeId,
-        result: result.kind,
-        eventId: result.eventId,
-      });
+      this.logger.debug("messenger.route.result", { routeId, result: result.kind, eventId: result.eventId });
       if (result.kind === "run") await this.deliverPassive(session, runtime, result);
     } catch (cause) {
       this.warn("messenger.route_failed", cause, session.platform);
@@ -159,7 +158,7 @@ export class Messenger {
           segmentIndex: index + 1,
           segmentTotal: output.segments.length,
         });
-        const delay = pacedDelay(segment, this.config.reply.pacing, elapsed);
+        const delay = pacedDelay(segment, this.config.pacing, elapsed);
         const startedAt = Date.now();
         await sleep(delay, result.signal);
         elapsed += Math.max(delay, Date.now() - startedAt);
@@ -209,6 +208,7 @@ export class Messenger {
     } catch {}
   }
 }
+
 export function matchesAllowedChannel(ctx: ChannelContext, rules: readonly ChannelAllowRule[] | undefined): boolean {
   return (
     rules?.some(
@@ -219,11 +219,13 @@ export function matchesAllowedChannel(ctx: ChannelContext, rules: readonly Chann
     ) ?? false
   );
 }
+
 async function assertAssignee(koishiCtx: Context, ctx: ChannelContext, selfId: string): Promise<void> {
   if (ctx.type === "direct") return;
   const [channel] = await koishiCtx.database.get("channel", { platform: ctx.platform, id: ctx.channelId }, ["assignee"]);
   if (!channel?.assignee || channel.assignee !== selfId) throw new Error("Shared channel assignee admission failed");
 }
+
 async function translateDefault(ctx: Context, session: Session, resources: ChannelResources): Promise<MessageRecord | null> {
   if (session.type !== "message-created" || !session.messageId || !session.channelId || !Array.isArray(session.elements)) return null;
   const base: RecordBase = {
@@ -242,23 +244,28 @@ async function translateDefault(ctx: Context, session: Session, resources: Chann
   };
   return { ...base, messageId: session.messageId, elements: await resources.persistElements(ctx, session.elements) };
 }
+
 function deliveryKey(ctx: ChannelContext): string {
   return deriveChannelKey(ctx);
 }
+
 function emptyDeliveryContext(eventId: string): DeliveryContext {
   return { turnId: "", messageId: eventId, segmentIndex: 0, segmentTotal: 0 };
 }
+
 function pacedDelay(segment: readonly Element[], pacing: PacingConfig, elapsed: number): number {
   const characters = segment.reduce((total, element) => total + elementTextLength(element), 0);
   const delay = Math.min(Math.max(250, Math.ceil((characters / pacing.charactersPerSecond) * 1000)), 10_000);
   return elapsed + delay >= pacing.maxTotalDelayMs ? 250 : Math.round(delay);
 }
+
 function elementTextLength(element: Element): number {
   return (
     (typeof element.attrs.content === "string" ? element.attrs.content.length : 0) +
     element.children.reduce((total, child) => total + elementTextLength(child), 0)
   );
 }
+
 function sleep(timeout: number, signal: AbortSignal): Promise<void> {
   const { promise, resolve } = (
     Promise as PromiseConstructor & { withResolvers<T>(): { promise: Promise<T>; resolve: (value?: T | PromiseLike<T>) => void } }

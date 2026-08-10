@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import { createEntry, createJsonlStorage, type AgentEntry, type AgentStorage } from "@yesimbot/agent-runtime";
@@ -8,8 +8,11 @@ import type { LanguageModel } from "ai";
 import { executeCompact, filterEntriesForCompression } from "./compact.js";
 
 export type CompactReason = "auto" | "idle" | "manual";
+
 export type CompactResult = { readonly compacted: boolean; readonly reason?: string };
+
 export type ConversationInfo = { filename: string; isActive: boolean; size: number; createdAt: string };
+
 export type ConversationStatus = { active: ConversationInfo | null };
 
 export interface CompactInput {
@@ -18,33 +21,41 @@ export interface CompactInput {
   persona: string;
   signal?: AbortSignal;
 }
+
 export interface ConversationCompactConfig {
-  threshold: number;
-  charTokenRatio: number;
   minMessages: number;
   maxFailures: number;
+  threshold?: number;
+  charTokenRatio?: number;
 }
 
 export class Conversation {
   private readonly root: string;
   private readonly compactConfig;
-  private storageValue: AgentStorage<AgentEntry> | undefined;
+  private readonly storageValue: AgentStorage<AgentEntry> = {
+    append: (...entries) => this.currentStorage().append(...entries),
+    read: () => this.currentStorage().read(),
+    clear: () => this.currentStorage().clear(),
+  };
   private storagePathValue: string | undefined;
+  private fileStorageValue: AgentStorage<AgentEntry> | undefined;
   private failures = 0;
   private memory = "";
 
-  public constructor(root: string, compactConfig: ConversationCompactConfig = { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3 }) {
+  public constructor(root: string, compactConfig: ConversationCompactConfig = { minMessages: 20, maxFailures: 3 }) {
     this.root = root;
     this.compactConfig = compactConfig;
   }
 
   public get storage(): AgentStorage<AgentEntry> {
-    if (!this.storageValue) throw new Error("Conversation has not been initialized");
+    if (!this.storagePathValue) throw new Error("Conversation has not been initialized");
     return this.storageValue;
   }
 
   public async init(): Promise<void> {
-    if (!this.storageValue) this.setStorage(await this.createOrResolve());
+    if (this.storagePathValue) return;
+    this.setStorage(await this.createOrResolve());
+    await this.restoreMemory();
   }
 
   public async list(): Promise<ConversationInfo[]> {
@@ -72,6 +83,7 @@ export class Conversation {
     const path = join(this.sessionsPath(), filename);
     await stat(path);
     this.setStorage(path);
+    await this.restoreMemory();
   }
 
   public async archive(noSummary = false, input?: CompactInput): Promise<void> {
@@ -79,18 +91,37 @@ export class Conversation {
     if ((await this.storage.read()).length === 0) throw new Error("Cannot archive an empty session");
     if (!noSummary && input) {
       const result = await this.compact("manual", input);
-      if (result.compacted) return;
+      if (result.compacted) {
+        const compact = [...(await this.storage.read())].reverse().find((entry) => entry.type === "compact");
+        this.setStorage(await this.createSession(compact ? [compact] : []));
+        return;
+      }
     }
     this.setStorage(await this.createSession());
+  }
+  public async archiveIfOversize(maxBytes: number, input?: CompactInput): Promise<boolean> {
+    await this.init();
+    if (maxBytes <= 0) return false;
+    const active = (await this.status()).active;
+    if (!active || active.size <= maxBytes) return false;
+    const compact = [...(await this.storage.read())].reverse().find((entry) => entry.type === "compact");
+    if (compact?.type === "compact") {
+      this.setStorage(await this.createSession([compact]));
+    } else {
+      await this.archive(!input, input);
+    }
+    return true;
   }
 
   public async compact(reason: CompactReason, input: CompactInput): Promise<CompactResult> {
     await this.init();
     if (this.failures >= this.compactConfig.maxFailures) return { compacted: false, reason: "failure_limit" };
     const entries = await this.storage.read();
-    const messages = entries.filter((entry) => entry.type === "message");
+    const lastCompactIndex = entries.reduce((last, entry, index) => (entry.type === "compact" ? index : last), -1);
+    const sourceEntries = lastCompactIndex === -1 ? entries : entries.slice(lastCompactIndex + 1);
+    const messages = sourceEntries.filter((entry) => entry.type === "message");
     if (messages.length < this.compactConfig.minMessages) return { compacted: false, reason: "minimum_messages" };
-    const content = filterEntriesForCompression(entries);
+    const content = filterEntriesForCompression(sourceEntries);
     if (!content) return { compacted: false, reason: "empty_input" };
     try {
       const summary = (
@@ -107,15 +138,10 @@ export class Conversation {
         this.failures += 1;
         return { compacted: false, reason: "empty_summary" };
       }
-      const destination = join(this.sessionsPath(), `${formatTimestamp(new Date())}-${randomUUID()}.jsonl`);
-      const temporary = `${destination}.tmp`;
       const compact = createEntry("compact", { summary, lastEntryId: messages.at(-1)!.id, sourceSession: basename(this.storagePathValue!, ".jsonl") });
-      await mkdir(this.sessionsPath(), { recursive: true });
-      await writeFile(temporary, `${JSON.stringify(compact)}\n`, { flag: "wx" });
-      await rename(temporary, destination);
+      await this.storage.append(compact);
       this.memory = summary;
       this.failures = 0;
-      this.setStorage(destination);
       return { compacted: true };
     } catch (cause) {
       this.failures += 1;
@@ -129,7 +155,17 @@ export class Conversation {
 
   private setStorage(path: string): void {
     this.storagePathValue = path;
-    this.storageValue = createJsonlStorage(path);
+    this.fileStorageValue = createJsonlStorage(path);
+  }
+
+  private currentStorage(): AgentStorage<AgentEntry> {
+    if (!this.fileStorageValue) throw new Error("Conversation has not been initialized");
+    return this.fileStorageValue;
+  }
+
+  private async restoreMemory(): Promise<void> {
+    const compact = [...(await this.storage.read())].reverse().find((entry) => entry.type === "compact");
+    this.memory = compact?.type === "compact" ? compact.data.summary : "";
   }
 
   private async createOrResolve(): Promise<string> {
@@ -138,10 +174,11 @@ export class Conversation {
     return files.at(-1) ? join(this.sessionsPath(), files.at(-1)!) : this.createSession();
   }
 
-  private async createSession(): Promise<string> {
+  private async createSession(entries: readonly AgentEntry[] = []): Promise<string> {
     await mkdir(this.sessionsPath(), { recursive: true });
     const path = join(this.sessionsPath(), `${formatTimestamp(new Date())}-${randomUUID()}.jsonl`);
-    await writeFile(path, "", { flag: "wx" });
+    const payload = entries.length ? `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n` : "";
+    await writeFile(path, payload, { flag: "wx" });
     return path;
   }
 

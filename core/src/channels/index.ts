@@ -4,8 +4,8 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { Context, Logger } from "koishi";
 
-import type { ImageBudget } from "../config.js";
 import { Conversation } from "../conversations/index.js";
+import type { ConversationCompactConfig } from "../conversations/index.js";
 import { ChannelResources, type Disposer, type ResourceReader, type Resources } from "../resources/index.js";
 import { type ChannelContext, type ChannelKey, deriveChannelKey } from "./context.js";
 
@@ -16,8 +16,9 @@ type ChannelManifest = ChannelContext & { readonly createdAt: string };
 export interface ChannelsOptions {
   readonly basePath: string;
   readonly logLevel?: number;
-  readonly imageBudget?: ImageBudget | null;
+  readonly imageInput?: boolean;
   readonly readTimeoutMs?: number;
+  readonly compactConfig?: ConversationCompactConfig;
 }
 
 // ─── Channel ───────────────────────────────────────────────────────────────
@@ -29,11 +30,12 @@ export class Channel {
   public constructor(
     public readonly context: ChannelContext,
     public readonly root: string,
-    imageBudget: ImageBudget | null = null,
+    imageInput = false,
     readTimeoutMs = 10_000,
+    compactConfig: ConversationCompactConfig = { minMessages: 20, maxFailures: 3 },
   ) {
-    this.resources = new ChannelResources(root, imageBudget, readTimeoutMs);
-    this.conversation = new Conversation(root);
+    this.resources = new ChannelResources(root, imageInput, readTimeoutMs);
+    this.conversation = new Conversation(root, compactConfig);
   }
 }
 
@@ -46,15 +48,17 @@ export class Channels implements Resources {
   private readonly creating = new Map<string, Promise<Channel>>();
   private readonly readers = new Map<string, ResourceReader>();
   private readonly readerDisposers = new Map<ResourceReader, Map<Channel, Disposer>>();
-  private readonly imageBudget: ImageBudget | null;
+  private readonly imageInput: boolean;
   private readonly readTimeoutMs: number;
+  private readonly compactConfig: ConversationCompactConfig;
   private readonly logger: Logger;
   private readonly started: Promise<void>;
 
   public constructor(ctx: Context, options: ChannelsOptions) {
     this.channelsPath = resolve(options.basePath, "channels");
-    this.imageBudget = options.imageBudget ?? null;
+    this.imageInput = options.imageInput ?? false;
     this.readTimeoutMs = options.readTimeoutMs ?? 10_000;
+    this.compactConfig = options.compactConfig ?? { minMessages: 20, maxFailures: 3 };
     this.logger = ctx.logger("channels");
     this.logger.level = options.logLevel ?? 2;
     this.started = this.scan();
@@ -114,7 +118,7 @@ export class Channels implements Resources {
 
   private async create(ctx: ChannelContext, key: ChannelKey): Promise<Channel> {
     const root = await this.ensureRoot(ctx);
-    const channel = new Channel(ctx, root, this.imageBudget, this.readTimeoutMs);
+    const channel = new Channel(ctx, root, this.imageInput, this.readTimeoutMs, this.compactConfig);
     for (const reader of this.readers.values()) {
       this.readerDisposers.get(reader)!.set(channel, channel.resources.use(reader));
     }

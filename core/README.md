@@ -65,10 +65,10 @@ are snapshots for the runtime lifetime and take effect on replacement.
 ## Model input
 
 Core reads explicit `asset://`, `artifact://`, and registered resource URIs
-through `ResourceReader.init()`. Image bytes are selected only from the current
-model-call context under the configured `imageInput` budget; history is never
-re-requested from a platform API. Model image capability comes from
-`models.json`, and `imageInput: false` disables projection.
+through `ResourceReader.init()`. When a model supports image input and
+`imageInput: true`, images explicitly read with `read` are projected into the
+current model call; history is never re-requested from a platform API. Set
+`imageInput: false` to disable projection.
 
 ## Prompt composition
 
@@ -81,7 +81,7 @@ resolved `basePath` with the inline default content only when the file is absent
 user-authored and empty files are never touched. No package prompt resources are
 published or loaded, and there is no constitution version constant.
 
-`reply.customInnerThought` (default `false`) adds the Core-owned custom
+`customInnerThought` (default `false`) adds the Core-owned custom
 `<inner_thought>` protocol to the constitution when enabled; when disabled the
 prompt contains no Core-owned inner-thought instruction. Provider-native
 reasoning parts are preserved by `@yesimbot/agent-runtime` either way.
@@ -118,7 +118,7 @@ allowedChannels:
     isDirect: true
 ```
 
-Declare model image capability in the model override in `models.json`. The
-runtime uses `imageInput` for its model-call budget; its default is three
-images, 5 MiB per image, and 10 MiB total. Set `imageInput: false` to disable
-model image input. This setting does not impose a download policy on Translators.
+Declare model image capability in the model override in `models.json`. When
+`imageInput: true`, the runtime projects only images explicitly read by the
+model through `read`. Set `imageInput: false` to disable model image input.
+This setting does not impose a download policy on Translators.

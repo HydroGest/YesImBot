@@ -26,11 +26,10 @@ describe("Channels", () => {
     expect(first).toBe(second);
     expect(await channels.get(direct)).not.toBe(first);
   });
-  it("passes image budget and read timeout to newly created resources", async () => {
+  it("passes image input and read timeout to newly created resources", async () => {
     const root = await mkdtemp(join(tmpdir(), "yesimbot-channels-config-"));
     roots.push(root);
-    const imageBudget = { maxCount: 4, maxBytesPerImage: 5 * 1024 * 1024, maxTotalBytes: 10 * 1024 * 1024 };
-    const channels = new Channels(new Context(), { basePath: root, imageBudget, readTimeoutMs: 5 });
+    const channels = new Channels(new Context(), { basePath: root, imageInput: true, readTimeoutMs: 5 });
     channels.use({
       scheme: "slow",
       prompt: "slow reader",
@@ -39,7 +38,7 @@ describe("Channels", () => {
     });
     const resources = await channels.get({ type: "guild", platform: "test", channelId: "room", guildId: "room" });
 
-    expect(resources.imageBudget).toEqual(imageBudget);
+    expect(resources.imageInput).toBe(true);
     await expect(resources.open("slow:///file")).resolves.toBeUndefined();
   });
 });

@@ -20,10 +20,11 @@ export function defaultConfig(overrides: Partial<Config> = {}): Config {
     logLevel: 2,
     allowedChannels: [],
     imageInput: false,
-    resourceReadTimeoutMs: 30_000,
+    resourceReadTimeout: 30,
     will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
-    reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 }, customInnerThought: false },
-    session: { compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined }, idle: { timeout: 7_200_000 } },
+    pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+    customInnerThought: false,
+    session: { compact: { responseIdleMinutes: 120, minMessages: 20, maxFailures: 3, model: undefined }, archive: { maxKB: 5 * 1024 } },
     ...overrides,
   };
 }

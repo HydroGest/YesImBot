@@ -1,4 +1,13 @@
-import { AgentBusyError, createAgent, type Agent, type AgentInternalEvent, type AgentPlugin, type AgentToolSet } from "@yesimbot/agent-runtime";
+import {
+  AgentBusyError,
+  createAgent,
+  createEntry,
+  createSystemMessage,
+  type Agent,
+  type AgentInternalEvent,
+  type AgentPlugin,
+  type AgentToolSet,
+} from "@yesimbot/agent-runtime";
 import type { AssistantContent, LanguageModel, ToolSet } from "ai";
 import { type Bot, type Context, type Element, type Logger } from "koishi";
 
@@ -27,6 +36,22 @@ const MODEL_INPUT_PLUGIN: AgentPlugin = {
   enforce: "pre",
   toModelMessages: async (message) => (isMessage(message) || isEvent(message) ? [formatInput(message)] : []),
 };
+const COMPACT_HISTORY_PLUGIN: AgentPlugin = {
+  name: "core.compact-history",
+  enforce: "pre",
+  transformEntries: (entries) => {
+    const lastCompactIndex = entries.reduce((last, entry, index) => (entry.type === "compact" ? index : last), -1);
+    return (lastCompactIndex === -1 ? entries : entries.slice(lastCompactIndex)).map((entry) =>
+      entry.type === "compact"
+        ? createEntry(
+            "message",
+            createSystemMessage(`<conversation_memory>\n${entry.data.summary}\n</conversation_memory>`, { id: entry.id, timestamp: entry.timestamp }),
+            { id: entry.id, timestamp: entry.timestamp },
+          )
+        : entry,
+    );
+  },
+};
 export type ChannelOutput = { readonly turnId: string; readonly messageId: string; readonly segments: readonly Element[][] };
 
 export type RuntimeResult =
@@ -46,7 +71,9 @@ export interface ChannelRuntimeOptions {
   readonly imageOutputSupported: boolean;
   readonly config: Config;
   readonly plugins: readonly AgentPlugin[];
+  readonly compactModel?: LanguageModel;
   readonly idleTimeout?: number;
+  readonly archiveMaxBytes?: number;
 }
 
 export class ChannelRuntime {
@@ -61,6 +88,7 @@ export class ChannelRuntime {
   private stopped = false;
   private stopTask: Promise<void> | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
+  private responseCompactionPending = false;
 
   private persona = "";
   public constructor(
@@ -86,11 +114,11 @@ export class ChannelRuntime {
           channel: this.context,
           selfId: this.selfId,
           logger: this.logger,
-          customInnerThought: options.config.reply.customInnerThought,
+          customInnerThought: options.config.customInnerThought,
         }),
       tools,
       providerTools: options.providerTools,
-      plugins: [MODEL_INPUT_PLUGIN, ...options.plugins],
+      plugins: [COMPACT_HISTORY_PLUGIN, MODEL_INPUT_PLUGIN, ...options.plugins],
     });
   }
 
@@ -155,7 +183,15 @@ export class ChannelRuntime {
   }
 
   public compact(reason: "auto" | "idle" | "manual"): Promise<unknown> {
-    return this.schedule(() => this.options.channel.conversation.compact(reason, { model: this.options.model, personaName: "Athena", persona: this.persona }));
+    return this.schedule(async () => {
+      const result = await this.options.channel.conversation.compact(reason, {
+        model: this.options.compactModel ?? this.options.model,
+        personaName: "Athena",
+        persona: this.persona,
+      });
+      if (result.compacted) await this.archiveIfOversize();
+      return result;
+    });
   }
 
   public stop(): Promise<void> {
@@ -175,7 +211,7 @@ export class ChannelRuntime {
     const input = isMessageRecord(record) ? createMessage(record) : createEvent(record);
     await this.agent.append(input);
     this.ctx.emit(isMessage(input) ? "yesimbot/message" : "yesimbot/event", input as never);
-    this.resetIdleTimer();
+    await this.archiveIfOversize();
     return input;
   }
 
@@ -204,6 +240,7 @@ export class ChannelRuntime {
     passive: boolean,
   ): Promise<void> {
     let assistant = false;
+    let completed = false;
     let turnId = "";
     try {
       for await (const event of stream) {
@@ -258,12 +295,20 @@ export class ChannelRuntime {
           throw new Error("Agent turn aborted");
         }
       }
+      completed = true;
       if (passive && assistant) await this.options.will.observe?.({ turnId, status: "done", messages: [] });
       output.close();
     } catch (cause) {
       output.close(cause);
     } finally {
-      this.resetIdleTimer();
+      if (completed && assistant) {
+        this.responseCompactionPending = false;
+        this.resetIdleTimer();
+      } else if (this.responseCompactionPending && this.agent.getActiveTurnId() === null) {
+        this.responseCompactionPending = false;
+        void this.compact("idle");
+      }
+      this.scheduleArchiveCheck();
     }
   }
 
@@ -284,12 +329,34 @@ export class ChannelRuntime {
     if (this.stopped) throw new Error("Channel runtime is stopped");
   }
 
+  private scheduleArchiveCheck(): void {
+    if (this.stopped || (this.options.archiveMaxBytes ?? 0) <= 0) return;
+    void this.schedule(async () => {
+      if (this.stopped || this.agent.getActiveTurnId() !== null) return;
+      await this.archiveIfOversize();
+    });
+  }
+
+  private async archiveIfOversize(): Promise<void> {
+    const maxBytes = this.options.archiveMaxBytes ?? 0;
+    if (this.stopped || maxBytes <= 0) return;
+    await this.options.channel.conversation.archiveIfOversize(maxBytes, {
+      model: this.options.compactModel ?? this.options.model,
+      personaName: "Athena",
+      persona: this.persona,
+    });
+  }
+
   private resetIdleTimer(): void {
     this.clearIdleTimer();
     if (this.stopped || !this.options.idleTimeout) return;
     this.idleTimer = setTimeout(() => {
       this.idleTimer = undefined;
-      if (this.agent.getActiveTurnId() === null) void this.compact("idle");
+      if (this.agent.getActiveTurnId() !== null) {
+        this.responseCompactionPending = true;
+        return;
+      }
+      void this.compact("idle");
     }, this.options.idleTimeout);
   }
 

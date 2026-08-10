@@ -15,9 +15,10 @@ const config: Config = {
   logLevel: 2,
   allowedChannels: [],
   imageInput: false,
-  resourceReadTimeoutMs: 30_000,
-  reply: { pacing: { charactersPerSecond: 100_000, maxTotalDelayMs: 60_000 }, customInnerThought: false },
-  session: { compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined }, idle: { timeout: 0 } },
+  resourceReadTimeout: 30,
+  pacing: { charactersPerSecond: 100_000, maxTotalDelayMs: 60_000 },
+  customInnerThought: false,
+  session: { compact: { responseIdleMinutes: 0, minMessages: 20, maxFailures: 3, model: undefined }, archive: { maxKB: 0 } },
 };
 
 const event: EventRecord<"delivery.failed"> = {
@@ -131,12 +132,7 @@ describe("Messenger", () => {
     };
     const channels = { resolve: vi.fn(async () => ({ context: runtime.context })) };
     const runtimes = { get: vi.fn(async () => runtime) };
-    const messenger = new Messenger(
-      ctx,
-      { ...config, reply: { ...config.reply, pacing: { charactersPerSecond: 8, maxTotalDelayMs: 1 } } },
-      channels as never,
-      runtimes as never,
-    );
+    const messenger = new Messenger(ctx, { ...config, pacing: { charactersPerSecond: 8, maxTotalDelayMs: 1 } }, channels as never, runtimes as never);
 
     await messenger.post(event);
 
@@ -169,12 +165,7 @@ describe("Messenger", () => {
       };
       const channels = { resolve: vi.fn(async () => ({ context: runtime.context })) };
       const runtimes = { get: vi.fn(async () => runtime) };
-      const messenger = new Messenger(
-        ctx,
-        { ...config, reply: { ...config.reply, pacing: { charactersPerSecond: 1, maxTotalDelayMs: 1_000 } } },
-        channels as never,
-        runtimes as never,
-      );
+      const messenger = new Messenger(ctx, { ...config, pacing: { charactersPerSecond: 1, maxTotalDelayMs: 1_000 } }, channels as never, runtimes as never);
 
       const pending = messenger.post(event);
       for (let attempt = 0; attempt < 10 && vi.getTimerCount() === 0; attempt += 1) await Promise.resolve();

@@ -56,10 +56,7 @@ export class Agents {
     for (const { plugin } of plugins) {
       if ((session && plugin.match(session)) || plugin.matchContext?.(context)) {
         const engine = await plugin.setup(context);
-        this.logger?.debug("agents.will_selected", {
-          engine: engine.constructor?.name ?? "plugin",
-          plugin: plugin.constructor?.name ?? "will-plugin",
-        });
+        this.logger?.debug("agents.will_selected", { engine: engine.constructor?.name ?? "plugin", plugin: plugin.constructor?.name ?? "will-plugin" });
         return engine;
       }
     }

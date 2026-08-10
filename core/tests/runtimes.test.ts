@@ -27,7 +27,7 @@ vi.mock("@yesimbot/agent-runtime", async (original) => {
   };
 });
 
-import { createAgent } from "@yesimbot/agent-runtime";
+import { createAgent, createEntry } from "@yesimbot/agent-runtime";
 
 import { Agents } from "../src/agents/index.js";
 import { Channel, Channels } from "../src/channels/index.js";
@@ -42,9 +42,10 @@ const config: Config = {
   logLevel: 2,
   allowedChannels: [],
   imageInput: false,
-  resourceReadTimeoutMs: 1000,
-  reply: { pacing: { charactersPerSecond: 1, maxTotalDelayMs: 1 }, customInnerThought: false },
-  session: { compact: { threshold: 1, charTokenRatio: 1, minMessages: 1, maxFailures: 1, model: undefined }, idle: { timeout: 1 } },
+  resourceReadTimeout: 1,
+  pacing: { charactersPerSecond: 1, maxTotalDelayMs: 1 },
+  customInnerThought: false,
+  session: { compact: { responseIdleMinutes: 0, minMessages: 1, maxFailures: 1, model: undefined }, archive: { maxKB: 0 } },
 };
 
 const event = {
@@ -95,6 +96,25 @@ describe("ChannelRuntime scheduling", () => {
     try {
       const config = vi.mocked(createAgent).mock.calls.at(-1)?.[0];
       expect(config?.providerTools).toBe(providerTools);
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("projects the latest compact summary into model-visible history", async () => {
+    const { value, root } = await runtime();
+    try {
+      const plugin = vi
+        .mocked(createAgent)
+        .mock.calls.at(-1)?.[0]
+        .plugins?.find((item) => item.name === "core.compact-history");
+      const entries = await plugin?.transformEntries?.([
+        createEntry("message", { id: "old", timestamp: 1, role: "user", content: "old" }),
+        createEntry("compact", { summary: "remember this", lastEntryId: "old", sourceSession: "session" }),
+        createEntry("message", { id: "new", timestamp: 2, role: "user", content: "new" }),
+      ]);
+      expect(entries).toHaveLength(2);
+      expect(entries?.[0]).toMatchObject({ type: "message", data: { role: "system", content: expect.stringContaining("remember this") } });
     } finally {
       await value.stop();
       await rm(root, { recursive: true, force: true });
@@ -237,16 +257,16 @@ describe("ChannelRuntime scheduling", () => {
 });
 
 // ---------------------------------------------------------------------------
-// ChannelRuntime idle compaction
+// ChannelRuntime response-idle compaction
 // ---------------------------------------------------------------------------
 
-const idleConfig: Config = {
+const responseConfig: Config = {
   ...config,
-  session: { compact: { threshold: 1, charTokenRatio: 1, minMessages: 20, maxFailures: 1, model: undefined }, idle: { timeout: 10 } },
+  session: { compact: { responseIdleMinutes: 1, minMessages: 20, maxFailures: 1, model: undefined }, archive: { maxKB: 0 } },
 };
 
-async function createIdleRuntime() {
-  const root = await mkdtemp(join(tmpdir(), "yesimbot-idle-"));
+async function createResponseRuntime(archiveMaxBytes = 0) {
+  const root = await mkdtemp(join(tmpdir(), "yesimbot-response-idle-"));
   const channel = new Channel({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, root);
   await channel.conversation.init();
   const value = new ChannelRuntime(new Context(), {
@@ -255,15 +275,22 @@ async function createIdleRuntime() {
     will: { decide: vi.fn().mockResolvedValue("wait"), observe: vi.fn() } as never,
     model: {} as never,
     imageOutputSupported: false,
-    idleTimeout: idleConfig.session.idle.timeout,
-    config: idleConfig,
+    idleTimeout: 10,
+    archiveMaxBytes,
+    config: responseConfig,
     plugins: [],
   });
   await value.init();
   return { value, channel, root };
 }
 
-describe("ChannelRuntime idle compaction", () => {
+function completedReply() {
+  return (async function* () {
+    yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "reply" } };
+  })();
+}
+
+describe("ChannelRuntime response-idle compaction", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     state.active = null;
@@ -273,11 +300,37 @@ describe("ChannelRuntime idle compaction", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("compacts after a completed record becomes idle", async () => {
-    const { value, channel, root } = await createIdleRuntime();
+  it("does not compact after a record that produced no response", async () => {
+    const { value, channel, root } = await createResponseRuntime();
     const compact = vi.spyOn(channel.conversation, "compact").mockResolvedValue({ compacted: false });
     try {
       await value.post(event, { trigger: false });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(compact).not.toHaveBeenCalled();
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("checks file size after a record even when it produced no response", async () => {
+    const { value, channel, root } = await createResponseRuntime(1);
+    const archive = vi.spyOn(channel.conversation, "archiveIfOversize").mockResolvedValue(false);
+    try {
+      await value.post(event, { trigger: false });
+      expect(archive).toHaveBeenCalledWith(1, expect.objectContaining({ personaName: "Athena" }));
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("compacts after a completed assistant response becomes idle", async () => {
+    state.run.mockReturnValue(completedReply());
+    const { value, channel, root } = await createResponseRuntime();
+    const compact = vi.spyOn(channel.conversation, "compact").mockResolvedValue({ compacted: false });
+    try {
+      const result = await value.post(event);
+      if (result.kind === "run") await Array.fromAsync(result.output);
       await vi.advanceTimersByTimeAsync(10);
       expect(compact).toHaveBeenCalledWith("idle", expect.anything());
     } finally {
@@ -286,15 +339,15 @@ describe("ChannelRuntime idle compaction", () => {
     }
   });
 
-  it("restarts the idle timeout after a new record", async () => {
-    const { value, channel, root } = await createIdleRuntime();
+  it("does not reset response-idle timing for a new non-response record", async () => {
+    state.run.mockReturnValue(completedReply());
+    const { value, channel, root } = await createResponseRuntime();
     const compact = vi.spyOn(channel.conversation, "compact").mockResolvedValue({ compacted: false });
     try {
-      await value.post(event, { trigger: false });
+      const result = await value.post(event);
+      if (result.kind === "run") await Array.fromAsync(result.output);
       await vi.advanceTimersByTimeAsync(5);
       await value.post({ ...event, timestamp: 2 }, { trigger: false });
-      await vi.advanceTimersByTimeAsync(5);
-      expect(compact).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(5);
       expect(compact).toHaveBeenCalledOnce();
     } finally {
@@ -303,28 +356,19 @@ describe("ChannelRuntime idle compaction", () => {
     }
   });
 
-  it("skips expiry while an Agent turn is active", async () => {
-    const { value, channel, root } = await createIdleRuntime();
+  it("clears the pending response-idle timer when stopped", async () => {
+    state.run.mockReturnValue(completedReply());
+    const { value, channel, root } = await createResponseRuntime();
     const compact = vi.spyOn(channel.conversation, "compact").mockResolvedValue({ compacted: false });
     try {
-      state.active = "turn-1";
-      await value.post(event, { trigger: false });
-      await vi.advanceTimersByTimeAsync(10);
+      const result = await value.post(event);
+      if (result.kind === "run") await Array.fromAsync(result.output);
+      await value.stop();
+      await vi.advanceTimersByTimeAsync(20);
       expect(compact).not.toHaveBeenCalled();
     } finally {
-      await value.stop();
       await rm(root, { recursive: true, force: true });
     }
-  });
-
-  it("clears the pending idle timer when stopped", async () => {
-    const { value, channel, root } = await createIdleRuntime();
-    const compact = vi.spyOn(channel.conversation, "compact").mockResolvedValue({ compacted: false });
-    await value.post(event, { trigger: false });
-    await value.stop();
-    await vi.advanceTimersByTimeAsync(20);
-    expect(compact).not.toHaveBeenCalled();
-    await rm(root, { recursive: true, force: true });
   });
 });
 

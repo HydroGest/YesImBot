@@ -96,7 +96,7 @@ describe("Conversation.archive", () => {
 // ---------------------------------------------------------------------------
 
 describe("Conversation.compact", () => {
-  it("uses the supplied immutable LLM/persona snapshot and only switches after a valid summary", async () => {
+  it("uses the supplied immutable LLM/persona snapshot and appends a compact boundary", async () => {
     generateText.mockResolvedValue({ text: "LLM memory" });
     const root = await mkdtemp(join(tmpdir(), "yesimbot-conversation-"));
     roots.push(root);
@@ -112,7 +112,7 @@ describe("Conversation.compact", () => {
       expect.objectContaining({ model: expect.anything(), system: expect.stringContaining("Athena"), prompt: expect.stringContaining("persona") }),
     );
     expect((await conversation.list()).filter((item) => item.isActive)).toHaveLength(1);
-    expect(await conversation.storage.read()).toHaveLength(1);
+    expect(await conversation.storage.read()).toHaveLength(3);
   });
 
   it("does not activate a new session for an empty model summary", async () => {
@@ -181,8 +181,8 @@ describe("Conversation.compact", () => {
     await conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" });
     await expect(conversation.compact("manual", { model: {} as never, personaName: "Athena", persona: "persona" })).resolves.toEqual({ compacted: true });
     const entries = await conversation.storage.read();
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ type: "compact", data: expect.objectContaining({ sourceSession, summary: "stable memory" }) });
+    expect(entries).toHaveLength(3);
+    expect(entries.at(-1)).toMatchObject({ type: "compact", data: expect.objectContaining({ sourceSession, summary: "stable memory" }) });
   });
 
   it("stops trying after the configured consecutive failure limit", async () => {
@@ -201,5 +201,32 @@ describe("Conversation.compact", () => {
       reason: "failure_limit",
     });
     expect(generateText).toHaveBeenCalledOnce();
+  });
+});
+describe("Conversation archiving policies", () => {
+  it("keeps the storage facade on the new active file after archiving", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-storage-facade-"));
+    roots.push(root);
+    const conversation = new Conversation(root);
+    await conversation.init();
+    const storage = conversation.storage;
+    await storage.append(createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "hello" }));
+
+    await conversation.archive(true);
+
+    expect(await storage.read()).toEqual([]);
+  });
+
+  it("archives the active file only after it exceeds the byte limit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-size-archive-"));
+    roots.push(root);
+    const conversation = new Conversation(root);
+    await conversation.init();
+    await conversation.storage.append(createEntry("message", { id: "m1", timestamp: 1, role: "user", content: "x".repeat(1000) }));
+
+    await expect(conversation.archiveIfOversize(10_000)).resolves.toBe(false);
+    await expect(conversation.archiveIfOversize(1)).resolves.toBe(true);
+    expect((await conversation.list()).filter((item) => item.isActive)).toHaveLength(1);
+    expect(await conversation.storage.read()).toEqual([]);
   });
 });

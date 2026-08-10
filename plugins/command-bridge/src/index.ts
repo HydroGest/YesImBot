@@ -80,16 +80,8 @@ export default class CommandBridgePlugin {
   public async setup(context: ChannelContext, bot: Bot): Promise<AgentPlugin> {
     const resources = await this.ctx.yesimbot.resource.get(context);
     const tools = this.createTools(context, bot, resources);
-    this.logger.debug("command_bridge.tools_ready", {
-      channelId: context.channelId,
-      toolCount: tools.length,
-      toolNames: tools.map((tool) => tool.name),
-    });
-    return {
-      name: "command-bridge",
-      tools: (): AgentTool[] => tools,
-      appendSystemPrompt: () => COMMAND_TOOL_GUIDANCE,
-    } satisfies AgentPlugin;
+    this.logger.debug("command_bridge.tools_ready", { channelId: context.channelId, toolCount: tools.length, toolNames: tools.map((tool) => tool.name) });
+    return { name: "command-bridge", tools: (): AgentTool[] => tools, appendSystemPrompt: () => COMMAND_TOOL_GUIDANCE } satisfies AgentPlugin;
   }
 
   public async stop(): Promise<void> {
@@ -176,11 +168,7 @@ export default class CommandBridgePlugin {
   private async executeCommand(context: ChannelContext, bot: Bot, resources: ChannelResources, input: ExecuteCommandInput): Promise<CommandExecutionEvent> {
     const policyError = validateCommandCall(input.command, this.config);
     if (policyError) {
-      this.logger.warn("command_bridge.execute.denied", {
-        channelId: context.channelId,
-        command: input.command,
-        reason: policyError,
-      });
+      this.logger.warn("command_bridge.execute.denied", { channelId: context.channelId, command: input.command, reason: policyError });
       throw new Error(policyError);
     }
 
@@ -231,12 +219,7 @@ export default class CommandBridgePlugin {
     this.executions.set(execution.id, execution);
     execution.start();
     const event = await execution.next();
-    this.logger.debug("command_bridge.execute.event", {
-      executionId,
-      status: event.status,
-      prompt: event.prompt !== undefined,
-      error: event.error,
-    });
+    this.logger.debug("command_bridge.execute.event", { executionId, status: event.status, prompt: event.prompt !== undefined, error: event.error });
     this.scheduleCleanup(execution, event);
     return event;
   }

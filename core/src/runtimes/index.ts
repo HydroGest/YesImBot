@@ -1,3 +1,4 @@
+import type { LanguageModel } from "ai";
 import type { Bot, Context, Logger, Session } from "koishi";
 
 import { Agents } from "../agents/index.js";
@@ -41,18 +42,21 @@ export class Runtimes {
         await current.stop();
       }
       const chat = this.model.resolveChatModel(this.config.chatModel);
+      const compactModel = this.resolveCompactModel(chat.model);
       const vision = this.resolveVision();
       const runtime = new ChannelRuntime(this.ctx, {
         channel,
         bot,
         will: await this.agents.setupWill(channel.context, session),
         model: chat.model,
+        compactModel,
         providerTools: chat.tools,
         visionModel: vision,
         imageOutputSupported: chat.entry.modalities?.input?.includes("image") ?? false,
         config: this.config,
         plugins: await this.agents.setup(channel.context, bot),
-        idleTimeout: this.config.session.idle.timeout,
+        idleTimeout: this.config.session.compact.responseIdleMinutes * 60_000,
+        archiveMaxBytes: this.config.session.archive.maxKB * 1024,
       });
       try {
         await runtime.init();
@@ -105,10 +109,11 @@ export class Runtimes {
       if (runtime) await runtime.stop();
       this.runtimes.delete(key);
       const channel = await this.channels.resolve(ctx);
+      const chat = this.model.resolveChatModel(this.config.chatModel);
       const input = noSummary
         ? undefined
         : {
-            model: this.model.resolveChatModel(this.config.chatModel).model,
+            model: this.resolveCompactModel(chat.model),
             personaName: "Athena",
             persona: await readPersona(this.config.basePath, this.ctx.logger("yesimbot/archive")),
           };
@@ -129,6 +134,10 @@ export class Runtimes {
   public async list(ctx: ChannelContext): Promise<string> {
     const sessions = await (await this.channels.resolve(ctx)).conversation.list();
     return sessions.length ? sessions.map((session) => `${session.isActive ? "→ " : "  "}${session.filename}`).join("\n") : "无会话记录。";
+  }
+
+  private resolveCompactModel(fallback: LanguageModel): LanguageModel {
+    return this.config.session.compact.model ? this.model.resolveChatModel(this.config.session.compact.model).model : fallback;
   }
 
   private resolveVision() {
