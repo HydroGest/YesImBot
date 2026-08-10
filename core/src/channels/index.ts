@@ -69,10 +69,7 @@ export class Channels implements Resources {
     await this.started;
     const key = deriveChannelKey(ctx);
     const cached = this.channels.get(key);
-    if (cached) {
-      this.logger.debug("channels.resolve.cached", { key });
-      return cached;
-    }
+    if (cached) return cached;
     const creating = this.creating.get(key);
     if (creating) return creating;
     const task = this.create(ctx, key);

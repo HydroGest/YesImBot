@@ -111,7 +111,7 @@ export default class WillPolicyPlugin {
   public setup(_scope: ChannelContext): WillEngine {
     const resolved = resolvePolicy(this.config);
     this.logger.debug("resolve_will_policy", { engine: resolved.engine, routing: resolved.routing, willingness: resolved.willingness });
-    return resolved.engine === "routing" ? new PolicyRoutingEngine(resolved.routing) : new PolicyWillingnessEngine(resolved.willingness);
+    return resolved.engine === "routing" ? new PolicyRoutingEngine(resolved.routing, this.logger) : new PolicyWillingnessEngine(resolved.willingness, this.logger);
   }
 
   public async stop(): Promise<void> {

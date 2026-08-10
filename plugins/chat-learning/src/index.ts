@@ -841,7 +841,6 @@ export default class ChatLearningPlugin {
     });
     const entry = createMessageEntry(record, { id: `global-${session.messageId}-${session.timestamp}`, timestamp: session.timestamp });
     await store.append([entry]);
-    this.logger.debug("chat_learning.observe_global", { scope: scopeOf(session), messageId: session.messageId });
   }
 
   private async syncGlobalHistoryOnly(): Promise<void> {

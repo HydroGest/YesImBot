@@ -96,32 +96,14 @@ export class Messenger {
   private async route(session: Session): Promise<void> {
     const ctx = contextFromSession(session);
     const routeId = session.messageId ?? String(session.id);
-    this.logger.debug("messenger.route.start", {
-      routeId,
-      platform: session.platform,
-      channelId: session.channelId,
-      userId: session.userId,
-      isDirect: session.isDirect,
-    });
-    if (!ctx || !matchesAllowedChannel(ctx, this.config.allowedChannels)) {
-      this.logger.debug("messenger.route.skip", {
-        routeId,
-        platform: session.platform,
-        channelId: session.channelId,
-        reason: ctx ? "channel_not_allowed" : "invalid_context",
-      });
-      return;
-    }
+    if (!ctx || !matchesAllowedChannel(ctx, this.config.allowedChannels)) return;
     try {
       await this.channels.start();
       await assertAssignee(this.ctx, ctx, session.selfId);
       const channel = await this.channels.resolve(ctx);
       const translator = this.translators.get(session.platform) ?? this.translators.get("*");
       const record = translator ? await translator.translate(session, channel.resources) : await translateDefault(this.ctx, session, channel.resources);
-      if (!record) {
-        this.logger.debug("messenger.route.no_record", { routeId, platform: session.platform, channelId: session.channelId });
-        return;
-      }
+      if (!record) return;
       this.logger.debug("messenger.route.record", {
         routeId,
         recordType: "messageId" in record ? "message" : "event",

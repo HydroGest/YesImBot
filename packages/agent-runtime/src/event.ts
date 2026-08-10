@@ -1,4 +1,4 @@
-import type { TextStreamPart, ToolSet } from "ai";
+import type { LanguageModelUsage, TextStreamPart, ToolSet } from "ai";
 
 import { createRandomId } from "./id.js";
 import type { AgentMessage } from "./message.js";
@@ -63,6 +63,9 @@ export interface TurnStartEvent extends TurnScoped {
 export interface TurnStepEvent extends TurnScoped {
   type: "turn.step";
   step: number;
+  usage?: Partial<LanguageModelUsage>;
+  finishReason?: string;
+  reasoningText?: string;
 }
 
 export interface TurnDeltaEvent extends TurnScoped {

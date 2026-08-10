@@ -433,7 +433,14 @@ export function createAgent(config: AgentConfig): Agent {
               );
             }
 
-            await emitInternal({ type: "turn.step", turnId: request.turnId, step: step.stepNumber });
+            await emitInternal({
+              type: "turn.step",
+              turnId: request.turnId,
+              step: step.stepNumber,
+              usage: step.usage,
+              finishReason: step.finishReason,
+              reasoningText: step.reasoningText,
+            });
           },
         });
 

@@ -33,7 +33,6 @@ export class Runtimes {
       this.assertOpen();
       const current = this.runtimes.get(key);
       if (current && (channel.context.type === "direct" || current.selfId === bot.selfId)) {
-        this.logger.debug("runtimes.get.cached", { key, selfId: bot.selfId });
         value = current;
         return;
       }

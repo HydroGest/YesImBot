@@ -103,6 +103,7 @@ export class ChannelRuntime {
         eventType: "messageId" in record ? "message" : "event",
         decision,
         result: result.kind,
+        activeTurnId: this.state().activeTurnId,
       });
       return result;
     });
@@ -211,7 +212,13 @@ export class ChannelRuntime {
           continue;
         }
         if (event.type === "turn.step") {
-          this.logger.debug("runtime.turn.step", { turnId: event.turnId, stepNumber: event.step });
+          this.logger.debug("runtime.turn.step", {
+            turnId: event.turnId,
+            stepNumber: event.step,
+            finishReason: event.finishReason,
+            usage: event.usage,
+            reasoningText: event.reasoningText === undefined ? undefined : event.reasoningText.slice(0, 1000),
+          });
           continue;
         }
         if (event.type === "turn.done") {

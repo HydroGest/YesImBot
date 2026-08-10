@@ -129,13 +129,14 @@ function renderGlobalChains(chains: readonly GlobalChainPattern[], _stylePattern
     .slice(0, Math.min(config.maxGlobalPatterns, 3));
   if (relevant.length === 0) return undefined;
 
-  const lines = relevant.map((chain) => {
-    const sample = chain.samples!.at(0)!;
+  const lines = relevant.flatMap((chain) => {
+    const sample = chain.samples?.[0];
+    if (!sample) return [];
     const style = chain.style ? `<style>${escapeXml(chain.style)}</style>\n` : "";
     const turnLines = sample.turns.map(
       (turn) => `<turn intent="${escapeXml(turn.intent)}" speaker="${escapeXml(turn.speaker)}">${escapeSampleText(turn.text)}</turn>`,
     );
-    return `<chain>\n${style}<sample>\n${turnLines.join("\n")}\n</sample>\n</chain>`;
+    return [`<chain>\n${style}<sample>\n${turnLines.join("\n")}\n</sample>\n</chain>`];
   });
   return `<global_chains>\n${lines.join("\n")}\n</global_chains>`;
 }
