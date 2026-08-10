@@ -93,6 +93,7 @@ export default class WillPolicyPlugin {
     this.config = config;
     this.priority = config.priority ?? 1000;
     this.logger = ctx.logger("yesimbot.will-policy");
+    this.logger.level = ctx.yesimbot?.config?.logLevel ?? 2;
     ctx.on("ready", this.start.bind(this));
     ctx.on("dispose", this.stop.bind(this));
   }
