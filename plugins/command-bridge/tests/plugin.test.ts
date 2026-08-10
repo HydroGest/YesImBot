@@ -13,7 +13,7 @@ function createConfig(overrides: Partial<CommandBridgeConfig> = {}): CommandBrid
   return {
     trustMode: "locked",
     allowCommands: ["weather"],
-    hardDeny: ["yesimbot", "koishi.execute", "koishi.execute.abort", "koishi.prompt.answer"],
+    hardDeny: ["yesimbot", "koishi_execute", "koishi_execute_abort", "koishi_prompt_answer"],
     agentAuthority: 0,
     agentPermissions: [],
     userActor: "disabled",
@@ -31,7 +31,7 @@ describe("CommandBridgePlugin", () => {
       logger: vi.fn(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn() })),
       on: vi.fn(),
       permissions: { list: () => ["command:weather"] },
-      yesimbot: { agent: { use } },
+      yesimbot: { agent: { use }, resource: { get: vi.fn(async () => ({})) } },
     };
 
     const plugin = new CommandBridgePlugin(ctx as never, createConfig() as never);
@@ -65,7 +65,7 @@ describe("CommandBridgePlugin", () => {
       },
     };
     const plugin = new CommandBridgePlugin(ctx as never, createConfig() as never);
-    const tools = plugin.createTools({ type: "shared", platform: "test", channelId: "room" }, { platform: "test", selfId: "bot" } as never);
+    const tools = plugin.createTools({ type: "shared", platform: "test", channelId: "room" }, { platform: "test", selfId: "bot" } as never, {} as never);
     const listTool = tools.find((tool) => tool.name === "koishi_execute_list");
     expect(listTool).toBeDefined();
 

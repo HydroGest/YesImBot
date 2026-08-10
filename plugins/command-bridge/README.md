@@ -21,9 +21,9 @@ allowCommands:
   - search
 hardDeny:
   - yesimbot
-  - koishi.execute
-  - koishi.execute.abort
-  - koishi.prompt.answer
+  - koishi_execute
+  - koishi_execute_abort
+  - koishi_prompt_answer
 agentAuthority: 0
 agentPermissions: []
 userActor: disabled

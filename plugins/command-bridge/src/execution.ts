@@ -1,5 +1,5 @@
 import { h, type Bot, type Logger, type Session } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import { formatElements, type ChannelScope } from "koishi-plugin-yesimbot";
 
 import type {
   CommandActor,
@@ -33,6 +33,7 @@ export interface CommandExecutionOptions {
   timeoutMs: number;
   maxTranscriptChars: number;
   logger: Pick<Logger, "debug" | "info" | "warn">;
+  persistElements?: (elements: readonly Element[]) => Promise<Element[]>;
 }
 
 export class CommandExecution {
@@ -105,11 +106,18 @@ export class CommandExecution {
     try {
       await this.applyActorPermissions();
       const output = await this.session.execute(this.options.command, true);
+      const outputElements = h.normalize(output as ElementFragment);
+      if (this.options.persistElements) {
+        const transcriptLength = this.transcript.length;
+        const prepared = await this.options.persistElements([...this.transcript, ...outputElements]);
+        this.transcript.splice(0, this.transcript.length, ...prepared.slice(0, transcriptLength));
+        outputElements.splice(0, outputElements.length, ...prepared.slice(transcriptLength));
+      }
       this.terminal = {
         status: "done",
         executionId: this.id,
         transcript: this.serializeTranscript(),
-        returnValue: serializeElements(h.normalize(output as ElementFragment), this.options.maxTranscriptChars),
+        returnValue: serializeElements(outputElements, this.options.maxTranscriptChars),
       };
     } catch (error) {
       this.terminal = {
@@ -183,7 +191,7 @@ export class CommandExecution {
 
       return new Promise<string>((resolve, reject) => {
         this.pendingPrompt = {
-          prompt: "命令要求用户输入，请调用 koishi.prompt.answer 提供答案。",
+          prompt: "命令要求用户输入，请调用 koishi_prompt_answer 提供答案。",
           resolve,
           reject,
         };
@@ -216,11 +224,7 @@ function formatError(error: unknown): string {
 }
 
 function serializeElements(elements: readonly Element[], maxChars: number): string {
-  return elements
-    .map((element) => element.toString())
-    .join("")
-    .trim()
-    .slice(0, maxChars);
+  return formatElements(elements).trim().slice(0, maxChars);
 }
 
 function createSilentBotProxy(bot: Bot, onSend: (content: ElementFragment) => void): Bot {

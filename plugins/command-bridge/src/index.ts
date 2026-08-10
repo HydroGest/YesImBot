@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { jsonSchema, type AgentPlugin, type AgentTool } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import { persistElements, type ChannelResources, type ChannelScope } from "koishi-plugin-yesimbot";
 
 import { collectCommandCatalog, filterCommandCatalog, formatCommandCatalog, formatCommandHelp } from "./catalog.js";
 import { CommandExecution } from "./execution.js";
@@ -22,6 +22,7 @@ const COMMAND_TOOL_GUIDANCE =
   "koishi_execute 可以静默调用 Koishi 生态中的命令。命令输出只会返回给主模型，不会自动发送到群里；" +
   "是否转述、如何转述由主模型决定。先使用 koishi_execute_list 查看可用命令，" +
   "使用 koishi_execute_help 了解命令的参数和选项；" +
+  "命令输出中的图片会渲染成 [图片：asset://<id>]，需要查看图片内容时调用 read 工具读取该 URI；" +
   "若命令返回 awaiting_prompt，请调用 koishi_prompt_answer 继续执行。";
 
 export default class CommandBridgePlugin {
@@ -33,7 +34,7 @@ export default class CommandBridgePlugin {
     trustMode: Schema.union(["locked", "full"]).default("locked").description("locked 仅允许 allowCommands，full 允许全部命令"),
     allowCommands: Schema.array(Schema.string()).default([]).role("table").description("locked 模式下允许执行的命令"),
     hardDeny: Schema.array(Schema.string())
-      .default(["yesimbot", "koishi.execute", "koishi.execute.abort", "koishi.prompt.answer"])
+      .default(["yesimbot", "koishi_execute", "koishi_execute_abort", "koishi_prompt_answer"])
       .role("table")
       .description("始终禁止的命令前缀"),
     agentAuthority: Schema.number().default(0).description("agent 身份 authority，full 模式下为 0 时默认使用 4"),
@@ -64,9 +65,10 @@ export default class CommandBridgePlugin {
   }
 
   public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin> {
+    const resources = await this.ctx.yesimbot.resource.get(scope);
     return {
       name: "command-bridge",
-      tools: (): AgentTool[] => this.createTools(scope, bot),
+      tools: (): AgentTool[] => this.createTools(scope, bot, resources),
       appendSystemPrompt: () => COMMAND_TOOL_GUIDANCE,
     } satisfies AgentPlugin;
   }
@@ -81,7 +83,7 @@ export default class CommandBridgePlugin {
     this.logger.info("command bridge plugin stopped");
   }
 
-  public createTools(scope: ChannelScope, bot: Bot): AgentTool[] {
+  public createTools(scope: ChannelScope, bot: Bot, resources: ChannelResources): AgentTool[] {
     return [
       {
         name: "koishi_execute_list",
@@ -126,7 +128,7 @@ export default class CommandBridgePlugin {
           required: ["command"],
           additionalProperties: false,
         }),
-        execute: async (input: ExecuteCommandInput) => this.executeCommand(scope, bot, input),
+        execute: async (input: ExecuteCommandInput) => this.executeCommand(scope, bot, resources, input),
         toModelOutput: async (options) => formatToolOutput(options as { output: CommandExecutionEvent }),
       },
       {
@@ -151,7 +153,7 @@ export default class CommandBridgePlugin {
     ];
   }
 
-  private async executeCommand(scope: ChannelScope, bot: Bot, input: ExecuteCommandInput): Promise<CommandExecutionEvent> {
+  private async executeCommand(scope: ChannelScope, bot: Bot, resources: ChannelResources, input: ExecuteCommandInput): Promise<CommandExecutionEvent> {
     const policyError = validateCommandCall(input.command, this.config);
     if (policyError) throw new Error(policyError);
 
@@ -181,6 +183,7 @@ export default class CommandBridgePlugin {
       timeoutMs: this.config.timeoutMs,
       maxTranscriptChars: this.config.maxTranscriptChars,
       logger: this.logger,
+      persistElements: (elements) => persistElements(this.ctx, elements, resources),
     });
 
     this.executions.set(execution.id, execution);

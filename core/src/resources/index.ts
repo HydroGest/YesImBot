@@ -239,3 +239,4 @@ function normalize(value: unknown): ResourceOpenResult {
 }
 export { type ArtifactOpenResult, type ArtifactStore, type ArtifactWriter } from "./artifact.js";
 export { type AssetStore } from "./asset.js";
+export { persistElements } from "./input.js";

@@ -18,6 +18,8 @@ type FakeSession = {
   observeUser: (fields: readonly string[]) => Promise<{ authority: number; permissions: string[] }>;
 };
 
+type Element = ReturnType<typeof h.normalize>[number];
+
 function createFakeBot(session: FakeSession) {
   const bot = { platform: "test", selfId: "bot", sendMessage: vi.fn(async () => []), session: vi.fn(() => session) };
   session.bot = bot;
@@ -30,6 +32,7 @@ function createOptions(overrides: {
   interactive?: InteractiveMode;
   session: FakeSession;
   bot?: ReturnType<typeof createFakeBot>;
+  persistElements?: (elements: readonly Element[]) => Promise<Element[]>;
 }) {
   return {
     id: "exec-1",
@@ -41,6 +44,7 @@ function createOptions(overrides: {
     timeoutMs: 1000,
     maxTranscriptChars: 1000,
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn() },
+    ...(overrides.persistElements === undefined ? {} : { persistElements: overrides.persistElements }),
   };
 }
 
@@ -83,6 +87,31 @@ describe("CommandExecution", () => {
     const event = await execution.next();
     expect(event.status).toBe("done");
     expect(event.transcript).toContain("direct");
+  });
+
+  it("renders captured output images through the core asset projection", async () => {
+    const assetId = "a".repeat(32);
+    const session: FakeSession = {
+      execute: async () => {
+        await session.send(h("img", { src: "data:image/png;base64,AA==" }));
+        return [];
+      },
+      send: vi.fn(async () => []),
+      sendQueued: vi.fn(async () => []),
+      prompt: vi.fn(async () => undefined),
+      observeUser: vi.fn(async () => ({ authority: 0, permissions: [] })),
+    };
+    const execution = new CommandExecution(
+      createOptions({
+        session,
+        persistElements: async (elements) => elements.map((element) => (element.type === "img" ? h("img", { ...element.attrs, id: assetId }) : element)),
+      }),
+    );
+    execution.start();
+
+    const event = await execution.next();
+    expect(event.status).toBe("done");
+    expect(event.transcript).toContain(`[图片：asset://${assetId}]`);
   });
 
   it("treats shared channels as guild chats", async () => {
@@ -142,6 +171,7 @@ describe("CommandExecution", () => {
     const first = await execution.next();
     expect(first.status).toBe("awaiting_prompt");
     expect(first.prompt).toBeDefined();
+    expect(first.prompt).toContain("koishi_prompt_answer");
 
     const second = await execution.answer("yes");
     expect(second.status).toBe("done");

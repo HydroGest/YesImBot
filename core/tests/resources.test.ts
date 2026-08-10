@@ -63,6 +63,17 @@ describe("session-live input resources", () => {
     expect(resources.assets.put).toHaveBeenCalledWith(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
     expect(elements).toEqual([h("img", { id: "0123456789abcdef0123456789abcdef" })]);
   });
+
+  it("persists a base64:// image element without downloading", async () => {
+    const http = vi.fn();
+    const resources = { assets: { put: vi.fn(async () => "0123456789abcdef0123456789abcdef") } };
+
+    const elements = await persistElements({ http } as never, [h("img", { src: `base64://${Buffer.from(PNG_BYTES).toString("base64")}` })], resources as never);
+
+    expect(resources.assets.put).toHaveBeenCalledWith(PNG_BYTES);
+    expect(elements).toEqual([h("img", { id: "0123456789abcdef0123456789abcdef" })]);
+    expect(http).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

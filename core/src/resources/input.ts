@@ -7,6 +7,7 @@ import { h, type Context, type Element } from "koishi";
 import type { AssetStore } from "./asset.js";
 import type { ChannelResources } from "./index.js";
 const DATA_URL = /^data:([^;,]+)(;base64)?,([\s\S]*)$/;
+const BASE64_URL = /^base64:\/\/([\s\S]*)$/;
 const MAX_IMAGES = 4;
 const MAX_BYTES_PER_IMAGE = 5 * 1024 * 1024;
 const MAX_FILES = 2;
@@ -103,6 +104,8 @@ async function loadResource(ctx: Context, src: string, kind: ResourceKind, maxBy
 async function loadResourceBytes(ctx: Context, src: string, kind: ResourceKind, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
   const data = decodeDataUrl(src, maxBytes);
   if (data) return data;
+  const base64 = decodeBase64Url(src, maxBytes);
+  if (base64) return base64;
   signal.throwIfAborted();
   if (src.startsWith("file:")) return loadLocalFile(src, signal, maxBytes);
   return loadRemote(ctx, src, kind, signal, maxBytes);
@@ -180,6 +183,16 @@ function decodeDataUrl(src: string, maxBytes: number): Uint8Array | null {
   if (base64 && Math.ceil(payload.length / 4) * 3 > maxBytes) throw new Error("Resource exceeds byte limit");
   if (!base64 && payload.length > maxBytes) throw new Error("Resource exceeds byte limit");
   const decoded = base64 ? new Uint8Array(Buffer.from(payload, "base64")) : new TextEncoder().encode(decodeURIComponent(payload));
+  if (decoded.byteLength > maxBytes) throw new Error("Resource exceeds byte limit");
+  return decoded;
+}
+
+function decodeBase64Url(src: string, maxBytes: number): Uint8Array | null {
+  const match = BASE64_URL.exec(src);
+  if (!match) return null;
+  const payload = match[1]!;
+  if (Math.ceil(payload.length / 4) * 3 > maxBytes) throw new Error("Resource exceeds byte limit");
+  const decoded = new Uint8Array(Buffer.from(payload, "base64"));
   if (decoded.byteLength > maxBytes) throw new Error("Resource exceeds byte limit");
   return decoded;
 }

@@ -109,7 +109,7 @@ export function formatInput(input: Message | Event): UserModelMessage {
     const sender = input.data.user.name ? `${input.data.user.name} (${input.data.user.id})` : input.data.user.id;
     return {
       role: "user",
-      content: `[time=${JSON.stringify(time)} sender=${JSON.stringify(sender)} id=${JSON.stringify(input.data.messageId)}]\n${input.data.elements.map(formatElement).join("")}`,
+      content: `[time=${JSON.stringify(time)} sender=${JSON.stringify(sender)} id=${JSON.stringify(input.data.messageId)}]\n${formatElements(input.data.elements)}`,
     };
   }
   return {
@@ -121,6 +121,10 @@ export function formatInput(input: Message | Event): UserModelMessage {
       "[/SYSTEM_NOTIFICATION]",
     ].join("\n"),
   };
+}
+
+export function formatElements(elements: readonly Element[]): string {
+  return elements.map(formatElement).join("");
 }
 
 export function parseReply(raw: string): Element[][] {
