@@ -105,7 +105,39 @@ export default class WillPolicyPlugin {
   }
 
   public match(session: Session): boolean {
-    return this.ctx.filter(session);
+    const matched = this.ctx.filter(session);
+    this.logger.debug("will_policy.match", {
+      instanceId: this.instanceId,
+      priority: this.priority,
+      engine: this.config.engine,
+      platform: session.platform,
+      channelId: session.channelId,
+      guildId: session.guildId,
+      matched,
+    });
+    return matched;
+  }
+
+  public matchContext(context: ChannelContext): boolean {
+    const session = {
+      platform: context.platform,
+      channelId: context.channelId,
+      guildId: context.type === "direct" ? undefined : context.guildId,
+      userId: context.type === "direct" ? context.userId : undefined,
+      selfId: context.selfId,
+      isDirect: context.type === "direct",
+    } as unknown as Session;
+    const matched = this.ctx.filter(session);
+    this.logger.debug("will_policy.match_context", {
+      instanceId: this.instanceId,
+      priority: this.priority,
+      engine: this.config.engine,
+      platform: context.platform,
+      channelId: context.channelId,
+      guildId: context.type === "direct" ? undefined : context.guildId,
+      matched,
+    });
+    return matched;
   }
 
   public setup(_scope: ChannelContext): WillEngine {

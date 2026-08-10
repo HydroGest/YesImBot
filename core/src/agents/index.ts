@@ -43,11 +43,10 @@ export class Agents {
   }
 
   public async setupWill(context: ChannelContext, session?: Session): Promise<WillEngine> {
-    if (!session) return defaultWillEngine;
     const plugins = [...this.willPlugins].map((plugin, index) => ({ plugin, index }));
     plugins.sort((left, right) => left.plugin.priority - right.plugin.priority || left.index - right.index);
     for (const { plugin } of plugins) {
-      if (plugin.match(session)) return plugin.setup(context);
+      if ((session && plugin.match(session)) || plugin.matchContext?.(context)) return plugin.setup(context);
     }
     return defaultWillEngine;
   }

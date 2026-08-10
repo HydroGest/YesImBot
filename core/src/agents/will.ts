@@ -22,5 +22,6 @@ export interface WillEngine {
 export interface WillPlugin {
   readonly priority: number;
   match(session: Session): boolean;
+  matchContext?(context: ChannelContext): boolean;
   setup(context: ChannelContext): Awaitable<WillEngine>;
 }
