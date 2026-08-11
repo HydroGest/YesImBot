@@ -307,10 +307,15 @@ function collectAdapters(ctx: Context): PanelAdapter[] {
         error: bot?.error?.message,
       };
     })
-    .sort((left, right) => Number(right.enabled) - Number(left.enabled) || left.name.localeCompare(right.name));
+    .sort((left, right) => {
+      const leftPriority = ADAPTER_PRIORITY[left.platform] ?? Number.MAX_SAFE_INTEGER;
+      const rightPriority = ADAPTER_PRIORITY[right.platform] ?? Number.MAX_SAFE_INTEGER;
+      return leftPriority - rightPriority || Number(right.enabled) - Number(left.enabled) || left.name.localeCompare(right.name);
+    });
 }
 
 const ADAPTER_NAMES: Record<string, string> = {
+  napcat: "NapCat",
   onebot: "OneBot",
   discord: "Discord",
   kook: "KOOK",
@@ -327,6 +332,11 @@ const ADAPTER_NAMES: Record<string, string> = {
   whatsapp: "WhatsApp",
   zulip: "Zulip",
   dingtalk: "钉钉",
+};
+
+const ADAPTER_PRIORITY: Record<string, number> = {
+  onebot: 0,
+  napcat: 1,
 };
 
 function hasAdapterConnection(config: Record<string, unknown>): boolean {

@@ -107,7 +107,8 @@
                       <div class="yib-adapter-card__detail">
                         <div class="yib-adapter-card__name">
                           {{ adapter.name }}
-                          <span v-if="adapter.platform === 'qq'" class="yib-badge yib-badge--cyan">官方</span>
+                          <span v-if="adapter.platform === 'qq'" class="yib-badge yib-badge--cyan">QQ官方机器人</span>
+                          <span v-else-if="adapter.platform === 'onebot' || adapter.platform === 'napcat'" class="yib-badge yib-badge--brand">ONEBOT</span>
                         </div>
                         <div class="yib-adapter-card__status" :class="adapter.state">
                           <span class="yib-dot-mini"></span>
@@ -466,6 +467,7 @@ function formatDate(value: string): string {
 
 function adapterIcon(platform: string): string {
   const icons: Record<string, string> = {
+    napcat: "box-open",
     onebot: "box-open",
     qq: "user",
     discord: "user",
@@ -508,7 +510,7 @@ function adapterStateText(adapter: PanelAdapter): string {
 /* 基础卡片风格 */
 .yib-panel {
   position: relative;
-  background: var(--k-card-bg, var(--k-main-bg));
+  background: transparent;
   border: 1px solid var(--k-color-divider);
   border-radius: 8px;
   padding: 20px;
@@ -538,9 +540,8 @@ function adapterStateText(adapter: PanelAdapter): string {
   justify-content: space-between;
   min-height: 140px;
   padding: 28px 32px;
-  background: var(--k-card-bg, var(--k-main-bg));
+  background: transparent;
   border: 1px solid var(--k-color-divider);
-  border-left: 4px solid var(--k-color-primary);
   border-radius: 8px;
 
   .yib-hero__bg {
@@ -595,7 +596,7 @@ function adapterStateText(adapter: PanelAdapter): string {
   gap: 8px;
   padding: 6px 12px;
   border-radius: 999px;
-  background: var(--k-side-bg);
+  background: transparent;
   border: 1px solid var(--k-color-divider);
   font-size: 13px;
   font-weight: 500;
@@ -609,7 +610,7 @@ function adapterStateText(adapter: PanelAdapter): string {
 
   &.is-online {
     color: var(--k-color-success, #67c23a);
-    background: var(--k-side-bg);
+    background: transparent;
     border-color: var(--k-color-success, #67c23a);
 
     .yib-dot {
@@ -621,10 +622,6 @@ function adapterStateText(adapter: PanelAdapter): string {
 /* ==========================================================
    全新设计：新手引导向导 (Onboarding Stepper)
    ========================================================== */
-.yib-onboarding {
-  background: var(--k-card-bg, var(--k-main-bg));
-  border: 1px solid var(--k-color-divider);
-}
 
 .yib-onboarding__header {
   display: flex;
@@ -646,7 +643,7 @@ function adapterStateText(adapter: PanelAdapter): string {
       width: 40px;
       height: 40px;
       border-radius: 10px;
-      background: var(--k-side-bg);
+      background: transparent;
       color: var(--k-color-primary, #409eff);
       font-size: 20px;
     }
@@ -682,7 +679,7 @@ function adapterStateText(adapter: PanelAdapter): string {
 
   .yib-progress-bar {
     height: 6px;
-    background: var(--k-side-bg);
+    background: var(--k-color-divider);
     border-radius: 999px;
     overflow: hidden;
 
@@ -722,7 +719,7 @@ function adapterStateText(adapter: PanelAdapter): string {
       justify-content: center;
       font-size: 13px;
       font-weight: 700;
-      background: var(--k-side-bg);
+      background: transparent;
       border: 2px solid var(--k-color-divider);
       color: var(--k-text-normal, #666);
       transition: all 0.25s ease;
@@ -799,7 +796,7 @@ function adapterStateText(adapter: PanelAdapter): string {
 .yib-adapter-section {
   margin-top: 16px;
   padding: 14px;
-  background: var(--k-side-bg);
+  background: transparent;
   border-radius: 8px;
   border: 1px solid var(--k-color-divider);
 }
@@ -815,7 +812,7 @@ function adapterStateText(adapter: PanelAdapter): string {
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  background: var(--k-card-bg, var(--k-main-bg));
+  background: transparent;
   border: 1px solid var(--k-color-divider);
   border-radius: 8px;
   transition: all 0.2s ease;
@@ -836,7 +833,7 @@ function adapterStateText(adapter: PanelAdapter): string {
     width: 34px;
     height: 34px;
     border-radius: 8px;
-    background: var(--k-side-bg);
+    background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -903,15 +900,15 @@ function adapterStateText(adapter: PanelAdapter): string {
   font-weight: 600;
 
   &--brand {
-    background: var(--k-side-bg);
+    background: transparent;
     color: var(--k-color-primary, #409eff);
   }
   &--cyan {
-    background: var(--k-side-bg);
+    background: transparent;
     color: var(--k-color-primary, #409eff);
   }
   &--neutral {
-    background: var(--k-side-bg);
+    background: transparent;
     color: var(--k-text-normal, #666);
   }
 }
@@ -923,11 +920,11 @@ function adapterStateText(adapter: PanelAdapter): string {
   font-weight: 600;
 
   &--primary {
-    background: var(--k-side-bg);
+    background: transparent;
     color: var(--k-color-primary, #409eff);
   }
   &--success {
-    background: var(--k-side-bg);
+    background: transparent;
     color: var(--k-color-success, #67c23a);
   }
 }
@@ -955,7 +952,7 @@ function adapterStateText(adapter: PanelAdapter): string {
   }
 
   &--secondary {
-    background: var(--k-side-bg);
+    background: transparent;
     color: var(--k-text-dark);
 
     &:hover {
@@ -988,7 +985,7 @@ function adapterStateText(adapter: PanelAdapter): string {
 
 .yib-metric-card {
   padding: 18px 20px;
-  background: var(--k-card-bg, var(--k-main-bg));
+  background: transparent;
   border: 1px solid var(--k-color-divider);
   border-radius: 8px;
   display: flex;
@@ -1045,7 +1042,7 @@ function adapterStateText(adapter: PanelAdapter): string {
 
   .yib-meta-item {
     padding: 12px 14px;
-    background: var(--k-side-bg, #1e222b);
+    background: transparent;
     border-radius: 8px;
     border: 1px solid var(--k-color-divider);
 
@@ -1082,7 +1079,7 @@ function adapterStateText(adapter: PanelAdapter): string {
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
-  background: var(--k-card-bg, var(--k-main-bg));
+  background: transparent;
   border: 1px solid var(--k-color-divider);
   border-radius: 8px;
 
@@ -1127,7 +1124,7 @@ function adapterStateText(adapter: PanelAdapter): string {
     height: 32px;
     border-radius: 6px;
     color: var(--k-text-normal, #666);
-    background: var(--k-side-bg);
+    background: transparent;
     text-decoration: none;
 
     &:hover {
@@ -1144,12 +1141,22 @@ function adapterStateText(adapter: PanelAdapter): string {
   gap: 16px;
 }
 
+.yib-home__usage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+
+  :deep(.k-card) {
+    min-width: 0;
+  }
+}
+
 .yib-action-card {
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 18px 20px;
-  background: var(--k-card-bg, var(--k-main-bg));
+  background: transparent;
   border: 1px solid var(--k-color-divider);
   border-radius: 8px;
   text-decoration: none;
@@ -1160,7 +1167,7 @@ function adapterStateText(adapter: PanelAdapter): string {
     width: 44px;
     height: 44px;
     border-radius: 10px;
-    background: var(--k-side-bg);
+    background: transparent;
     color: var(--k-color-primary, #409eff);
     display: flex;
     align-items: center;
@@ -1216,19 +1223,25 @@ function adapterStateText(adapter: PanelAdapter): string {
   font-size: 13px;
 
   &--error {
-    background: var(--k-side-bg);
+    background: transparent;
     border: 1px solid var(--k-color-error, #f56c6c);
     color: var(--k-color-error, #f56c6c);
   }
 
   &--warning {
-    background: var(--k-side-bg);
+    background: transparent;
     border: 1px solid var(--k-color-warning, #e6a23c);
     color: var(--k-color-warning, #e6a23c);
   }
 }
 
 /* 响应式断点 */
+@media screen and (min-width: 1200px) {
+  .yib-home__usage {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media screen and (max-width: 900px) {
   .yib-metrics-grid,
   .yib-meta-grid {
