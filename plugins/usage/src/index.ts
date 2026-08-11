@@ -2,10 +2,10 @@ import { resolve } from "node:path";
 
 import { DataService } from "@koishijs/console";
 import { Context, Logger, Schema, Time, type Field, type Types } from "koishi";
+import type { ModelUsageEvent } from "koishi-plugin-yesimbot";
 
 import { JsonlUsageHistory } from "./jsonl.js";
-import { installModelUsagePatch } from "./middleware.js";
-import { QuotaManager } from "./quota.js";
+import { normalizeLanguageUsage } from "./middleware.js";
 import { DatabaseUsageHistory, UsageStore } from "./store.js";
 import type { UsageConfig, UsagePayload, UsageRow } from "./types.js";
 
@@ -19,31 +19,6 @@ export const Config: Schema<UsageConfig> = Schema.object({
     .default(Time.second * 5)
     .description("状态栏和首页刷新间隔"),
   rateWindowSeconds: Schema.natural().default(60).description("Token 速率统计窗口（秒）"),
-  quotaEnabled: Schema.boolean().default(false).description("启用按会话每日额度拦截"),
-  quotaStorageDir: Schema.string().default("data/yesimbot/quota").description("按会话额度记录与动态覆盖的存储目录"),
-  defaultDailyLimit: Schema.natural().default(1_000_000).description("默认每日 Token 限额；0 表示不限额"),
-  defaultModel: Schema.dynamic("registry.chatModels").default("").description("默认会话模型覆盖；留空使用 YesImBot 默认模型"),
-  quotaRules: Schema.array(
-    Schema.object({
-      platform: Schema.string().default("*").description("平台；* 表示任意"),
-      channelId: Schema.string().default("*").description("群号或账号；* 表示任意"),
-      isDirect: Schema.boolean().description("是否私聊；留空同时匹配群聊与私聊"),
-      model: Schema.dynamic("registry.chatModels").description("会话模型覆盖；留空继承默认模型"),
-      dailyLimit: Schema.natural().description("每日 Token 限额；留空继承默认值，0 表示不限额"),
-    }),
-  )
-    .role("table")
-    .default([]),
-  managementGroupId: Schema.string().default("").description("管理群 ID；在该群使用 /额度 显示已启用群总览，留空关闭"),
-  managementGroupPlatform: Schema.string().default("onebot").description("管理群平台；* 表示任意"),
-  sendBlockMessage: Schema.boolean().default(true).description("额度耗尽时发送提示；关闭后仍会拦截模型调用"),
-  maxDailyBlockNotifications: Schema.natural().default(3).description("每个会话每天最多发送的超额提示数；0 表示不限制"),
-  blockMessage: Schema.string()
-    .role("textarea")
-    .default("今日额度已用完（{used} / {limit}），明天 0 点重置后再聊哦~")
-    .description("超额提示，支持 {used}、{limit}、{percent}"),
-  notifyIntervalMs: Schema.natural().role("ms").default(Time.minute).description("同一会话超额提示的最小间隔"),
-  quotaAdminAuthority: Schema.natural().default(2).description("额度管理命令所需权限等级"),
 });
 
 const USAGE_TABLE = "yesimbot.usage";
@@ -88,10 +63,8 @@ export default class UsagePlugin extends DataService<UsagePayload> {
 
   private readonly store: UsageStore;
   private readonly refreshSoon: () => void;
-  private readonly quota: QuotaManager;
   private timer: (() => void) | undefined;
   private rateTimer: (() => void) | undefined;
-  private disposePatch: (() => void) | undefined;
   private started = false;
 
   public constructor(
@@ -103,12 +76,16 @@ export default class UsagePlugin extends DataService<UsagePayload> {
     const history =
       usageConfig.historySource === "jsonl" ? new JsonlUsageHistory(resolve(ctx.baseDir, "data", "yesimbot")) : new DatabaseUsageHistory(ctx.database);
     this.store = new UsageStore(ctx.database, usageConfig.rateWindowSeconds, history);
-    this.quota = new QuotaManager(ctx, usageConfig, this.logger);
-
     ctx.model.extend(USAGE_TABLE, USAGE_FIELDS, { primary: ["date", "hour", "provider", "model", "kind"] });
     this.refreshSoon = ctx.debounce(() => this.refresh(), 1000);
-    this.disposePatch = installModelUsagePatch(this.ctx.yesimbot.model, (record) => {
-      this.store.record(record);
+    ctx.on("yesimbot/model-usage", (event: ModelUsageEvent) => {
+      this.store.record({
+        providerId: event.providerId,
+        modelId: event.providerModelId,
+        timestamp: event.timestamp,
+        kind: event.kind,
+        usage: normalizeLanguageUsage(event.usage),
+      });
       this.refreshSoon();
     });
 
@@ -124,22 +101,13 @@ export default class UsagePlugin extends DataService<UsagePayload> {
 
   public async setup(): Promise<void> {
     if (this.started) return;
-    await this.quota.start();
     this.started = true;
-
-    this.disposePatch ??= installModelUsagePatch(this.ctx.yesimbot.model, (record) => {
-      this.store.record(record);
-      this.refreshSoon();
-    });
     this.timer = this.ctx.setInterval(() => this.refresh(), this.usageConfig.refreshInterval);
     this.rateTimer = this.ctx.setInterval(() => this.store.tickRate(), Time.second);
     this.logger.success("yesimbot-usage started");
   }
 
   public async stop(): Promise<void> {
-    this.quota.stop();
-    this.disposePatch?.();
-    this.disposePatch = undefined;
     if (!this.started) return;
     this.started = false;
     if (this.timer) {

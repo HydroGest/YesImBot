@@ -68,16 +68,4 @@ export interface UsageConfig {
   recentDayCount: number;
   refreshInterval: number;
   rateWindowSeconds: number;
-  quotaEnabled: boolean;
-  quotaStorageDir: string;
-  defaultDailyLimit: number;
-  defaultModel: string;
-  quotaRules: import("./quota-types.js").QuotaRule[];
-  managementGroupId: string;
-  managementGroupPlatform: string;
-  sendBlockMessage: boolean;
-  maxDailyBlockNotifications: number;
-  blockMessage: string;
-  notifyIntervalMs: number;
-  quotaAdminAuthority: number;
 }

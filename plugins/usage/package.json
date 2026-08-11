@@ -28,15 +28,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/provider": "^3.0.14",
     "@koishijs/console": "^5.30.4",
-    "ai": "^6.0.0",
     "echarts": "^5.5.0"
   },
   "devDependencies": {
     "@koishijs/client": "^5.30.4",
     "@koishijs/plugin-console": "^5.30.4",
-    "@yesimbot/agent-runtime": "workspace:^",
     "koishi": "^4.18.10",
     "koishi-plugin-yesimbot": "workspace:^",
     "vitest": "^4.0.18"
@@ -58,8 +55,8 @@
   },
   "koishi": {
     "description": {
-      "zh": "统计 YesImBot 模型 Token 消耗，提供仪表盘、按会话额度、模型覆盖和 /额度 命令",
-      "en": "Track YesImBot token usage with dashboards, per-channel quotas, model overrides, and quota commands"
+      "zh": "统计 YesImBot 模型 Token 消耗并提供仪表盘",
+      "en": "Track YesImBot model token usage with dashboards"
     },
     "service": {
       "required": [

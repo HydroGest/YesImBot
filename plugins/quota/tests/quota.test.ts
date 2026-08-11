@@ -2,12 +2,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Context } from "koishi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { QuotaStore } from "../src/quota-store.js";
-import { matchesQuotaRule, normalizeRuleChannelId, quotaDayKey, scopeKey } from "../src/quota-types.js";
+import QuotaPlugin, { Config as QuotaConfig, QuotaStore, matchesQuotaRule, normalizeRuleChannelId, quotaDayKey, scopeKey } from "../src/index.js";
 
 const roots: string[] = [];
 
@@ -71,7 +71,7 @@ describe("QuotaStore", () => {
       channelId: "123",
       isDirect: false,
       model: "provider:model",
-      kind: "turn",
+      kind: "chat",
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 15,
@@ -83,14 +83,14 @@ describe("QuotaStore", () => {
       channelId: "123",
       isDirect: false,
       model: "provider:model",
-      kind: "vision",
+      kind: "embedding",
       inputTokens: 3,
       outputTokens: 2,
       totalTokens: 5,
     });
 
     await expect(store.cachedToday()).resolves.toMatchObject(
-      new Map([["onebot:group:123", { totalTokens: 20, calls: 2, kindTokens: { turn: 15, vision: 5 } }]]),
+      new Map([["onebot:group:123", { totalTokens: 20, calls: 2, kindTokens: { chat: 15, embedding: 5 } }]]),
     );
 
     await store.setOverride("onebot:group:123", { dailyLimit: 100, model: "provider:other" });
@@ -100,6 +100,33 @@ describe("QuotaStore", () => {
 
     await store.appendNotification({ t: Date.now(), scope: "onebot:group:123", platform: "onebot", channelId: "123", isDirect: false });
     await expect(store.getTodayNotificationCount("onebot:group:123")).resolves.toBe(1);
-    expect(await readFile(join(root, `usage-${day}.jsonl`), "utf8")).toContain('"kind":"vision"');
+    expect(await readFile(join(root, `usage-${day}.jsonl`), "utf8")).toContain('"kind":"embedding"');
+  });
+});
+
+describe("QuotaPlugin", () => {
+  it("records channel-scoped model usage events", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-quota-"));
+    roots.push(root);
+    const ctx = new Context();
+    ctx.baseDir = "/";
+    (ctx as unknown as { yesimbot: { agent: { use: () => () => void } } }).yesimbot = { agent: { use: () => () => undefined } };
+    const plugin = new QuotaPlugin(ctx as never, QuotaConfig({ quotaStorageDir: root }));
+
+    await plugin.start();
+    ctx.emit("yesimbot/model-usage", {
+      context: { type: "guild", platform: "onebot", channelId: "123", guildId: "123" },
+      modelId: "provider:model",
+      providerId: "provider",
+      providerModelId: "model",
+      kind: "chat",
+      usage: { inputTokens: 10, outputTokens: 5 },
+      timestamp: Date.now(),
+    });
+
+    await expect((plugin as unknown as { store: QuotaStore }).store.cachedToday()).resolves.toMatchObject(
+      new Map([["onebot:group:123", { totalTokens: 15, calls: 1, kindTokens: { chat: 15 } }]]),
+    );
+    plugin.stop();
   });
 });

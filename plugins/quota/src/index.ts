@@ -1,18 +1,330 @@
-import { resolve } from "node:path";
+import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
-import type { AgentPlugin, TurnResult } from "@yesimbot/agent-runtime";
+import type { AgentPlugin } from "@yesimbot/agent-runtime";
+import { Schema, Time } from "koishi";
 import type { Context, Logger, Session } from "koishi";
-import type { ChannelContext, UsageReport } from "koishi-plugin-yesimbot";
+import type { ChannelContext, ModelUsageEvent } from "koishi-plugin-yesimbot";
 
-import { normalizeLanguageUsage } from "./middleware.js";
-import { QuotaStore } from "./quota-store.js";
-import { formatTokens, matchesQuotaRule, normalizeRuleChannelId, quotaDayKey, scopeKey, type QuotaRule, type ScopeUsage } from "./quota-types.js";
-import type { UsageConfig } from "./types.js";
+export interface Config {
+  quotaStorageDir: string;
+  defaultDailyLimit: number;
+  defaultModel: string;
+  quotaRules: QuotaRule[];
+  managementGroupId: string;
+  managementGroupPlatform: string;
+  sendBlockMessage: boolean;
+  maxDailyBlockNotifications: number;
+  blockMessage: string;
+  notifyIntervalMs: number;
+  quotaAdminAuthority: number;
+}
+
+export const Config: Schema<Config> = Schema.object({
+  quotaStorageDir: Schema.string().default("data/yesimbot/quota").description("按会话额度记录与动态覆盖的存储目录"),
+  defaultDailyLimit: Schema.natural().default(1_000_000).description("默认每日 Token 限额；0 表示不限额"),
+  defaultModel: Schema.dynamic("registry.chatModels").default("").description("默认会话模型覆盖；留空使用 YesImBot 默认模型"),
+  quotaRules: Schema.array(
+    Schema.object({
+      platform: Schema.string().default("*").description("平台；* 表示任意"),
+      channelId: Schema.string().default("*").description("群号或账号；* 表示任意"),
+      isDirect: Schema.boolean().description("是否私聊；留空同时匹配群聊与私聊"),
+      model: Schema.dynamic("registry.chatModels").description("会话模型覆盖；留空继承默认模型"),
+      dailyLimit: Schema.natural().description("每日 Token 限额；留空继承默认值，0 表示不限额"),
+    }),
+  )
+    .role("table")
+    .default([]),
+  managementGroupId: Schema.string().default("").description("管理群 ID；在该群使用 /额度 显示已启用群总览，留空关闭"),
+  managementGroupPlatform: Schema.string().default("onebot").description("管理群平台；* 表示任意"),
+  sendBlockMessage: Schema.boolean().default(true).description("额度耗尽时发送提示；关闭后仍会拦截模型调用"),
+  maxDailyBlockNotifications: Schema.natural().default(3).description("每个会话每天最多发送的超额提示数；0 表示不限制"),
+  blockMessage: Schema.string()
+    .role("textarea")
+    .default("今日额度已用完（{used} / {limit}），明天 0 点重置后再聊哦~")
+    .description("超额提示，支持 {used}、{limit}、{percent}"),
+  notifyIntervalMs: Schema.natural().role("ms").default(Time.minute).description("同一会话超额提示的最小间隔"),
+  quotaAdminAuthority: Schema.natural().default(2).description("额度管理命令所需权限等级"),
+});
+
+export interface QuotaRule {
+  platform: string;
+  channelId: string;
+  isDirect?: boolean;
+  model?: string;
+  dailyLimit?: number;
+}
+
+export interface QuotaOverride {
+  dailyLimit?: number;
+  model?: string;
+}
+
+export interface QuotaUsageRecord {
+  t: number;
+  scope: string;
+  platform: string;
+  channelId: string;
+  isDirect: boolean;
+  model: string;
+  kind: "chat" | "embedding";
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface QuotaNotificationRecord {
+  t: number;
+  scope: string;
+  platform: string;
+  channelId: string;
+  isDirect: boolean;
+}
+
+export interface ScopeUsage {
+  scope: string;
+  platform: string;
+  channelId: string;
+  isDirect: boolean;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  calls: number;
+  kindTokens: Record<string, number>;
+}
+
+export function scopeKey(context: ChannelContext): string {
+  return `${context.platform}:${context.type === "direct" ? "direct" : "group"}:${context.channelId}`;
+}
+
+export function normalizeRuleChannelId(rule: QuotaRule): string {
+  // direct 规则允许填裸账号（如 888888），规范化为平台实际使用的 private:<userId>
+  if (rule.isDirect === true && rule.channelId !== "*" && !rule.channelId.startsWith("private:")) {
+    return `private:${rule.channelId}`;
+  }
+  return rule.channelId;
+}
+
+export function matchesQuotaRule(context: ChannelContext, rule: QuotaRule): boolean {
+  if (rule.platform !== "*" && rule.platform !== context.platform) return false;
+  const ruleChannelId = context.type === "direct" ? normalizeRuleChannelId(rule) : rule.channelId;
+  if (ruleChannelId !== "*" && ruleChannelId !== context.channelId) return false;
+  return rule.isDirect === undefined || rule.isDirect === (context.type === "direct");
+}
+
+export function quotaDayKey(now = new Date()): string {
+  // 与旧版一致：固定按上海时区计算每日边界
+  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" });
+  return formatter.format(now);
+}
+
+export function formatTokens(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(value);
+}
+
+type OverridesData = Record<string, QuotaOverride>;
+
+export class QuotaStore {
+  private queue: Promise<unknown> = Promise.resolve();
+  private readonly overrides = new Map<string, QuotaOverride>();
+  private overridesLoaded = false;
+  private readonly dayCache = new Map<string, Map<string, ScopeUsage>>();
+  private readonly notificationCounts = new Map<string, Map<string, number>>();
+
+  public constructor(
+    private readonly directory: string,
+    private readonly logger: Logger,
+  ) {}
+
+  public async init(): Promise<void> {
+    await mkdir(this.directory, { recursive: true });
+  }
+
+  public append(record: QuotaUsageRecord): Promise<void> {
+    return this.serialize(async () => {
+      const day = quotaDayKey(new Date(record.t));
+      this.dayCache.delete(day);
+      await mkdir(this.directory, { recursive: true });
+      await appendFile(this.usagePath(day), `${JSON.stringify(record)}\n`, "utf8");
+    });
+  }
+
+  public async cachedToday(): Promise<Map<string, ScopeUsage>> {
+    const day = quotaDayKey();
+    const cached = this.dayCache.get(day);
+    if (cached) return cached;
+    const fresh = await this.readDay(day);
+    this.dayCache.set(day, fresh);
+    return fresh;
+  }
+
+  public readDay(day = quotaDayKey()): Promise<Map<string, ScopeUsage>> {
+    return this.serialize(async () => {
+      const result = new Map<string, ScopeUsage>();
+      let content = "";
+      try {
+        content = await readFile(this.usagePath(day), "utf8");
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code === "ENOENT") return result;
+        throw cause;
+      }
+      for (const line of content.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const record = JSON.parse(line) as QuotaUsageRecord;
+          const current = result.get(record.scope);
+          if (current) {
+            current.inputTokens += record.inputTokens;
+            current.outputTokens += record.outputTokens;
+            current.totalTokens += record.totalTokens;
+            current.calls += 1;
+            current.model = record.model || current.model;
+            current.kindTokens[record.kind] = (current.kindTokens[record.kind] ?? 0) + record.totalTokens;
+          } else {
+            result.set(record.scope, {
+              scope: record.scope,
+              platform: record.platform,
+              channelId: record.channelId,
+              isDirect: record.isDirect,
+              model: record.model,
+              inputTokens: record.inputTokens,
+              outputTokens: record.outputTokens,
+              totalTokens: record.totalTokens,
+              calls: 1,
+              kindTokens: { [record.kind]: record.totalTokens },
+            });
+          }
+        } catch {
+          this.logger.warn("quota.skip_bad_line", { day, line: line.slice(0, 200) });
+        }
+      }
+      return result;
+    });
+  }
+
+  public getOverride(scope: string): Promise<QuotaOverride | undefined> {
+    return this.serialize(async () => {
+      await this.loadOverrides();
+      return this.overrides.get(scope);
+    });
+  }
+
+  public setOverride(scope: string, patch: QuotaOverride): Promise<QuotaOverride> {
+    return this.serialize(async () => {
+      await this.loadOverrides();
+      const current = { ...(this.overrides.get(scope) ?? {}), ...patch };
+      this.overrides.set(scope, current);
+      await this.saveOverrides();
+      return current;
+    });
+  }
+
+  public clearOverride(scope: string, field?: keyof QuotaOverride): Promise<void> {
+    return this.serialize(async () => {
+      await this.loadOverrides();
+      if (!field) {
+        this.overrides.delete(scope);
+      } else {
+        const current = this.overrides.get(scope);
+        if (!current) return;
+        delete current[field];
+        if (Object.keys(current).length === 0) this.overrides.delete(scope);
+      }
+      await this.saveOverrides();
+    });
+  }
+
+  public getTodayNotificationCount(scope: string): Promise<number> {
+    return this.serialize(async () => (await this.loadNotificationCounts(quotaDayKey())).get(scope) ?? 0);
+  }
+
+  public appendNotification(record: QuotaNotificationRecord): Promise<void> {
+    return this.serialize(async () => {
+      const day = quotaDayKey(new Date(record.t));
+      const counts = await this.loadNotificationCounts(day);
+      await appendFile(this.notificationPath(day), `${JSON.stringify(record)}\n`, "utf8");
+      counts.set(record.scope, (counts.get(record.scope) ?? 0) + 1);
+    });
+  }
+
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const next = this.queue.then(operation, operation);
+    this.queue = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }
+
+  private usagePath(day: string): string {
+    return join(this.directory, `usage-${day}.jsonl`);
+  }
+
+  private notificationPath(day: string): string {
+    return join(this.directory, `notifications-${day}.jsonl`);
+  }
+
+  private overridesPath(): string {
+    return join(this.directory, "overrides.json");
+  }
+
+  private async loadOverrides(): Promise<void> {
+    if (this.overridesLoaded) return;
+    try {
+      const parsed = JSON.parse(await readFile(this.overridesPath(), "utf8")) as OverridesData;
+      for (const [key, value] of Object.entries(parsed)) {
+        if (value && typeof value === "object") this.overrides.set(key, value);
+      }
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
+        this.logger.warn("quota.load_overrides_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+      }
+    }
+    this.overridesLoaded = true;
+  }
+
+  private async saveOverrides(): Promise<void> {
+    const path = this.overridesPath();
+    const temporary = `${path}.tmp`;
+    await writeFile(temporary, `${JSON.stringify(Object.fromEntries(this.overrides), null, 2)}\n`, "utf8");
+    await rename(temporary, path);
+  }
+
+  private async loadNotificationCounts(day: string): Promise<Map<string, number>> {
+    const cached = this.notificationCounts.get(day);
+    if (cached) return cached;
+    const counts = new Map<string, number>();
+    const content = await readFile(this.notificationPath(day), "utf8").catch((cause: NodeJS.ErrnoException) => {
+      if (cause.code === "ENOENT") return "";
+      throw cause;
+    });
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const record = JSON.parse(line) as QuotaNotificationRecord;
+        if (record.scope) counts.set(record.scope, (counts.get(record.scope) ?? 0) + 1);
+      } catch {
+        this.logger.warn("quota.skip_bad_notification_line", { day, line: line.slice(0, 200) });
+      }
+    }
+    this.notificationCounts.set(day, counts);
+    return counts;
+  }
+}
 
 type Disposer = () => unknown;
 
-export class QuotaManager {
+export default class QuotaPlugin {
+  public static readonly name = "yesimbot-quota";
+  public static readonly inject = ["yesimbot"];
+  public static readonly Config = Config;
+  public static readonly usage = "为 YesImBot 提供按会话模型额度、模型覆盖和 /额度 命令";
+
   private readonly store: QuotaStore;
+  private readonly logger: Logger;
   private readonly disposers: Disposer[] = [];
   private readonly lastBlockedNotify = new Map<string, number>();
   private readonly pendingBlockedNotify = new Set<string>();
@@ -20,20 +332,26 @@ export class QuotaManager {
 
   public constructor(
     private readonly ctx: Context,
-    private readonly config: UsageConfig,
-    private readonly logger: Logger,
+    private readonly config: Config,
   ) {
-    this.store = new QuotaStore(resolve(ctx.baseDir, config.quotaStorageDir || "data/yesimbot/quota"), logger);
+    this.logger = ctx.logger("yesimbot-quota");
+    this.store = new QuotaStore(resolve(ctx.baseDir, config.quotaStorageDir), this.logger);
+    ctx.on("ready", this.start.bind(this));
+    ctx.on("dispose", this.stop.bind(this));
   }
 
   public async start(): Promise<void> {
     if (this.started) return;
     await this.store.init();
     try {
-      this.disposers.push(this.ctx.yesimbot.agent.model((context) => this.resolveModel(context)));
-      this.disposers.push(this.ctx.yesimbot.agent.use({ setup: (context, _bot, pluginContext) => this.createMeter(context, pluginContext?.modelId) }));
-      this.disposers.push(this.ctx.yesimbot.agent.usage((context, report) => this.recordReport(context, report)));
-      this.disposers.push(this.ctx.yesimbot.agent.guard((context) => this.allow(context)));
+      this.disposers.push(this.ctx.yesimbot.agent.use({ setup: (context) => this.createMeter(context) }));
+      this.disposers.push(
+        this.ctx.on("yesimbot/model-usage", (event) =>
+          this.recordModelUsage(event).catch((cause) =>
+            this.logger.warn("quota.record_failed", { cause: cause instanceof Error ? cause.message : String(cause) }),
+          ),
+        ),
+      );
       this.disposers.push(this.registerCommands());
       this.started = true;
     } catch (cause) {
@@ -71,25 +389,26 @@ export class QuotaManager {
     return this.config.defaultDailyLimit > 0 ? this.config.defaultDailyLimit : undefined;
   }
 
-  private createMeter(context: ChannelContext, modelId?: string): AgentPlugin {
-    return { name: "usage.quota-meter", onTurnFinish: (result) => this.recordTurn(context, modelId, result) };
+  private createMeter(context: ChannelContext): AgentPlugin {
+    return {
+      name: "quota.meter",
+      init: async (runtime) => {
+        const modelId = await this.resolveModel(context);
+        if (modelId) runtime.setModel(this.ctx.yesimbot.model.resolveChatModel(modelId, context).model);
+      },
+      prepareStep: async (messages) => {
+        if (!(await this.allow(context))) throw new Error("Quota exceeded");
+        return messages;
+      },
+    };
   }
 
-  private async recordTurn(context: ChannelContext, modelId: string | undefined, result: TurnResult): Promise<void> {
-    const usage = normalizeLanguageUsage(result.usage);
-    await this.appendUsage(context, "turn", modelId ?? this.ctx.yesimbot.config.chatModel, usage);
+  private async recordModelUsage(event: ModelUsageEvent): Promise<void> {
+    if (!event.context) return;
+    await this.appendUsage(event.context, event.kind, event.modelId, normalizeUsage(event.usage));
   }
 
-  private async recordReport(context: ChannelContext, report: UsageReport): Promise<void> {
-    await this.appendUsage(context, report.kind, report.modelId ?? report.kind, normalizeLanguageUsage(report.usage));
-  }
-
-  private async appendUsage(
-    context: ChannelContext,
-    kind: "turn" | "compact" | "vision",
-    model: string,
-    usage: ReturnType<typeof normalizeLanguageUsage>,
-  ): Promise<void> {
+  private async appendUsage(context: ChannelContext, kind: QuotaUsageRecord["kind"], model: string, usage: TokenUsage): Promise<void> {
     const totalTokens = usage.inputTokens + usage.outputTokens;
     if (totalTokens <= 0) return;
     await this.store.append({
@@ -107,7 +426,6 @@ export class QuotaManager {
   }
 
   private async allow(context: ChannelContext): Promise<boolean> {
-    if (!this.config.quotaEnabled) return true;
     const limit = await this.resolveLimit(context);
     if (!limit) return true;
     const used = (await this.store.cachedToday()).get(scopeKey(context))?.totalTokens ?? 0;
@@ -126,10 +444,11 @@ export class QuotaManager {
     try {
       const maxDaily = Math.max(0, Math.floor(this.config.maxDailyBlockNotifications));
       if (maxDaily > 0 && (await this.store.getTodayNotificationCount(key)) >= maxDaily) return;
-      const bot = context.type === "direct"
-        ? this.ctx.bots.find((candidate) => candidate.platform === context.platform && candidate.selfId === context.selfId)
-        : this.ctx.bots.find((candidate) => candidate.platform === context.platform && (!context.selfId || candidate.selfId === context.selfId))
-          ?? this.ctx.bots.find((candidate) => candidate.platform === context.platform);
+      const bot =
+        context.type === "direct"
+          ? this.ctx.bots.find((candidate) => candidate.platform === context.platform && candidate.selfId === context.selfId)
+          : (this.ctx.bots.find((candidate) => candidate.platform === context.platform && (!context.selfId || candidate.selfId === context.selfId)) ??
+            this.ctx.bots.find((candidate) => candidate.platform === context.platform));
       if (!bot) return;
       const text = this.config.blockMessage
         .replaceAll("{used}", formatTokens(used))
@@ -137,7 +456,13 @@ export class QuotaManager {
         .replaceAll("{percent}", `${Math.min(100, Math.round((used / limit) * 100))}%`);
       await bot.sendMessage(context.channelId, text);
       this.lastBlockedNotify.set(key, now);
-      await this.store.appendNotification({ t: now, scope: key, platform: context.platform, channelId: context.channelId, isDirect: context.type === "direct" });
+      await this.store.appendNotification({
+        t: now,
+        scope: key,
+        platform: context.platform,
+        channelId: context.channelId,
+        isDirect: context.type === "direct",
+      });
     } catch (cause) {
       this.logger.warn("quota.notify_failed", { cause: cause instanceof Error ? cause.message : String(cause), context });
     } finally {
@@ -311,7 +636,14 @@ export class QuotaManager {
     if (!session.platform || !session.channelId) return undefined;
     if (session.isDirect) {
       if (!session.selfId || !session.userId) return undefined;
-      return { type: "direct", platform: session.platform, channelId: session.channelId, selfId: session.selfId, userId: session.userId, userName: session.username };
+      return {
+        type: "direct",
+        platform: session.platform,
+        channelId: session.channelId,
+        selfId: session.selfId,
+        userId: session.userId,
+        userName: session.username,
+      };
     }
     const guildId = session.guildId ?? session.channelId;
     return {
@@ -364,7 +696,9 @@ export class QuotaManager {
     if (rule.isDirect === false) return [{ platform, type: "guild", channelId: rule.channelId, guildId: rule.channelId }];
     const shared: ChannelContext = { platform, type: "guild", channelId: rule.channelId, guildId: rule.channelId };
     const selfId = this.ctx.bots.find((bot) => bot.platform === platform)?.selfId;
-    return selfId ? [shared, { platform, type: "direct", channelId: normalizeRuleChannelId(rule), selfId, userId: rule.channelId.replace(/^private:/, "") }] : [shared];
+    return selfId
+      ? [shared, { platform, type: "direct", channelId: normalizeRuleChannelId(rule), selfId, userId: rule.channelId.replace(/^private:/, "") }]
+      : [shared];
   }
 
   private describeScope(context: ChannelContext): string {
@@ -373,7 +707,7 @@ export class QuotaManager {
   }
 
   private kindBreakdown(usage: ScopeUsage): string {
-    const labels: Record<string, string> = { turn: "对话", compact: "压缩", vision: "识图" };
+    const labels: Record<string, string> = { chat: "对话", embedding: "嵌入" };
     const parts = Object.entries(usage.kindTokens)
       .filter(([, tokens]) => tokens > 0)
       .map(([kind, tokens]) => `${labels[kind] ?? kind} ${formatTokens(tokens)}`);
@@ -381,4 +715,19 @@ export class QuotaManager {
   }
 }
 
-export type { QuotaRule };
+interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+function normalizeUsage(usage: unknown): TokenUsage {
+  const value = usage && typeof usage === "object" ? usage : {};
+  const input = "inputTokens" in value ? value.inputTokens : undefined;
+  const output = "outputTokens" in value ? value.outputTokens : undefined;
+  const inputTotal = input && typeof input === "object" && "total" in input ? input.total : input;
+  const outputTotal = output && typeof output === "object" && "total" in output ? output.total : output;
+  return {
+    inputTokens: typeof inputTotal === "number" && Number.isFinite(inputTotal) ? inputTotal : 0,
+    outputTokens: typeof outputTotal === "number" && Number.isFinite(outputTotal) ? outputTotal : 0,
+  };
+}
