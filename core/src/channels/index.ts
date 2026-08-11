@@ -136,13 +136,37 @@ export class Channels implements Resources {
         continue;
       }
       try {
-        const manifest = parseManifest(JSON.parse(await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")));
-        if (channelDirectoryName(manifest) !== entry.name) throw new Error("Manifest directory name does not match directory");
+        const value = JSON.parse(await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")) as unknown;
+        const manifest = parseManifest(value);
+        const directory = channelDirectoryName(manifest);
+        if (isLegacySharedManifest(value) && (entry.name === legacySharedDirectoryName(manifest) || entry.name === directory)) {
+          await this.migrateLegacySharedDirectory(entry.name, directory, manifest);
+        } else if (directory !== entry.name) {
+          throw new Error("Manifest directory name does not match directory");
+        }
         this.manifests.set(deriveChannelKey(manifest), manifest);
       } catch (cause) {
         this.logger.error("storage.manifest_invalid", { directoryName: entry.name, cause });
+        if (cause instanceof ChannelMigrationConflictError) throw cause;
       }
     }
+  }
+
+  private async migrateLegacySharedDirectory(sourceDirectory: string, destinationDirectory: string, manifest: ChannelManifest): Promise<void> {
+    const destination = join(this.channelsPath, destinationDirectory);
+    if (sourceDirectory !== destinationDirectory) {
+      try {
+        await fs.lstat(destination);
+      } catch (cause) {
+        if (!(typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")) throw cause;
+        await fs.rename(join(this.channelsPath, sourceDirectory), destination);
+        await fs.writeFile(join(destination, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+        this.logger.info("storage.manifest_migrated", { sourceDirectory, destinationDirectory });
+        return;
+      }
+      throw new ChannelMigrationConflictError(destinationDirectory);
+    }
+    await fs.writeFile(join(destination, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   }
 
   private async ensureRoot(ctx: ChannelContext): Promise<string> {
@@ -178,26 +202,42 @@ export class Channels implements Resources {
     return root;
   }
 }
+class ChannelMigrationConflictError extends Error {
+  public constructor(destinationDirectory: string) {
+    super(`Channel storage migration destination already exists: ${destinationDirectory}`);
+  }
+}
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 export function channelDirectoryName(ctx: ChannelContext): string {
-  const encode = (value: string): string => [...value].map((char) => (/[A-Za-z0-9]/.test(char) ? char : `%${char.codePointAt(0)!.toString(16)}%`)).join("");
   switch (ctx.type) {
     case "channel": {
       const guildId = ctx.guildId;
-      return ["channel", encode(ctx.platform), encode(guildId), encode(ctx.channelId)].join("-");
+      return ["channel", encodeDirectorySegment(ctx.platform), encodeDirectorySegment(guildId), encodeDirectorySegment(ctx.channelId)].join("-");
     }
     case "guild": {
       const guildId = ctx.guildId;
-      return ["guild", encode(ctx.platform), encode(guildId)].join("-");
+      return ["guild", encodeDirectorySegment(ctx.platform), encodeDirectorySegment(guildId)].join("-");
     }
     case "direct": {
       const userId = ctx.userId;
       const selfId = ctx.selfId;
-      return ["direct", encode(ctx.platform), encode(userId), encode(selfId)].join("-");
+      return ["direct", encodeDirectorySegment(ctx.platform), encodeDirectorySegment(userId), encodeDirectorySegment(selfId)].join("-");
     }
   }
+}
+
+function encodeDirectorySegment(value: string): string {
+  return [...value].map((char) => (/[A-Za-z0-9]/.test(char) ? char : `%${char.codePointAt(0)!.toString(16)}%`)).join("");
+}
+
+function legacySharedDirectoryName(manifest: ChannelManifest): string {
+  return ["shared", encodeDirectorySegment(manifest.platform), encodeDirectorySegment(manifest.channelId)].join("-");
+}
+
+function isLegacySharedManifest(value: unknown): boolean {
+  return typeof value === "object" && value !== null && "type" in value && value.type === "shared";
 }
 
 /**

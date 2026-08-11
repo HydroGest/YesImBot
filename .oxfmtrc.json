@@ -18,7 +18,7 @@
   "endOfLine": "lf",
   "semi": true,
   "printWidth": 160,
-  "objectWrap": "collapse",
+  "objectWrap": "preserve",
   "singleQuote": false,
   "insertFinalNewline": true,
   "trailingComma": "all"

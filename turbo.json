@@ -1,5 +1,6 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "concurrency": "4",
   "tasks": {
     "//#fmt": { "cache": false, "dependsOn": ["//#lint:fix"] },
     "//#fmt:check": {},
