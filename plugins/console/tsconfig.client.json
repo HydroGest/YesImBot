@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.client.json",
+  "compilerOptions": { "composite": true, "incremental": true, "types": ["@koishijs/client/global"] },
+  "include": ["client"]
+}

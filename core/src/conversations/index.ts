@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
@@ -178,10 +177,16 @@ export class Conversation {
 
   private async createSession(entries: readonly AgentEntry[] = []): Promise<string> {
     await mkdir(this.sessionsPath(), { recursive: true });
-    const path = join(this.sessionsPath(), `${formatTimestamp(new Date())}-${randomUUID()}.jsonl`);
     const payload = entries.length ? `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n` : "";
-    await writeFile(path, payload, { flag: "wx" });
-    return path;
+    for (;;) {
+      const path = join(this.sessionsPath(), `${formatTimestamp(new Date())}.jsonl`);
+      try {
+        await writeFile(path, payload, { flag: "wx" });
+        return path;
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
+      }
+    }
   }
 
   private async files(): Promise<string[]> {

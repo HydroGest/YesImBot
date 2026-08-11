@@ -89,6 +89,7 @@ npx vitest run plugins/memos-client/tests/tools.test.ts
 | ------------------------- | -------------------------------------------- |
 | `core/`                   | `koishi-plugin-yesimbot`                     |
 | `packages/agent-runtime/` | `@yesimbot/agent-runtime`                    |
+| `plugins/console/`        | `koishi-plugin-yesimbot-console`             |
 | `plugins/workspace/`      | `koishi-plugin-yesimbot-workspace`           |
 | `plugins/mcp-client/`     | `koishi-plugin-yesimbot-mcp-client`          |
 | `plugins/memos-client/`   | `koishi-plugin-yesimbot-memos-client`        |

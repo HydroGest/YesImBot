@@ -69,20 +69,20 @@ function createContext() {
   return { ctx, disposers, plugins, artifactForTool, artifactPut };
 }
 
-function createClient() {
+function createClient(toolNames: string[] = ["snap"]) {
   return {
     callTool: vi.fn(),
     close: vi.fn(async () => undefined),
-    listTools: vi.fn(async () => ({ tools: [{ name: "snap", description: "take a screenshot", inputSchema: { type: "object" } }] })),
+    listTools: vi.fn(async () => ({ tools: toolNames.map((name) => ({ name, description: "take a screenshot", inputSchema: { type: "object" } })) })),
     setNotificationHandler: vi.fn(),
   };
 }
 
-async function buildPlugin() {
+async function buildPlugin(serverName = "tools", toolNames: string[] = ["snap"]) {
   const { ctx, plugins, artifactForTool, artifactPut } = createContext();
-  const client = createClient();
+  const client = createClient(toolNames);
   mocks.connectMcpServer.mockResolvedValueOnce({ client, transport: { close: vi.fn(async () => undefined) } });
-  const plugin = new McpClientPlugin(ctx as never, { mcpServers: { tools: { type: "http", url: "https://example.test/mcp" } } });
+  const plugin = new McpClientPlugin(ctx as never, { mcpServers: { [serverName]: { type: "http", url: "https://example.test/mcp" } } });
   await plugin.start();
   const agentPlugin = await plugins[0]!.setup({ type: "guild", platform: "test", channelId: "room", guildId: "room" } as never, {} as never);
   if (!agentPlugin) throw new Error("MCP runtime plugin was not created");
@@ -109,6 +109,21 @@ describe("McpClientPlugin media outputs", () => {
     const [bytes, metadata] = artifactPut.mock.calls[0]!;
     expect([...bytes]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     expect(metadata).toEqual({ mediaType: "image/png", filename: "mcp-image" });
+  });
+  it("sanitizes unsafe server and tool names before artifact persistence", async () => {
+    const { client, agentPlugin, artifactForTool } = await buildPlugin("mcp hub", ["search/tool"]);
+    client.callTool.mockResolvedValueOnce({ content: [{ type: "image", data: PNG_BASE64, mimeType: "image/png" }] });
+
+    const tool = agentPlugin.tools![0]!;
+    expect(tool.name).toMatch(/^[a-zA-Z0-9_-]+$/);
+    expect(tool.name).toBe("mcp_hub-search_tool");
+
+    const output = await tool.execute({}, {} as never);
+    if (typeof tool.toModelOutput !== "function") throw new Error("toModelOutput unavailable");
+    await tool.toModelOutput({ output, toolCallId: "call-1" });
+
+    expect(artifactForTool).toHaveBeenCalledWith("mcp_hub-search_tool");
+    expect(client.callTool).toHaveBeenCalledWith({ name: "search/tool", arguments: {} });
   });
   it("bounds inline image persistence to Core image limits", async () => {
     const { client, agentPlugin, artifactPut } = await buildPlugin();

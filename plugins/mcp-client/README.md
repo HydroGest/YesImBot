@@ -14,6 +14,8 @@ Tool names are prefixed with the server name:
 
 For example, a server named `docs` exposing `search` becomes `docs-search`.
 
+Exposed names are restricted to `[A-Za-z0-9_-]`; unsafe characters become `_`, empty names fall back to `mcp`, and sanitized collisions receive numeric suffixes.
+
 The published tool list is sorted by final tool name so model-call tool order remains stable across turns and future runtime creation.
 
 ## Tool List Changes

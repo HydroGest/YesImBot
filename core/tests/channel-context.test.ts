@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import { type ChannelContext, deriveChannelKey } from "../src/channels/index.js";
+import { type ChannelContext, deriveChannelKey } from "../src/channels/context.js";
 
 describe("deriveChannelKey", () => {
   it("derives key for type=channel", () => {
