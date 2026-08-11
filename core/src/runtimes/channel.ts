@@ -216,7 +216,6 @@ export class ChannelRuntime {
       return result;
     });
   }
-  }
 
   public stop(): Promise<void> {
     if (this.stopTask) return this.stopTask;

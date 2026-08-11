@@ -161,7 +161,7 @@ class TestWillPlugin implements WillPlugin {
 
 describe("Agents", () => {
   it("resolves channel models, reports scoped usage, and composes trigger guards", async () => {
-    const agents = new Agents();
+    const agents = new Agents(new Context());
     const report = vi.fn();
     const disposeModel = agents.model(() => "provider:override");
     agents.usage(report);

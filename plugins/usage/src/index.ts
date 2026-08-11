@@ -19,36 +19,6 @@ export const Config: Schema<UsageConfig> = Schema.object({
     .default(Time.second * 5)
     .description("状态栏和首页刷新间隔"),
   rateWindowSeconds: Schema.natural().default(60).description("Token 速率统计窗口（秒）"),
-});
-
-const USAGE_TABLE = "yesimbot.usage";
-
-const PACKAGE_NAME = "koishi-plugin-yesimbot-usage";
-
-const USAGE_FIELDS = {
-  date: "integer",
-  hour: "integer",
-  provider: "string(63)",
-  model: "string(127)",
-  kind: "string(31)",
-  calls: "integer",
-  inputTokens: "integer",
-  outputTokens: "integer",
-  noCacheTokens: "integer",
-  cacheReadTokens: "integer",
-  cacheWriteTokens: "integer",
-} satisfies Field.Extension<UsageRow, Types>;
-
-export const Config: Schema<UsageConfig> = Schema.object({
-  historySource: Schema.union([Schema.const("jsonl"), Schema.const("database")])
-    .default("jsonl")
-    .description("历史 Token 数据源：jsonl 从 session 文件扫描，database 使用聚合表"),
-  recentDayCount: Schema.natural().default(30).description("首页统计最近天数"),
-  refreshInterval: Schema.natural()
-    .role("ms")
-    .default(Time.second * 5)
-    .description("状态栏和首页刷新间隔"),
-  rateWindowSeconds: Schema.natural().default(60).description("Token 速率统计窗口（秒）"),
   quotaEnabled: Schema.boolean().default(false).description("启用按会话每日额度拦截"),
   quotaStorageDir: Schema.string().default("data/yesimbot/quota").description("按会话额度记录与动态覆盖的存储目录"),
   defaultDailyLimit: Schema.natural().default(1_000_000).description("默认每日 Token 限额；0 表示不限额"),
@@ -75,6 +45,24 @@ export const Config: Schema<UsageConfig> = Schema.object({
   notifyIntervalMs: Schema.natural().role("ms").default(Time.minute).description("同一会话超额提示的最小间隔"),
   quotaAdminAuthority: Schema.natural().default(2).description("额度管理命令所需权限等级"),
 });
+
+const USAGE_TABLE = "yesimbot.usage";
+
+const PACKAGE_NAME = "koishi-plugin-yesimbot-usage";
+
+const USAGE_FIELDS = {
+  date: "integer",
+  hour: "integer",
+  provider: "string(63)",
+  model: "string(127)",
+  kind: "string(31)",
+  calls: "integer",
+  inputTokens: "integer",
+  outputTokens: "integer",
+  noCacheTokens: "integer",
+  cacheReadTokens: "integer",
+  cacheWriteTokens: "integer",
+} satisfies Field.Extension<UsageRow, Types>;
 
 declare module "koishi" {
   interface Tables {
