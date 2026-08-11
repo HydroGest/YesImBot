@@ -118,9 +118,11 @@ export default class McpClientPlugin {
       const tools = resp.tools;
       this.ctx.logger.info(`MCP 服务器 ${name} 提供的工具: ${tools.map((t) => t.name).join(", ")}`);
       const toolDefs: Record<string, AgentTool> = {};
+      const usedExposedNames = new Set<string>();
       for (const tool of tools) {
+        const exposedName = uniqueToolName(safeToolName(`${name}-${tool.name}`), usedExposedNames);
         toolDefs[tool.name] = {
-          name: `${name}-${tool.name}`,
+          name: exposedName,
           description: tool.description,
           inputSchema: jsonSchema(tool.inputSchema),
           execute: async (params: unknown) => {
@@ -179,6 +181,23 @@ export default class McpClientPlugin {
     this.transports.clear();
     this.ctx.logger.success("MCP 客户端已清理");
   }
+}
+function safeToolName(name: string): string {
+  const normalized = name.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^[_-]+|[_-]+$/g, "");
+  return normalized || "mcp";
+}
+function uniqueToolName(base: string, used: Set<string>): string {
+  if (!used.has(base)) {
+    used.add(base);
+    return base;
+  }
+  let suffix = 2;
+  while (used.has(`${base}_${suffix}`)) {
+    suffix += 1;
+  }
+  const unique = `${base}_${suffix}`;
+  used.add(unique);
+  return unique;
 }
 function wrapToolWithArtifacts(tool: AgentTool, artifacts: ArtifactStore): AgentTool {
   const writer = artifacts.forTool(tool.name);

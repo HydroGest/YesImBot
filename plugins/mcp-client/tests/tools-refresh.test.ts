@@ -120,4 +120,16 @@ describe("mcp-client tool registry", () => {
     expect(ctx.yesimbot.agent.use).toHaveBeenCalledTimes(2);
     expect(await resolveToolNames(await plugins[1]!.setup(channelScope, {} as never))).toEqual(["docs-gamma"]);
   });
+  it("disambiguates exposed names after sanitization", async () => {
+    const { client } = createClient([["search/tool", "search.tool"]]);
+    const { ctx, plugins } = createContext();
+    mocks.connectMcpServer.mockResolvedValueOnce({ client, transport: { close: vi.fn<() => Promise<void>>() } });
+
+    const plugin = new McpClientPlugin(ctx as never, { mcpServers: { docs: { type: "http", url: "https://example.test/mcp" } } });
+    await plugin.start();
+
+    const channelScope = { type: "guild", platform: "test", channelId: "room", guildId: "room" } as never;
+    const runtimePlugin = await plugins[0]!.setup(channelScope, {} as never);
+    expect(await resolveToolNames(runtimePlugin!)).toEqual(["docs-search_tool", "docs-search_tool_2"]);
+  });
 });
