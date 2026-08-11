@@ -3,7 +3,7 @@ import { BarChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, resolveComponent, watch } from "vue";
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, resolveComponent, watch } from "vue";
 
 echarts.use([BarChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
@@ -50,19 +50,27 @@ const EChart = defineComponent({
   setup(props) {
     const root = ref<HTMLDivElement>();
     let chart: echarts.ECharts | undefined;
+    let resizeObserver: ResizeObserver | undefined;
 
     const render = () => {
       if (!chart) return;
       chart.setOption(props.option as never, true);
+      chart.resize();
     };
 
-    onMounted(() => {
+    onMounted(async () => {
+      if (!root.value) return;
+      await nextTick();
       if (!root.value) return;
       chart = echarts.init(root.value);
       render();
+      resizeObserver = new ResizeObserver(() => chart?.resize());
+      resizeObserver.observe(root.value);
     });
 
     onBeforeUnmount(() => {
+      resizeObserver?.disconnect();
+      resizeObserver = undefined;
       chart?.dispose();
       chart = undefined;
     });
@@ -98,8 +106,10 @@ interface UsagePayload {
 }
 
 export default function (ctx: Context): void {
-  ctx.slot({ type: "analytic-chart", component: createChartCard("近30天 Token 消耗", historyOption), order: 0 });
-  ctx.slot({ type: "analytic-chart", component: createChartCard("每小时 Token 消耗", hourlyOption), order: 0 });
+  for (const type of ["analytic-chart", "home-usage"]) {
+    ctx.slot({ type, component: createChartCard("近30天 Token 消耗", historyOption), order: 0 });
+    ctx.slot({ type, component: createChartCard("每小时 Token 消耗", hourlyOption), order: 0 });
+  }
   ctx.slot({ type: "status-right", component: TokenRateStatus, order: 0 });
 }
 

@@ -1,0 +1,59 @@
+{
+  "name": "koishi-plugin-yesimbot-console",
+  "version": "0.0.1",
+  "description": "YesImBot custom Koishi console UI",
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "require": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "build": "npx tsc -p tsconfig.json && npx koishi-console build .",
+    "check-types": "tsc --noEmit",
+    "clean": "rimraf lib && rimraf dist && rimraf tsconfig.tsbuildinfo && rimraf tsconfig.client.tsbuildinfo",
+    "fmt": "oxfmt",
+    "lint": "oxlint",
+    "pub": "yarn npm publish --access public"
+  },
+  "devDependencies": {
+    "@koishijs/client": "^5.30.4",
+    "@koishijs/loader": "^4.6.9",
+    "@koishijs/plugin-console": "^5.30.4",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^"
+  },
+  "peerDependencies": {
+    "@koishijs/plugin-console": "^5.30.4",
+    "koishi": "^4.18.10",
+    "koishi-plugin-yesimbot": "workspace:^"
+  },
+  "koishi": {
+    "description": {
+      "zh": "YesImBot 自定义 Koishi 控制台首页",
+      "en": "YesImBot custom Koishi console homepage"
+    },
+    "yesimbot": {
+      "kind": "console",
+      "label": "控制台"
+    },
+    "service": {
+      "required": [
+        "console",
+        "loader",
+        "yesimbot"
+      ]
+    }
+  }
+}
