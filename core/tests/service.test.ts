@@ -24,6 +24,16 @@ const config: Config = {
 };
 
 describe("YesImBotService facade", () => {
+  it("accepts a null plugin config and applies schema defaults", () => {
+    const ctx = new Context();
+    ctx.baseDir = tmpdir();
+    Object.assign(ctx, { "yesimbot.model": {}, database: { get: vi.fn() } });
+
+    const service = new YesImBotService(ctx as never, null as never);
+
+    expect((service as unknown as { config: Config }).config.logLevel).toBe(2);
+  });
+
   it("exposes exactly the four approved domain entries", () => {
     const ctx = new Context();
     ctx.baseDir = tmpdir();

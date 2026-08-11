@@ -33,6 +33,7 @@ export default class YesImBotService extends Service<Config> {
   public constructor(ctx: Context, config: Config) {
     ctx.scope.update;
     super(ctx, "yesimbot");
+    config = Config(config ?? {}) as Config;
     this.config = config;
     this.logger.level = config.logLevel ?? 2;
     this.model = new ModelService(ctx, { basePath: config.basePath, logLevel: config.logLevel });
