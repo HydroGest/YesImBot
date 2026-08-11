@@ -244,7 +244,9 @@ function buildOnboarding(
 ): PanelOnboarding {
   const adapterDone = adapters.some((adapter) => adapter.state === "online");
   const enabledAdapter = adapters.find((adapter) => adapter.enabled);
-  const adapterTarget = enabledAdapter?.configPath ?? "/plugins/group:adapter";
+  const adapterTarget = enabledAdapter?.configPath
+    ? `/plugins/${enabledAdapter.configPath}`
+    : "/plugins/adapter";
   const adapterDescription = adapterDone
     ? "平台适配器已在线。"
     : !adapters.length
@@ -264,14 +266,14 @@ function buildOnboarding(
       id: "model",
       title: "配置模型 Provider 与 Chat 模型",
       description: "启用模型服务并指定默认 chatModel。",
-      target: hasProvider ? coreConfig.configPath : "/plugins/group:provider",
+      target: hasProvider ? `/plugins/${coreConfig.configPath}` : "/plugins/provider",
       done: hasProvider && Boolean(coreConfig.chatModel),
     },
     {
       id: "channels",
       title: "设置允许的频道",
       description: "至少添加一条 allowedChannels 规则。",
-      target: coreConfig.configPath,
+      target: `/plugins/${coreConfig.configPath}`,
       done: coreConfig.allowedChannels > 0,
     },
   ];
