@@ -18,5 +18,5 @@ export default function (ctx: Context): void {
     redirectTo.value = "/yesimbot";
   }
 
-  ctx.page({ id: "yesimbot", path: "/yesimbot", name: "YesImBot 面板", icon: "yesimbot", order: 1000, component: Home });
+  ctx.page({ id: "yesimbot", path: "/yesimbot", name: "主面板", icon: "yesimbot", order: 1000, component: Home });
 }
