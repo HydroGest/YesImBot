@@ -32,7 +32,8 @@ export class Runtimes {
         return;
       }
       if (current) await current.stop();
-      const chat = this.model.resolveChatModel(this.config.chatModel);
+      const chatModelId = await this.agents.resolveModel(channel.scope, this.config.chatModel);
+      const chat = this.model.resolveChatModel(chatModelId);
       const vision = this.resolveVision();
       const runtime = new ChannelRuntime(this.ctx, {
         channel,
@@ -42,7 +43,11 @@ export class Runtimes {
         visionModel: vision,
         imageOutputSupported: chat.entry.modalities?.input?.includes("image") ?? false,
         config: this.config,
-        plugins: await this.agents.setup(channel.scope, bot),
+        plugins: await this.agents.setup(channel.scope, bot, { modelId: chatModelId }),
+        reportUsage: (report) => this.agents.reportUsage(channel.scope, report),
+        allowTrigger: () => this.agents.allowTrigger(channel.scope),
+        modelId: chatModelId,
+        visionModelId: this.config.visionModel,
         idleTimeout: this.config.session.idle.timeout,
       });
       try {

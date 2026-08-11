@@ -58,7 +58,7 @@ const event = {
 // ChannelRuntime scheduling
 // ---------------------------------------------------------------------------
 
-async function runtime() {
+async function runtime(allowTrigger?: () => Promise<boolean>) {
   const root = await mkdtemp(join(tmpdir(), "yesimbot-runtime-"));
   const channel = new Channel({ type: "shared", platform: "test", channelId: "room" }, root);
   await channel.conversation.init();
@@ -70,6 +70,7 @@ async function runtime() {
     imageOutputSupported: false,
     config,
     plugins: [],
+    allowTrigger,
   });
   await value.init();
   return { value, root };
@@ -91,6 +92,21 @@ describe("ChannelRuntime scheduling", () => {
       expect(state.append).toHaveBeenCalledTimes(1);
       expect(state.decide).not.toHaveBeenCalled();
       expect(state.send).not.toHaveBeenCalled();
+      expect(state.run).not.toHaveBeenCalled();
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it("keeps guarded passive and active triggers from starting a model turn", async () => {
+    state.decide.mockResolvedValue("trigger");
+    const allowTrigger = vi.fn(async () => false);
+    const { value, root } = await runtime(allowTrigger);
+    try {
+      await expect(value.handle(event)).resolves.toMatchObject({ kind: "wait" });
+      await expect(value.post(event)).resolves.toMatchObject({ kind: "wait" });
+      expect(allowTrigger).toHaveBeenCalledTimes(2);
+      expect(state.decide).not.toHaveBeenCalled();
       expect(state.run).not.toHaveBeenCalled();
     } finally {
       await value.stop();

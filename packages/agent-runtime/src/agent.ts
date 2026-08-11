@@ -60,6 +60,30 @@ function createAbortError(): DOMException {
   return new DOMException("Aborted", "AbortError");
 }
 
+function mergeUsage(current: Partial<LanguageModelUsage> | undefined, next: Partial<LanguageModelUsage> | undefined): Partial<LanguageModelUsage> | undefined {
+  if (!next) return current;
+  if (!current) return next;
+  const add = (left: number | undefined, right: number | undefined) => (left === undefined && right === undefined ? undefined : (left ?? 0) + (right ?? 0));
+  return {
+    ...current,
+    ...next,
+    inputTokens: add(current.inputTokens, next.inputTokens),
+    inputTokenDetails: {
+      noCacheTokens: add(current.inputTokenDetails?.noCacheTokens, next.inputTokenDetails?.noCacheTokens),
+      cacheReadTokens: add(current.inputTokenDetails?.cacheReadTokens, next.inputTokenDetails?.cacheReadTokens),
+      cacheWriteTokens: add(current.inputTokenDetails?.cacheWriteTokens, next.inputTokenDetails?.cacheWriteTokens),
+    },
+    outputTokens: add(current.outputTokens, next.outputTokens),
+    outputTokenDetails: {
+      textTokens: add(current.outputTokenDetails?.textTokens, next.outputTokenDetails?.textTokens),
+      reasoningTokens: add(current.outputTokenDetails?.reasoningTokens, next.outputTokenDetails?.reasoningTokens),
+    },
+    totalTokens: add(current.totalTokens, next.totalTokens),
+    reasoningTokens: add(current.reasoningTokens, next.reasoningTokens),
+    cachedInputTokens: add(current.cachedInputTokens, next.cachedInputTokens),
+  };
+}
+
 function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) {
     throw createAbortError();
@@ -456,7 +480,7 @@ export function createAgent(config: AgentConfig): Agent {
             aborted = true;
           },
           onStepFinish: async (step) => {
-            usage = step.usage;
+            usage = mergeUsage(usage, step.usage);
             const responseMessages = step.response.messages.slice(persistedResponseMessageCount);
             persistedResponseMessageCount = step.response.messages.length;
             const stepMessages: AgentMessage[] = responseMessages.map((message) =>

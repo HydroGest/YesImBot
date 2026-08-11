@@ -2,6 +2,7 @@ import { AgentBusyError, createAgent, type Agent, type AgentInternalEvent, type 
 import type { AssistantContent, LanguageModel } from "ai";
 import { type Bot, type Context, type Element, type Logger } from "koishi";
 
+import type { UsageReport } from "../agents/index.js";
 import { createDescribeImageTool, createReadTool, createSendMessageTool } from "../agents/tools.js";
 import type { WillEngine, WillState } from "../agents/will.js";
 import type { Channel } from "../channels/index.js";
@@ -42,6 +43,10 @@ export interface ChannelRuntimeOptions {
   readonly imageOutputSupported: boolean;
   readonly config: Config;
   readonly plugins: readonly AgentPlugin[];
+  readonly reportUsage?: (report: UsageReport) => Promise<void>;
+  readonly allowTrigger?: () => Promise<boolean>;
+  readonly modelId?: string;
+  readonly visionModelId?: string;
   readonly idleTimeout?: number;
 }
 export class ChannelRuntime {
@@ -70,7 +75,13 @@ export class ChannelRuntime {
       createSendMessageTool(options.bot, this.scope.channelId, options.channel.resources),
       createReadTool(options.channel.resources, options.imageOutputSupported),
     ];
-    if (options.visionModel) tools.push(createDescribeImageTool(options.visionModel, options.channel.resources));
+    if (options.visionModel) {
+      tools.push(
+        createDescribeImageTool(options.visionModel, options.channel.resources, (usage) =>
+          options.reportUsage?.({ kind: "vision", modelId: options.visionModelId, usage }),
+        ),
+      );
+    }
     this.agent = createAgent({
       id:
         this.scope.type === "direct"
@@ -99,6 +110,9 @@ export class ChannelRuntime {
   public handle(record: MessageRecord | EventRecord): Promise<RuntimeResult> {
     return this.schedule(async () => {
       const input = await this.commit(record);
+      if (this.options.allowTrigger && !(await this.options.allowTrigger())) {
+        return { kind: "wait", eventId: input.id };
+      }
       const decision = await this.options.will.decide(input, this.state());
       return decision === "wait" ? { kind: "wait", eventId: input.id } : this.start(input, true, "join");
     });
@@ -112,6 +126,9 @@ export class ChannelRuntime {
       if (trigger && ifBusy === "reject" && this.agent.getActiveTurnId() !== null) throw new AgentBusyError();
       const input = await this.commit(event);
       if (!trigger) return { kind: "wait", eventId: input.id };
+      if (this.options.allowTrigger && !(await this.options.allowTrigger())) {
+        return { kind: "wait", eventId: input.id };
+      }
       return this.start(input, false, ifBusy);
     });
   }
@@ -143,7 +160,14 @@ export class ChannelRuntime {
   }
 
   public compact(reason: "auto" | "idle" | "manual"): Promise<unknown> {
-    return this.schedule(() => this.options.channel.conversation.compact(reason, { model: this.options.model, personaName: "Athena", persona: this.persona }));
+    return this.schedule(() =>
+      this.options.channel.conversation.compact(reason, {
+        model: this.options.model,
+        personaName: "Athena",
+        persona: this.persona,
+        onUsage: (usage) => this.options.reportUsage?.({ kind: "compact", modelId: this.options.modelId, usage }),
+      }),
+    );
   }
 
   public stop(): Promise<void> {

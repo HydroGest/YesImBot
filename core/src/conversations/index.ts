@@ -3,7 +3,7 @@ import { mkdir, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import { createEntry, createJsonlStorage, type AgentEntry, type AgentStorage } from "@yesimbot/agent-runtime";
-import type { LanguageModel } from "ai";
+import type { LanguageModel, LanguageModelUsage } from "ai";
 
 import { executeCompact, filterEntriesForCompression } from "./compact.js";
 
@@ -17,6 +17,7 @@ export interface CompactInput {
   personaName: string;
   persona: string;
   signal?: AbortSignal;
+  onUsage?: (usage: LanguageModelUsage) => unknown;
 }
 export interface ConversationCompactConfig {
   threshold: number;
@@ -101,6 +102,7 @@ export class Conversation {
           previousMemory: this.memory,
           conversation: content,
           signal: input.signal,
+          onUsage: input.onUsage,
         })
       ).slice(0, 30_000);
       if (!summary) {
