@@ -115,7 +115,7 @@ export class Messenger {
         selfId: record.selfId,
         channelId: record.channel.id,
       });
-      const bot = this.ctx.bots.find((candidate) => candidate.platform === record.platform && candidate.selfId === record.selfId && candidate.status === 1);
+      const bot = this.ctx.bots.find((candidate) => candidate.platform === record.platform && candidate.selfId === record.selfId);
       if (!bot) throw new Error(`No Bot is available for ${record.platform}:${record.selfId}`);
       const runtime = await this.runtimes.get(channel, bot, session);
       const result = await runtime.handle(record);

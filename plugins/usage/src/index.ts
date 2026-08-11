@@ -2,9 +2,10 @@ import { resolve } from "node:path";
 
 import { DataService } from "@koishijs/console";
 import { Context, Logger, Schema, Time, type Field, type Types } from "koishi";
+import type { ModelUsageEvent } from "koishi-plugin-yesimbot";
 
 import { JsonlUsageHistory } from "./jsonl.js";
-import { installModelUsagePatch } from "./middleware.js";
+import { normalizeLanguageUsage } from "./middleware.js";
 import { DatabaseUsageHistory, UsageStore } from "./store.js";
 import type { UsageConfig, UsagePayload, UsageRow } from "./types.js";
 
@@ -64,7 +65,6 @@ export default class UsagePlugin extends DataService<UsagePayload> {
   private readonly refreshSoon: () => void;
   private timer: (() => void) | undefined;
   private rateTimer: (() => void) | undefined;
-  private disposePatch: (() => void) | undefined;
   private started = false;
 
   public constructor(
@@ -76,11 +76,16 @@ export default class UsagePlugin extends DataService<UsagePayload> {
     const history =
       usageConfig.historySource === "jsonl" ? new JsonlUsageHistory(resolve(ctx.baseDir, "data", "yesimbot")) : new DatabaseUsageHistory(ctx.database);
     this.store = new UsageStore(ctx.database, usageConfig.rateWindowSeconds, history);
-
     ctx.model.extend(USAGE_TABLE, USAGE_FIELDS, { primary: ["date", "hour", "provider", "model", "kind"] });
     this.refreshSoon = ctx.debounce(() => this.refresh(), 1000);
-    this.disposePatch = installModelUsagePatch(this.ctx.yesimbot.model, (record) => {
-      this.store.record(record);
+    ctx.on("yesimbot/model-usage", (event: ModelUsageEvent) => {
+      this.store.record({
+        providerId: event.providerId,
+        modelId: event.providerModelId,
+        timestamp: event.timestamp,
+        kind: event.kind,
+        usage: normalizeLanguageUsage(event.usage),
+      });
       this.refreshSoon();
     });
 
@@ -97,19 +102,12 @@ export default class UsagePlugin extends DataService<UsagePayload> {
   public async setup(): Promise<void> {
     if (this.started) return;
     this.started = true;
-
-    this.disposePatch ??= installModelUsagePatch(this.ctx.yesimbot.model, (record) => {
-      this.store.record(record);
-      this.refreshSoon();
-    });
     this.timer = this.ctx.setInterval(() => this.refresh(), this.usageConfig.refreshInterval);
     this.rateTimer = this.ctx.setInterval(() => this.store.tickRate(), Time.second);
     this.logger.success("yesimbot-usage started");
   }
 
   public async stop(): Promise<void> {
-    this.disposePatch?.();
-    this.disposePatch = undefined;
     if (!this.started) return;
     this.started = false;
     if (this.timer) {

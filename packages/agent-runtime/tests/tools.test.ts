@@ -273,6 +273,22 @@ describe("tools", () => {
     expect(seen).toEqual([{ runtimeId: "runtime_tools", toolCallId: "call_1", turnId, hasSignal: true }]);
   });
 
+  it("reports cumulative usage for a multi-step tool turn", async () => {
+    const onTurnFinish = vi.fn();
+    const agent = createAgent({
+      model: createSingleToolCallModel(),
+      plugins: [{ name: "usage-observer", tools: [{ name: "inspect", inputSchema: z.object({}), execute: async () => "ok" }], onTurnFinish }],
+    });
+
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    expect(onTurnFinish).toHaveBeenCalledWith(
+      expect.objectContaining({ usage: expect.objectContaining({ inputTokens: 2, outputTokens: 2, totalTokens: 4 }) }),
+      expect.any(Object),
+    );
+  });
+
   it("uses the initialized tool name, description, and execute function after caller mutation", async () => {
     const model = createSingleToolCallModel();
     const executions: string[] = [];

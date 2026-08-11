@@ -1,8 +1,11 @@
 import { join, resolve } from "node:path";
 
-import type { EmbeddingModel, LanguageModel, ToolSet } from "ai";
+import type { EmbeddingModelV3, LanguageModelV3 } from "@ai-sdk/provider";
+import { wrapEmbeddingModel, wrapLanguageModel } from "ai";
+import type { EmbeddingModel, EmbeddingModelMiddleware, LanguageModel, LanguageModelMiddleware, ToolSet } from "ai";
 import { Context, Logger, Schema } from "koishi";
 
+import type { ChannelContext } from "../channels/index.js";
 import type { ChatModelConfig, EmbeddingModelConfig, ModelServiceConfig } from "./config.js";
 import { createEmptyModelsConfig, loadModelsConfig } from "./config.js";
 
@@ -15,6 +18,32 @@ export interface ChatModelRef {
   entry: ChatModelConfig;
   model: LanguageModel;
   tools?: ToolSet;
+}
+
+export type ModelUsageEvent =
+  | {
+      readonly context?: ChannelContext;
+      readonly modelId: ModelId;
+      readonly providerId: string;
+      readonly providerModelId: string;
+      readonly kind: "chat";
+      readonly usage: unknown;
+      readonly timestamp: number;
+    }
+  | {
+      readonly context?: ChannelContext;
+      readonly modelId: ModelId;
+      readonly providerId: string;
+      readonly providerModelId: string;
+      readonly kind: "embedding";
+      readonly usage: { readonly inputTokens: number; readonly outputTokens: 0 };
+      readonly timestamp: number;
+    };
+
+declare module "koishi" {
+  interface Events {
+    "yesimbot/model-usage"(event: ModelUsageEvent): void;
+  }
 }
 
 interface Provider {
@@ -52,6 +81,7 @@ export class ModelService {
   private modelsConfig = createEmptyModelsConfig();
   private defaults: { chat?: ModelId; embedding?: ModelId } = {};
   private readonly logger: Logger;
+  private readonly middlewares = new Set<LanguageModelMiddleware>();
 
   constructor(ctx: Context, config: ModelServiceConfig) {
     this.ctx = ctx;
@@ -82,7 +112,12 @@ export class ModelService {
     };
   }
 
-  public resolveChatModel(fullId: string): ChatModelRef {
+  public middleware(middleware: LanguageModelMiddleware): () => void {
+    this.middlewares.add(middleware);
+    return () => this.middlewares.delete(middleware);
+  }
+
+  public resolveChatModel(fullId: string, context?: ChannelContext): ChatModelRef {
     const record = this.getChatRecord(fullId);
     const provider = this.providers.get(record.providerId);
     if (!provider) {
@@ -96,23 +131,63 @@ export class ModelService {
       model: record.modelId,
       modalities: record.config.modalities,
     });
+    const source = provider.chat!(record.modelId);
+    const model = isModelObject(source)
+      ? [...this.middlewares].reduce(
+          (current, middleware) => wrapLanguageModel({ model: current, middleware, providerId: record.providerId, modelId: record.modelId }),
+          wrapLanguageModel({
+            model: source as LanguageModelV3,
+            middleware: createLanguageUsageMiddleware((usage) => {
+              this.ctx.emit("yesimbot/model-usage", {
+                context,
+                modelId: record.fullId,
+                providerId: record.providerId,
+                providerModelId: record.modelId,
+                kind: "chat",
+                usage,
+                timestamp: Date.now(),
+              });
+            }),
+            providerId: record.providerId,
+            modelId: record.modelId,
+          }),
+        )
+      : source;
     const tools = provider.tools?.(record.modelId);
     return {
       fullId: record.fullId,
       providerId: record.providerId,
       modelId: record.modelId,
       entry: cloneChatModelConfig(record.config),
-      model: provider.chat!(record.modelId),
+      model,
       tools: tools && { ...tools },
     };
   }
 
-  public resolveEmbedding(fullId: string) {
+  public resolveEmbedding(fullId: string, context?: ChannelContext): EmbeddingModel {
     const record = this.getEmbeddingRecord(fullId);
     const provider = this.providers.get(record.providerId);
     if (!provider) throw new Error(`Provider "${record.providerId}" not found`);
     this.logger.debug("model.resolve_embedding", { input: fullId, fullId: record.fullId, provider: record.providerId, model: record.modelId });
-    return provider.embedding!(record.modelId);
+    const source = provider.embedding!(record.modelId);
+    return isModelObject(source)
+      ? wrapEmbeddingModel({
+          model: source as EmbeddingModelV3,
+          middleware: createEmbeddingUsageMiddleware((usage) => {
+            this.ctx.emit("yesimbot/model-usage", {
+              context,
+              modelId: record.fullId,
+              providerId: record.providerId,
+              providerModelId: record.modelId,
+              kind: "embedding",
+              usage,
+              timestamp: Date.now(),
+            });
+          }),
+          providerId: record.providerId,
+          modelId: record.modelId,
+        })
+      : source;
   }
 
   public getProvider(id: string) {
@@ -331,6 +406,49 @@ function parseModelId(fullId: string): { provider: string; model: string } | nul
 
 function formatModelId(providerId: string, modelId: string): ModelId {
   return `${providerId}:${modelId}`;
+}
+
+function createLanguageUsageMiddleware(report: (usage: unknown) => void): LanguageModelMiddleware {
+  return {
+    specificationVersion: "v3",
+    wrapGenerate: async ({ doGenerate }) => {
+      const result = await doGenerate();
+      report(result.usage);
+      return result;
+    },
+    wrapStream: async ({ doStream }) => {
+      const result = await doStream();
+      return {
+        ...result,
+        stream: result.stream.pipeThrough(
+          new TransformStream({
+            transform(chunk, controller) {
+              if (chunk.type === "finish") report(chunk.usage);
+              controller.enqueue(chunk);
+            },
+          }),
+        ),
+      };
+    },
+  };
+}
+
+function createEmbeddingUsageMiddleware(report: (usage: { inputTokens: number; outputTokens: 0 }) => void): EmbeddingModelMiddleware {
+  return {
+    specificationVersion: "v3",
+    wrapEmbed: async ({ doEmbed }) => {
+      const result = await doEmbed();
+      const rawUsage: unknown = result;
+      const usage = rawUsage && typeof rawUsage === "object" && "usage" in rawUsage ? rawUsage.usage : undefined;
+      const tokens = usage && typeof usage === "object" && "tokens" in usage ? usage.tokens : undefined;
+      report({ inputTokens: typeof tokens === "number" && Number.isFinite(tokens) ? tokens : 0, outputTokens: 0 });
+      return result;
+    },
+  };
+}
+
+function isModelObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function cloneChatModelConfig(config: ChatModelConfig): ChatModelConfig {

@@ -28,9 +28,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/provider": "^3.0.14",
     "@koishijs/console": "^5.30.4",
-    "ai": "^6.0.0",
     "echarts": "^5.5.0"
   },
   "devDependencies": {
@@ -57,8 +55,8 @@
   },
   "koishi": {
     "description": {
-      "zh": "统计 YesImBot 模型调用 Token 消耗并注入 Koishi 首页和状态栏",
-      "en": "Track YesImBot model token usage in the Koishi dashboard and status bar"
+      "zh": "统计 YesImBot 模型 Token 消耗并提供仪表盘",
+      "en": "Track YesImBot model token usage with dashboards"
     },
     "service": {
       "required": [

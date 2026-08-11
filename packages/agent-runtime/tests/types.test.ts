@@ -84,15 +84,17 @@ describe("public types", () => {
     expectTypeOf<AgentCustomChannelEvent<"example">>().toMatchTypeOf<{ type: "example.updated"; data: { ok: true } }>();
   });
 
-  it("exposes immutable Agent configuration", () => {
+  it("exposes runtime model access without mutable tool configuration", () => {
     type HasSetModel = "setModel" extends keyof Agent ? true : false;
+
     type HasSetTools = "setTools" extends keyof Agent ? true : false;
     const prompt: SystemPromptAppend = ["base", { role: "system", content: "structured", providerOptions: { mock: {} } }];
     const config: AgentConfig = { model: {} as never, systemPrompt: prompt };
 
     expect(config.systemPrompt).toBe(prompt);
     expectTypeOf<Agent["getModel"]>().toBeFunction();
-    expectTypeOf<HasSetModel>().toEqualTypeOf<false>();
+    expectTypeOf<Agent["setModel"]>().toBeFunction();
+    expectTypeOf<HasSetModel>().toEqualTypeOf<true>();
     expectTypeOf<HasSetTools>().toEqualTypeOf<false>();
   });
 

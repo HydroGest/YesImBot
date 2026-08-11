@@ -158,6 +158,18 @@ class TestWillPlugin implements WillPlugin {
 }
 
 describe("Agents", () => {
+  it("exposes only agent plugin and will registrations", () => {
+    const agents = new Agents(new Context());
+
+    expect(agents).toMatchObject({ use: expect.any(Function), will: expect.any(Function) });
+    expect("model" in agents).toBe(false);
+    expect("usage" in agents).toBe(false);
+    expect("guard" in agents).toBe(false);
+    expect("resolveModel" in agents).toBe(false);
+    expect("reportUsage" in agents).toBe(false);
+    expect("allowTrigger" in agents).toBe(false);
+  });
+
   it("registers and disposes channel plugins in stable order", async () => {
     const agents = new Agents(new Context());
     const first = { name: "first" } satisfies AgentPlugin;
