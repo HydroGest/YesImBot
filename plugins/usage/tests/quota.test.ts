@@ -7,21 +7,51 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("koishi", async () => import("@koishijs/core"));
 
 import { QuotaStore } from "../src/quota-store.js";
-import { matchesQuotaRule, quotaDayKey, scopeKey } from "../src/quota-types.js";
+import { matchesQuotaRule, normalizeRuleChannelId, quotaDayKey, scopeKey } from "../src/quota-types.js";
 
 const roots: string[] = [];
 
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
 
 describe("quota helpers", () => {
-  it("matches wildcard and direct-message rules", () => {
-    const shared = { type: "shared", platform: "onebot", channelId: "group" } as const;
-    const direct = { type: "direct", platform: "onebot", selfId: "bot", channelId: "user" } as const;
+  it("derives scope keys for guild, channel, and direct contexts", () => {
+    const guild = { type: "guild", platform: "onebot", channelId: "123", guildId: "123" } as const;
+    const channel = { type: "channel", platform: "onebot", channelId: "456", guildId: "123" } as const;
+    const direct = { type: "direct", platform: "onebot", selfId: "bot", channelId: "private:user", userId: "user" } as const;
 
-    expect(matchesQuotaRule(shared, { platform: "*", channelId: "*" })).toBe(true);
-    expect(matchesQuotaRule(shared, { platform: "onebot", channelId: "group", isDirect: false })).toBe(true);
-    expect(matchesQuotaRule(direct, { platform: "onebot", channelId: "user", isDirect: false })).toBe(false);
-    expect(scopeKey(direct)).toBe("onebot:direct:user");
+    expect(scopeKey(guild)).toBe("onebot:group:123");
+    expect(scopeKey(channel)).toBe("onebot:group:456");
+    expect(scopeKey(direct)).toBe("onebot:direct:private:user");
+  });
+
+  it("matches wildcard, group, and direct rules with private: prefix", () => {
+    const guild = { type: "guild", platform: "onebot", channelId: "123", guildId: "123" } as const;
+    const direct = { type: "direct", platform: "onebot", selfId: "bot", channelId: "private:user", userId: "user" } as const;
+
+    expect(matchesQuotaRule(guild, { platform: "*", channelId: "*" })).toBe(true);
+    expect(matchesQuotaRule(guild, { platform: "onebot", channelId: "123", isDirect: false })).toBe(true);
+    expect(matchesQuotaRule(guild, { platform: "onebot", channelId: "123", isDirect: true })).toBe(false);
+    expect(matchesQuotaRule(direct, { platform: "onebot", channelId: "private:user", isDirect: true })).toBe(true);
+    expect(matchesQuotaRule(direct, { platform: "onebot", channelId: "private:user", isDirect: false })).toBe(false);
+  });
+
+  it("normalizes bare account ids in direct rules to private: prefix", () => {
+    const direct = { type: "direct", platform: "onebot", selfId: "bot", channelId: "private:888888", userId: "888888" } as const;
+
+    expect(normalizeRuleChannelId({ isDirect: true, channelId: "888888", platform: "onebot" })).toBe("private:888888");
+    expect(normalizeRuleChannelId({ isDirect: true, channelId: "private:888888", platform: "onebot" })).toBe("private:888888");
+    expect(normalizeRuleChannelId({ isDirect: false, channelId: "888888", platform: "onebot" })).toBe("888888");
+    // 裸账号规则应能匹配真实 private: 会话
+    expect(matchesQuotaRule(direct, { isDirect: true, channelId: "888888", platform: "onebot" })).toBe(true);
+  });
+
+  it("computes day keys in Asia/Shanghai regardless of host timezone", () => {
+    // 2026-08-10 16:30 UTC = 2026-08-11 00:30 上海
+    const utcTime = new Date("2026-08-10T16:30:00Z");
+    expect(quotaDayKey(utcTime)).toBe("2026-08-11");
+    // 2026-08-10 15:30 UTC = 2026-08-10 23:30 上海
+    const utcEvening = new Date("2026-08-10T15:30:00Z");
+    expect(quotaDayKey(utcEvening)).toBe("2026-08-10");
   });
 });
 

@@ -51,17 +51,30 @@ export function scopeKey(context: ChannelContext): string {
   return `${context.platform}:${context.type === "direct" ? "direct" : "group"}:${context.channelId}`;
 }
 
+export function normalizeRuleChannelId(rule: QuotaRule): string {
+  // direct 规则允许填裸账号（如 888888），规范化为平台实际使用的 private:<userId>
+  if (rule.isDirect === true && rule.channelId !== "*" && !rule.channelId.startsWith("private:")) {
+    return `private:${rule.channelId}`;
+  }
+  return rule.channelId;
+}
+
 export function matchesQuotaRule(context: ChannelContext, rule: QuotaRule): boolean {
   if (rule.platform !== "*" && rule.platform !== context.platform) return false;
-  if (rule.channelId !== "*" && rule.channelId !== context.channelId) return false;
+  const ruleChannelId = context.type === "direct" ? normalizeRuleChannelId(rule) : rule.channelId;
+  if (ruleChannelId !== "*" && ruleChannelId !== context.channelId) return false;
   return rule.isDirect === undefined || rule.isDirect === (context.type === "direct");
 }
 
 export function quotaDayKey(now = new Date()): string {
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  // 与旧版一致：固定按上海时区计算每日边界
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(now);
 }
 
 export function formatTokens(value: number): string {

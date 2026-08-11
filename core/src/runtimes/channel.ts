@@ -79,6 +79,7 @@ export interface ChannelRuntimeOptions {
   readonly allowTrigger?: () => Promise<boolean>;
   readonly modelId?: string;
   readonly visionModelId?: string;
+  readonly compactModelId?: string;
   readonly compactModel?: LanguageModel;
   readonly idleTimeout?: number;
   readonly archiveMaxBytes?: number;
@@ -144,10 +145,10 @@ export class ChannelRuntime {
 
   public handle(record: MessageRecord | EventRecord): Promise<RuntimeResult> {
     return this.schedule(async () => {
-      const input = await this.commit(record);
       if (this.options.allowTrigger && !(await this.options.allowTrigger())) {
-        return { kind: "wait", eventId: input.id };
+        return { kind: "wait", eventId: "" };
       }
+      const input = await this.commit(record);
       const decision = await this.options.will.decide(input, this.state());
       const result = decision === "wait" ? { kind: "wait" as const, eventId: input.id } : this.start(input, true, "join");
       this.logger.debug("runtime.handle", {
@@ -167,11 +168,11 @@ export class ChannelRuntime {
     return this.schedule(async () => {
       this.assertOpen();
       if (trigger && ifBusy === "reject" && this.agent.getActiveTurnId() !== null) throw new AgentBusyError();
-      const input = await this.commit(event);
-      if (this.options.allowTrigger && !(await this.options.allowTrigger())) {
-        this.logger.debug("runtime.post.blocked", { eventId: input.id, eventType: event.eventType });
-        return { kind: "wait", eventId: input.id };
+      if (trigger && this.options.allowTrigger && !(await this.options.allowTrigger())) {
+        this.logger.debug("runtime.post.blocked", { eventType: event.eventType });
+        return { kind: "wait", eventId: "" };
       }
+      const input = await this.commit(event);
       const result = !trigger ? { kind: "wait" as const, eventId: input.id } : this.start(input, false, ifBusy);
       this.logger.debug("runtime.post", { eventId: input.id, eventType: event.eventType, trigger, ifBusy, result: result.kind });
       return result;
@@ -210,7 +211,7 @@ export class ChannelRuntime {
         model: this.options.compactModel ?? this.options.model,
         personaName: "Athena",
         persona: this.persona,
-        onUsage: (usage) => this.options.reportUsage?.({ kind: "compact", modelId: this.options.modelId, usage }),
+        onUsage: (usage) => this.options.reportUsage?.({ kind: "compact", modelId: this.options.compactModelId ?? this.options.modelId, usage }),
       });
       if (result.compacted) await this.archiveIfOversize();
       return result;
@@ -367,6 +368,7 @@ export class ChannelRuntime {
       model: this.options.compactModel ?? this.options.model,
       personaName: "Athena",
       persona: this.persona,
+      onUsage: (usage) => this.options.reportUsage?.({ kind: "compact", modelId: this.options.compactModelId ?? this.options.modelId, usage }),
     });
   }
 

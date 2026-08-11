@@ -6,7 +6,7 @@ import type { ChannelContext, UsageReport } from "koishi-plugin-yesimbot";
 
 import { normalizeLanguageUsage } from "./middleware.js";
 import { QuotaStore } from "./quota-store.js";
-import { formatTokens, matchesQuotaRule, quotaDayKey, scopeKey, type QuotaRule, type ScopeUsage } from "./quota-types.js";
+import { formatTokens, matchesQuotaRule, normalizeRuleChannelId, quotaDayKey, scopeKey, type QuotaRule, type ScopeUsage } from "./quota-types.js";
 import type { UsageConfig } from "./types.js";
 
 type Disposer = () => unknown;
@@ -128,7 +128,8 @@ export class QuotaManager {
       if (maxDaily > 0 && (await this.store.getTodayNotificationCount(key)) >= maxDaily) return;
       const bot = context.type === "direct"
         ? this.ctx.bots.find((candidate) => candidate.platform === context.platform && candidate.selfId === context.selfId)
-        : this.ctx.bots.find((candidate) => candidate.platform === context.platform);
+        : this.ctx.bots.find((candidate) => candidate.platform === context.platform && (!context.selfId || candidate.selfId === context.selfId))
+          ?? this.ctx.bots.find((candidate) => candidate.platform === context.platform);
       if (!bot) return;
       const text = this.config.blockMessage
         .replaceAll("{used}", formatTokens(used))
@@ -318,6 +319,7 @@ export class QuotaManager {
       platform: session.platform,
       channelId: session.channelId,
       guildId,
+      selfId: session.selfId,
     };
   }
 
@@ -355,13 +357,14 @@ export class QuotaManager {
     if (rule.isDirect === true) {
       const selfId = this.ctx.bots.find((bot) => bot.platform === platform)?.selfId;
       if (!selfId) return [];
-      const userId = rule.channelId.replace(/^private:/, "");
-      return [{ platform, type: "direct", channelId: rule.channelId, selfId, userId }];
+      const channelId = normalizeRuleChannelId(rule);
+      const userId = channelId.replace(/^private:/, "");
+      return [{ platform, type: "direct", channelId, selfId, userId }];
     }
     if (rule.isDirect === false) return [{ platform, type: "guild", channelId: rule.channelId, guildId: rule.channelId }];
     const shared: ChannelContext = { platform, type: "guild", channelId: rule.channelId, guildId: rule.channelId };
     const selfId = this.ctx.bots.find((bot) => bot.platform === platform)?.selfId;
-    return selfId ? [shared, { platform, type: "direct", channelId: rule.channelId, selfId, userId: rule.channelId.replace(/^private:/, "") }] : [shared];
+    return selfId ? [shared, { platform, type: "direct", channelId: normalizeRuleChannelId(rule), selfId, userId: rule.channelId.replace(/^private:/, "") }] : [shared];
   }
 
   private describeScope(context: ChannelContext): string {

@@ -1,4 +1,4 @@
-import type { LanguageModel } from "ai";
+import type { LanguageModel, LanguageModelUsage } from "ai";
 import type { Bot, Context, Logger, Session } from "koishi";
 
 import { Agents } from "../agents/index.js";
@@ -45,6 +45,7 @@ export class Runtimes {
       const chat = this.model.resolveChatModel(chatModelId);
       const compactModel = this.resolveCompactModel(chat.model);
       const vision = this.resolveVision();
+      const compactModelId = this.config.session.compact.model ?? chatModelId;
       const runtime = new ChannelRuntime(this.ctx, {
         channel,
         bot,
@@ -60,6 +61,7 @@ export class Runtimes {
         allowTrigger: () => this.agents.allowTrigger(channel.context),
         modelId: chatModelId,
         visionModelId: this.config.visionModel,
+        compactModelId,
         idleTimeout: this.config.session.compact.responseIdleMinutes * 60_000,
         archiveMaxBytes: this.config.session.archive.maxKB * 1024,
       });
@@ -121,6 +123,12 @@ export class Runtimes {
             model: this.resolveCompactModel(chat.model),
             personaName: "Athena",
             persona: await readPersona(this.config.basePath, this.ctx.logger("yesimbot/archive")),
+            onUsage: (usage: LanguageModelUsage) =>
+              this.agents.reportUsage(channel.context, {
+                kind: "compact",
+                modelId: this.config.session.compact.model ?? this.config.chatModel,
+                usage,
+              }),
           };
       await channel.conversation.archive(noSummary, input);
     });
