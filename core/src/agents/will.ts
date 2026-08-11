@@ -15,10 +15,12 @@ export const defaultWillEngine: WillEngine = {
 export interface WillState {
   readonly activeTurnId: string | null;
 }
+
 export interface WillEngine {
   decide(input: Message | Event, state: WillState): Awaitable<"wait" | "trigger">;
   observe?(result: TurnResult): Awaitable<void>;
 }
+
 export interface WillPlugin {
   readonly priority: number;
   match(session: Session): boolean;

@@ -9,9 +9,13 @@ declare module "koishi" {
 export default YesImBotService;
 
 export type { ChannelPlugin, WillEngine, WillPlugin } from "./agents/index.js";
+
 export type { ChannelContext, ChannelKey } from "./channels/index.js";
-export { deriveChannelKey } from "./channels/index.js";
+
 export * from "./messages/index.js";
+
 export type { Translator } from "./messengers/index.js";
-export * from "./models/index.js";
+
+export type * from "./models/index.js";
+
 export type * from "./resources/index.js";

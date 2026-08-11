@@ -32,11 +32,6 @@ export interface ConversationCompactConfig {
 export class Conversation {
   private readonly root: string;
   private readonly compactConfig;
-  private readonly storageValue: AgentStorage<AgentEntry> = {
-    append: (...entries) => this.currentStorage().append(...entries),
-    read: () => this.currentStorage().read(),
-    clear: () => this.currentStorage().clear(),
-  };
   private storagePathValue: string | undefined;
   private fileStorageValue: AgentStorage<AgentEntry> | undefined;
   private failures = 0;
@@ -49,7 +44,11 @@ export class Conversation {
 
   public get storage(): AgentStorage<AgentEntry> {
     if (!this.storagePathValue) throw new Error("Conversation has not been initialized");
-    return this.storageValue;
+    return {
+      append: (...entries) => this.currentStorage().append(...entries),
+      read: () => this.currentStorage().read(),
+      clear: () => this.currentStorage().clear(),
+    };
   }
 
   public async init(): Promise<void> {
@@ -99,6 +98,7 @@ export class Conversation {
     }
     this.setStorage(await this.createSession());
   }
+
   public async archiveIfOversize(maxBytes: number, input?: CompactInput): Promise<boolean> {
     await this.init();
     if (maxBytes <= 0) return false;

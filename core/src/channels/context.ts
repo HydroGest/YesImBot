@@ -4,8 +4,6 @@ import type { EventRecord, MessageRecord } from "../messages/index.js";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-// Universal.Channel.Type.DIRECT === 1
-// Using numeric literal because const enums cannot be used in satisfies expressions
 const DIRECT_CHANNEL_TYPE = 1 as const;
 
 declare const _channelKeyBrand: unique symbol;

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
-import { type Bot, h, type Session, type Universal } from "koishi";
+import { Context, type Bot, h, type Session, type Universal } from "koishi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -159,7 +159,7 @@ class TestWillPlugin implements WillPlugin {
 
 describe("Agents", () => {
   it("registers and disposes channel plugins in stable order", async () => {
-    const agents = new Agents();
+    const agents = new Agents(new Context());
     const first = { name: "first" } satisfies AgentPlugin;
     const second = { name: "second" } satisfies AgentPlugin;
     const disposeFirst = agents.use(new TestChannelPlugin(first));
@@ -170,7 +170,7 @@ describe("Agents", () => {
   });
 
   it("rolls back initialized plugins in reverse order while preserving the primary error", async () => {
-    const agents = new Agents();
+    const agents = new Agents(new Context());
     const firstStop = vi.fn(async () => undefined);
     const secondStop = vi.fn(async () => undefined);
     const primary = new Error("third failed");
@@ -183,7 +183,7 @@ describe("Agents", () => {
   });
 
   it("selects the first matching WillPlugin by priority then registration order", async () => {
-    const agents = new Agents();
+    const agents = new Agents(new Context());
     const first = { decide: vi.fn(async () => "wait" as const) } satisfies WillEngine;
     const second = { decide: vi.fn(async () => "trigger" as const) } satisfies WillEngine;
     const lowerPriority = { decide: vi.fn(async () => "wait" as const) } satisfies WillEngine;
@@ -195,7 +195,7 @@ describe("Agents", () => {
   });
 
   it("uses the fixed stateless Core default without a Session", async () => {
-    const agents = new Agents();
+    const agents = new Agents(new Context());
     const willEngine = await agents.setupWill(scope);
     const directWillEngine = await agents.setupWill(directScope);
 

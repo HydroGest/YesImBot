@@ -7,6 +7,7 @@ import type { ChannelAllowRule, Config, PacingConfig } from "../config.js";
 import type { EventRecord, MessageRecord, RecordBase } from "../messages/index.js";
 import type { ChannelResources } from "../resources/index.js";
 import type { ChannelRuntime, PostOptions, RuntimeResult, Runtimes } from "../runtimes/index.js";
+
 type RunResult = Extract<RuntimeResult, { readonly kind: "run" }>;
 
 type DeliveryContext = { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number };
@@ -114,7 +115,7 @@ export class Messenger {
         selfId: record.selfId,
         channelId: record.channel.id,
       });
-      const bot = this.ctx.bots.find((candidate) => candidate.platform === record.platform && candidate.selfId === record.selfId);
+      const bot = this.ctx.bots.find((candidate) => candidate.platform === record.platform && candidate.selfId === record.selfId && candidate.status === 1);
       if (!bot) throw new Error(`No Bot is available for ${record.platform}:${record.selfId}`);
       const runtime = await this.runtimes.get(channel, bot, session);
       const result = await runtime.handle(record);
@@ -178,7 +179,7 @@ export class Messenger {
   }
 
   private async serializeDelivery(ctx: ChannelContext, task: () => Promise<void>): Promise<void> {
-    const key = deliveryKey(ctx);
+    const key = deriveChannelKey(ctx);
     const previous = this.deliveryTails.get(key) ?? Promise.resolve();
     const next = previous.then(task, task);
     const settled = next.then(
@@ -243,10 +244,6 @@ async function translateDefault(ctx: Context, session: Session, resources: Chann
     },
   };
   return { ...base, messageId: session.messageId, elements: await resources.persistElements(ctx, session.elements) };
-}
-
-function deliveryKey(ctx: ChannelContext): string {
-  return deriveChannelKey(ctx);
 }
 
 function emptyDeliveryContext(eventId: string): DeliveryContext {

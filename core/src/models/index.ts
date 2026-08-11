@@ -63,6 +63,82 @@ export class ModelService {
     this.ctx.on("dispose", this.stop.bind(this));
   }
 
+  public register(provider: Provider): () => void {
+    const existing = this.providers.get(provider.id);
+    if (existing && existing !== provider) {
+      throw new Error(`Provider "${provider.id}" is already registered`);
+    }
+    this.providers.set(provider.id, provider);
+    this.refreshModels();
+    this.logger.info(`Provider registered: ${provider.id}`);
+
+    return () => {
+      if (this.providers.get(provider.id) !== provider) {
+        return;
+      }
+      this.providers.delete(provider.id);
+      this.refreshModels();
+      this.logger.info(`Provider unregistered: ${provider.id}`);
+    };
+  }
+
+  public resolveChatModel(fullId: string): ChatModelRef {
+    const record = this.getChatRecord(fullId);
+    const provider = this.providers.get(record.providerId);
+    if (!provider) {
+      throw new Error(`Provider "${record.providerId}" not found`);
+    }
+
+    this.logger.debug("model.resolve_chat", {
+      input: fullId,
+      fullId: record.fullId,
+      provider: record.providerId,
+      model: record.modelId,
+      modalities: record.config.modalities,
+    });
+    const tools = provider.tools?.(record.modelId);
+    return {
+      fullId: record.fullId,
+      providerId: record.providerId,
+      modelId: record.modelId,
+      entry: cloneChatModelConfig(record.config),
+      model: provider.chat!(record.modelId),
+      tools: tools && { ...tools },
+    };
+  }
+
+  public resolveEmbedding(fullId: string) {
+    const record = this.getEmbeddingRecord(fullId);
+    const provider = this.providers.get(record.providerId);
+    if (!provider) throw new Error(`Provider "${record.providerId}" not found`);
+    this.logger.debug("model.resolve_embedding", { input: fullId, fullId: record.fullId, provider: record.providerId, model: record.modelId });
+    return provider.embedding!(record.modelId);
+  }
+
+  public getProvider(id: string) {
+    return this.providers.get(id);
+  }
+
+  public listProviders() {
+    return [...this.providers.keys()];
+  }
+
+  public getDefaultChatModelId(): ModelId | undefined {
+    return this.defaults.chat;
+  }
+
+  public getDefaultEmbeddingModelId(): ModelId | undefined {
+    return this.defaults.embedding;
+  }
+
+  public listChatModels(): Array<{ fullId: string; config: ChatModelConfig }> {
+    return [...this.chatModels.values()].map((record) => ({ fullId: record.fullId, config: cloneChatModelConfig(record.config) }));
+  }
+
+  public listEmbeddingModels(): Array<{ fullId: string; config: EmbeddingModelConfig }> {
+    return [...this.embeddingModels.values()].map((record) => ({ fullId: record.fullId, config: cloneEmbeddingModelConfig(record.config) }));
+  }
+
   private getModelsConfigPath(): string {
     return join(resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir), "models.json");
   }
@@ -245,82 +321,6 @@ export class ModelService {
       .map((item) => item.modelId)
       .join(", ");
     throw new Error(`Model "${parsed.model}" not found in provider "${parsed.provider}". Available: [${available}]`);
-  }
-
-  public register(provider: Provider): () => void {
-    const existing = this.providers.get(provider.id);
-    if (existing && existing !== provider) {
-      throw new Error(`Provider "${provider.id}" is already registered`);
-    }
-    this.providers.set(provider.id, provider);
-    this.refreshModels();
-    this.logger.info(`Provider registered: ${provider.id}`);
-
-    return () => {
-      if (this.providers.get(provider.id) !== provider) {
-        return;
-      }
-      this.providers.delete(provider.id);
-      this.refreshModels();
-      this.logger.info(`Provider unregistered: ${provider.id}`);
-    };
-  }
-
-  public resolveChatModel(fullId: string): ChatModelRef {
-    const record = this.getChatRecord(fullId);
-    const provider = this.providers.get(record.providerId);
-    if (!provider) {
-      throw new Error(`Provider "${record.providerId}" not found`);
-    }
-
-    this.logger.debug("model.resolve_chat", {
-      input: fullId,
-      fullId: record.fullId,
-      provider: record.providerId,
-      model: record.modelId,
-      modalities: record.config.modalities,
-    });
-    const tools = provider.tools?.(record.modelId);
-    return {
-      fullId: record.fullId,
-      providerId: record.providerId,
-      modelId: record.modelId,
-      entry: cloneChatModelConfig(record.config),
-      model: provider.chat!(record.modelId),
-      tools: tools && { ...tools },
-    };
-  }
-
-  public resolveEmbedding(fullId: string) {
-    const record = this.getEmbeddingRecord(fullId);
-    const provider = this.providers.get(record.providerId);
-    if (!provider) throw new Error(`Provider "${record.providerId}" not found`);
-    this.logger.debug("model.resolve_embedding", { input: fullId, fullId: record.fullId, provider: record.providerId, model: record.modelId });
-    return provider.embedding!(record.modelId);
-  }
-
-  public getProvider(id: string) {
-    return this.providers.get(id);
-  }
-
-  public listProviders() {
-    return [...this.providers.keys()];
-  }
-
-  public getDefaultChatModelId(): ModelId | undefined {
-    return this.defaults.chat;
-  }
-
-  public getDefaultEmbeddingModelId(): ModelId | undefined {
-    return this.defaults.embedding;
-  }
-
-  public listChatModels(): Array<{ fullId: string; config: ChatModelConfig }> {
-    return [...this.chatModels.values()].map((record) => ({ fullId: record.fullId, config: cloneChatModelConfig(record.config) }));
-  }
-
-  public listEmbeddingModels(): Array<{ fullId: string; config: EmbeddingModelConfig }> {
-    return [...this.embeddingModels.values()].map((record) => ({ fullId: record.fullId, config: cloneEmbeddingModelConfig(record.config) }));
   }
 }
 

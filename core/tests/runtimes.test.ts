@@ -383,7 +383,7 @@ describe("Runtimes identity", () => {
       const ctx = new Context();
       const channels = new Channels(ctx, { basePath: root });
       const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
-      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
+      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents(ctx));
       const channel = await channels.resolve({ type: "guild", platform: "test", channelId: "room", guildId: "room" });
       const botOne = { selfId: "one", platform: "test", sendMessage: vi.fn() };
       const botTwo = { selfId: "two", platform: "test", sendMessage: vi.fn() };
@@ -403,7 +403,7 @@ describe("Runtimes identity", () => {
       const ctx = new Context();
       const channels = new Channels(ctx, { basePath: root });
       const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
-      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
+      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents(ctx));
       const scopeOne = { type: "direct", platform: "test", selfId: "one", userId: "user-1", channelId: "room" } as const;
       const scopeTwo = { type: "direct", platform: "test", selfId: "two", userId: "user-1", channelId: "room" } as const;
       const [first, second] = await Promise.all([
@@ -425,7 +425,7 @@ describe("Runtimes identity", () => {
       const ctx = new Context();
       const channels = new Channels(ctx, { basePath: root });
       const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
-      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
+      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents(ctx));
       const scope = { type: "guild", platform: "test", channelId: "room", guildId: "room" } as const;
       const bot = { platform: "test", selfId: "one" };
       const first = await runtimes.get(await channels.resolve(scope), bot as never);
@@ -444,7 +444,7 @@ describe("Runtimes identity", () => {
       const ctx = new Context();
       const channels = new Channels(ctx, { basePath: root });
       const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
-      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents());
+      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents(ctx));
       const one = { type: "guild", platform: "test", channelId: "one", guildId: "one" } as const;
       const two = { type: "guild", platform: "test", channelId: "two", guildId: "two" } as const;
       const first = await runtimes.get(await channels.resolve(one), { platform: "test", selfId: "bot" } as never);

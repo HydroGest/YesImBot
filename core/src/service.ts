@@ -45,7 +45,7 @@ export default class YesImBotService extends Service<Config> {
     });
     const agentsLogger = ctx.logger("yesimbot.agents");
     agentsLogger.level = config.logLevel ?? 2;
-    const agents = new Agents(agentsLogger);
+    const agents = new Agents(ctx);
     this.runtimes = new Runtimes(ctx, this.channels, this.model, config, agents);
     this.messengerOwner = new Messenger(ctx, config, this.channels, this.runtimes);
     this.messenger = this.messengerOwner;

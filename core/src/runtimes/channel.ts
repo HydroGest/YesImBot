@@ -31,11 +31,13 @@ import {
 import { prepareOutputSegments } from "../resources/index.js";
 import { OutputQueue } from "./output.js";
 import { buildCoreSystemPrompt, readPersona } from "./prompt.js";
+
 const MODEL_INPUT_PLUGIN: AgentPlugin = {
   name: "core.model-input",
   enforce: "pre",
   toModelMessages: async (message) => (isMessage(message) || isEvent(message) ? [formatInput(message)] : []),
 };
+
 const COMPACT_HISTORY_PLUGIN: AgentPlugin = {
   name: "core.compact-history",
   enforce: "pre",
@@ -52,6 +54,7 @@ const COMPACT_HISTORY_PLUGIN: AgentPlugin = {
     );
   },
 };
+
 export type ChannelOutput = { readonly turnId: string; readonly messageId: string; readonly segments: readonly Element[][] };
 
 export type RuntimeResult =
@@ -91,6 +94,7 @@ export class ChannelRuntime {
   private responseCompactionPending = false;
 
   private persona = "";
+
   public constructor(
     private readonly ctx: Context,
     private readonly options: ChannelRuntimeOptions,

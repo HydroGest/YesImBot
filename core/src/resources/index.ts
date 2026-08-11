@@ -6,10 +6,12 @@ import type { ChannelContext } from "../channels/index.js";
 import { ChannelArtifactStore, type ArtifactStore } from "./artifact.js";
 import { ChannelAssetStore, type AssetStore } from "./asset.js";
 import { persistElements as persistInboundElements } from "./input.js";
+
 const READ_MAX_BYTES = 5 * 1024 * 1024;
 const COMPLETE_ASSET_ID = /^[a-f0-9]{32}$/;
 const URI_SHAPE = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#]*)(?:\/([^?#]*))?$/;
 const RESOURCE_SOURCE = /^(asset|artifact|workspace):\/\//;
+
 export type Disposer = () => void;
 
 export type ResourceReadErrorCode =

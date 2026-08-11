@@ -51,6 +51,7 @@ function assistantText(content: AssistantContent): string {
           .join("")
       : "";
 }
+
 function elementsText(elements?: readonly Element[]): string {
   return (elements ?? [])
     .map((element) =>

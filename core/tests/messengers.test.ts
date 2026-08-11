@@ -65,7 +65,7 @@ describe("Messenger", () => {
 
   it("keeps the Session live through default translation and resource persistence", async () => {
     const ctx = new Context();
-    const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
+    const bot = { platform: "test", selfId: "bot-1", status: 1, sendMessage: vi.fn(async () => []) };
     ctx.bots.push(bot as never);
     Object.assign(ctx, { database: { get: vi.fn(async () => [{ assignee: "bot-1" }]) } });
     const put = vi.fn(async () => "0123456789abcdef0123456789abcdef");

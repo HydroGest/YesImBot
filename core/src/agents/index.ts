@@ -1,20 +1,27 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
-import type { Awaitable, Bot, Logger, Session } from "koishi";
+import type { Awaitable, Bot, Context, Logger, Session } from "koishi";
 
 import type { ChannelContext } from "../channels/index.js";
 import { defaultWillEngine, type WillEngine, type WillPlugin } from "./will.js";
 
-export type Disposer = () => void;
+type Disposer = () => void;
 
 export interface ChannelPlugin {
   setup(context: ChannelContext, bot: Bot): Awaitable<AgentPlugin | null>;
 }
 
 export class Agents {
+  private readonly ctx: Context;
+  private readonly logger: Logger;
+
   private readonly plugins = new Set<ChannelPlugin>();
   private readonly willPlugins = new Set<WillPlugin>();
 
-  public constructor(private readonly logger?: Pick<Logger, "debug">) {}
+  public constructor(ctx: Context, config: { logLevel?: number } = {}) {
+    this.ctx = ctx;
+    this.logger = ctx.logger("yesimbot.agents");
+    this.logger.level = config.logLevel ?? 2;
+  }
 
   public use(plugin: ChannelPlugin): Disposer {
     this.plugins.add(plugin);
@@ -47,7 +54,7 @@ export class Agents {
   public async setupWill(context: ChannelContext, session?: Session): Promise<WillEngine> {
     const plugins = [...this.willPlugins].map((plugin, index) => ({ plugin, index }));
     plugins.sort((left, right) => left.plugin.priority - right.plugin.priority || left.index - right.index);
-    this.logger?.debug("agents.setup_will", {
+    this.logger.debug("agents.setup_will", {
       hasSession: session !== undefined,
       pluginCount: plugins.length,
       platform: context.platform,
@@ -56,11 +63,11 @@ export class Agents {
     for (const { plugin } of plugins) {
       if ((session && plugin.match(session)) || plugin.matchContext?.(context)) {
         const engine = await plugin.setup(context);
-        this.logger?.debug("agents.will_selected", { engine: engine.constructor?.name ?? "plugin", plugin: plugin.constructor?.name ?? "will-plugin" });
+        this.logger.debug("agents.will_selected", { engine: engine.constructor?.name ?? "plugin", plugin: plugin.constructor?.name ?? "will-plugin" });
         return engine;
       }
     }
-    this.logger?.debug("agents.will_selected", { engine: "default" });
+    this.logger.debug("agents.will_selected", { engine: "default" });
     return defaultWillEngine;
   }
 }
