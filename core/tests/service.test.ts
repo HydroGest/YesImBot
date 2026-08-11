@@ -17,9 +17,10 @@ const config: Config = {
   logLevel: 2,
   allowedChannels: [],
   imageInput: false,
-  resourceReadTimeoutMs: 30_000,
-  reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 }, customInnerThought: false },
-  session: { compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined }, idle: { timeout: 0 } },
+  resourceReadTimeout: 30,
+  pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+  customInnerThought: false,
+  session: { compact: { responseIdleMinutes: 0, minMessages: 20, maxFailures: 3, model: undefined }, archive: { maxKB: 0 } },
 };
 
 describe("YesImBotService facade", () => {
@@ -38,20 +39,31 @@ describe("YesImBotService facade", () => {
     expect("assets" in service).toBe(false);
     expect("getStoragePath" in service).toBe(false);
   });
-  it("threads configured image input budget into channel resources", async () => {
-    const ctx = new Context();
-    ctx.baseDir = tmpdir();
-    Object.assign(ctx, { "yesimbot.model": {}, database: { get: vi.fn() } });
-    const basePath = join(tmpdir(), `yesimbot-service-config-${randomUUID()}`);
-    const service = new YesImBotService(ctx as never, {
-      ...config,
-      basePath,
-      imageInput: { maxCount: 2, maxBytesPerImage: 123, maxTotalBytes: 456 },
-      resourceReadTimeoutMs: 789,
-    });
-
-    await expect(service.resource.get({ type: "shared", platform: "test", channelId: "room" })).resolves.toMatchObject({
-      imageBudget: { maxCount: 2, maxBytesPerImage: 123, maxTotalBytes: 456 },
-    });
+  it("threads image input and converts resource timeout seconds", async () => {
+    vi.useFakeTimers();
+    try {
+      const ctx = new Context();
+      ctx.baseDir = tmpdir();
+      Object.assign(ctx, { "yesimbot.model": {}, database: { get: vi.fn() } });
+      const basePath = join(tmpdir(), `yesimbot-service-config-${randomUUID()}`);
+      const service = new YesImBotService(ctx as never, { ...config, basePath, imageInput: true, resourceReadTimeout: 1 });
+      const resources = await service.resource.get({ type: "guild", platform: "test", channelId: "room", guildId: "room" });
+      resources.use({ scheme: "slow", prompt: "slow reader", setup: async () => Promise.withResolvers<never>().promise });
+      const controller = new AbortController();
+      let cause: unknown;
+      void resources.openStrict("slow:///file", controller.signal).catch((error: unknown) => {
+        cause = error;
+      });
+      try {
+        expect(resources.imageInput).toBe(true);
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(cause).toMatchObject({ code: "timeout" });
+      } finally {
+        controller.abort();
+        await vi.runAllTimersAsync();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

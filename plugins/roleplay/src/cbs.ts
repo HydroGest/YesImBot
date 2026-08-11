@@ -10,6 +10,38 @@ export interface CBSResult {
   text: string;
 }
 
+export function renderCBS(input: string, context: CBSContext): CBSResult {
+  const resolvedContext = {
+    charName: context.charName,
+    pickCache: context.pickCache ?? new Map<string, string>(),
+    random: context.random ?? Math.random,
+    userName: context.userName ?? "User",
+  };
+  let matchingText = "";
+  let text = "";
+  let cursor = 0;
+
+  while (cursor < input.length) {
+    const start = input.indexOf("{{", cursor);
+    if (start === -1) break;
+
+    const end = input.indexOf("}}", start + 2);
+    if (end === -1) break;
+
+    const whole = input.slice(start, end + 2);
+    const expression = input.slice(start + 2, end);
+    const literal = input.slice(cursor, start);
+    const parsed = parseExpression(expression, resolvedContext);
+    matchingText += literal + (parsed?.matching ?? whole);
+    text += literal + (parsed?.text ?? whole);
+    cursor = end + 2;
+  }
+
+  matchingText += input.slice(cursor);
+  text += input.slice(cursor);
+  return { matchingText, text };
+}
+
 function splitChoices(input: string): string[] {
   const choices: string[] = [];
   let current = "";
@@ -87,36 +119,4 @@ function parseExpression(
     default:
       return undefined;
   }
-}
-
-export function renderCBS(input: string, context: CBSContext): CBSResult {
-  const resolvedContext = {
-    charName: context.charName,
-    pickCache: context.pickCache ?? new Map<string, string>(),
-    random: context.random ?? Math.random,
-    userName: context.userName ?? "User",
-  };
-  let matchingText = "";
-  let text = "";
-  let cursor = 0;
-
-  while (cursor < input.length) {
-    const start = input.indexOf("{{", cursor);
-    if (start === -1) break;
-
-    const end = input.indexOf("}}", start + 2);
-    if (end === -1) break;
-
-    const whole = input.slice(start, end + 2);
-    const expression = input.slice(start + 2, end);
-    const literal = input.slice(cursor, start);
-    const parsed = parseExpression(expression, resolvedContext);
-    matchingText += literal + (parsed?.matching ?? whole);
-    text += literal + (parsed?.text ?? whole);
-    cursor = end + 2;
-  }
-
-  matchingText += input.slice(cursor);
-  text += input.slice(cursor);
-  return { matchingText, text };
 }

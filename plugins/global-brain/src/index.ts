@@ -2,7 +2,7 @@ import { join, resolve } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
-import type { ChannelResources, ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelResources, ChannelContext } from "koishi-plugin-yesimbot";
 
 import { formatBrainDigest } from "./digest.js";
 import { formatBrainPrompt } from "./prompt.js";
@@ -11,7 +11,7 @@ import { createBrainTools } from "./tools.js";
 import { buildImmediateShareEvent, type BrainThread, type GlobalBrainConfig, scopeKey } from "./types.js";
 
 interface ActiveScope {
-  readonly scope: ChannelScope;
+  readonly scope: ChannelContext;
   readonly selfId: string;
 }
 
@@ -72,13 +72,13 @@ export default class GlobalBrainPlugin {
     this.store = undefined;
   }
 
-  public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin | null> {
+  public async setup(scope: ChannelContext, bot: Bot): Promise<AgentPlugin | null> {
     this.scopes.set(scopeKey(scope), { scope, selfId: bot.selfId });
     const resources = await this.ctx.yesimbot.resource.get(scope);
     return this.createAgentPlugin(scope, resources);
   }
 
-  private createAgentPlugin(scope: ChannelScope, resources: ChannelResources): AgentPlugin | null {
+  private createAgentPlugin(scope: ChannelContext, resources: ChannelResources): AgentPlugin | null {
     const store = this.store;
     if (!store) return null;
     const { assets, artifacts } = resources;
@@ -104,7 +104,7 @@ export default class GlobalBrainPlugin {
     } satisfies AgentPlugin;
   }
 
-  private enqueueImmediateShare(thread: BrainThread, sourceScope: ChannelScope): void {
+  private enqueueImmediateShare(thread: BrainThread, sourceScope: ChannelContext): void {
     const sourceKey = scopeKey(sourceScope);
     for (const target of this.scopes.values()) {
       if (scopeKey(target.scope) === sourceKey) continue;

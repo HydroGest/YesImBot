@@ -1,5 +1,5 @@
 import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
-import type { ArtifactStore, AssetStore, ChannelScope } from "koishi-plugin-yesimbot";
+import type { ArtifactStore, AssetStore, ChannelContext } from "koishi-plugin-yesimbot";
 
 import type { GlobalBrainStore } from "./store.js";
 import { BrainStoreError } from "./store.js";
@@ -7,7 +7,7 @@ import type { BrainContent, BrainReplySource, BrainThread, BrainThreadStatus, Br
 
 export interface BrainToolOptions {
   readonly store: GlobalBrainStore;
-  readonly scope: ChannelScope;
+  readonly scope: ChannelContext;
   readonly assets: AssetStore;
   readonly artifacts: ArtifactStore;
   readonly defaultShareImmediately?: boolean;
@@ -211,7 +211,7 @@ async function resolveDepositInput(input: BrainDepositToolInput, options: BrainT
   return { content: input.content, payload: { kind: "text", text: input.content } };
 }
 
-async function materializeView(view: BrainThreadView, store: GlobalBrainStore, assets: AssetStore, scope: ChannelScope): Promise<BrainThreadView> {
+async function materializeView(view: BrainThreadView, store: GlobalBrainStore, assets: AssetStore, scope: ChannelContext): Promise<BrainThreadView> {
   const payload = view.thread.payload;
   if (payload?.kind === "forward") {
     if (payload.platform !== scope.platform) return view;

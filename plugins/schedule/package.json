@@ -21,7 +21,7 @@
   "scripts": {
     "build": "npx pkgroll",
     "check-types": "tsc --noEmit",
-    "clean": "rimraf dist && rimraf tsconfig.tsbuildinfo",
+    "clean": "rimraf .turbo && rimraf dist && rimraf tsconfig.tsbuildinfo",
     "fmt": "oxfmt",
     "lint": "oxlint",
     "pub": "yarn npm publish --access public",

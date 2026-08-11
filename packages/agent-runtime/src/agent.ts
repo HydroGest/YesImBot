@@ -1,9 +1,9 @@
-import { isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage } from "ai";
+import { isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
 import { createEventEntry, createMessageEntry } from "./entry.js";
-import { formatErrorCause } from "./errors.js";
+import { formatErrorCause, ToolConflictError } from "./errors.js";
 import type { AgentInternalEvent, AgentInternalEventInit } from "./event.js";
 import { createDiagnostic, createInternalEvent } from "./event.js";
 import type { AgentMessage } from "./message.js";
@@ -27,6 +27,7 @@ export interface AgentConfig {
   model: LanguageModel;
   systemPrompt?: SystemPromptAppend | ((runtime: AgentPluginRuntime) => Promise<SystemPromptAppend | void> | SystemPromptAppend | void);
   tools?: AgentToolSet;
+  providerTools?: ToolSet;
   storage?: AgentStorage<AgentEntry>;
   plugins?: AgentPlugin[];
   initialState?: AgentState;
@@ -56,10 +57,6 @@ interface ResolvedSystemPrompt {
   blocks: SystemModelMessage[];
 }
 
-function createAbortError(): DOMException {
-  return new DOMException("Aborted", "AbortError");
-}
-
 function mergeUsage(current: Partial<LanguageModelUsage> | undefined, next: Partial<LanguageModelUsage> | undefined): Partial<LanguageModelUsage> | undefined {
   if (!next) return current;
   if (!current) return next;
@@ -82,44 +79,6 @@ function mergeUsage(current: Partial<LanguageModelUsage> | undefined, next: Part
     reasoningTokens: add(current.reasoningTokens, next.reasoningTokens),
     cachedInputTokens: add(current.cachedInputTokens, next.cachedInputTokens),
   };
-}
-
-function throwIfAborted(signal?: AbortSignal) {
-  if (signal?.aborted) {
-    throw createAbortError();
-  }
-}
-
-function raceAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) {
-    return operation;
-  }
-
-  if (signal.aborted) {
-    return Promise.reject(createAbortError());
-  }
-
-  return Promise.race([
-    operation,
-    new Promise<never>((_, reject) => {
-      signal.addEventListener("abort", () => reject(createAbortError()), { once: true });
-    }),
-  ]);
-}
-
-function isTurnScopedEvent(event: AgentInternalEvent): event is AgentInternalEvent & { turnId: string } {
-  return "turnId" in event && typeof (event as { turnId?: unknown }).turnId === "string";
-}
-
-function isTerminalTurnEvent(event: AgentInternalEvent) {
-  return event.type === "turn.done" || event.type === "turn.failed" || event.type === "turn.aborted";
-}
-
-async function resolveConfiguredSystemPrompt(input: AgentConfig["systemPrompt"], runtime: AgentPluginRuntime): Promise<ResolvedSystemPrompt> {
-  const value = typeof input === "function" ? await input(runtime) : input;
-  if (value === undefined) return { blocks: [] };
-  if (typeof value === "string") return { legacy: value, blocks: [] };
-  return { blocks: normalizeSystemPromptAppend(value) };
 }
 
 export function createAgent(config: AgentConfig): Agent {
@@ -148,6 +107,7 @@ export function createAgent(config: AgentConfig): Agent {
   const baseTools = config.tools ?? [];
   let frozenSystemPrompt: string | SystemModelMessage[] | undefined;
   let frozenTools: AgentToolSet = [];
+  let frozenProviderTools: ToolSet = {};
 
   const pluginHost = createPluginHost({ plugins: config.plugins ?? [], runtime: { id, channel, state, storage } });
 
@@ -236,6 +196,12 @@ export function createAgent(config: AgentConfig): Agent {
             ? blocks
             : undefined;
       frozenTools = [...pluginHost.stableTools];
+      frozenProviderTools = {};
+      const toolNames = new Set(frozenTools.map((tool) => tool.name));
+      for (const [name, tool] of Object.entries(config.providerTools ?? {})) {
+        if (toolNames.has(name)) throw new ToolConflictError(name);
+        frozenProviderTools[name] = { ...tool };
+      }
       initialized = true;
       await emitInternal({ type: "agent.init" });
     })().finally(() => {
@@ -449,7 +415,7 @@ export function createAgent(config: AgentConfig): Agent {
           model,
           system: frozenSystemPrompt,
           messages: modelMessages,
-          tools: toAiToolSet(resolveTools(request.turnId, abortSignal)),
+          tools: { ...toAiToolSet(resolveTools(request.turnId, abortSignal)), ...frozenProviderTools },
           stopWhen: isLoopFinished(),
           abortSignal,
           prepareStep: async ({ stepNumber }) => {
@@ -499,7 +465,14 @@ export function createAgent(config: AgentConfig): Agent {
               );
             }
 
-            await emitInternal({ type: "turn.step", turnId: request.turnId, step: step.stepNumber });
+            await emitInternal({
+              type: "turn.step",
+              turnId: request.turnId,
+              step: step.stepNumber,
+              usage: step.usage,
+              finishReason: step.finishReason,
+              reasoningText: step.reasoningText,
+            });
           },
         });
 
@@ -609,4 +582,46 @@ export function createAgent(config: AgentConfig): Agent {
   };
 
   return agent;
+}
+
+function createAbortError(): DOMException {
+  return new DOMException("Aborted", "AbortError");
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+function raceAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    return operation;
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(createAbortError());
+  }
+
+  return Promise.race([
+    operation,
+    new Promise<never>((_, reject) => {
+      signal.addEventListener("abort", () => reject(createAbortError()), { once: true });
+    }),
+  ]);
+}
+
+function isTurnScopedEvent(event: AgentInternalEvent): event is AgentInternalEvent & { turnId: string } {
+  return "turnId" in event && typeof (event as { turnId?: unknown }).turnId === "string";
+}
+
+function isTerminalTurnEvent(event: AgentInternalEvent) {
+  return event.type === "turn.done" || event.type === "turn.failed" || event.type === "turn.aborted";
+}
+
+async function resolveConfiguredSystemPrompt(input: AgentConfig["systemPrompt"], runtime: AgentPluginRuntime): Promise<ResolvedSystemPrompt> {
+  const value = typeof input === "function" ? await input(runtime) : input;
+  if (value === undefined) return { blocks: [] };
+  if (typeof value === "string") return { legacy: value, blocks: [] };
+  return { blocks: normalizeSystemPromptAppend(value) };
 }

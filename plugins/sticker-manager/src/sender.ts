@@ -1,5 +1,5 @@
 import { h, type Bot } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 export interface StickerSendInput {
   bytes: Uint8Array;
@@ -13,7 +13,7 @@ export interface StickerSender {
 export class BotStickerSender implements StickerSender {
   public constructor(
     private readonly bot: Bot,
-    private readonly scope: ChannelScope,
+    private readonly scope: ChannelContext,
   ) {}
 
   public async send(input: StickerSendInput): Promise<void> {

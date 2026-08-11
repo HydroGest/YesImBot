@@ -1,11 +1,20 @@
-import { AgentBusyError, createAgent, type Agent, type AgentInternalEvent, type AgentPlugin, type AgentToolSet } from "@yesimbot/agent-runtime";
-import type { AssistantContent, LanguageModel } from "ai";
+import {
+  AgentBusyError,
+  createAgent,
+  createEntry,
+  createSystemMessage,
+  type Agent,
+  type AgentInternalEvent,
+  type AgentPlugin,
+  type AgentToolSet,
+} from "@yesimbot/agent-runtime";
+import type { AssistantContent, LanguageModel, ToolSet } from "ai";
 import { type Bot, type Context, type Element, type Logger } from "koishi";
 
 import type { UsageReport } from "../agents/index.js";
 import { createDescribeImageTool, createReadTool, createSendMessageTool } from "../agents/tools.js";
 import type { WillEngine, WillState } from "../agents/will.js";
-import type { Channel } from "../channels/index.js";
+import { type Channel, type ChannelContext, deriveChannelKey } from "../channels/index.js";
 import type { Config } from "../config.js";
 import {
   createEvent,
@@ -23,22 +32,45 @@ import {
 import { prepareOutputSegments } from "../resources/index.js";
 import { OutputQueue } from "./output.js";
 import { buildCoreSystemPrompt, readPersona } from "./prompt.js";
+
 const MODEL_INPUT_PLUGIN: AgentPlugin = {
   name: "core.model-input",
   enforce: "pre",
   toModelMessages: async (message) => (isMessage(message) || isEvent(message) ? [formatInput(message)] : []),
 };
+
+const COMPACT_HISTORY_PLUGIN: AgentPlugin = {
+  name: "core.compact-history",
+  enforce: "pre",
+  transformEntries: (entries) => {
+    const lastCompactIndex = entries.reduce((last, entry, index) => (entry.type === "compact" ? index : last), -1);
+    return (lastCompactIndex === -1 ? entries : entries.slice(lastCompactIndex)).map((entry) =>
+      entry.type === "compact"
+        ? createEntry(
+            "message",
+            createSystemMessage(`<conversation_memory>\n${entry.data.summary}\n</conversation_memory>`, { id: entry.id, timestamp: entry.timestamp }),
+            { id: entry.id, timestamp: entry.timestamp },
+          )
+        : entry,
+    );
+  },
+};
+
 export type ChannelOutput = { readonly turnId: string; readonly messageId: string; readonly segments: readonly Element[][] };
+
 export type RuntimeResult =
   | { readonly kind: "wait"; readonly eventId: string }
   | { readonly kind: "join"; readonly eventId: string; readonly turnId: string }
   | { readonly kind: "run"; readonly eventId: string; readonly output: AsyncIterable<ChannelOutput>; readonly signal: AbortSignal };
+
 export type PostOptions = { readonly trigger?: boolean; readonly ifBusy?: "defer" | "join" | "reject" };
+
 export interface ChannelRuntimeOptions {
   readonly channel: Channel;
   readonly bot: Bot;
   readonly will: WillEngine;
   readonly model: LanguageModel;
+  readonly providerTools?: ToolSet;
   readonly visionModel?: LanguageModel;
   readonly imageOutputSupported: boolean;
   readonly config: Config;
@@ -47,10 +79,13 @@ export interface ChannelRuntimeOptions {
   readonly allowTrigger?: () => Promise<boolean>;
   readonly modelId?: string;
   readonly visionModelId?: string;
+  readonly compactModel?: LanguageModel;
   readonly idleTimeout?: number;
+  readonly archiveMaxBytes?: number;
 }
+
 export class ChannelRuntime {
-  public readonly scope;
+  public readonly context: ChannelContext;
   public readonly selfId: string;
 
   private readonly agent: Agent;
@@ -61,18 +96,20 @@ export class ChannelRuntime {
   private stopped = false;
   private stopTask: Promise<void> | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
+  private responseCompactionPending = false;
 
   private persona = "";
+
   public constructor(
     private readonly ctx: Context,
     private readonly options: ChannelRuntimeOptions,
   ) {
-    this.scope = options.channel.scope;
+    this.context = options.channel.context;
     this.selfId = options.bot.selfId;
     this.logger = ctx.logger("yesimbot/channel-runtime");
     this.logger.level = options.config.logLevel ?? 2;
     const tools: AgentToolSet = [
-      createSendMessageTool(options.bot, this.scope.channelId, options.channel.resources),
+      createSendMessageTool(options.bot, this.context.channelId, options.channel.resources),
       createReadTool(options.channel.resources, options.imageOutputSupported),
     ];
     if (options.visionModel) {
@@ -83,22 +120,20 @@ export class ChannelRuntime {
       );
     }
     this.agent = createAgent({
-      id:
-        this.scope.type === "direct"
-          ? `direct:${this.scope.platform}:${this.scope.selfId}:${this.scope.channelId}`
-          : `shared:${this.scope.platform}:${this.scope.channelId}`,
+      id: deriveChannelKey(this.context),
       model: options.model,
       storage: options.channel.conversation.storage,
       systemPrompt: () =>
         buildCoreSystemPrompt({
           basePath: options.config.basePath,
-          channel: this.scope,
+          channel: this.context,
           selfId: this.selfId,
           logger: this.logger,
-          customInnerThought: options.config.reply.customInnerThought,
+          customInnerThought: options.config.customInnerThought,
         }),
       tools,
-      plugins: [MODEL_INPUT_PLUGIN, ...options.plugins],
+      providerTools: options.providerTools,
+      plugins: [COMPACT_HISTORY_PLUGIN, MODEL_INPUT_PLUGIN, ...options.plugins],
     });
   }
 
@@ -114,7 +149,15 @@ export class ChannelRuntime {
         return { kind: "wait", eventId: input.id };
       }
       const decision = await this.options.will.decide(input, this.state());
-      return decision === "wait" ? { kind: "wait", eventId: input.id } : this.start(input, true, "join");
+      const result = decision === "wait" ? { kind: "wait" as const, eventId: input.id } : this.start(input, true, "join");
+      this.logger.debug("runtime.handle", {
+        eventId: input.id,
+        eventType: "messageId" in record ? "message" : "event",
+        decision,
+        result: result.kind,
+        activeTurnId: this.state().activeTurnId,
+      });
+      return result;
     });
   }
 
@@ -125,11 +168,13 @@ export class ChannelRuntime {
       this.assertOpen();
       if (trigger && ifBusy === "reject" && this.agent.getActiveTurnId() !== null) throw new AgentBusyError();
       const input = await this.commit(event);
-      if (!trigger) return { kind: "wait", eventId: input.id };
       if (this.options.allowTrigger && !(await this.options.allowTrigger())) {
+        this.logger.debug("runtime.post.blocked", { eventId: input.id, eventType: event.eventType });
         return { kind: "wait", eventId: input.id };
       }
-      return this.start(input, false, ifBusy);
+      const result = !trigger ? { kind: "wait" as const, eventId: input.id } : this.start(input, false, ifBusy);
+      this.logger.debug("runtime.post", { eventId: input.id, eventType: event.eventType, trigger, ifBusy, result: result.kind });
+      return result;
     });
   }
 
@@ -137,9 +182,9 @@ export class ChannelRuntime {
     return this.schedule(async () => {
       const input = createEvent({
         eventType: "delivery.failed",
-        platform: this.scope.platform,
+        platform: this.context.platform,
         selfId: this.selfId,
-        channel: { id: this.scope.channelId, type: this.scope.type === "direct" ? 1 : 0 },
+        channel: { id: this.context.channelId, type: this.context.type === "direct" ? 1 : 0 },
         timestamp: Date.now(),
         text: "delivery failed",
         delivery: {
@@ -160,14 +205,17 @@ export class ChannelRuntime {
   }
 
   public compact(reason: "auto" | "idle" | "manual"): Promise<unknown> {
-    return this.schedule(() =>
-      this.options.channel.conversation.compact(reason, {
-        model: this.options.model,
+    return this.schedule(async () => {
+      const result = await this.options.channel.conversation.compact(reason, {
+        model: this.options.compactModel ?? this.options.model,
         personaName: "Athena",
         persona: this.persona,
         onUsage: (usage) => this.options.reportUsage?.({ kind: "compact", modelId: this.options.modelId, usage }),
-      }),
-    );
+      });
+      if (result.compacted) await this.archiveIfOversize();
+      return result;
+    });
+  }
   }
 
   public stop(): Promise<void> {
@@ -187,7 +235,7 @@ export class ChannelRuntime {
     const input = isMessageRecord(record) ? createMessage(record) : createEvent(record);
     await this.agent.append(input);
     this.ctx.emit(isMessage(input) ? "yesimbot/message" : "yesimbot/event", input as never);
-    this.resetIdleTimer();
+    await this.archiveIfOversize();
     return input;
   }
 
@@ -216,29 +264,75 @@ export class ChannelRuntime {
     passive: boolean,
   ): Promise<void> {
     let assistant = false;
+    let completed = false;
     let turnId = "";
     try {
       for await (const event of stream) {
+        if (event.type === "turn.start") {
+          this.logger.debug("runtime.turn.start", { turnId: event.turnId });
+          continue;
+        }
+        if (event.type === "turn.step") {
+          this.logger.debug("runtime.turn.step", {
+            turnId: event.turnId,
+            stepNumber: event.step,
+            finishReason: event.finishReason,
+            usage: event.usage,
+            reasoningText: event.reasoningText === undefined ? undefined : event.reasoningText.slice(0, 1000),
+          });
+          continue;
+        }
+        if (event.type === "turn.done") {
+          this.logger.debug("runtime.turn.done", { turnId: event.turnId });
+          continue;
+        }
+        if (event.type === "tool.start") {
+          this.logger.debug("runtime.tool.start", { turnId: event.turnId, toolName: event.toolName, toolCallId: event.toolCallId });
+          continue;
+        }
+        if (event.type === "tool.done") {
+          this.logger.debug("runtime.tool.done", { turnId: event.turnId, toolName: event.toolName, toolCallId: event.toolCallId });
+          continue;
+        }
+        if (event.type === "tool.failed") {
+          this.logger.warn("runtime.tool.failed", { turnId: event.turnId, toolName: event.toolName, toolCallId: event.toolCallId, error: event.error.message });
+          continue;
+        }
         if (event.type === "message.appended" && "turnId" in event && event.message.role === "assistant") {
           turnId = event.turnId;
           const content = renderAssistantText(event.message.content);
           if (content !== undefined) {
             const segments = await prepareOutputSegments(parseReply(content), this.options.channel.resources, controller.signal);
             if (segments.length) {
+              this.logger.debug("runtime.output.segments", { turnId, messageId: event.message.id, segmentCount: segments.length });
               output.push({ turnId, messageId: event.message.id, segments });
               assistant = true;
             }
           }
         }
-        if (event.type === "turn.failed") throw new Error(event.error.message);
-        if (event.type === "turn.aborted") throw new Error("Agent turn aborted");
+        if (event.type === "turn.failed") {
+          this.logger.warn("runtime.turn.failed", { turnId: event.turnId, error: event.error.message });
+          throw new Error(event.error.message);
+        }
+        if (event.type === "turn.aborted") {
+          this.logger.warn("runtime.turn.aborted", { turnId: event.turnId, reason: event.reason });
+          throw new Error("Agent turn aborted");
+        }
       }
+      completed = true;
       if (passive && assistant) await this.options.will.observe?.({ turnId, status: "done", messages: [] });
       output.close();
     } catch (cause) {
       output.close(cause);
     } finally {
-      this.resetIdleTimer();
+      if (completed && assistant) {
+        this.responseCompactionPending = false;
+        this.resetIdleTimer();
+      } else if (this.responseCompactionPending && this.agent.getActiveTurnId() === null) {
+        this.responseCompactionPending = false;
+        void this.compact("idle");
+      }
+      this.scheduleArchiveCheck();
     }
   }
 
@@ -259,12 +353,34 @@ export class ChannelRuntime {
     if (this.stopped) throw new Error("Channel runtime is stopped");
   }
 
+  private scheduleArchiveCheck(): void {
+    if (this.stopped || (this.options.archiveMaxBytes ?? 0) <= 0) return;
+    void this.schedule(async () => {
+      if (this.stopped || this.agent.getActiveTurnId() !== null) return;
+      await this.archiveIfOversize();
+    });
+  }
+
+  private async archiveIfOversize(): Promise<void> {
+    const maxBytes = this.options.archiveMaxBytes ?? 0;
+    if (this.stopped || maxBytes <= 0) return;
+    await this.options.channel.conversation.archiveIfOversize(maxBytes, {
+      model: this.options.compactModel ?? this.options.model,
+      personaName: "Athena",
+      persona: this.persona,
+    });
+  }
+
   private resetIdleTimer(): void {
     this.clearIdleTimer();
     if (this.stopped || !this.options.idleTimeout) return;
     this.idleTimer = setTimeout(() => {
       this.idleTimer = undefined;
-      if (this.agent.getActiveTurnId() === null) void this.compact("idle");
+      if (this.agent.getActiveTurnId() !== null) {
+        this.responseCompactionPending = true;
+        return;
+      }
+      void this.compact("idle");
     }, this.options.idleTimeout);
   }
 
@@ -275,6 +391,7 @@ export class ChannelRuntime {
     }
   }
 }
+
 function renderAssistantText(content: AssistantContent): string | undefined {
   if (typeof content === "string") return content.trim() ? content : undefined;
   if (!Array.isArray(content)) return undefined;

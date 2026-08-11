@@ -1,6 +1,6 @@
 import type { AgentMessage, AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
 import { Schema, Universal, type Bot, type Context, type Logger } from "koishi";
-import { isMessage, type ChannelScope } from "koishi-plugin-yesimbot";
+import { isMessage, type ChannelContext } from "koishi-plugin-yesimbot";
 
 import { MemosCloudClient } from "./client.js";
 import { memosConfigSchema } from "./config.js";
@@ -49,7 +49,7 @@ export default class MemosClientPlugin {
     this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
   }
 
-  public async setup(scope: ChannelScope, _bot: Bot): Promise<AgentPlugin | null> {
+  public async setup(scope: ChannelContext, _bot: Bot): Promise<AgentPlugin | null> {
     const client = this.client;
     if (!client) return null;
     let latestAuthorId = "";

@@ -2,7 +2,7 @@ import type { ReadableStream } from "node:stream/web";
 
 import { jsonSchema, type AgentPlugin, type AgentTool } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
-import type { ChannelResources, ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelResources, ChannelContext } from "koishi-plugin-yesimbot";
 
 import { projectAnimatedImages } from "./animated-image.js";
 import { createForwardReader, type ForwardImageRequest, type ForwardResult, type ForwardToolInput } from "./forward.js";
@@ -77,7 +77,7 @@ export default class OnebotUtilsPlugin {
     this.dispose = this.ctx.yesimbot.agent.use(this);
   }
 
-  public async setup(scope: ChannelScope, bot: Bot): Promise<AgentPlugin | null> {
+  public async setup(scope: ChannelContext, bot: Bot): Promise<AgentPlugin | null> {
     if (scope.platform !== "onebot") return null;
     const resources = await this.ctx.yesimbot.resource.get(scope);
     return {
@@ -214,10 +214,10 @@ async function readForwardImage(stream: ReadableStream<Uint8Array>, signal: Abor
   }
   return bytes;
 }
-function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsConfig>, scope: ChannelScope, resources: ChannelResources): AgentTool[] {
+function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsConfig>, scope: ChannelContext, resources: ChannelResources): AgentTool[] {
   let forwardReader: ReturnType<typeof createForwardReader> | undefined;
 
-  const isGroupScope = scope.type === "shared";
+  const isGroupScope = scope.type !== "direct";
 
   const getForwardMessageTool: AgentTool<ForwardToolInput, ForwardResult> = {
     name: TOOLS.GET_FORWARD_MESSAGE,

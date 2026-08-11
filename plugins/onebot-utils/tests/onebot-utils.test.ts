@@ -90,8 +90,8 @@ function createContext() {
   return { ctx, dispose, plugins };
 }
 
-function createChannelScope(overrides: Record<string, unknown> = {}) {
-  return { type: "shared", platform: "onebot", channelId: "group", ...overrides };
+function createChannelContext(overrides: Record<string, unknown> = {}) {
+  return { type: "guild", platform: "onebot", channelId: "group", guildId: "group", ...overrides };
 }
 
 async function getTools(plugin: AgentPlugin): Promise<AgentTool[]> {
@@ -108,7 +108,7 @@ async function createRuntime(
   const { ctx, plugins } = createContext();
   const plugin = new OnebotUtilsPlugin(ctx as never, { enabledTools: DEFAULT_ENABLED_TOOLS, ...config } as never);
   await plugin.start();
-  const runtimePlugin = await plugins[0]!.setup(createChannelScope() as never, bot as never);
+  const runtimePlugin = await plugins[0]!.setup(createChannelContext() as never, bot as never);
   if (!runtimePlugin) throw new Error("OneBot runtime plugin was not created");
   const tools = await getTools(runtimePlugin);
 
@@ -151,7 +151,7 @@ describe("onebot-utils plugin", () => {
     const plugin = new OnebotUtilsPlugin(ctx as never, {});
     await plugin.start();
 
-    await expect(plugins[0]!.setup({ type: "shared", platform: "discord", channelId: "channel" } as never, {} as never)).resolves.toBeNull();
+    await expect(plugins[0]!.setup({ type: "guild", platform: "discord", channelId: "channel", guildId: "channel" } as never, {} as never)).resolves.toBeNull();
   });
 
   it("exposes the migrated OneBot tools", async () => {
@@ -175,7 +175,7 @@ describe("onebot-utils plugin", () => {
     );
     await plugin.start();
 
-    const runtimePlugin = await plugins[0]!.setup(createChannelScope() as never, {} as never);
+    const runtimePlugin = await plugins[0]!.setup(createChannelContext() as never, {} as never);
     if (!runtimePlugin) throw new Error("OneBot runtime plugin was not created");
     const tools = await getTools(runtimePlugin);
     const names = tools.map((tool) => tool.name);

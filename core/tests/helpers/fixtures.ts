@@ -1,14 +1,14 @@
 import { h } from "koishi";
 
-import type { ChannelScope } from "../../src/channels/index.js";
+import type { ChannelContext } from "../../src/channels/index.js";
 import type { Config } from "../../src/config.js";
 import type { EventRecord, MessageRecord } from "../../src/messages/index.js";
 
-export const scope: ChannelScope = { type: "shared", platform: "onebot", selfId: "bot-1", channelId: "room-42" };
+export const scope: ChannelContext = { type: "guild", platform: "onebot", channelId: "room-42", guildId: "room-42" };
 
-export const otherScope: ChannelScope = { ...scope, channelId: "room-43" };
+export const otherScope: ChannelContext = { ...scope, channelId: "room-43", guildId: "room-43" };
 
-export const testScope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
+export const testScope: ChannelContext = { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" };
 
 export const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -20,10 +20,11 @@ export function defaultConfig(overrides: Partial<Config> = {}): Config {
     logLevel: 2,
     allowedChannels: [],
     imageInput: false,
-    resourceReadTimeoutMs: 30_000,
+    resourceReadTimeout: 30,
     will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
-    reply: { pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 }, customInnerThought: false },
-    session: { compact: { threshold: 0.9, charTokenRatio: 1.8, minMessages: 20, maxFailures: 3, model: undefined }, idle: { timeout: 7_200_000 } },
+    pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
+    customInnerThought: false,
+    session: { compact: { responseIdleMinutes: 120, minMessages: 20, maxFailures: 3, model: undefined }, archive: { maxKB: 5 * 1024 } },
     ...overrides,
   };
 }

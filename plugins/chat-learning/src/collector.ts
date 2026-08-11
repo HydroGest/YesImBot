@@ -55,12 +55,6 @@ export function collectTurns(entries: readonly AgentEntry[], options: CollectOpt
   return turns.sort((left, right) => left.timestamp - right.timestamp).slice(-maxScanMessages);
 }
 
-function matchesBlockedPattern(userId: string, userName: string | undefined, patterns: readonly string[]): boolean {
-  if (patterns.length === 0) return false;
-  const haystack = `${userId} ${userName ?? ""}`.toLowerCase();
-  return patterns.some((pattern) => pattern.length > 0 && haystack.includes(pattern.toLowerCase()));
-}
-
 export function segmentTurns(turns: readonly MessageTurn[], maxGapMs = 10 * 60 * 1000): ConversationSegment[] {
   const segments: ConversationSegment[] = [];
   let current: MessageTurn[] = [];
@@ -79,6 +73,12 @@ export function segmentTurns(turns: readonly MessageTurn[], maxGapMs = 10 * 60 *
 
   if (current.length > 0) segments.push(createSegment(segments.length, current, startTime));
   return segments;
+}
+
+function matchesBlockedPattern(userId: string, userName: string | undefined, patterns: readonly string[]): boolean {
+  if (patterns.length === 0) return false;
+  const haystack = `${userId} ${userName ?? ""}`.toLowerCase();
+  return patterns.some((pattern) => pattern.length > 0 && haystack.includes(pattern.toLowerCase()));
 }
 
 function createSegment(index: number, turns: readonly MessageTurn[], startTime: number): ConversationSegment {

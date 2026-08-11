@@ -22,6 +22,21 @@ export function projectAnimatedImages(entries: readonly AgentEntry[], options: A
   });
 }
 
+export function isAnimatedImage(data: { sub_type?: unknown; subType?: unknown }): boolean {
+  return data.sub_type === 1 || data.sub_type === "1" || data.subType === 1 || data.subType === "1";
+}
+
+export function formatAnimatedImageLabel(options: { readonly attachImageSummary: boolean; readonly summary?: unknown; readonly id?: unknown }): string {
+  const parts: string[] = [];
+  if (options.attachImageSummary) {
+    const summary = options.summary;
+    if (typeof summary === "string" && summary.trim().length > 0) parts.push(summary.trim());
+  }
+  const id = options.id;
+  if (typeof id === "string" && ASSET_ID.test(id)) parts.push(`asset://${id}`);
+  return parts.length > 0 ? `[动画表情: ${parts.join(" ")}]` : "[动画表情]";
+}
+
 function getMessageData(message: AgentMessage): { elements: readonly Element[] } | undefined {
   if (message.role !== "custom" || message.type !== "yesimbot.message") return undefined;
   const data = (message as { data?: unknown }).data;
@@ -38,21 +53,6 @@ function projectElement(element: Element, attachImageSummary: boolean): Element 
   return h(element.type, element.attrs, children);
 }
 
-export function isAnimatedImage(data: { sub_type?: unknown; subType?: unknown }): boolean {
-  return data.sub_type === 1 || data.sub_type === "1" || data.subType === 1 || data.subType === "1";
-}
-
 function isAnimatedImageElement(attrs: { summary?: unknown; sub_type?: unknown; subType?: unknown }): boolean {
   return isAnimatedImage(attrs) || (typeof attrs.summary === "string" && attrs.summary.trim().length > 0);
-}
-
-export function formatAnimatedImageLabel(options: { readonly attachImageSummary: boolean; readonly summary?: unknown; readonly id?: unknown }): string {
-  const parts: string[] = [];
-  if (options.attachImageSummary) {
-    const summary = options.summary;
-    if (typeof summary === "string" && summary.trim().length > 0) parts.push(summary.trim());
-  }
-  const id = options.id;
-  if (typeof id === "string" && ASSET_ID.test(id)) parts.push(`asset://${id}`);
-  return parts.length > 0 ? `[动画表情: ${parts.join(" ")}]` : "[动画表情]";
 }

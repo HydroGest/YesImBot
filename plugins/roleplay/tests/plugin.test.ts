@@ -93,7 +93,7 @@ describe("RoleplayPlugin", () => {
     await plugin.start();
 
     const direct = await plugins[0]!.setup({ type: "direct", platform: "test", selfId: "bot", channelId: "direct-user" }, {} as never);
-    const shared = await plugins[0]!.setup({ type: "shared", platform: "test", channelId: "group" }, {} as never);
+    const shared = await plugins[0]!.setup({ type: "guild", platform: "test", channelId: "group", guildId: "group" }, {} as never);
 
     await expect(greeting(direct as never)).resolves.toBe("Alternate direct-user");
     await expect(greeting(shared as never)).resolves.toBe("Alternate User");

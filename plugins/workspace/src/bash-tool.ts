@@ -2,6 +2,8 @@ import type { AgentTool, AgentToolSet } from "@yesimbot/agent-runtime";
 import type { Tool } from "ai";
 import type { CommandResult, Sandbox } from "bash-tool";
 
+import { createEditTool } from "./edit-tool";
+
 type AbortSignalScope = { getSignal(): AbortSignal | undefined; run<T>(signal: AbortSignal | undefined, operation: () => T): T };
 
 type BackendSandbox = Sandbox & { setPendingCommand(command: string): void };
@@ -33,7 +35,14 @@ export async function createBashToolSet(input: CreateBashToolSetInput): Promise<
     },
   });
 
-  return [withName("bash", toolkit.tools.bash, abortSignals), withName("readFile", toolkit.tools.readFile), withName("writeFile", toolkit.tools.writeFile)];
+  const editTool = createEditTool({ backend: input.backend, cwd: input.destination });
+
+  return [
+    withName("bash", toolkit.tools.bash, abortSignals),
+    withName("readFile", toolkit.tools.readFile),
+    withName("writeFile", toolkit.tools.writeFile),
+    editTool,
+  ];
 }
 
 function createAbortSignalScope(): AbortSignalScope {

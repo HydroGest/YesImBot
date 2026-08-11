@@ -51,30 +51,30 @@ export async function classifyPatternsWithModel(
 ): Promise<PatternSnapshot | undefined> {
   const key = cache?.key(["classify", modelCacheId(model), turns, segments, links, options]);
   const produce = async (): Promise<PatternSnapshot | undefined> => {
-  const maxThreads = options.maxThreads ?? 3;
-  const maxThreadMessages = options.maxThreadMessages ?? 30;
-  const threads = selectClassifyThreads(segments, links, maxThreads, maxThreadMessages);
-  if (threads.length === 0) return undefined;
+    const maxThreads = options.maxThreads ?? 3;
+    const maxThreadMessages = options.maxThreadMessages ?? 30;
+    const threads = selectClassifyThreads(segments, links, maxThreads, maxThreadMessages);
+    if (threads.length === 0) return undefined;
 
-  const { prompt, messageByPromptId } = buildThreadPrompt(threads);
-  const system = [
-    "你是一个群聊行为标注器。",
-    "你会看到若干完整对话线程，请为线程中的每条消息标注 role 和 intent。",
-    "role=response 表示消息是在回应前面某人的话，intent 从 agree|ack|question|joke|roast|empathy|refuse 中选择。",
-    "role=initiation 表示消息是在发起新话题或开启新一轮对话，intent 从 share|question|react|recall|opinion 中选择。",
-    "如果消息不适合作为发言风格样本，例如纯状态、无意义、命令、通知、纯媒体或无法判断，使用 role=noise。",
-    "必须参考完整线程上下文判断，不要只根据单条消息猜测。",
-    "id 必须原样返回，不要改写、遗漏或补充消息。",
-    '只返回 JSON：{"messages":[{"id":"t0-m0","role":"response","intent":"agree"}]}',
-    "不要输出其他内容。",
-  ].join("\n");
+    const { prompt, messageByPromptId } = buildThreadPrompt(threads);
+    const system = [
+      "你是一个群聊行为标注器。",
+      "你会看到若干完整对话线程，请为线程中的每条消息标注 role 和 intent。",
+      "role=response 表示消息是在回应前面某人的话，intent 从 agree|ack|question|joke|roast|empathy|refuse 中选择。",
+      "role=initiation 表示消息是在发起新话题或开启新一轮对话，intent 从 share|question|react|recall|opinion 中选择。",
+      "如果消息不适合作为发言风格样本，例如纯状态、无意义、命令、通知、纯媒体或无法判断，使用 role=noise。",
+      "必须参考完整线程上下文判断，不要只根据单条消息猜测。",
+      "id 必须原样返回，不要改写、遗漏或补充消息。",
+      '只返回 JSON：{"messages":[{"id":"t0-m0","role":"response","intent":"agree"}]}',
+      "不要输出其他内容。",
+    ].join("\n");
 
-  try {
-    const { text } = await generateText({ model, system, prompt, temperature: 0.1 });
-    return parseModelAnnotations(text, messageByPromptId);
-  } catch {
-    return undefined;
-  }
+    try {
+      const { text } = await generateText({ model, system, prompt, temperature: 0.1 });
+      return parseModelAnnotations(text, messageByPromptId);
+    } catch {
+      return undefined;
+    }
   };
   return cache && key ? cache.getOrProduce(key, produce) : produce();
 }
@@ -87,29 +87,29 @@ export async function generateChainStyle(
 ): Promise<string | undefined> {
   const key = cache?.key(["chain-style", modelCacheId(model), chain, sample]);
   const produce = async (): Promise<string | undefined> => {
-  const sampleText = sample.turns.map((turn) => `${turn.speaker}: ${turn.text}`).join("\n");
-  const prompt = [
-    "下面是一条真实群聊回复链：",
-    `chain: ${chain.join(" -> ")}`,
-    "sample:",
-    sampleText,
-    "",
-    "请描述这条链的说话风格，按以下五个维度：",
-    "语气：直接、反问、敷衍、认真、阴阳怪气等",
-    "句式：短句、反问、排比、复读等",
-    "节奏：先否定对方前提，再补论据，最后如何收束",
-    "句长：单句大约多少字",
-    "语言习惯：是否使用语气词、解释、道歉、感叹号",
-    "只输出 60-120 字，不要总结具体内容、人名、链接或事实，不要输出标签或 JSON。",
-  ].join("\n");
+    const sampleText = sample.turns.map((turn) => `${turn.speaker}: ${turn.text}`).join("\n");
+    const prompt = [
+      "下面是一条真实群聊回复链：",
+      `chain: ${chain.join(" -> ")}`,
+      "sample:",
+      sampleText,
+      "",
+      "请描述这条链的说话风格，按以下五个维度：",
+      "语气：直接、反问、敷衍、认真、阴阳怪气等",
+      "句式：短句、反问、排比、复读等",
+      "节奏：先否定对方前提，再补论据，最后如何收束",
+      "句长：单句大约多少字",
+      "语言习惯：是否使用语气词、解释、道歉、感叹号",
+      "只输出 60-120 字，不要总结具体内容、人名、链接或事实，不要输出标签或 JSON。",
+    ].join("\n");
 
-  try {
-    const { text } = await generateText({ model, prompt, temperature: 0.2 });
-    const style = text.trim().replace(/\s+/g, " ").slice(0, 120);
-    return style.length > 0 ? style : undefined;
-  } catch {
-    return undefined;
-  }
+    try {
+      const { text } = await generateText({ model, prompt, temperature: 0.2 });
+      const style = text.trim().replace(/\s+/g, " ").slice(0, 120);
+      return style.length > 0 ? style : undefined;
+    } catch {
+      return undefined;
+    }
   };
   return cache && key ? cache.getOrProduce(key, produce) : produce();
 }

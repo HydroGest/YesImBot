@@ -178,7 +178,7 @@ describe("SchedulePlugin", () => {
       expect(record.optionCalls.map(({ name }) => name)).not.toContain("channel");
     }
 
-    const agent = await plugins[0]?.setup({ type: "shared", platform: "onebot", channelId: "room" }, { selfId: "bot" } as never);
+    const agent = await plugins[0]?.setup({ type: "guild", platform: "onebot", channelId: "room", guildId: "room" }, { selfId: "bot" } as never);
     expect(agent).toBeDefined();
     expect(await toolNames(agent!)).toEqual(["schedule_create", "schedule_list", "schedule_update", "schedule_pause", "schedule_resume", "schedule_cancel"]);
     expect(plugin).toBeDefined();
@@ -221,7 +221,7 @@ describe("SchedulePlugin", () => {
     const rows = model.tables.get("yesimbot_schedule")!;
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      type: "shared",
+      type: "guild",
       platform: "onebot",
       selfId: "bot",
       channelId: "room",
@@ -294,7 +294,7 @@ describe("SchedulePlugin", () => {
     const { ctx, ready, plugins, trigger } = createContext(model);
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
-    const agent = await plugins[0]!.setup({ type: "shared", platform: "onebot", channelId: "room" }, { selfId: "bot" } as never);
+    const agent = await plugins[0]!.setup({ type: "guild", platform: "onebot", channelId: "room", guildId: "room" }, { selfId: "bot" } as never);
     const create = (await agent.tools!({} as never))!.find((tool) => tool.name === "schedule_create")!;
 
     await create.execute!({ title: "agent", prompt: "Run.", at: "2026-08-01T00:01:00.000Z" }, {} as never);
@@ -326,7 +326,7 @@ describe("SchedulePlugin", () => {
     const rearm = vi.spyOn(ScheduleScheduler.prototype, "rearm");
     new SchedulePlugin(ctx as never);
     await ready[0]?.();
-    const agent = await plugins[0]!.setup({ type: "shared", platform: "onebot", channelId: "room" }, { selfId: "bot" } as never);
+    const agent = await plugins[0]!.setup({ type: "guild", platform: "onebot", channelId: "room", guildId: "room" }, { selfId: "bot" } as never);
     const tools = (await agent.tools!({} as never))!;
     const create = tools.find((tool) => tool.name === "schedule_create")!;
     const update = tools.find((tool) => tool.name === "schedule_update")!;

@@ -1,15 +1,15 @@
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import type { LanguageModelUsage } from "ai";
-import type { Awaitable, Bot, Session } from "koishi";
+import type { Awaitable, Bot, Context, Logger, Session } from "koishi";
 
-import type { ChannelScope } from "../channels/index.js";
+import type { ChannelContext } from "../channels/index.js";
 import { defaultWillEngine, type WillEngine, type WillPlugin } from "./will.js";
 
-export type Disposer = () => void;
+type Disposer = () => void;
 
-export type ChannelModelResolver = (scope: ChannelScope) => Awaitable<string | void>;
-export type UsageReporter = (scope: ChannelScope, report: UsageReport) => Awaitable<void>;
-export type TriggerGuard = (scope: ChannelScope) => Awaitable<boolean>;
+export type ChannelModelResolver = (context: ChannelContext) => Awaitable<string | void>;
+export type UsageReporter = (context: ChannelContext, report: UsageReport) => Awaitable<void>;
+export type TriggerGuard = (context: ChannelContext) => Awaitable<boolean>;
 
 export interface ChannelPluginContext {
   readonly modelId: string;
@@ -22,15 +22,24 @@ export interface UsageReport {
 }
 
 export interface ChannelPlugin {
-  setup(scope: ChannelScope, bot: Bot, context?: ChannelPluginContext): Awaitable<AgentPlugin | null>;
+  setup(context: ChannelContext, bot: Bot, pluginContext?: ChannelPluginContext): Awaitable<AgentPlugin | null>;
 }
 
 export class Agents {
+  private readonly ctx: Context;
+  private readonly logger: Logger;
+
   private readonly plugins = new Set<ChannelPlugin>();
   private readonly willPlugins = new Set<WillPlugin>();
   private readonly modelResolvers = new Set<ChannelModelResolver>();
   private readonly usageReporters = new Set<UsageReporter>();
   private readonly triggerGuards = new Set<TriggerGuard>();
+
+  public constructor(ctx: Context, config: { logLevel?: number } = {}) {
+    this.ctx = ctx;
+    this.logger = ctx.logger("yesimbot.agents");
+    this.logger.level = config.logLevel ?? 2;
+  }
 
   public use(plugin: ChannelPlugin): Disposer {
     this.plugins.add(plugin);
@@ -57,30 +66,30 @@ export class Agents {
     return () => this.triggerGuards.delete(guard);
   }
 
-  public async resolveModel(scope: ChannelScope, fallback: string): Promise<string> {
+  public async resolveModel(context: ChannelContext, fallback: string): Promise<string> {
     for (const resolver of this.modelResolvers) {
-      const model = await resolver(scope);
+      const model = await resolver(context);
       if (model?.trim()) return model.trim();
     }
     return fallback;
   }
 
-  public async reportUsage(scope: ChannelScope, report: UsageReport): Promise<void> {
-    await Promise.allSettled([...this.usageReporters].map((reporter) => reporter(scope, report)));
+  public async reportUsage(context: ChannelContext, report: UsageReport): Promise<void> {
+    await Promise.allSettled([...this.usageReporters].map((reporter) => reporter(context, report)));
   }
 
-  public async allowTrigger(scope: ChannelScope): Promise<boolean> {
+  public async allowTrigger(context: ChannelContext): Promise<boolean> {
     for (const guard of this.triggerGuards) {
-      if (!(await guard(scope))) return false;
+      if (!(await guard(context))) return false;
     }
     return true;
   }
 
-  public async setup(scope: ChannelScope, bot: Bot, context?: ChannelPluginContext): Promise<AgentPlugin[]> {
+  public async setup(context: ChannelContext, bot: Bot, pluginContext?: ChannelPluginContext): Promise<AgentPlugin[]> {
     const initialized: AgentPlugin[] = [];
     try {
       for (const plugin of this.plugins) {
-        const result = await plugin.setup(scope, bot, context);
+        const result = await plugin.setup(context, bot, pluginContext);
         if (result) initialized.push(result);
       }
       return initialized;
@@ -94,13 +103,23 @@ export class Agents {
     }
   }
 
-  public async setupWill(scope: ChannelScope, session?: Session): Promise<WillEngine> {
-    if (!session) return defaultWillEngine;
+  public async setupWill(context: ChannelContext, session?: Session): Promise<WillEngine> {
     const plugins = [...this.willPlugins].map((plugin, index) => ({ plugin, index }));
     plugins.sort((left, right) => left.plugin.priority - right.plugin.priority || left.index - right.index);
+    this.logger.debug("agents.setup_will", {
+      hasSession: session !== undefined,
+      pluginCount: plugins.length,
+      platform: context.platform,
+      channelId: context.channelId,
+    });
     for (const { plugin } of plugins) {
-      if (plugin.match(session)) return plugin.setup(scope);
+      if ((session && plugin.match(session)) || plugin.matchContext?.(context)) {
+        const engine = await plugin.setup(context);
+        this.logger.debug("agents.will_selected", { engine: engine.constructor?.name ?? "plugin", plugin: plugin.constructor?.name ?? "will-plugin" });
+        return engine;
+      }
     }
+    this.logger.debug("agents.will_selected", { engine: "default" });
     return defaultWillEngine;
   }
 }

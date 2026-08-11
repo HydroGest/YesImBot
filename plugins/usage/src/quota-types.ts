@@ -1,4 +1,4 @@
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 export interface QuotaRule {
   platform: string;
@@ -47,14 +47,14 @@ export interface ScopeUsage {
   kindTokens: Record<string, number>;
 }
 
-export function scopeKey(scope: ChannelScope): string {
-  return `${scope.platform}:${scope.type === "direct" ? "direct" : "group"}:${scope.channelId}`;
+export function scopeKey(context: ChannelContext): string {
+  return `${context.platform}:${context.type === "direct" ? "direct" : "group"}:${context.channelId}`;
 }
 
-export function matchesQuotaRule(scope: ChannelScope, rule: QuotaRule): boolean {
-  if (rule.platform !== "*" && rule.platform !== scope.platform) return false;
-  if (rule.channelId !== "*" && rule.channelId !== scope.channelId) return false;
-  return rule.isDirect === undefined || rule.isDirect === (scope.type === "direct");
+export function matchesQuotaRule(context: ChannelContext, rule: QuotaRule): boolean {
+  if (rule.platform !== "*" && rule.platform !== context.platform) return false;
+  if (rule.channelId !== "*" && rule.channelId !== context.channelId) return false;
+  return rule.isDirect === undefined || rule.isDirect === (context.type === "direct");
 }
 
 export function quotaDayKey(now = new Date()): string {

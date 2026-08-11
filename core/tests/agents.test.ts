@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
-import { type Bot, h, type Session, type Universal } from "koishi";
+import { Context, type Bot, h, type Session, type Universal } from "koishi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
@@ -18,7 +18,7 @@ import { generateText } from "ai";
 import { Agents, type ChannelPlugin } from "../src/agents/index.js";
 import { createDescribeImageTool } from "../src/agents/tools.js";
 import { type WillEngine, type WillPlugin } from "../src/agents/will.js";
-import type { ChannelScope } from "../src/channels/index.js";
+import type { ChannelContext } from "../src/channels/index.js";
 import { createMessage, type MessageRecord } from "../src/messages/index.js";
 import { ChannelResources } from "../src/resources/index.js";
 import { PNG_BYTES } from "./helpers/index.js";
@@ -115,9 +115,9 @@ describe("createDescribeImageTool", () => {
 // Agents
 // ---------------------------------------------------------------------------
 
-const scope: ChannelScope = { type: "shared", platform: "test", channelId: "room-1" };
+const scope: ChannelContext = { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" };
 
-const directScope: ChannelScope = { type: "direct", platform: "test", selfId: "bot-1", channelId: "room-1" };
+const directScope: ChannelContext = { type: "direct", platform: "test", selfId: "bot-1", channelId: "room-1", userId: "user-1" };
 
 function message(channelType: Universal.Channel.Type, elements = [h.text("hello")]) {
   return createMessage({
@@ -137,7 +137,7 @@ class TestChannelPlugin implements ChannelPlugin {
     private readonly failure?: Error,
   ) {}
 
-  public setup(_scope: ChannelScope, _bot: Bot): AgentPlugin | null {
+  public setup(_scope: ChannelContext, _bot: Bot): AgentPlugin | null {
     if (this.failure) throw this.failure;
     return this.plugin;
   }
@@ -154,7 +154,7 @@ class TestWillPlugin implements WillPlugin {
     return this.matches;
   }
 
-  public setup(_scope: ChannelScope): WillEngine {
+  public setup(_scope: ChannelContext): WillEngine {
     return this.will;
   }
 }
@@ -178,7 +178,7 @@ describe("Agents", () => {
   });
 
   it("registers and disposes channel plugins in stable order", async () => {
-    const agents = new Agents();
+    const agents = new Agents(new Context());
     const first = { name: "first" } satisfies AgentPlugin;
     const second = { name: "second" } satisfies AgentPlugin;
     const disposeFirst = agents.use(new TestChannelPlugin(first));
@@ -189,7 +189,7 @@ describe("Agents", () => {
   });
 
   it("rolls back initialized plugins in reverse order while preserving the primary error", async () => {
-    const agents = new Agents();
+    const agents = new Agents(new Context());
     const firstStop = vi.fn(async () => undefined);
     const secondStop = vi.fn(async () => undefined);
     const primary = new Error("third failed");
@@ -202,7 +202,7 @@ describe("Agents", () => {
   });
 
   it("selects the first matching WillPlugin by priority then registration order", async () => {
-    const agents = new Agents();
+    const agents = new Agents(new Context());
     const first = { decide: vi.fn(async () => "wait" as const) } satisfies WillEngine;
     const second = { decide: vi.fn(async () => "trigger" as const) } satisfies WillEngine;
     const lowerPriority = { decide: vi.fn(async () => "wait" as const) } satisfies WillEngine;
@@ -214,7 +214,7 @@ describe("Agents", () => {
   });
 
   it("uses the fixed stateless Core default without a Session", async () => {
-    const agents = new Agents();
+    const agents = new Agents(new Context());
     const willEngine = await agents.setupWill(scope);
     const directWillEngine = await agents.setupWill(directScope);
 

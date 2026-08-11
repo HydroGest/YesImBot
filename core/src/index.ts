@@ -18,8 +18,12 @@ export type {
   WillEngine,
   WillPlugin,
 } from "./agents/index.js";
-export type { ChannelScope } from "./channels/index.js";
+
+export type { ChannelContext, ChannelKey } from "./channels/index.js";
 export * from "./messages/index.js";
+
 export type { Translator } from "./messengers/index.js";
-export * from "./models/index.js";
+
+export type * from "./models/index.js";
+
 export type * from "./resources/index.js";

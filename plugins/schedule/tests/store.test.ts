@@ -1,17 +1,16 @@
 import { Context } from "cordis";
 import { clone, makeArray, pick } from "cosmokit";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
 import { Database, Driver, Eval, executeEval, executeQuery, executeSort, executeUpdate, Field, RuntimeError, Selection } from "minato";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ScheduleStore, registerScheduleModel } from "../src/store.js";
+import { ScheduleStore, registerScheduleModel, type ScheduleScope } from "../src/store.js";
 import type { ScheduleCreateInput, ScheduleUpdateInput } from "../src/types.js";
 
-const sharedScope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" };
+const sharedScope = { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1", selfId: "bot-1" } satisfies ScheduleScope;
 
-const otherScope: ChannelScope = { type: "shared", platform: "test", selfId: "bot-1", channelId: "other-room" };
+const otherScope = { type: "guild", platform: "test", channelId: "other-room", guildId: "other-room", selfId: "bot-1" } satisfies ScheduleScope;
 
-const directScope: ChannelScope = { type: "direct", platform: "test", selfId: "bot-1", channelId: "room-1" };
+const directScope = { type: "direct", platform: "test", selfId: "bot-1", channelId: "room-1", userId: "user-1" } satisfies ScheduleScope;
 
 const FUTURE = "2030-01-01T00:00:00.000Z";
 const PAST = "2020-01-01T00:00:00.000Z";
@@ -176,9 +175,8 @@ describe("ScheduleStore", () => {
     const schedule = await store.create(sharedScope, { title: "Standup", prompt: "Prepare the daily standup.", kind: "once", at: FUTURE });
 
     expect(schedule).toMatchObject({
-      type: "shared",
+      type: "guild",
       platform: "test",
-      selfId: "bot-1",
       channelId: "room-1",
       title: "Standup",
       prompt: "Prepare the daily standup.",

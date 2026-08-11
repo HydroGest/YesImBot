@@ -6,7 +6,9 @@ import type { Context, Field, Types } from "koishi";
 import { detectImageMediaType, sha256Hex } from "./files.js";
 import type { StickerStore } from "./store.js";
 import type { MigrationResult, StickerSource } from "./types.js";
+
 const V3_STICKER_TABLE = "yesimbot.stickers";
+
 const V3_STICKER_FIELDS = {
   id: "string(64)",
   category: "string(255)",
@@ -14,19 +16,7 @@ const V3_STICKER_FIELDS = {
   source: "json",
   createdAt: "timestamp",
 } satisfies Field.Extension<V3StickerRow, Types>;
-interface V3StickerSource {
-  platform?: string;
-  channelId?: string;
-  userId?: string;
-  messageId?: string;
-}
-interface V3StickerRow {
-  id?: string;
-  category?: string;
-  filePath?: string;
-  source?: V3StickerSource | string | null;
-  createdAt?: Date | string | number;
-}
+
 export interface MigrateV3Options {
   ctx: Context;
   store: StickerStore;
@@ -37,6 +27,7 @@ export interface MigrateV3Options {
   limit?: number;
   dryRun?: boolean;
 }
+
 export interface MigrateScopeOptions {
   store: StickerStore;
   fromScopeKey: string;
@@ -44,14 +35,28 @@ export interface MigrateScopeOptions {
   limit?: number;
   removeSource?: boolean;
 }
+
+interface V3StickerSource {
+  platform?: string;
+  channelId?: string;
+  userId?: string;
+  messageId?: string;
+}
+
+interface V3StickerRow {
+  id?: string;
+  category?: string;
+  filePath?: string;
+  source?: V3StickerSource | string | null;
+  createdAt?: Date | string | number;
+}
+
 declare module "koishi" {
   interface Tables {
     [V3_STICKER_TABLE]: V3StickerRow;
   }
 }
-function registerV3StickerModel(model: Pick<Context["model"], "extend">): void {
-  model.extend(V3_STICKER_TABLE, V3_STICKER_FIELDS, { primary: "id" });
-}
+
 export async function migrateV3(options: MigrateV3Options): Promise<MigrationResult> {
   const stats = emptyMigrationStats();
   let rows: V3StickerRow[];
@@ -99,6 +104,7 @@ export async function migrateV3(options: MigrateV3Options): Promise<MigrationRes
   }
   return stats;
 }
+
 export async function migrateScope(options: MigrateScopeOptions): Promise<MigrationResult> {
   const stats = emptyMigrationStats();
   const rows = await options.store.listByScopeKey(options.fromScopeKey);
@@ -142,10 +148,16 @@ export async function migrateScope(options: MigrateScopeOptions): Promise<Migrat
   }
   return stats;
 }
+
+function registerV3StickerModel(model: Pick<Context["model"], "extend">): void {
+  model.extend(V3_STICKER_TABLE, V3_STICKER_FIELDS, { primary: "id" });
+}
+
 function v3Source(row: V3StickerRow): StickerSource {
   const source = normalizeV3Source(row.source);
   return { kind: "v3", platform: source.platform, channelId: source.channelId, userId: source.userId, messageId: source.messageId, v3Id: row.id };
 }
+
 function normalizeV3Source(source: V3StickerRow["source"]): V3StickerSource {
   if (typeof source === "string") {
     try {
@@ -157,12 +169,15 @@ function normalizeV3Source(source: V3StickerRow["source"]): V3StickerSource {
   if (!source || typeof source !== "object") return {};
   return { platform: stringOf(source.platform), channelId: stringOf(source.channelId), userId: stringOf(source.userId), messageId: stringOf(source.messageId) };
 }
+
 function stringOf(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
+
 function emptyMigrationStats(): MigrationResult {
   return { total: 0, imported: 0, duplicate: 0, failed: 0, failedItems: [], removedSource: 0 };
 }
+
 function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }

@@ -4,6 +4,8 @@
  * Enforces module-level declaration ordering:
  *   imports → constants → types → interfaces → declare module → class → function → re-exports
  *
+ * Within the same category, exported declarations come before local (non-exported) ones.
+ *
  * Also checks that same-category declarations remain adjacent
  * (e.g. all interfaces together, all type aliases together).
  *
@@ -30,6 +32,7 @@ const CATEGORY_LABELS = {
   reexport: "重新导出 (re-export)",
 };
 const EXPECTED_ORDER_HINT = "Expected: imports → constants → types → interfaces → declare module → class → function → re-exports";
+const EXPORT_HINT = "Exported declarations should come before local ones within the same category";
 // ─── Rule definition ────────────────────────────────────────────────────────────
 
 const moduleDeclarationOrder = {
@@ -40,6 +43,7 @@ const moduleDeclarationOrder = {
     messages: {
       wrongOrder: '"{{current}}" should come before "{{previous}}". {{hint}}',
       notAdjacent: '"{{category}}" declarations should be adjacent. Found {{intervening}} intervening statement(s) of other categories.',
+      exportFirst: '"{{name}}" is exported but appears after a non-exported declaration in the same category. {{hint}}',
       suggestReorder: "Reorder all declarations to canonical order (⚠️ may break runtime dependencies)",
     },
     schema: [],
@@ -151,6 +155,39 @@ const moduleDeclarationOrder = {
             }
           }
         }
+
+        // ─── Check 3: Export-first within same category ──────────────────────
+        // Within each category group, exported declarations should precede local ones.
+        for (const [cat, indices] of Object.entries(categoryIndices)) {
+          if (cat === "import" || cat === "reexport") continue; // imports/re-exports are always exported
+          let seenNonExport = false;
+          for (const idx of indices) {
+            const entry = entries[idx];
+            const exported = isExported(entry.node);
+            if (!exported) {
+              seenNonExport = true;
+            } else if (seenNonExport) {
+              // Exported declaration after a non-exported one — violation
+              const name = getDeclarationName(entry.node);
+
+              const suggest = [];
+              if (!suggestAttached) {
+                const reorder = getReorder();
+                if (reorder) {
+                  suggest.push({
+                    messageId: "suggestReorder",
+                    fix(fixer) {
+                      return fixer.replaceTextRange(reorder.range, reorder.text);
+                    },
+                  });
+                }
+                suggestAttached = true;
+              }
+
+              context.report({ node: entry.node, messageId: "exportFirst", data: { name, hint: EXPORT_HINT }, suggest });
+            }
+          }
+        }
       },
     };
   },
@@ -159,6 +196,7 @@ const moduleDeclarationOrder = {
 
 const plugin = { meta: { name: "declaration-order", version: "2.0.0" }, rules: { "module-declaration-order": moduleDeclarationOrder } };
 export default plugin;
+
 /**
  * Classify a top-level statement into a category.
  * Returns null for unclassifiable statements (bare expressions, control flow, etc.).
@@ -213,6 +251,29 @@ function classify(node) {
 
   return null;
 }
+
+/**
+ * Check if a top-level statement is exported.
+ */
+function isExported(node) {
+  return node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration" || node.type === "ExportAllDeclaration";
+}
+
+/**
+ * Get a human-readable name for a declaration (for error messages).
+ */
+function getDeclarationName(node) {
+  let decl = node;
+  if (node.type === "ExportNamedDeclaration" && node.declaration) decl = node.declaration;
+  if (node.type === "ExportDefaultDeclaration" && node.declaration) decl = node.declaration;
+
+  if (decl.id && decl.id.name) return decl.id.name;
+  if (decl.type === "VariableDeclaration" && decl.declarations && decl.declarations[0]) {
+    const d = decl.declarations[0];
+    if (d.id && d.id.name) return d.id.name;
+  }
+  return "(anonymous)";
+}
 // ─── Fix helpers ────────────────────────────────────────────────────────────────
 
 /**
@@ -231,6 +292,7 @@ function getFullRange(node, sourceCode) {
   else if (text[end] === "\r" && text[end + 1] === "\n") end += 2;
   return [start, end];
 }
+
 /**
  * Extract full text for a statement (including leading comments and trailing newline).
  */
@@ -239,6 +301,7 @@ function getStatementText(node, sourceCode) {
   const range = getFullRange(node, sourceCode);
   return text.slice(range[0], range[1]);
 }
+
 /**
  * Build sorted source by re-arranging all classified statements to canonical order.
  * Preserves relative order within each category (stable sort).
@@ -262,12 +325,17 @@ function buildReorderedSource(programNode, sourceCode) {
     }
   }
 
-  // Stable sort by priority (null/leading stays first)
+  // Stable sort by priority (null/leading stays first);
+  // within the same priority, exported declarations come before local ones.
   const sorted = [...segments].sort((a, b) => {
     if (a.priority === -1 && b.priority === -1) return 0;
     if (a.priority === -1) return -1;
     if (b.priority === -1) return -1;
-    return a.priority - b.priority;
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    // Same category: exported before local (stable within each sub-group)
+    const aExported = isExported(a.items[0]) ? 0 : 1;
+    const bExported = isExported(b.items[0]) ? 0 : 1;
+    return aExported - bExported;
   });
 
   // Check if order actually changed

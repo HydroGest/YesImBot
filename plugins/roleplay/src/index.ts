@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { CharacterCardV3 } from "@risuai/ccardlib";
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 import { loadCharacterCard } from "./card.js";
 import { selectGreeting } from "./greeting.js";
@@ -50,7 +50,7 @@ export default class RoleplayPlugin {
     this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
   }
 
-  public setup(scope: ChannelScope, _bot: Bot): AgentPlugin {
+  public setup(scope: ChannelContext, _bot: Bot): AgentPlugin {
     if (!this.card || this.greeting === undefined) throw new Error("Roleplay plugin has not been started");
     return createRoleplayPlugin({ card: this.card, greeting: this.greeting, userName: scope.type === "direct" ? scope.channelId : "User" });
   }

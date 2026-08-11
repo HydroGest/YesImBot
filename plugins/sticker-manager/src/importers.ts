@@ -7,16 +7,16 @@ import { detectImageMediaType, isSupportedImageFile } from "./files.js";
 import type { StickerStore } from "./store.js";
 import type { ImportStats, StickerSource } from "./types.js";
 
-interface ImportImage {
-  bytes: Uint8Array;
-  mediaType: string;
-}
-
 export interface ImporterOptions {
   ctx: Context;
   store: StickerStore;
   scopeKey: string;
   maxImportFileBytes: number;
+}
+
+interface ImportImage {
+  bytes: Uint8Array;
+  mediaType: string;
 }
 
 export async function importImageFile(options: ImporterOptions, filePath: string, category: string): Promise<ImportStats> {

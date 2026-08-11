@@ -1,5 +1,6 @@
 import { formatAnimatedImageLabel, isAnimatedImage } from "./animated-image.js";
 import type { OneBotInternal, OneBotSenderInfo } from "./onebot.js";
+
 const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
   year: "numeric",
@@ -9,65 +10,82 @@ const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
   hour12: false,
 });
-type ForwardPart = string | { image: readonly [summary: string, file: string, size: string | null] } | { forward: string };
-type ForwardMessage = readonly [sender: string, time: string | null, content: readonly ForwardPart[]];
+
 export type ForwardResult = ForwardPage | ForwardFailure;
+
+type ForwardPart = string | { image: readonly [summary: string, file: string, size: string | null] } | { forward: string };
+
+type ForwardMessage = readonly [sender: string, time: string | null, content: readonly ForwardPart[]];
+
 type OneBotForwardSegment = OneBotTextSegment | OneBotImageSegment | OneBotNestedForwardSegment | OneBotRecordSegment | OneBotVideoSegment | OneBotFileSegment;
+
 export interface ForwardToolInput {
   forwardId: string;
   offset?: number;
   limit?: number;
 }
-interface ForwardPage {
-  messages: readonly ForwardMessage[];
-  nextOffset?: number;
-  tips?: string;
-  overLimit?: true;
-}
-interface ForwardFailure {
-  error: string;
-}
+
 export interface ForwardImageRequest {
   readonly file: string;
   readonly summary: string;
   readonly url?: string;
 }
+
 export interface ForwardReaderConfig {
   parseImages: boolean;
   maxForwardPageChars: number;
   attachImageSummary: boolean;
   persistImages?: (images: readonly ForwardImageRequest[]) => Promise<ReadonlyMap<string, string>>;
 }
+
+interface ForwardPage {
+  messages: readonly ForwardMessage[];
+  nextOffset?: number;
+  tips?: string;
+  overLimit?: true;
+}
+
+interface ForwardFailure {
+  error: string;
+}
+
 interface OneBotForwardNode {
   sender: OneBotSenderInfo;
   time: number;
   message: readonly OneBotForwardSegment[];
   raw_message?: unknown;
 }
+
 interface OneBotTextSegment {
   type: "text";
   data: { text: string };
 }
+
 interface OneBotImageSegment {
   type: "image";
   data: { summary: string; file: string; file_size?: string; src?: string; url?: string; sub_type?: unknown; subType?: unknown };
 }
+
 interface OneBotNestedForwardSegment {
   type: "forward";
   data: { id: string; content?: readonly OneBotForwardNode[] };
 }
+
 interface OneBotRecordSegment {
   type: "record";
   data: object;
 }
+
 interface OneBotVideoSegment {
   type: "video";
   data: object;
 }
+
 interface OneBotFileSegment {
   type: "file";
   data: object;
 }
+
 export function createForwardReader(internal: OneBotInternal, config: Readonly<ForwardReaderConfig>): (input: ForwardToolInput) => Promise<ForwardResult> {
   const cache = new Map<string, readonly ForwardMessage[]>();
 
@@ -109,6 +127,7 @@ export function createForwardReader(internal: OneBotInternal, config: Readonly<F
     return records;
   }
 }
+
 function normalizeNode(
   node: OneBotForwardNode,
   config: Readonly<ForwardReaderConfig>,
@@ -117,18 +136,21 @@ function normalizeNode(
 ): ForwardMessage {
   return [formatSender(node.sender), formatTime(node.time), normalizeSegments(node.message, config, nestedForwards, imageUrls)];
 }
+
 function formatSender(sender: OneBotSenderInfo): string {
   const userId = String(sender.user_id);
   const displayName = sender.card || sender.nickname;
 
   return displayName && displayName !== userId ? `${displayName} (${userId})` : userId;
 }
+
 function formatTime(value: number): string | null {
   if (!Number.isFinite(value)) return null;
 
   const date = new Date(value * 1000);
   return Number.isNaN(date.getTime()) ? null : timeFormatter.format(date);
 }
+
 function normalizeSegments(
   segments: readonly OneBotForwardSegment[],
   config: Readonly<ForwardReaderConfig>,
@@ -194,6 +216,7 @@ function normalizeSegments(
 
   return parts;
 }
+
 function appendString(parts: ForwardPart[], value: string): void {
   const previous = parts.at(-1);
   if (typeof previous === "string") {
@@ -202,6 +225,7 @@ function appendString(parts: ForwardPart[], value: string): void {
     parts.push(value);
   }
 }
+
 function formatFileSize(value: unknown): string | null {
   if (typeof value !== "string" || !/^(?:0|[1-9]\d*)$/.test(value)) return null;
 
@@ -212,6 +236,7 @@ function formatFileSize(value: unknown): string | null {
   const unit: readonly [number, string] = bytes < 1_000_000 ? [1000, "KB"] : bytes < 1_000_000_000 ? [1_000_000, "MB"] : [1_000_000_000, "GB"];
   return `${(bytes / unit[0]).toFixed(1)} ${unit[1]}`;
 }
+
 function collectImageRequests(records: readonly (readonly ForwardMessage[])[], imageUrls: ReadonlyMap<string, string>): ForwardImageRequest[] {
   const requests = new Map<string, ForwardImageRequest>();
   for (const recordList of records) {
@@ -228,11 +253,13 @@ function collectImageRequests(records: readonly (readonly ForwardMessage[])[], i
   }
   return [...requests.values()];
 }
+
 function renderImagePart(part: ForwardPart, assetIds: ReadonlyMap<string, string>): ForwardPart {
   if (typeof part === "string" || !("image" in part)) return part;
   const assetId = assetIds.get(part.image[1]);
   return assetId ? `[图片：asset://${assetId}]` : "[图片]";
 }
+
 function coalesceParts(parts: readonly ForwardPart[]): ForwardPart[] {
   const result: ForwardPart[] = [];
   for (const part of parts) {
@@ -245,14 +272,17 @@ function coalesceParts(parts: readonly ForwardPart[]): ForwardPart[] {
   }
   return result;
 }
+
 function clampOffset(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value)) return 0;
   return Math.max(0, Math.trunc(value));
 }
+
 function clampLimit(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value)) return 30;
   return Math.min(60, Math.max(1, Math.trunc(value)));
 }
+
 function page(records: readonly ForwardMessage[], start: number, limit: number, budget: number): ForwardPage {
   if (start >= records.length) return { messages: [] };
 
@@ -276,6 +306,7 @@ function page(records: readonly ForwardMessage[], start: number, limit: number, 
 
   return { messages, ...continuation(index, records.length) };
 }
+
 function continuation(nextOffset: number, totalRecords: number) {
   if (nextOffset >= totalRecords) return {};
 

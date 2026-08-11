@@ -1,13 +1,16 @@
-import type { Bot, Context, Session } from "koishi";
+import type { LanguageModel } from "ai";
+import type { Bot, Context, Logger, Session } from "koishi";
 
 import { Agents } from "../agents/index.js";
-import type { Channel, Channels, ChannelScope } from "../channels/index.js";
+import type { Channel, Channels } from "../channels/index.js";
+import { type ChannelContext, type ChannelKey, deriveChannelKey } from "../channels/index.js";
 import type { Config } from "../config.js";
 import { ModelService } from "../models/index.js";
 import { ChannelRuntime } from "./channel.js";
 import { readPersona } from "./prompt.js";
 
 export class Runtimes {
+  private readonly logger: Logger;
   private readonly runtimes = new Map<string, ChannelRuntime>();
   private readonly tails = new Map<string, Promise<void>>();
   private stopped = false;
@@ -19,36 +22,46 @@ export class Runtimes {
     private readonly model: ModelService,
     private readonly config: Config,
     private readonly agents: Agents,
-  ) {}
+  ) {
+    this.logger = ctx.logger("yesimbot.runtimes");
+    this.logger.level = config.logLevel ?? 2;
+  }
 
   public async get(channel: Channel, bot: Bot, session?: Session): Promise<ChannelRuntime> {
-    const key = runtimeKey(channel.scope);
+    const key = runtimeKey(channel.context);
     let value!: ChannelRuntime;
     await this.serialize(key, async () => {
       this.assertOpen();
       const current = this.runtimes.get(key);
-      if (current && (channel.scope.type === "direct" || current.selfId === bot.selfId)) {
+      if (current && (channel.context.type === "direct" || current.selfId === bot.selfId)) {
         value = current;
         return;
       }
-      if (current) await current.stop();
-      const chatModelId = await this.agents.resolveModel(channel.scope, this.config.chatModel);
+      if (current) {
+        this.logger.debug("runtimes.get.recreate", { key, oldSelfId: current.selfId, newSelfId: bot.selfId });
+        await current.stop();
+      }
+      const chatModelId = await this.agents.resolveModel(channel.context, this.config.chatModel);
       const chat = this.model.resolveChatModel(chatModelId);
+      const compactModel = this.resolveCompactModel(chat.model);
       const vision = this.resolveVision();
       const runtime = new ChannelRuntime(this.ctx, {
         channel,
         bot,
-        will: await this.agents.setupWill(channel.scope, session),
+        will: await this.agents.setupWill(channel.context, session),
         model: chat.model,
+        compactModel,
+        providerTools: chat.tools,
         visionModel: vision,
         imageOutputSupported: chat.entry.modalities?.input?.includes("image") ?? false,
         config: this.config,
-        plugins: await this.agents.setup(channel.scope, bot, { modelId: chatModelId }),
-        reportUsage: (report) => this.agents.reportUsage(channel.scope, report),
-        allowTrigger: () => this.agents.allowTrigger(channel.scope),
+        plugins: await this.agents.setup(channel.context, bot, { modelId: chatModelId }),
+        reportUsage: (report) => this.agents.reportUsage(channel.context, report),
+        allowTrigger: () => this.agents.allowTrigger(channel.context),
         modelId: chatModelId,
         visionModelId: this.config.visionModel,
-        idleTimeout: this.config.session.idle.timeout,
+        idleTimeout: this.config.session.compact.responseIdleMinutes * 60_000,
+        archiveMaxBytes: this.config.session.archive.maxKB * 1024,
       });
       try {
         await runtime.init();
@@ -57,24 +70,29 @@ export class Runtimes {
         throw cause;
       }
       this.runtimes.set(key, runtime);
+      this.logger.debug("runtimes.get.created", { key, selfId: bot.selfId, runtimeCount: this.runtimeCount() });
       value = runtime;
     });
     return value;
   }
 
-  public async reset(scope: ChannelScope): Promise<void> {
-    const key = runtimeKey(scope);
+  public async reset(ctx: ChannelContext): Promise<void> {
+    const key = runtimeKey(ctx);
     await this.serialize(key, async () => {
       const current = this.runtimes.get(key);
-      if (current) await current.stop();
+      if (current) {
+        this.logger.debug("runtimes.reset", { key });
+        await current.stop();
+      }
       this.runtimes.delete(key);
-      await this.channels.reset(scope);
+      await this.channels.reset(ctx);
     });
   }
 
   public stop(): Promise<void> {
     if (this.stopTask) return this.stopTask;
     this.stopped = true;
+    this.logger.debug("runtimes.stop", { runtimeCount: this.runtimes.size });
     this.stopTask = Promise.allSettled([...this.runtimes.values()].map((runtime) => runtime.stop())).then(() => {
       this.runtimes.clear();
       this.tails.clear();
@@ -82,24 +100,25 @@ export class Runtimes {
     return this.stopTask;
   }
 
-  public async compact(scope: ChannelScope): Promise<string> {
-    const runtime = this.runtimes.get(runtimeKey(scope));
+  public async compact(ctx: ChannelContext): Promise<string> {
+    const runtime = this.runtimes.get(runtimeKey(ctx));
     if (!runtime) throw new Error("No active Runtime is available to compact this conversation");
     const result = (await runtime.compact("manual")) as { compacted: boolean };
     return result.compacted ? "已压缩当前会话。" : "消息不足，未压缩。";
   }
 
-  public async archive(scope: ChannelScope, noSummary = false): Promise<string> {
-    const key = runtimeKey(scope);
+  public async archive(ctx: ChannelContext, noSummary = false): Promise<string> {
+    const key = runtimeKey(ctx);
     await this.serialize(key, async () => {
       const runtime = this.runtimes.get(key);
       if (runtime) await runtime.stop();
       this.runtimes.delete(key);
-      const channel = await this.channels.resolve(scope);
+      const channel = await this.channels.resolve(ctx);
+      const chat = this.model.resolveChatModel(this.config.chatModel);
       const input = noSummary
         ? undefined
         : {
-            model: this.model.resolveChatModel(this.config.chatModel).model,
+            model: this.resolveCompactModel(chat.model),
             personaName: "Athena",
             persona: await readPersona(this.config.basePath, this.ctx.logger("yesimbot/archive")),
           };
@@ -108,18 +127,22 @@ export class Runtimes {
     return "已归档当前会话。";
   }
 
-  public clear(scope: ChannelScope): Promise<void> {
-    return this.reset(scope);
+  public clear(ctx: ChannelContext): Promise<void> {
+    return this.reset(ctx);
   }
 
-  public async status(scope: ChannelScope): Promise<string> {
-    const active = await (await this.channels.resolve(scope)).conversation.status();
+  public async status(ctx: ChannelContext): Promise<string> {
+    const active = await (await this.channels.resolve(ctx)).conversation.status();
     return active.active ? `活动会话：${active.active.filename}` : "无会话记录。";
   }
 
-  public async list(scope: ChannelScope): Promise<string> {
-    const sessions = await (await this.channels.resolve(scope)).conversation.list();
+  public async list(ctx: ChannelContext): Promise<string> {
+    const sessions = await (await this.channels.resolve(ctx)).conversation.list();
     return sessions.length ? sessions.map((session) => `${session.isActive ? "→ " : "  "}${session.filename}`).join("\n") : "无会话记录。";
+  }
+
+  private resolveCompactModel(fallback: LanguageModel): LanguageModel {
+    return this.config.session.compact.model ? this.model.resolveChatModel(this.config.session.compact.model).model : fallback;
   }
 
   private resolveVision() {
@@ -146,10 +169,14 @@ export class Runtimes {
   private assertOpen(): void {
     if (this.stopped) throw new Error("Runtimes are stopped");
   }
+
+  private runtimeCount(): number {
+    return [...this.runtimes.values()].length;
+  }
 }
 
-function runtimeKey(scope: ChannelScope): string {
-  return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `shared:${scope.platform}:${scope.channelId}`;
+function runtimeKey(ctx: ChannelContext): ChannelKey {
+  return deriveChannelKey(ctx);
 }
 
 export { type RuntimeResult, type PostOptions, type ChannelOutput, ChannelRuntime } from "./channel.js";

@@ -3,8 +3,11 @@ import { defaultSettingsMiddleware, wrapLanguageModel } from "ai";
 import { Context, Schema } from "koishi";
 import { type BaseProviderConfig } from "koishi-plugin-yesimbot";
 export const name = "yesimbot-provider-deepseek";
+
 export const usage = "DeepSeek 提供商插件";
+
 export const inject = ["yesimbot"];
+
 export const Config: Schema<Config> = Schema.object({
   id: Schema.string().default("deepseek").description("提供商标识"),
   apiKey: Schema.string().role("secret").required().description("API Key"),
@@ -34,10 +37,13 @@ export const Config: Schema<Config> = Schema.object({
     ])
     .description("可用聊天模型列表"),
 });
+
 type ThinkingLevel = "auto" | "none" | "low" | "medium" | "high" | "xhigh" | "max";
+
 interface Config extends BaseProviderConfig {
   thinking: ThinkingLevel;
 }
+
 export function apply(ctx: Context, config: Config) {
   const client = createDeepSeek({ apiKey: config.apiKey, baseURL: config.baseURL });
   const dispose = ctx.yesimbot.model.register({

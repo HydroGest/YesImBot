@@ -192,7 +192,7 @@ describe("qq-memos-import script", () => {
 
     const plan = await buildQqMemosImportPlan({ input: inputDir, botSelfId: BOT_SELF_ID, dryRun: true, maxMessages: 1 });
     const runtimeIdentity = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "another-synthetic-bot", channelId: GROUP_ID, type: "shared" },
+      channelScope: { platform: "onebot", channelId: GROUP_ID, guildId: GROUP_ID, type: "guild" },
       channelHash: "y4hqcmhpojcbee72vfgt22mflq",
       channelType: "group",
       authorId: USER_ID,

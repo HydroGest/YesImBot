@@ -2,45 +2,63 @@ import { readFile, stat } from "node:fs/promises";
 import type { ReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
-import { h, type Context, type Element } from "koishi";
+import { h, type Context, type Element, type Logger } from "koishi";
 
 import type { AssetStore } from "./asset.js";
 import type { ChannelResources } from "./index.js";
+
 const DATA_URL = /^data:([^;,]+)(;base64)?,([\s\S]*)$/;
+const BASE64_URL = /^base64:\/\/([\s\S]*)$/;
 const MAX_IMAGES = 4;
 const MAX_BYTES_PER_IMAGE = 5 * 1024 * 1024;
 const MAX_FILES = 2;
+
 /** 1 MiB of UTF-8 text already exceeds the read tool's character truncation; larger is useless to the model. */
 const MAX_BYTES_PER_FILE = 1024 * 1024;
 const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const RESOURCE_TIMEOUT_MS = 10_000;
+
 /** Cheap pre-filter so a large binary is never downloaded; the UTF-8 check after download is authoritative. */
 /* prettier-ignore */
 const TEXT_FILE_EXTENSIONS: readonly string[] = [ "txt", "md", "markdown", "rst", "log", "csv", "tsv", "json", "jsonc", "yaml", "yml", "toml", "ini", "conf", "env", "properties", "xml", "html", "htm", "css", "svg", "js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "vue", "svelte", "py", "rb", "rs", "go", "java", "kt", "kts", "scala", "swift", "c", "h", "cpp", "cc", "hpp", "cs", "php", "lua", "pl", "r", "m", "sh", "bash", "zsh", "fish", "ps1", "bat", "sql", "graphql", "proto", "patch", "diff" ] as const;
+
 /** Content types that carry no signal about the real payload; the post-download checks stay authoritative. */
 const AMBIGUOUS_TYPES: readonly string[] = ["application/octet-stream", "binary/octet-stream", "application/unknown"];
 const BINARY_KINDS: readonly string[] = ["image", "audio", "video", "font"] as const;
+
 type ResourceKind = "image" | "text";
+
 interface ResourceBudget {
   images: number;
   files: number;
   bytes: number;
 }
+
 interface ResourceProbe {
   length: number | null;
   type: string | null;
 }
+
 /** Persists inbound image and restricted text-file elements while the Session is live. */
 export async function persistElements(ctx: Context, elements: readonly Element[], resources: ChannelResources): Promise<Element[]> {
   const budget: ResourceBudget = { images: 0, files: 0, bytes: 0 };
-  return Promise.all(elements.map((element) => persistElement(ctx, element, resources.assets, budget)));
+  const prepared = await Promise.all(elements.map((element) => persistElement(ctx, element, resources.assets, budget)));
+  const logger = resourceLogger(ctx);
+  const imageCount = countElements(prepared, "img");
+  const fileCount = countElements(prepared, "file");
+  if ((imageCount || fileCount) && logger) {
+    logger.debug("resources.input.persisted", { imageCount, fileCount });
+  }
+  return prepared;
 }
+
 async function persistElement(ctx: Context, element: Element, store: AssetStore, budget: ResourceBudget): Promise<Element> {
   if (element.type === "img") return storeImage(ctx, element, store, budget);
   if (element.type === "file") return storeTextFile(ctx, element, store, budget);
   if (element.children.length === 0) return element;
   return h(element.type, element.attrs, await Promise.all(element.children.map((child) => persistElement(ctx, child, store, budget))));
 }
+
 async function storeImage(ctx: Context, element: Element, store: AssetStore, budget: ResourceBudget): Promise<Element> {
   if (typeof element.attrs.src !== "string" || budget.images >= MAX_IMAGES) return element;
   budget.images += 1;
@@ -58,6 +76,7 @@ async function storeImage(ctx: Context, element: Element, store: AssetStore, bud
     return element;
   }
 }
+
 async function storeTextFile(ctx: Context, element: Element, store: AssetStore, budget: ResourceBudget): Promise<Element> {
   if (typeof element.attrs.src !== "string" || budget.files >= MAX_FILES) return element;
   const filename = fileName(element);
@@ -72,6 +91,7 @@ async function storeTextFile(ctx: Context, element: Element, store: AssetStore, 
     return element;
   }
 }
+
 function fileName(element: Element): string | undefined {
   for (const key of ["title", "file"] as const) {
     const value = element.attrs[key];
@@ -79,11 +99,13 @@ function fileName(element: Element): string | undefined {
   }
   return undefined;
 }
+
 function hasTextFileExtension(filename: string): boolean {
   const dot = filename.lastIndexOf(".");
   if (dot <= 0 || dot === filename.length - 1) return false;
   return TEXT_FILE_EXTENSIONS.includes(filename.slice(dot + 1).toLowerCase());
 }
+
 function isUtf8Text(bytes: Uint8Array): boolean {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes).length > 0;
@@ -91,6 +113,7 @@ function isUtf8Text(bytes: Uint8Array): boolean {
     return false;
   }
 }
+
 async function loadResource(ctx: Context, src: string, kind: ResourceKind, maxBytes: number): Promise<Uint8Array> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(new Error("Resource download timed out")), RESOURCE_TIMEOUT_MS);
@@ -100,13 +123,17 @@ async function loadResource(ctx: Context, src: string, kind: ResourceKind, maxBy
     clearTimeout(timeout);
   }
 }
+
 async function loadResourceBytes(ctx: Context, src: string, kind: ResourceKind, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
   const data = decodeDataUrl(src, maxBytes);
   if (data) return data;
+  const base64 = decodeBase64Url(src, maxBytes);
+  if (base64) return base64;
   signal.throwIfAborted();
   if (src.startsWith("file:")) return loadLocalFile(src, signal, maxBytes);
   return loadRemote(ctx, src, kind, signal, maxBytes);
 }
+
 async function loadRemote(ctx: Context, src: string, kind: ResourceKind, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
   const probe = await headProbe(ctx, src);
   if (probe && ((probe.length !== null && probe.length > maxBytes) || !matchesKind(probe.type, kind))) {
@@ -115,6 +142,7 @@ async function loadRemote(ctx: Context, src: string, kind: ResourceKind, signal:
   const response = await ctx.http(src, { responseType: "stream", signal });
   return readBoundedStream(response.data, signal, maxBytes);
 }
+
 async function headProbe(ctx: Context, url: string): Promise<ResourceProbe | null> {
   let headers: Headers;
   try {
@@ -129,11 +157,13 @@ async function headProbe(ctx: Context, url: string): Promise<ResourceProbe | nul
     type: rawType === null ? null : rawType.split(";")[0]!.trim().toLowerCase(),
   };
 }
+
 function matchesKind(type: string | null, kind: ResourceKind): boolean {
   if (type === null) return true;
   if (kind === "image") return type.startsWith("image/") || AMBIGUOUS_TYPES.includes(type);
   return !BINARY_KINDS.some((prefix) => type.startsWith(`${prefix}/`));
 }
+
 async function loadLocalFile(src: string, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
   const path = fileURLToPath(src);
   const entry = await stat(path);
@@ -143,6 +173,7 @@ async function loadLocalFile(src: string, signal: AbortSignal, maxBytes: number)
   if (data.byteLength > maxBytes) throw new Error("Resource exceeds byte limit");
   return data;
 }
+
 async function readBoundedStream(stream: ReadableStream<Uint8Array>, signal: AbortSignal, maxBytes: number): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
@@ -173,6 +204,7 @@ async function readBoundedStream(stream: ReadableStream<Uint8Array>, signal: Abo
   }
   return data;
 }
+
 function decodeDataUrl(src: string, maxBytes: number): Uint8Array | null {
   const match = DATA_URL.exec(src);
   if (!match) return null;
@@ -182,4 +214,32 @@ function decodeDataUrl(src: string, maxBytes: number): Uint8Array | null {
   const decoded = base64 ? new Uint8Array(Buffer.from(payload, "base64")) : new TextEncoder().encode(decodeURIComponent(payload));
   if (decoded.byteLength > maxBytes) throw new Error("Resource exceeds byte limit");
   return decoded;
+}
+
+function decodeBase64Url(src: string, maxBytes: number): Uint8Array | null {
+  const match = BASE64_URL.exec(src);
+  if (!match) return null;
+  const payload = match[1]!;
+  if (Math.ceil(payload.length / 4) * 3 > maxBytes) throw new Error("Resource exceeds byte limit");
+  const decoded = new Uint8Array(Buffer.from(payload, "base64"));
+  if (decoded.byteLength > maxBytes) throw new Error("Resource exceeds byte limit");
+  return decoded;
+}
+
+function resourceLogger(ctx: Context): Pick<Logger, "debug"> | undefined {
+  try {
+    return ctx.logger("yesimbot.resources");
+  } catch {
+    return undefined;
+  }
+}
+
+function countElements(elements: readonly Element[], type: string): number {
+  let count = 0;
+  const visit = (element: Element): void => {
+    if (element.type === type) count += 1;
+    for (const child of element.children) visit(child);
+  };
+  for (const element of elements) visit(element);
+  return count;
 }

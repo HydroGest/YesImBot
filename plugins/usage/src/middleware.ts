@@ -15,10 +15,6 @@ interface RawUsageInput {
   cachedInputTokens?: number;
 }
 
-function toNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
 export function normalizeLanguageUsage(usage: unknown): NormalizedUsage {
   const raw = (usage ?? {}) as RawUsageInput;
   const input = raw.inputTokens;
@@ -32,6 +28,50 @@ export function normalizeLanguageUsage(usage: unknown): NormalizedUsage {
   const noCacheTokens = explicitNoCacheTokens > 0 ? explicitNoCacheTokens : Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens);
 
   return { inputTokens, outputTokens: outputDetail ? toNumber(outputDetail.total) : toNumber(output), noCacheTokens, cacheReadTokens, cacheWriteTokens };
+}
+
+export function installModelUsagePatch(model: PatchedModelService, report: (record: UsageRecordInput) => void): () => void {
+  const originalChat = model.resolveChatModel.bind(model);
+  const originalEmbedding = model.resolveEmbedding.bind(model);
+
+  model.resolveChatModel = (fullId) => {
+    const ref = originalChat(fullId);
+    if (!isModelObject(ref.model)) return ref;
+
+    const wrapped = wrapLanguageModel({
+      model: ref.model as LanguageModelV3,
+      middleware: createLanguageUsageMiddleware((usage) =>
+        report({ providerId: ref.providerId, modelId: ref.modelId, timestamp: Date.now(), kind: "chat", usage }),
+      ),
+      providerId: ref.providerId,
+      modelId: ref.modelId,
+    });
+
+    return { ...ref, model: wrapped };
+  };
+
+  model.resolveEmbedding = (fullId) => {
+    const embedding = originalEmbedding(fullId);
+    if (!isModelObject(embedding)) return embedding;
+
+    const providerId = typeof embedding.provider === "string" ? embedding.provider : "unknown";
+    const modelId = typeof embedding.modelId === "string" ? embedding.modelId : fullId;
+    return wrapEmbeddingModel({
+      model: embedding as EmbeddingModelV3,
+      middleware: createEmbeddingUsageMiddleware((usage) => report({ providerId, modelId, timestamp: Date.now(), kind: "embedding", usage })),
+      providerId,
+      modelId,
+    });
+  };
+
+  return () => {
+    model.resolveChatModel = originalChat;
+    model.resolveEmbedding = originalEmbedding;
+  };
+}
+
+function toNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function createLanguageUsageMiddleware(report: (usage: NormalizedUsage) => void): LanguageModelMiddleware {
@@ -74,44 +114,4 @@ function createEmbeddingUsageMiddleware(report: (usage: NormalizedUsage) => void
 
 function isModelObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-export function installModelUsagePatch(model: PatchedModelService, report: (record: UsageRecordInput) => void): () => void {
-  const originalChat = model.resolveChatModel.bind(model);
-  const originalEmbedding = model.resolveEmbedding.bind(model);
-
-  model.resolveChatModel = (fullId) => {
-    const ref = originalChat(fullId);
-    if (!isModelObject(ref.model)) return ref;
-
-    const wrapped = wrapLanguageModel({
-      model: ref.model as LanguageModelV3,
-      middleware: createLanguageUsageMiddleware((usage) =>
-        report({ providerId: ref.providerId, modelId: ref.modelId, timestamp: Date.now(), kind: "chat", usage }),
-      ),
-      providerId: ref.providerId,
-      modelId: ref.modelId,
-    });
-
-    return { ...ref, model: wrapped };
-  };
-
-  model.resolveEmbedding = (fullId) => {
-    const embedding = originalEmbedding(fullId);
-    if (!isModelObject(embedding)) return embedding;
-
-    const providerId = typeof embedding.provider === "string" ? embedding.provider : "unknown";
-    const modelId = typeof embedding.modelId === "string" ? embedding.modelId : fullId;
-    return wrapEmbeddingModel({
-      model: embedding as EmbeddingModelV3,
-      middleware: createEmbeddingUsageMiddleware((usage) => report({ providerId, modelId, timestamp: Date.now(), kind: "embedding", usage })),
-      providerId,
-      modelId,
-    });
-  };
-
-  return () => {
-    model.resolveChatModel = originalChat;
-    model.resolveEmbedding = originalEmbedding;
-  };
 }

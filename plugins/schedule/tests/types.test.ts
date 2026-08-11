@@ -1,4 +1,4 @@
-import type { ChannelScope, EventMap } from "koishi-plugin-yesimbot";
+import type { ChannelContext, EventMap } from "koishi-plugin-yesimbot";
 import { describe, expect, it } from "vitest";
 
 import type { Schedule, ScheduleCreateInput, ScheduleLastResult, ScheduleState, ScheduleUpdateInput } from "../src/types.js";
@@ -34,10 +34,10 @@ describe("Schedule domain types", () => {
     expect(schedule.channelId).toBe("user-1");
   });
 
-  it("uses the same raw scope fields on a shared schedule", () => {
+  it("uses the same raw scope fields on a guild schedule", () => {
     const schedule = {
       id: "schedule-1",
-      type: "shared",
+      type: "guild",
       platform: "test",
       selfId: "bot-1",
       channelId: "room-1",
@@ -55,9 +55,9 @@ describe("Schedule domain types", () => {
     expect(schedule.selfId).toBe("bot-1");
     expect(schedule.channelId).toBe("room-1");
 
-    // The raw fields map directly onto Core's ChannelScope vocabulary.
-    const scope: ChannelScope = { type: schedule.type, platform: schedule.platform, selfId: schedule.selfId, channelId: schedule.channelId };
-    expect(scope).toEqual({ type: "shared", platform: "test", selfId: "bot-1", channelId: "room-1" });
+    // The raw fields map directly onto Core's ChannelContext vocabulary.
+    const scope: ChannelContext = { type: "guild", platform: schedule.platform, channelId: schedule.channelId, guildId: schedule.channelId };
+    expect(scope).toEqual({ type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" });
   });
 
   it("limits the due extension to schedule metadata", () => {

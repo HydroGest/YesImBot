@@ -1,4 +1,5 @@
 import type { LanguageModelV3, LanguageModelV3CallOptions, LanguageModelV3FinishReason, LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { ToolSet } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -158,6 +159,16 @@ describe("tools", () => {
           },
         },
       ],
+    });
+
+    await expect(agent.init()).rejects.toBeInstanceOf(ToolConflictError);
+  });
+  it("throws when provider tools conflict with local tools", async () => {
+    const providerTools = { web_search: { type: "provider", id: "test.web_search", inputSchema: {} as never } } as ToolSet;
+    const agent = createAgent({
+      model: createToolModel(),
+      tools: [{ name: "web_search", inputSchema: z.object({}), execute: async () => "local" } as never],
+      providerTools,
     });
 
     await expect(agent.init()).rejects.toBeInstanceOf(ToolConflictError);

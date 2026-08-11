@@ -72,20 +72,20 @@ plugins/chat-learning/
 
 ## 核心概念
 
-| 概念 | 说明 |
-| --- | --- |
-| `MessageTurn` | 一条可学习的人类消息，包含文本、quote、mention、媒体标记。 |
-| `MessageLink` | 消息之间的关系边，支持 quote/reply/at/adjacent/entity。 |
-| `ConversationSegment` | 按时间间隔切分的对话片段。 |
-| `ConversationChain` | 从关系图构建的按时间顺序排列的回复链。 |
-| `ResponseIntent` | 回应意图：ack/agree/question/joke/roast/empathy/refuse。 |
-| `InitiationIntent` | 发起意图：share/question/react/recall/opinion。 |
-| `LocalChainPattern` | 本频道中某条意图链及其样本、风格。 |
-| `GlobalChainPattern` | 跨群聚合后的意图链，包含真实样本、风格、频道统计。 |
-| `style` | 链级说话风格描述，由模型从真实样本生成。 |
-| `styleSampleId` | 生成 style 时对应的样本签名，用于判断是否需要重新生成。 |
-| `semantics` | 旧版场景/内容总结字段；为兼容旧数据保留，但不再进入 prompt。 |
-| `reflection` | 对 bot 最近发言的自动或人工反思，注入到提示词末尾。 |
+| 概念                  | 说明                                                         |
+| --------------------- | ------------------------------------------------------------ |
+| `MessageTurn`         | 一条可学习的人类消息，包含文本、quote、mention、媒体标记。   |
+| `MessageLink`         | 消息之间的关系边，支持 quote/reply/at/adjacent/entity。      |
+| `ConversationSegment` | 按时间间隔切分的对话片段。                                   |
+| `ConversationChain`   | 从关系图构建的按时间顺序排列的回复链。                       |
+| `ResponseIntent`      | 回应意图：ack/agree/question/joke/roast/empathy/refuse。     |
+| `InitiationIntent`    | 发起意图：share/question/react/recall/opinion。              |
+| `LocalChainPattern`   | 本频道中某条意图链及其样本、风格。                           |
+| `GlobalChainPattern`  | 跨群聚合后的意图链，包含真实样本、风格、频道统计。           |
+| `style`               | 链级说话风格描述，由模型从真实样本生成。                     |
+| `styleSampleId`       | 生成 style 时对应的样本签名，用于判断是否需要重新生成。      |
+| `semantics`           | 旧版场景/内容总结字段；为兼容旧数据保留，但不再进入 prompt。 |
+| `reflection`          | 对 bot 最近发言的自动或人工反思，注入到提示词末尾。          |
 
 ## Prompt 注入
 
@@ -135,42 +135,42 @@ plugins/chat-learning/
 
 ## 配置
 
-| 配置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `maxExamples` | `4` | 每轮最多注入几个示例对话段。 |
-| `maxMessagesPerExample` | `5` | 每个示例段最多包含的消息数。 |
-| `maxHistoryAgeDays` | `30` | 学习历史的最大天数。 |
-| `maxScanMessages` | `1000` | 每次构建最多扫描的消息数。 |
-| `refreshIntervalMinutes` | `30` | 模型规律提炼的最小间隔分钟数。 |
-| `maxPromptTokens` | `2500` | chat-learning 注入块的 token 预算。 |
-| `maskNames` | `true` | 示例中把真实昵称替换为伪名。 |
-| `blockedUserIds` | `[]` | 不参与学习、也不进入 few-shot 的 user id 黑名单。 |
-| `blockedUserPatterns` | `[]` | 按昵称或 user id 子串过滤其他 bot。 |
-| `autoBlockBotNames` | `false` | 启用常见 bot 名称自动过滤。 |
-| `ignoreBotMentions` | `true` | 学习时忽略 @ 本 bot 的消息，降低提示词注入内容进入风格样本的风险。 |
-| `observeAllChannels` | `false` | 在未启用 yesimbot 的频道也采集消息，用于跨群全局规律学习。 |
-| `globalRulePath` | 留空 | 跨群全局规则文件路径；留空时使用 `data/yesimbot/chat-learning-global.json`。 |
-| `globalSyncIntervalMinutes` | `60` | 跨群全局规律同步最小间隔分钟数。 |
-| `minGlobalChannels` | `2` | 全局规律至少出现的频道数。 |
-| `maxGlobalPatterns` | `8` | 每轮最多注入的全局规律数；global chains 渲染时上限为 3。 |
-| `summaryModel` | 留空 | 使用 Core 注册的模型 ID；留空则使用默认 chat 模型进行意图分类和链级风格提炼。 |
-| `embeddingModel` | 留空 | 可选 embedding 模型；配置后用于语义归并全局规律，留空则精确匹配。 |
-| `embeddingSimilarity` | `0.92` | embedding 语义归并阈值，越高要求越相似。 |
-| `maxModelThreads` | `3` | 每次模型标注最多使用几条完整对话线程。 |
-| `maxModelThreadMessages` | `30` | 每条线程最多送入模型的消息数。 |
-| `reflectionModel` | 留空 | 可选独立模型；用于评价 bot 最近发言并生成风格反思，留空则关闭。 |
-| `maxInjectedReflections` | `3` | 每次注入提示词末尾的最近反思条数。 |
-| `injectStyleAsSystem` | `false` | 将风格参考作为 system 消息注入；默认用尾部 user 消息以兼容更多 provider。 |
+| 配置项                      | 默认值  | 说明                                                                          |
+| --------------------------- | ------- | ----------------------------------------------------------------------------- |
+| `maxExamples`               | `4`     | 每轮最多注入几个示例对话段。                                                  |
+| `maxMessagesPerExample`     | `5`     | 每个示例段最多包含的消息数。                                                  |
+| `maxHistoryAgeDays`         | `30`    | 学习历史的最大天数。                                                          |
+| `maxScanMessages`           | `1000`  | 每次构建最多扫描的消息数。                                                    |
+| `refreshIntervalMinutes`    | `30`    | 模型规律提炼的最小间隔分钟数。                                                |
+| `maxPromptTokens`           | `2500`  | chat-learning 注入块的 token 预算。                                           |
+| `maskNames`                 | `true`  | 示例中把真实昵称替换为伪名。                                                  |
+| `blockedUserIds`            | `[]`    | 不参与学习、也不进入 few-shot 的 user id 黑名单。                             |
+| `blockedUserPatterns`       | `[]`    | 按昵称或 user id 子串过滤其他 bot。                                           |
+| `autoBlockBotNames`         | `false` | 启用常见 bot 名称自动过滤。                                                   |
+| `ignoreBotMentions`         | `true`  | 学习时忽略 @ 本 bot 的消息，降低提示词注入内容进入风格样本的风险。            |
+| `observeAllChannels`        | `false` | 在未启用 yesimbot 的频道也采集消息，用于跨群全局规律学习。                    |
+| `globalRulePath`            | 留空    | 跨群全局规则文件路径；留空时使用 `data/yesimbot/chat-learning-global.json`。  |
+| `globalSyncIntervalMinutes` | `60`    | 跨群全局规律同步最小间隔分钟数。                                              |
+| `minGlobalChannels`         | `2`     | 全局规律至少出现的频道数。                                                    |
+| `maxGlobalPatterns`         | `8`     | 每轮最多注入的全局规律数；global chains 渲染时上限为 3。                      |
+| `summaryModel`              | 留空    | 使用 Core 注册的模型 ID；留空则使用默认 chat 模型进行意图分类和链级风格提炼。 |
+| `embeddingModel`            | 留空    | 可选 embedding 模型；配置后用于语义归并全局规律，留空则精确匹配。             |
+| `embeddingSimilarity`       | `0.92`  | embedding 语义归并阈值，越高要求越相似。                                      |
+| `maxModelThreads`           | `3`     | 每次模型标注最多使用几条完整对话线程。                                        |
+| `maxModelThreadMessages`    | `30`    | 每条线程最多送入模型的消息数。                                                |
+| `reflectionModel`           | 留空    | 可选独立模型；用于评价 bot 最近发言并生成风格反思，留空则关闭。               |
+| `maxInjectedReflections`    | `3`     | 每次注入提示词末尾的最近反思条数。                                            |
+| `injectStyleAsSystem`       | `false` | 将风格参考作为 system 消息注入；默认用尾部 user 消息以兼容更多 provider。     |
 
 ## 持久化
 
-| 文件 | 作用 |
-| --- | --- |
-| `chat-learning-history.jsonl` | 频道原始消息历史。 |
-| `chat-learning.json` | 频道学习状态快照。 |
-| `chat-learning-feedback.jsonl` | 人工消息关系纠错。 |
-| `chat-learning-reflections.jsonl` | 自动与人工反思记录。 |
-| `chat-learning-global.json` | 跨群规则库。 |
+| 文件                                 | 作用                           |
+| ------------------------------------ | ------------------------------ |
+| `chat-learning-history.jsonl`        | 频道原始消息历史。             |
+| `chat-learning.json`                 | 频道学习状态快照。             |
+| `chat-learning-feedback.jsonl`       | 人工消息关系纠错。             |
+| `chat-learning-reflections.jsonl`    | 自动与人工反思记录。           |
+| `chat-learning-global.json`          | 跨群规则库。                   |
 | `chat-learning-global-history.jsonl` | 跨群原始历史，聚合成功后清空。 |
 
 ## 人工纠错与运维

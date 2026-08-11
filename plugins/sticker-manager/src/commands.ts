@@ -1,5 +1,5 @@
 import { h, type Command, type Context, type Session } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 import type { StickerClassifier } from "./classifier.js";
 import { prepareStaticGif } from "./frames.js";
@@ -336,12 +336,19 @@ async function sendSticker(session: Session, scopeKey: string, store: StickerSto
   await store.markUsed(scopeKey, sticker.id);
 }
 
-function scopeOf(session: Session | undefined): ChannelScope | null {
+function scopeOf(session: Session | undefined): ChannelContext | null {
   if (!session?.platform || !session.selfId || !session.channelId) return null;
-  return { type: session.isDirect ? "direct" : "shared", platform: session.platform, selfId: session.selfId, channelId: session.channelId };
+  if (session.isDirect) {
+    return { type: "direct", platform: session.platform, selfId: session.selfId, channelId: session.channelId, userId: session.userId ?? session.channelId };
+  }
+  const guildId = session.guildId ?? session.channelId;
+  if (guildId !== session.channelId) {
+    return { type: "channel", platform: session.platform, channelId: session.channelId, guildId, selfId: session.selfId };
+  }
+  return { type: "guild", platform: session.platform, channelId: session.channelId, guildId, selfId: session.selfId };
 }
 
-function resolveScopeOption(value: unknown, scope: ChannelScope, currentScopeKey: string): string {
+function resolveScopeOption(value: unknown, scope: ChannelContext, currentScopeKey: string): string {
   if (value === undefined) return currentScopeKey;
   if (value === "global") return "global";
   if (value === "channel") return scopeKeyFor(scope, { scope: "channel" });

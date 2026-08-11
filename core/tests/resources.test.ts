@@ -30,10 +30,8 @@ function reader(scheme: string, prompt: string, setup: ResourceReader["setup"]):
 }
 
 async function createResources(overrides: { readTimeoutMs?: number } = {}): Promise<ChannelResources> {
-  return new ChannelResources(await tempRoot(), null, overrides.readTimeoutMs ?? 10_000);
+  return new ChannelResources(await tempRoot(), false, overrides.readTimeoutMs ?? 10_000);
 }
-
-const BUDGET = { maxCount: 4, maxBytesPerImage: 5 * 1024 * 1024, maxTotalBytes: 10 * 1024 * 1024 };
 
 type ReadTool = AgentTool<{ uri: string }, ResourceReadResult>;
 
@@ -62,6 +60,17 @@ describe("session-live input resources", () => {
 
     expect(resources.assets.put).toHaveBeenCalledWith(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
     expect(elements).toEqual([h("img", { id: "0123456789abcdef0123456789abcdef" })]);
+  });
+
+  it("persists a base64:// image element without downloading", async () => {
+    const http = vi.fn();
+    const resources = { assets: { put: vi.fn(async () => "0123456789abcdef0123456789abcdef") } };
+
+    const elements = await persistElements({ http } as never, [h("img", { src: `base64://${Buffer.from(PNG_BYTES).toString("base64")}` })], resources as never);
+
+    expect(resources.assets.put).toHaveBeenCalledWith(PNG_BYTES);
+    expect(elements).toEqual([h("img", { id: "0123456789abcdef0123456789abcdef" })]);
+    expect(http).not.toHaveBeenCalled();
   });
 });
 
@@ -413,12 +422,9 @@ describe("prepareOutputSegments", () => {
 // ---------------------------------------------------------------------------
 
 describe("read tool model projection", () => {
-  async function createTool(
-    overrides: { imageCapable?: boolean; imageBudget?: typeof BUDGET | null } = {},
-  ): Promise<{ tool: ReadTool; resources: ChannelResources }> {
+  async function createTool(overrides: { imageCapable?: boolean; imageInput?: boolean } = {}): Promise<{ tool: ReadTool; resources: ChannelResources }> {
     const resources = await createResources();
-    const budget = overrides.imageBudget === undefined ? null : overrides.imageBudget;
-    return { tool: createReadTool(new ChannelResources(resources.path, budget), overrides.imageCapable ?? false), resources };
+    return { tool: createReadTool(new ChannelResources(resources.path, overrides.imageInput ?? false), overrides.imageCapable ?? false), resources };
   }
 
   async function readAndProject(tool: ReadTool, uri: string, toolCallId = "call-1") {
@@ -427,8 +433,8 @@ describe("read tool model projection", () => {
     return { result, output };
   }
 
-  it("returns image bytes with the read text for an image-capable budgeted read", async () => {
-    const { tool, resources } = await createTool({ imageCapable: true, imageBudget: BUDGET });
+  it("returns image bytes with the read text for an image-capable explicit read", async () => {
+    const { tool, resources } = await createTool({ imageCapable: true, imageInput: true });
     const id = await resources.assets.put(PNG_BYTES);
     const { result, output } = await readAndProject(tool, `asset://${id}`);
 
@@ -442,36 +448,25 @@ describe("read tool model projection", () => {
   });
 
   it("keeps a JSON result when image input is unavailable", async () => {
-    const { tool, resources } = await createTool({ imageCapable: false, imageBudget: BUDGET });
+    const { tool, resources } = await createTool({ imageCapable: false, imageInput: true });
     const id = await resources.assets.put(PNG_BYTES);
     expect((await readAndProject(tool, `asset://${id}`)).output.type).toBe("json");
 
-    const { tool: budgetless, resources: budgetlessResources } = await createTool({ imageCapable: true, imageBudget: null });
-    const id2 = await budgetlessResources.assets.put(PNG_BYTES);
-    expect((await readAndProject(budgetless, `asset://${id2}`)).output.type).toBe("json");
-  });
-
-  it("skips bytes for oversized images while keeping the read result", async () => {
-    const big = new Uint8Array(6 * 1024 * 1024);
-    big.set(PNG_BYTES);
-    const { tool, resources } = await createTool({ imageCapable: true, imageBudget: BUDGET });
-    const id = await resources.assets.put(big);
-    const { result, output } = await readAndProject(tool, `asset://${id}`);
-
-    expect(result).toMatchObject({ uri: `asset://${id}` });
-    expect(output.type).toBe("json");
+    const { tool: disabled, resources: disabledResources } = await createTool({ imageCapable: true, imageInput: false });
+    const id2 = await disabledResources.assets.put(PNG_BYTES);
+    expect((await readAndProject(disabled, `asset://${id2}`)).output.type).toBe("json");
   });
 
   it("uses detected bytes instead of a supplied image MIME hint", async () => {
     const resources = await createResources();
     resources.use(reader("fake", "fake", async () => ({ bytes: new Uint8Array([1, 2, 3]), mediaType: "image/png" })));
-    const tool = createReadTool(new ChannelResources(resources.path, BUDGET), true);
+    const tool = createReadTool(new ChannelResources(resources.path, true), true);
 
     expect((await readAndProject(tool, "fake:///image")).output.type).toBe("json");
   });
 
   it("keeps a JSON result when the read fails", async () => {
-    const { tool } = await createTool({ imageCapable: true, imageBudget: BUDGET });
+    const { tool } = await createTool({ imageCapable: true, imageInput: true });
     const { result, output } = await readAndProject(tool, `asset://${"a".repeat(32)}`);
 
     expect(result).toMatchObject({ error: "resource_not_found" });
@@ -479,17 +474,17 @@ describe("read tool model projection", () => {
   });
 
   it("describes available image projection capabilities", async () => {
-    const { tool: capable } = await createTool({ imageCapable: true, imageBudget: BUDGET });
+    const { tool: capable } = await createTool({ imageCapable: true, imageInput: true });
     expect(capable.description).toContain("图片字节将随结果返回");
     expect(capable.description).not.toContain("describe_image");
 
-    const { tool: blind } = await createTool({ imageCapable: false, imageBudget: null });
+    const { tool: blind } = await createTool({ imageCapable: false, imageInput: false });
     expect(blind.description).toContain("不包含图片字节");
     expect(blind.description).toContain("describe_image");
   });
 
   it("returns artifact image bytes through the same path", async () => {
-    const { tool, resources } = await createTool({ imageCapable: true, imageBudget: BUDGET });
+    const { tool, resources } = await createTool({ imageCapable: true, imageInput: true });
     const uri = await resources.artifacts.forTool("mcp_test").put(PNG_BYTES, { mediaType: "image/png" });
 
     expect((await readAndProject(tool, uri)).output.type).toBe("content");

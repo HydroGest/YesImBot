@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { deriveMemosIdentity, deriveMemosImportChunkIdentity } from "../src/identity.js";
 
 describe("MemOS identity", () => {
-  const channelScope = { platform: "onebot", selfId: "bot", channelId: "group", type: "shared" } as const;
+  const channelScope = { platform: "onebot", channelId: "group", guildId: "group", type: "guild" } as const;
 
   it("uses the caller-provided Core channel identity as channel_hash", () => {
     const identity = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "10000", channelId: "123456", type: "shared" },
+      channelScope: { platform: "onebot", channelId: "123456", guildId: "123456", type: "guild" },
       channelHash: "a5vnf2ijd75c2ibyo2s5czdir4",
       channelType: "group",
       authorId: "user-1",
@@ -21,14 +21,14 @@ describe("MemOS identity", () => {
 
   it("produces same channel_hash across shared scope with different selfId", () => {
     const botA = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "10000", channelId: "123456", type: "shared" },
+      channelScope: { platform: "onebot", channelId: "123456", guildId: "123456", type: "guild" },
       channelHash: "a5vnf2ijd75c2ibyo2s5czdir4",
       channelType: "group",
       authorId: "user-1",
       turnId: "turn-1",
     });
     const botB = deriveMemosIdentity({
-      channelScope: { platform: "onebot", selfId: "20000", channelId: "123456", type: "shared" },
+      channelScope: { platform: "onebot", channelId: "123456", guildId: "123456", type: "guild" },
       channelHash: "a5vnf2ijd75c2ibyo2s5czdir4",
       channelType: "group",
       authorId: "user-1",

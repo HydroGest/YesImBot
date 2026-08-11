@@ -88,23 +88,6 @@ export function normalizeVirtualMountPath(path: string): string {
   return normalized;
 }
 
-function normalizeMap(paths: Record<string, string> | undefined): Record<string, string> {
-  const normalized: Record<string, string> = {};
-
-  for (const [mountPoint, hostPath] of Object.entries(paths ?? {})) {
-    const normalizedMount = normalizeVirtualMountPath(mountPoint);
-    if (normalizedMount === DEFAULT_WORKSPACE_MOUNT || normalizedMount.startsWith(`${DEFAULT_WORKSPACE_MOUNT}/`)) {
-      throw new Error(`${normalizedMount} is a reserved mount point`);
-    }
-    if (Object.hasOwn(normalized, normalizedMount)) {
-      throw new Error(`Duplicate mount point ${normalizedMount} in the same mount map`);
-    }
-    normalized[normalizedMount] = hostPath;
-  }
-
-  return normalized;
-}
-
 export function assertValidMountConfig(config: WorkspaceMountConfig): NormalizedWorkspaceMountConfig {
   const normalized: NormalizedWorkspaceMountConfig = {
     persistPaths: normalizeMap(config.persistPaths),
@@ -132,6 +115,23 @@ export function assertValidMountConfig(config: WorkspaceMountConfig): Normalized
         throw new Error(`Nested mount point ${child} is not allowed under ${parent}`);
       }
     }
+  }
+
+  return normalized;
+}
+
+function normalizeMap(paths: Record<string, string> | undefined): Record<string, string> {
+  const normalized: Record<string, string> = {};
+
+  for (const [mountPoint, hostPath] of Object.entries(paths ?? {})) {
+    const normalizedMount = normalizeVirtualMountPath(mountPoint);
+    if (normalizedMount === DEFAULT_WORKSPACE_MOUNT || normalizedMount.startsWith(`${DEFAULT_WORKSPACE_MOUNT}/`)) {
+      throw new Error(`${normalizedMount} is a reserved mount point`);
+    }
+    if (Object.hasOwn(normalized, normalizedMount)) {
+      throw new Error(`Duplicate mount point ${normalizedMount} in the same mount map`);
+    }
+    normalized[normalizedMount] = hostPath;
   }
 
   return normalized;

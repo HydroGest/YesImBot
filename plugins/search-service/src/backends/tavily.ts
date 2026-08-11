@@ -4,19 +4,20 @@ import { Schema } from "koishi";
 
 import type { SearchBackend, SearchRuntimeConfig, WebScrapeOutput, WebSearchOutput } from "../types";
 import { clampLimit, compileBlacklist, dedupeByUrl, filterBlockedResults, normalizeUrlList } from "../utils";
-const SEARCH_ENDPOINT = "https://api.tavily.com/search";
-const EXTRACT_ENDPOINT = "https://api.tavily.com/extract";
-const MAX_URLS_PER_SCRAPE = 20;
+
 export const tavilyConfigSchema: Schema<TavilyConfig> = Schema.object({
   apiKey: Schema.string().required().description("Tavily API Key"),
-  searchEndpoint: Schema.string().default(SEARCH_ENDPOINT).description("Tavily 搜索端点"),
-  extractEndpoint: Schema.string().default(EXTRACT_ENDPOINT).description("Tavily 提取端点"),
+  searchEndpoint: Schema.string().default("https://api.tavily.com/search").description("Tavily 搜索端点"),
+  extractEndpoint: Schema.string().default("https://api.tavily.com/extract").description("Tavily 提取端点"),
   searchDepth: Schema.union([Schema.const("basic"), Schema.const("advanced")])
     .default("basic")
     .description("搜索深度"),
   topic: Schema.union([Schema.const("general"), Schema.const("news"), Schema.const("finance")]).description("搜索主题"),
   timeRange: Schema.union([Schema.const("day"), Schema.const("week"), Schema.const("month"), Schema.const("year")]).description("时间范围"),
 });
+
+const MAX_URLS_PER_SCRAPE = 20;
+
 const searchInputSchema = jsonSchema<TavilySearchInput>({
   type: "object",
   properties: {
@@ -31,23 +32,30 @@ const searchInputSchema = jsonSchema<TavilySearchInput>({
   },
   required: ["query"],
 });
+
 const scrapeInputSchema = jsonSchema<TavilyScrapeInput>({
   type: "object",
   properties: { urls: { type: "array", items: { type: "string", format: "uri" }, minItems: 1, description: "HTTP or HTTPS URLs to extract." } },
   required: ["urls"],
 });
+
 type TavilySearchDepth = "basic" | "advanced";
+
 type TavilyTopic = "general" | "news" | "finance";
+
 type TavilyTimeRange = "day" | "week" | "month" | "year";
+
 type TavilyRawContent = "none" | "text" | "markdown";
+
 export interface TavilyConfig {
   apiKey: string;
-  searchEndpoint?: string;
-  extractEndpoint?: string;
+  searchEndpoint: string;
+  extractEndpoint: string;
   searchDepth?: TavilySearchDepth;
   topic?: TavilyTopic;
   timeRange?: TavilyTimeRange;
 }
+
 interface TavilyRuntimeConfig extends SearchRuntimeConfig {
   apiKey: string;
   searchEndpoint: string;
@@ -56,6 +64,7 @@ interface TavilyRuntimeConfig extends SearchRuntimeConfig {
   topic?: TavilyTopic;
   timeRange?: TavilyTimeRange;
 }
+
 interface TavilySearchInput {
   query: string;
   limit?: number;
@@ -66,9 +75,11 @@ interface TavilySearchInput {
   endDate?: string;
   includeRawContent?: TavilyRawContent;
 }
+
 interface TavilyScrapeInput {
   urls: string[];
 }
+
 interface TavilySearchResult {
   url: string;
   title: string;
@@ -78,17 +89,21 @@ interface TavilySearchResult {
   favicon?: string | null;
   published_date?: string | null;
 }
+
 interface TavilySearchResponse {
   results?: TavilySearchResult[];
 }
+
 interface TavilyExtractResult {
   url: string;
   raw_content?: string | null;
 }
+
 interface TavilyExtractResponse {
   results?: TavilyExtractResult[];
   failed_results?: Array<{ url: string; error: string }>;
 }
+
 class TavilyBackend implements SearchBackend {
   public readonly name = "tavily";
 
@@ -104,7 +119,7 @@ class TavilyBackend implements SearchBackend {
 
   public createSearchTool(): AgentTool<TavilySearchInput, WebSearchOutput> {
     return {
-      name: "web_search",
+      name: "tavily_web_search",
       description: "Search the web for current information, news, facts, or web content. " + "Returns structured JSON with titles, URLs, and snippets.",
 
       inputSchema: searchInputSchema,
@@ -114,8 +129,8 @@ class TavilyBackend implements SearchBackend {
 
   public createScrapeTool(): AgentTool<TavilyScrapeInput, WebScrapeOutput> {
     return {
-      name: "web_scrape",
-      description: "Extract readable content from one or more web pages. " + "Use after web_search when full page text is needed.",
+      name: "tavily_web_scrape",
+      description: "Extract readable content from one or more web pages. " + "Use after tavily_web_search when full page text is needed.",
       inputSchema: scrapeInputSchema,
       execute: async (input) => {
         const normalized = normalizeUrlList(input.urls, MAX_URLS_PER_SCRAPE);
@@ -202,6 +217,7 @@ class TavilyBackend implements SearchBackend {
     }
   }
 }
+
 export function createTavilyBackend(ctx: Context, config: TavilyConfig | undefined, runtime: SearchRuntimeConfig, logger: Logger): SearchBackend {
   if (!config?.apiKey) {
     throw new Error("Tavily provider requires tavily.apiKey to be configured");
@@ -212,8 +228,8 @@ export function createTavilyBackend(ctx: Context, config: TavilyConfig | undefin
     {
       ...runtime,
       apiKey: config.apiKey,
-      searchEndpoint: config.searchEndpoint ?? SEARCH_ENDPOINT,
-      extractEndpoint: config.extractEndpoint ?? EXTRACT_ENDPOINT,
+      searchEndpoint: config.searchEndpoint,
+      extractEndpoint: config.extractEndpoint,
       searchDepth: config.searchDepth ?? "basic",
       topic: config.topic,
       timeRange: config.timeRange,

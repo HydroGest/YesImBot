@@ -5,6 +5,10 @@
   "rules": {
     "@typescript-eslint/no-explicit-any": "error",
     "declaration-order/module-declaration-order": "warn",
+    "@stylistic/padding-line-between-statements": [
+      "warn",
+      { "blankLine": "always", "prev": ["type", "interface", "function", "export"], "next": ["type", "interface", "function", "export"] }
+    ],
     "vitest/require-mock-type-parameters": "off",
     "vitest/require-to-throw-message": "off",
     "vitest/no-conditional-expect": "off"

@@ -31,6 +31,7 @@ export default class YesImBotService extends Service<Config> {
   private platformDisposer: (() => void) | undefined;
 
   public constructor(ctx: Context, config: Config) {
+    ctx.scope.update;
     super(ctx, "yesimbot");
     this.config = config;
     this.logger.level = config.logLevel ?? 2;
@@ -38,17 +39,13 @@ export default class YesImBotService extends Service<Config> {
     this.channels = new Channels(ctx, {
       basePath: config.basePath || ctx.baseDir,
       logLevel: config.logLevel,
-      imageBudget:
-        config.imageInput === false
-          ? null
-          : {
-              maxCount: config.imageInput.maxCount ?? 3,
-              maxBytesPerImage: config.imageInput.maxBytesPerImage ?? 5 * 1024 * 1024,
-              maxTotalBytes: config.imageInput.maxTotalBytes ?? 10 * 1024 * 1024,
-            },
-      readTimeoutMs: config.resourceReadTimeoutMs,
+      imageInput: config.imageInput,
+      readTimeoutMs: config.resourceReadTimeout * 1000,
+      compactConfig: { minMessages: config.session.compact.minMessages, maxFailures: config.session.compact.maxFailures },
     });
-    const agents = new Agents();
+    const agentsLogger = ctx.logger("yesimbot.agents");
+    agentsLogger.level = config.logLevel ?? 2;
+    const agents = new Agents(ctx);
     this.runtimes = new Runtimes(ctx, this.channels, this.model, config, agents);
     this.messengerOwner = new Messenger(ctx, config, this.channels, this.runtimes);
     this.messenger = this.messengerOwner;

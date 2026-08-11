@@ -1,16 +1,19 @@
 import { URL } from "node:url";
 
-import { h, type Element } from "koishi";
+import { h, type Context, type Element } from "koishi";
 
-import type { ChannelScope } from "../channels/index.js";
-import type { ImageBudget } from "../config.js";
+import type { ChannelContext } from "../channels/index.js";
 import { ChannelArtifactStore, type ArtifactStore } from "./artifact.js";
 import { ChannelAssetStore, type AssetStore } from "./asset.js";
+import { persistElements as persistInboundElements } from "./input.js";
+
 const READ_MAX_BYTES = 5 * 1024 * 1024;
 const COMPLETE_ASSET_ID = /^[a-f0-9]{32}$/;
 const URI_SHAPE = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#]*)(?:\/([^?#]*))?$/;
 const RESOURCE_SOURCE = /^(asset|artifact|workspace):\/\//;
+
 export type Disposer = () => void;
+
 export type ResourceReadErrorCode =
   | "invalid_resource_uri"
   | "resource_unavailable"
@@ -19,29 +22,35 @@ export type ResourceReadErrorCode =
   | "resource_read_aborted"
   | "resource_too_large"
   | "resource_read_failed";
+
 export interface ResourceOpenOptions {
   readonly signal: AbortSignal;
   readonly maxBytes: number;
 }
+
 export interface ResourceOpenResult {
   readonly bytes: Uint8Array;
   readonly mediaType?: string;
   readonly filename?: string;
 }
+
 export interface ResourceReader {
   readonly scheme: string;
   readonly prompt: string;
   setup(resources: ChannelResources, uri: URL, options: ResourceOpenOptions): Promise<ResourceOpenResult>;
 }
+
 export interface Resources {
-  get(scope: ChannelScope): Promise<ChannelResources>;
+  get(ctx: ChannelContext): Promise<ChannelResources>;
   use(reader: ResourceReader): Disposer;
 }
+
 export class ResourceReadError extends Error {
   public constructor(public readonly code: ResourceReadErrorCode) {
     super(code);
   }
 }
+
 export class ChannelResources {
   public readonly assets: AssetStore;
   public readonly artifacts: ArtifactStore;
@@ -50,7 +59,7 @@ export class ChannelResources {
 
   public constructor(
     public readonly path: string,
-    public readonly imageBudget: ImageBudget | null = null,
+    public readonly imageInput = false,
     private readonly readTimeoutMs = 10_000,
   ) {
     this.assets = new ChannelAssetStore(path);
@@ -145,7 +154,13 @@ export class ChannelResources {
       signal?.removeEventListener("abort", onAbort);
     }
   }
+
+  /** Persists inbound image and restricted text-file elements while the Session is live. */
+  public async persistElements(ctx: Context, elements: readonly Element[]): Promise<Element[]> {
+    return persistInboundElements(ctx, elements, this);
+  }
 }
+
 export async function prepareOutputSegments(
   segments: readonly (readonly Element[])[],
   resources: ChannelResources,
@@ -159,6 +174,7 @@ export async function prepareOutputSegments(
   }
   return prepared;
 }
+
 async function prepareElement(element: Element, resources: ChannelResources, signal?: AbortSignal): Promise<Element | undefined> {
   if (element.children.length)
     return h(
@@ -180,6 +196,7 @@ async function prepareElement(element: Element, resources: ChannelResources, sig
   const mediaType = detected ?? opened.mediaType ?? "application/octet-stream";
   return h(element.type, { ...element.attrs, src: `data:${mediaType};base64,${Buffer.from(opened.bytes).toString("base64")}` });
 }
+
 function detectMediaType(bytes: Uint8Array): string | undefined {
   if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
@@ -206,6 +223,7 @@ function detectMediaType(bytes: Uint8Array): string | undefined {
     return "image/webp";
   return undefined;
 }
+
 function parseUri(value: string): URL | undefined {
   const match = URI_SHAPE.exec(value);
   if (!match) return undefined;
@@ -227,6 +245,7 @@ function parseUri(value: string): URL | undefined {
   if (uri.pathname.split("/").some((part) => part === "." || part === "..")) return undefined;
   return uri;
 }
+
 function normalize(value: unknown): ResourceOpenResult {
   if (!value || typeof value !== "object" || !("bytes" in value)) throw new Error("Invalid resource result");
   const result = value as Partial<ResourceOpenResult>;
@@ -237,5 +256,7 @@ function normalize(value: unknown): ResourceOpenResult {
   if (result.filename !== undefined && (result.filename.length === 0 || /[\\/\0]/.test(result.filename))) throw new Error("Invalid resource filename");
   return result as ResourceOpenResult;
 }
+
 export { type ArtifactOpenResult, type ArtifactStore, type ArtifactWriter } from "./artifact.js";
+
 export { type AssetStore } from "./asset.js";

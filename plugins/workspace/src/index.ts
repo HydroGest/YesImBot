@@ -4,7 +4,7 @@ import { URL } from "node:url";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
-import type { ChannelResources, ChannelScope, ResourceReader } from "koishi-plugin-yesimbot";
+import type { ChannelResources, ChannelContext, ResourceReader } from "koishi-plugin-yesimbot";
 
 import { createBashToolSet } from "./bash-tool";
 import { normalizeMounts, type NormalizedMountSpec } from "./mounts";
@@ -120,7 +120,7 @@ export default class WorkspacePlugin {
     this.logger.success("Workspace plugin started");
   }
 
-  public async setup(scope: ChannelScope): Promise<AgentPlugin | null> {
+  public async setup(scope: ChannelContext): Promise<AgentPlugin | null> {
     const sandbox = this.sandbox;
     if (!sandbox) return null;
     const resources = await this.ctx.yesimbot.resource.get(scope);
@@ -147,7 +147,7 @@ export default class WorkspacePlugin {
   }
 
   private async getOrCreateWorkspace(
-    channel: ChannelScope,
+    channel: ChannelContext,
     resources: ChannelResources,
     sandbox: SandboxBashConfig,
     mounts: readonly NormalizedMountSpec[] | undefined,

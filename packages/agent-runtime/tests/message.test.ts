@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { streamText, type ToolSet } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAgent } from "../src/agent.js";
@@ -341,6 +341,27 @@ describe("model conversion", () => {
 
     expect(result).toEqual([{ role: "user", content: "current" }]);
     expect("meta" in result[0]).toBe(false);
+  });
+});
+
+describe("provider tool forwarding", () => {
+  beforeEach(() => {
+    streamTextMock.mockClear();
+  });
+
+  it("forwards a snapshot of provider-executed tools without local execution", async () => {
+    const webSearch = { type: "provider" as const, id: "test.web_search", inputSchema: {} as never };
+    const providerTools = { web_search: webSearch } as ToolSet;
+    const agent = createAgent({ model: {} as never, providerTools });
+
+    await agent.init();
+    webSearch.id = "mutated";
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    const tool = streamTextMock.mock.calls[0]?.[0].tools?.web_search;
+    expect(tool).toMatchObject({ type: "provider", id: "test.web_search" });
+    expect(tool?.execute).toBeUndefined();
   });
 });
 

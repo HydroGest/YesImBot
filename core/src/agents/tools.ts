@@ -8,10 +8,15 @@ import { prepareOutputSegments, ResourceReadError, type ChannelResources } from 
 const READ_MAX_TEXT_CHARS = 30_000;
 
 type ResourceReadInput = { uri: string };
+
 type ResourceReadResult = { uri: string; filename?: string; mediaType?: string; text?: string; error?: string };
+
 type DescribeImageInput = { uri: string; question: string };
+
 type DescribeImageOutput = { text: string } | { error: string };
+
 type SendMessageInput = { channelId: string; content: string };
+
 type SendMessageOutput = { ok: true; messageIds: string[] } | { ok: false; error: { name: string; message: string } };
 
 export function createSendMessageTool(bot: Bot, currentChannelId: string, resources: ChannelResources): AgentTool<SendMessageInput, SendMessageOutput> {
@@ -60,7 +65,7 @@ export function createReadTool(resources: ChannelResources, imageOutputSupported
         return { uri, error: "resource_read_failed" };
       }
       const mediaType = detectedMediaType(opened.bytes) ?? opened.mediaType;
-      if (imageOutputSupported && resources.imageBudget && mediaType?.startsWith("image/") && withinBudget(opened.bytes, resources)) {
+      if (imageOutputSupported && resources.imageInput && mediaType?.startsWith("image/")) {
         pendingImages.set(execution.toolCallId, { bytes: opened.bytes, mediaType });
       }
       return { uri, filename: opened.filename, mediaType, text: describeBytes(opened.bytes, mediaType) };
@@ -132,7 +137,7 @@ export function createDescribeImageTool(
 }
 
 function readDescription(resources: ChannelResources, imageOutputSupported: boolean): string {
-  const imageEnabled = imageOutputSupported && resources.imageBudget !== null;
+  const imageEnabled = imageOutputSupported && resources.imageInput;
   const lines = [
     "读取资源内容。仅在确实需要内容时读取精确 URI，不要猜测或拼造 URI。",
     "URI 形如 scheme://authority[/path]，不能包含 ?、#、%，也不能有 . 或 .. 路径段。",
@@ -150,7 +155,7 @@ function readDescription(resources: ChannelResources, imageOutputSupported: bool
     "返回 {uri, filename?, mediaType?, text?, error?}。",
     "- 文本资源在 text 中直接给出内容，过长会被截断并以 [内容已截断] 结尾。",
     imageEnabled
-      ? "- 图片资源：读取后图片字节将随结果返回，你可以直接查看图片内容。查看图片必须使用本工具读取；一次只读一张，连读多张可能超出预算而被丢弃。"
+      ? "- 图片资源：读取后图片字节将随结果返回，你可以直接查看图片内容。查看图片必须使用本工具读取。"
       : "- 图片资源只给出占位描述，不包含图片字节，当前无法查看图片内容。",
   );
   if (!imageEnabled) lines.push("- 需要图片内容时，使用 describe_image 工具获取图片描述。");
@@ -205,9 +210,4 @@ function formatBytes(length: number): string {
   if (length >= 1024 * 1024) return `${(length / (1024 * 1024)).toFixed(1)} MiB`;
   if (length >= 1024) return `${(length / 1024).toFixed(1)} KiB`;
   return `${length} B`;
-}
-
-function withinBudget(bytes: Uint8Array, resources: ChannelResources): boolean {
-  const budget = resources.imageBudget!;
-  return budget.maxCount > 0 && bytes.byteLength <= budget.maxBytesPerImage && bytes.byteLength <= budget.maxTotalBytes;
 }

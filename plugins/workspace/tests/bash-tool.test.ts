@@ -51,7 +51,7 @@ describe("bash-tool adapter", () => {
     const workspace = await createWorkspace();
     const tools = await createBashToolSet(workspace);
 
-    expect(tools.map((tool) => tool.name).sort()).toEqual(["bash", "readFile", "writeFile"]);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(["bash", "editFile", "readFile", "writeFile"]);
   });
 
   it("reads and writes through the same virtual filesystem used by bash", async () => {
@@ -122,5 +122,113 @@ describe("bash-tool adapter", () => {
     const writeResult = await toolByName(tools, "writeFile").execute!({ path: "note.txt", content: "sandbox" }, {} as never);
     expect(writeResult).toEqual({ success: true });
     await expect(toolByName(tools, "readFile").execute!({ path: "note.txt" }, {} as never)).resolves.toEqual({ content: "sandbox" });
+  });
+});
+
+describe("editFile tool", () => {
+  it("replaces the first occurrence of oldString with newString", async () => {
+    const workspace = await createWorkspace();
+    const tools = await createBashToolSet(workspace);
+    const writeFile = toolByName(tools, "writeFile");
+    const editFile = toolByName(tools, "editFile");
+    const readFile = toolByName(tools, "readFile");
+
+    await writeFile.execute!({ path: "test.txt", content: "hello world" }, {} as never);
+    const result = await editFile.execute!({ path: "/home/workspace/test.txt", oldString: "world", newString: "earth" }, {} as never);
+
+    expect(result).toEqual({ success: true, replacements: 1 });
+    const read = await readFile.execute!({ path: "test.txt" }, {} as never);
+    expect(read).toEqual({ content: "hello earth" });
+  });
+
+  it("fails when oldString is not found", async () => {
+    const workspace = await createWorkspace();
+    const tools = await createBashToolSet(workspace);
+    const writeFile = toolByName(tools, "writeFile");
+    const editFile = toolByName(tools, "editFile");
+
+    await writeFile.execute!({ path: "test.txt", content: "hello world" }, {} as never);
+    const result = await editFile.execute!({ path: "/home/workspace/test.txt", oldString: "missing", newString: "x" }, {} as never);
+
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("not found") });
+  });
+
+  it("fails when oldString matches multiple times without replaceAll", async () => {
+    const workspace = await createWorkspace();
+    const tools = await createBashToolSet(workspace);
+    const writeFile = toolByName(tools, "writeFile");
+    const editFile = toolByName(tools, "editFile");
+
+    await writeFile.execute!({ path: "test.txt", content: "aaa" }, {} as never);
+    const result = await editFile.execute!({ path: "/home/workspace/test.txt", oldString: "a", newString: "b" }, {} as never);
+
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("3 times") });
+  });
+
+  it("replaces all occurrences when replaceAll is true", async () => {
+    const workspace = await createWorkspace();
+    const tools = await createBashToolSet(workspace);
+    const writeFile = toolByName(tools, "writeFile");
+    const editFile = toolByName(tools, "editFile");
+    const readFile = toolByName(tools, "readFile");
+
+    await writeFile.execute!({ path: "test.txt", content: "aaa" }, {} as never);
+    const result = await editFile.execute!({ path: "/home/workspace/test.txt", oldString: "a", newString: "b", replaceAll: true }, {} as never);
+
+    expect(result).toEqual({ success: true, replacements: 3 });
+    const read = await readFile.execute!({ path: "test.txt" }, {} as never);
+    expect(read).toEqual({ content: "bbb" });
+  });
+
+  it("fails when file does not exist", async () => {
+    const workspace = await createWorkspace();
+    const tools = await createBashToolSet(workspace);
+    const editFile = toolByName(tools, "editFile");
+
+    const result = await editFile.execute!({ path: "/home/workspace/nonexistent.txt", oldString: "a", newString: "b" }, {} as never);
+
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("not found") });
+  });
+
+  it("fails when oldString equals newString", async () => {
+    const workspace = await createWorkspace();
+    const tools = await createBashToolSet(workspace);
+    const writeFile = toolByName(tools, "writeFile");
+    const editFile = toolByName(tools, "editFile");
+
+    await writeFile.execute!({ path: "test.txt", content: "hello" }, {} as never);
+    const result = await editFile.execute!({ path: "/home/workspace/test.txt", oldString: "hello", newString: "hello" }, {} as never);
+
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining("identical") });
+  });
+
+  it("resolves relative paths against cwd", async () => {
+    const workspace = await createWorkspace();
+    const tools = await createBashToolSet(workspace);
+    const writeFile = toolByName(tools, "writeFile");
+    const editFile = toolByName(tools, "editFile");
+    const readFile = toolByName(tools, "readFile");
+
+    await writeFile.execute!({ path: "rel.txt", content: "foo bar" }, {} as never);
+    const result = await editFile.execute!({ path: "rel.txt", oldString: "foo", newString: "baz" }, {} as never);
+
+    expect(result).toEqual({ success: true, replacements: 1 });
+    const read = await readFile.execute!({ path: "rel.txt" }, {} as never);
+    expect(read).toEqual({ content: "baz bar" });
+  });
+
+  it("works through a custom backend", async () => {
+    const sandbox = createFakeBackend();
+    await sandbox.backend.writeFiles([{ path: "/sandbox/workspace/file.txt", content: "alpha beta gamma" }]);
+    const tools = await createBashToolSet({ backend: sandbox.backend, destination: "/sandbox/workspace" });
+    sandbox.writes.length = 0;
+
+    const result = await toolByName(tools, "editFile").execute!({ path: "/sandbox/workspace/file.txt", oldString: "beta", newString: "delta" }, {} as never);
+
+    expect(result).toEqual({ success: true, replacements: 1 });
+    expect(sandbox.reads).toContain("/sandbox/workspace/file.txt");
+    const written = sandbox.writes.find((w) => w.some((f) => f.path === "/sandbox/workspace/file.txt"));
+    expect(written).toBeDefined();
+    expect(written![0]!.content).toBe("alpha delta gamma");
   });
 });

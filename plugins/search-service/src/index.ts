@@ -1,12 +1,13 @@
 import type { AgentPlugin, AgentTool } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
-import type { ChannelScope } from "koishi-plugin-yesimbot";
+import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 import { createSearXNGBackend, searxngConfigSchema, type SearXNGConfig } from "./backends/searxng";
 import { createTavilyBackend, tavilyConfigSchema, type TavilyConfig } from "./backends/tavily";
 import type { SearchBackend, SearchRuntimeConfig } from "./types";
 const DEFAULT_PROVIDER: SearchProviderName = "tavily";
 type SearchProviderName = "tavily" | "searxng";
+
 interface SearchServiceConfig {
   provider?: SearchProviderName;
   defaultLimit?: number;
@@ -16,6 +17,7 @@ interface SearchServiceConfig {
   tavily?: TavilyConfig;
   searxng?: SearXNGConfig;
 }
+
 export default class SearchService {
   public static name = "yesimbot-search-service";
   public static usage = "搜索服务插件，提供 Web 搜索和网页内容抓取功能";
@@ -90,7 +92,7 @@ export default class SearchService {
     this.logger.info(`Search service started with provider: ${provider}`);
   }
 
-  public setup(_scope: ChannelScope, _bot: Bot): AgentPlugin | null {
+  public setup(_scope: ChannelContext, _bot: Bot): AgentPlugin | null {
     const backend = this.backend;
     if (!backend) return null;
     return {
@@ -108,18 +110,21 @@ export default class SearchService {
     this.backend = undefined;
   }
 }
+
 function formatSearchPrompt(provider: string, hasScrape: boolean): string {
+  const searchTool = `${provider}_web_search`;
+  const scrapeTool = `${provider}_web_scrape`;
   const lines = [
     "",
     "## Web Search",
     "",
-    `You have access to web search via the \`web_search\` tool (provider: ${provider}).`,
+    `You have access to web search via the \`${searchTool}\` tool (provider: ${provider}).`,
     "Use it when you need current, external, or source-backed web information.",
     "It returns structured JSON with URLs and snippets.",
   ];
 
   if (hasScrape) {
-    lines.push("For detailed page content, use the `web_scrape` tool on candidate URLs.");
+    lines.push(`For detailed page content, use the \`${scrapeTool}\` tool on candidate URLs.`);
   }
 
   lines.push("");

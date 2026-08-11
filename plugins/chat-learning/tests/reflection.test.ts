@@ -1,15 +1,16 @@
-import { createAssistantMessage, createMessageEntry, type AgentEntry } from "@yesimbot/agent-runtime";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { createAssistantMessage, createMessageEntry, type AgentEntry } from "@yesimbot/agent-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ generateText: vi.fn<() => Promise<{ text: string }>>() }));
 
 vi.mock("ai", () => ({ generateText: mocks.generateText }));
 
-import { buildReflectionHistory, generateReflection, reflectOnSentMessage } from "../src/reflection.js";
 import { createReflectionStore, type ReflectionStore } from "../src/reflection-store.js";
+import { buildReflectionHistory, generateReflection, reflectOnSentMessage } from "../src/reflection.js";
 
 const roots: string[] = [];
 
@@ -56,22 +57,14 @@ describe("buildReflectionHistory", () => {
     const store = await reflectionStore([
       {
         source: "auto",
-        text: "<quote id=\"1\"/> 又咋了，说",
+        text: '<quote id="1"/> 又咋了，说',
         reflection: "auto-reflection",
         score: undefined,
         annotation: undefined,
         messageId: "auto-1",
         turnId: "t1",
       },
-      {
-        source: "human",
-        text: "又咋了，说",
-        reflection: "human-reflection",
-        score: 1,
-        annotation: "这句可以其实",
-        messageId: "human-1",
-        turnId: undefined,
-      },
+      { source: "human", text: "又咋了，说", reflection: "human-reflection", score: 1, annotation: "这句可以其实", messageId: "human-1", turnId: undefined },
     ]);
 
     const block = buildReflectionHistory(store, 2);

@@ -10,16 +10,16 @@ const semanticTemplateSchema = z.object({
   templates: z.array(z.object({ template: z.string().min(1).max(60), examples: z.array(z.string()).min(2).max(5), usage: z.string().min(1).max(140) })).max(3),
 });
 
+export interface MemePhraseInput {
+  readonly phrase: string;
+  readonly frequency: number;
+}
+
 interface TemplateCandidate {
   readonly template: string;
   readonly examples: readonly string[];
   readonly frequency: number;
   readonly usage?: string;
-}
-
-export interface MemePhraseInput {
-  readonly phrase: string;
-  readonly frequency: number;
 }
 
 export async function buildMemeTemplates(
@@ -30,35 +30,35 @@ export async function buildMemeTemplates(
 ): Promise<readonly MemeTemplate[]> {
   const key = model ? cache?.key(["meme", modelCacheId(model), phrases]) : undefined;
   const produce = async (): Promise<readonly MemeTemplate[]> => {
-  const normalized = phrases.filter((item) => item.phrase.length >= 3 && !item.phrase.includes("[") && !item.phrase.includes("]"));
-  const heuristic = [...findTemplateCandidates(normalized), ...findRepetitionCandidates(normalized)];
-  const semantic = model ? await summarizeSemanticTemplates(model, normalized) : [];
-  const candidates = [...heuristic, ...semantic]
-    .filter((candidate, index, all) => all.findIndex((item) => item.template === candidate.template) === index)
-    .sort((left, right) => right.frequency - left.frequency)
-    .slice(0, 3);
-  const templates: MemeTemplate[] = [];
+    const normalized = phrases.filter((item) => item.phrase.length >= 3 && !item.phrase.includes("[") && !item.phrase.includes("]"));
+    const heuristic = [...findTemplateCandidates(normalized), ...findRepetitionCandidates(normalized)];
+    const semantic = model ? await summarizeSemanticTemplates(model, normalized) : [];
+    const candidates = [...heuristic, ...semantic]
+      .filter((candidate, index, all) => all.findIndex((item) => item.template === candidate.template) === index)
+      .sort((left, right) => right.frequency - left.frequency)
+      .slice(0, 3);
+    const templates: MemeTemplate[] = [];
 
-  for (const candidate of candidates) {
-    let usage = candidate.usage;
-    if (!usage && model) usage = await summarizeUsage(model, candidate);
-    if (!usage) {
-      usage = candidate.template.includes("× N")
-        ? `本群近期高频复读 ${candidate.template.replace(" × N", "")}，重复次数可随情绪增加。`
-        : `本群近期高频使用 ${candidate.template.replace("{X}", "状态词")}，可替换 {X} 类推新变体。`;
+    for (const candidate of candidates) {
+      let usage = candidate.usage;
+      if (!usage && model) usage = await summarizeUsage(model, candidate);
+      if (!usage) {
+        usage = candidate.template.includes("× N")
+          ? `本群近期高频复读 ${candidate.template.replace(" × N", "")}，重复次数可随情绪增加。`
+          : `本群近期高频使用 ${candidate.template.replace("{X}", "状态词")}，可替换 {X} 类推新变体。`;
+      }
+      if (!usage) continue;
+      templates.push({
+        template: candidate.template,
+        examples: candidate.examples.slice(0, 4),
+        usage,
+        frequency: candidate.frequency,
+        firstSeenAt: now,
+        lastSeenAt: now,
+      });
     }
-    if (!usage) continue;
-    templates.push({
-      template: candidate.template,
-      examples: candidate.examples.slice(0, 4),
-      usage,
-      frequency: candidate.frequency,
-      firstSeenAt: now,
-      lastSeenAt: now,
-    });
-  }
 
-  return templates;
+    return templates;
   };
   return cache && key ? cache.getOrProduce(key, produce) : produce();
 }

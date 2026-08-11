@@ -68,7 +68,7 @@ function createContext(baseDir: string) {
 }
 
 function channelScope(channelId: string) {
-  return { type: "shared", platform: "onebot", channelId };
+  return { type: "guild", platform: "onebot", channelId, guildId: channelId };
 }
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {

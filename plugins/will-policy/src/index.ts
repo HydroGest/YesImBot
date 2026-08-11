@@ -1,17 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { Context, Logger, Schema, type Command, type Session } from "koishi";
-import type { ChannelScope, WillEngine } from "koishi-plugin-yesimbot";
+import type { ChannelContext, WillEngine } from "koishi-plugin-yesimbot";
 
 import { resolvePolicy } from "./policy.js";
 import { PolicyRoutingEngine } from "./routing.js";
 import type { WillPolicyConfig } from "./types.js";
 import { PolicyWillingnessEngine } from "./willingness.js";
-
-const DEBUG_COMMAND_NAME = "yesimbot.will-policy";
-const DEBUG_PROBES = new WeakMap<Context, Set<WillPolicyPlugin>>();
-const DEBUG_COMMANDS = new WeakMap<Context, Command>();
-const DEBUG_ACTION: unique symbol = Symbol("yesimbot.will-policy.debug-action");
 
 export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.intersect([
   Schema.object({
@@ -68,6 +63,14 @@ export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.intersect
   ]),
 ]);
 
+const DEBUG_COMMAND_NAME = "yesimbot.will-policy";
+
+const DEBUG_PROBES = new WeakMap<Context, Set<WillPolicyPlugin>>();
+
+const DEBUG_COMMANDS = new WeakMap<Context, Command>();
+
+const DEBUG_ACTION: unique symbol = Symbol("yesimbot.will-policy.debug-action");
+
 type DebugCommand = Command & { [DEBUG_ACTION]?: boolean };
 
 export default class WillPolicyPlugin {
@@ -90,6 +93,7 @@ export default class WillPolicyPlugin {
     this.config = config;
     this.priority = config.priority ?? 1000;
     this.logger = ctx.logger("yesimbot.will-policy");
+    this.logger.level = ctx.yesimbot?.config?.logLevel ?? 2;
     ctx.on("ready", this.start.bind(this));
     ctx.on("dispose", this.stop.bind(this));
   }
@@ -102,13 +106,65 @@ export default class WillPolicyPlugin {
   }
 
   public match(session: Session): boolean {
-    return this.ctx.filter(session);
+    const matched = this.ctx.filter(session);
+    this.logger.debug("will_policy.match", {
+      instanceId: this.instanceId,
+      priority: this.priority,
+      engine: this.config.engine,
+      platform: session.platform,
+      channelId: session.channelId,
+      guildId: session.guildId,
+      matched,
+    });
+    return matched;
   }
 
-  public setup(_scope: ChannelScope): WillEngine {
+  public matchContext(context: ChannelContext): boolean {
+    const bot =
+      this.ctx.bots.find((candidate) => candidate.platform === context.platform && (!context.selfId || candidate.selfId === context.selfId)) ??
+      this.ctx.bots[0];
+    if (!bot) {
+      this.logger.debug("will_policy.match_context", {
+        instanceId: this.instanceId,
+        priority: this.priority,
+        engine: this.config.engine,
+        platform: context.platform,
+        channelId: context.channelId,
+        guildId: context.type === "direct" ? undefined : context.guildId,
+        matched: false,
+        reason: "no_bot",
+      });
+      return false;
+    }
+    const session = bot.session({
+      type: "message-created",
+      subtype: context.type === "direct" ? "private" : "group",
+      platform: context.platform,
+      selfId: context.selfId,
+      timestamp: Date.now(),
+      channel: { id: context.channelId, type: context.type === "direct" ? 1 : 0 },
+      ...(context.type !== "direct" && context.guildId ? { guild: { id: context.guildId } } : {}),
+      ...(context.type === "direct" ? { user: { id: context.userId, ...(context.userName ? { name: context.userName } : {}) } } : {}),
+    } as never) as Session;
+    const matched = this.ctx.filter(session);
+    this.logger.debug("will_policy.match_context", {
+      instanceId: this.instanceId,
+      priority: this.priority,
+      engine: this.config.engine,
+      platform: context.platform,
+      channelId: context.channelId,
+      guildId: context.type === "direct" ? undefined : context.guildId,
+      matched,
+    });
+    return matched;
+  }
+
+  public setup(_scope: ChannelContext): WillEngine {
     const resolved = resolvePolicy(this.config);
     this.logger.debug("resolve_will_policy", { engine: resolved.engine, routing: resolved.routing, willingness: resolved.willingness });
-    return resolved.engine === "routing" ? new PolicyRoutingEngine(resolved.routing) : new PolicyWillingnessEngine(resolved.willingness);
+    return resolved.engine === "routing"
+      ? new PolicyRoutingEngine(resolved.routing, this.logger)
+      : new PolicyWillingnessEngine(resolved.willingness, this.logger);
   }
 
   public async stop(): Promise<void> {

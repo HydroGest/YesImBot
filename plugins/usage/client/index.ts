@@ -7,6 +7,16 @@ import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, resolveC
 
 echarts.use([BarChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
+// Shared mode across both chart cards (linked tab switching)
+const chartMode = ref<"input" | "output">("input");
+
+// Reactive dark-mode detection via MutationObserver on <html>
+const isDark = ref(document.documentElement.classList.contains("dark"));
+const observer = new MutationObserver(() => {
+  isDark.value = document.documentElement.classList.contains("dark");
+});
+observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+
 const TokenRateStatus = defineComponent({
   setup() {
     const payload = usagePayload();
@@ -17,14 +27,18 @@ const TokenRateStatus = defineComponent({
       const { inputPerMinute, outputPerMinute, totalPerMinute, cacheReadPerMinute, noCachePerMinute } = current.rate;
 
       return h(resolveComponent("k-status"), null, {
-        tooltip: () =>
-          h("div", { class: "usage-rate-tooltip" }, [
-            h("p", { style: "margin: 4px 0" }, `总消耗: ${formatExact(totalPerMinute)}/min`),
-            h("p", { style: "margin: 4px 0" }, `输入: ${formatExact(inputPerMinute)}/min`),
-            h("p", { style: "margin: 4px 0" }, `输出: ${formatExact(outputPerMinute)}/min`),
-            h("p", { style: "margin: 4px 0" }, `缓存命中: ${formatExact(cacheReadPerMinute)}/min`),
-            h("p", { style: "margin: 4px 0" }, `缓存未命中: ${formatExact(noCachePerMinute)}/min`),
-          ]),
+        tooltip: () => {
+          const cacheTotal = cacheReadPerMinute + noCachePerMinute;
+          const hitRate = cacheTotal > 0 ? ((cacheReadPerMinute / cacheTotal) * 100).toFixed(1) : "-";
+          return h("div", { style: "padding: 8px 12px" }, [
+            h("p", { style: "margin: 6px 0" }, `总消耗: ${formatExact(totalPerMinute)}/min`),
+            h("p", { style: "margin: 6px 0" }, `输入: ${formatExact(inputPerMinute)}/min`),
+            h("p", { style: "margin: 6px 0" }, `输出: ${formatExact(outputPerMinute)}/min`),
+            h("p", { style: "margin: 6px 0" }, `缓存命中: ${formatExact(cacheReadPerMinute)}/min`),
+            h("p", { style: "margin: 6px 0" }, `缓存未命中: ${formatExact(noCachePerMinute)}/min`),
+            h("p", { style: "margin: 6px 0" }, `缓存命中率: ${hitRate}%`),
+          ]);
+        },
         default: () => `Token: ↑ ${formatCompact(inputPerMinute)}/min · ↓ ${formatCompact(outputPerMinute)}/min`,
       });
     };
@@ -55,7 +69,7 @@ const EChart = defineComponent({
 
     watch(() => props.option, render, { deep: true });
 
-    return () => h("div", { ref: root, style: "width: 100%; height: 280px" });
+    return () => h("div", { ref: root, class: "echarts", style: "width: 100%; height: 280px" });
   },
 });
 
@@ -83,6 +97,12 @@ interface UsagePayload {
   rate: RateSnapshot;
 }
 
+export default function (ctx: Context): void {
+  ctx.slot({ type: "analytic-chart", component: createChartCard("近30天 Token 消耗", historyOption), order: 0 });
+  ctx.slot({ type: "analytic-chart", component: createChartCard("每小时 Token 消耗", hourlyOption), order: 0 });
+  ctx.slot({ type: "status-right", component: TokenRateStatus, order: 0 });
+}
+
 function usagePayload() {
   return computed(() => (store as { yesimbotUsage?: UsagePayload }).yesimbotUsage);
 }
@@ -98,29 +118,94 @@ function formatCompact(value: number): string {
   return String(rounded);
 }
 
-function createChartCard(title: string, option: (payload: UsagePayload, mode: "input" | "output") => Record<string, unknown>, tabs = true) {
+/** ECharts axis tooltip formatter that appends cache hit rate */
+function axisCacheHitFormatter(params: Array<{ seriesName: string; value: number; marker: string; axisValueLabel: string }>): string {
+  if (!params.length) return "";
+  const lines = [`${params[0].axisValueLabel}`];
+  let cacheRead = 0;
+  let noCache = 0;
+  for (const p of params) {
+    lines.push(`${p.marker} ${p.seriesName}: ${formatExact(p.value)}`);
+    if (p.seriesName === "缓存命中") cacheRead = p.value;
+    if (p.seriesName === "缓存未命中") noCache = p.value;
+  }
+  const total = cacheRead + noCache;
+  const hitRate = total > 0 ? ((cacheRead / total) * 100).toFixed(1) : "-";
+  lines.push(`缓存命中率: ${hitRate}%`);
+  return lines.join("<br>");
+}
+
+/** Format "8:00" into "8:00 - 9:00" time range */
+function hourLabel(axisValue: string): string {
+  const hour = parseInt(axisValue, 10);
+  const next = (hour + 1) % 24;
+  return `${hour}:00 - ${next}:00`;
+}
+
+/** Hourly tooltip formatter with time range + cache hit rate */
+function hourlyAxisCacheHitFormatter(params: Array<{ seriesName: string; value: number; marker: string; axisValueLabel: string }>): string {
+  if (!params.length) return "";
+  const lines = [hourLabel(params[0].axisValueLabel)];
+  let cacheRead = 0;
+  let noCache = 0;
+  for (const p of params) {
+    lines.push(`${p.marker} ${p.seriesName}: ${formatExact(p.value)}`);
+    if (p.seriesName === "缓存命中") cacheRead = p.value;
+    if (p.seriesName === "缓存未命中") noCache = p.value;
+  }
+  const total = cacheRead + noCache;
+  const hitRate = total > 0 ? ((cacheRead / total) * 100).toFixed(1) : "-";
+  lines.push(`缓存命中率: ${hitRate}%`);
+  return lines.join("<br>");
+}
+
+/** Hourly tooltip formatter with time range (output mode) */
+function hourlyAxisFormatter(params: Array<{ seriesName: string; value: number; marker: string; axisValueLabel: string }>): string {
+  if (!params.length) return "";
+  const lines = [hourLabel(params[0].axisValueLabel)];
+  for (const p of params) {
+    lines.push(`${p.marker} ${p.seriesName}: ${formatExact(p.value)}`);
+  }
+  return lines.join("<br>");
+}
+
+/** Dark-mode aware base chart option (text, axis, tooltip chrome) */
+function darkAwareBase(): Record<string, unknown> {
+  const dark = isDark.value;
+  const textColor = dark ? "rgba(255, 255, 245, 0.86)" : "#333";
+  const mutedColor = dark ? "rgba(255, 255, 245, 0.5)" : "#999";
+  const borderColor = dark ? "rgba(82, 82, 89, 0.5)" : "#ccc";
+  return {
+    textStyle: { color: textColor },
+    tooltip: { trigger: "axis", backgroundColor: dark ? "#1e1e20" : "#fff", borderColor, textStyle: { color: textColor } },
+    legend: { textStyle: { color: textColor } },
+    xAxis: { axisLabel: { color: mutedColor }, axisLine: { lineStyle: { color: borderColor } }, splitLine: { lineStyle: { color: borderColor } } },
+    yAxis: { axisLabel: { color: mutedColor }, splitLine: { lineStyle: { color: dark ? "rgba(82, 82, 89, 0.3)" : "#eee" } } },
+  };
+}
+
+function createChartCard(title: string, option: (payload: UsagePayload, mode: "input" | "output") => Record<string, unknown>) {
   return defineComponent({
     setup() {
       const payload = usagePayload();
-      const mode = ref<"input" | "output">("input");
 
       return () => {
         const current = payload.value;
         if (!current) return null;
-        const chartOption = option(current, mode.value);
+        // Access isDark.value to trigger re-render on theme change
+        void isDark.value;
+        const chartOption = option(current, chartMode.value);
 
         return h(
           resolveComponent("k-card"),
-          { class: "frameless analytic-chart" },
+          { class: "frameless analytic-chart usage-chart" },
           {
             header: () => [
               h("span", { class: "left" }, title),
-              tabs
-                ? h("span", { class: "right" }, [
-                    h("span", { class: "tab-item" + (mode.value === "input" ? " active" : ""), onClick: () => (mode.value = "input") }, "输入"),
-                    h("span", { class: "tab-item" + (mode.value === "output" ? " active" : ""), onClick: () => (mode.value = "output") }, "输出"),
-                  ])
-                : [],
+              h("span", { class: "right" }, [
+                h("span", { class: "tab-item" + (chartMode.value === "input" ? " active" : ""), onClick: () => (chartMode.value = "input") }, "输入"),
+                h("span", { class: "tab-item" + (chartMode.value === "output" ? " active" : ""), onClick: () => (chartMode.value = "output") }, "输出"),
+              ]),
             ],
             default: () => h(EChart, { option: chartOption }),
           },
@@ -131,6 +216,7 @@ function createChartCard(title: string, option: (payload: UsagePayload, mode: "i
 }
 
 function historyOption(payload: UsagePayload, mode: "input" | "output"): Record<string, unknown> {
+  const base = darkAwareBase();
   const data = payload.recent.slice().reverse();
   const tokenField = mode === "input" ? "inputTokens" : "outputTokens";
   const series =
@@ -139,39 +225,48 @@ function historyOption(payload: UsagePayload, mode: "input" | "output"): Record<
           { name: "缓存命中", type: "bar", stack: "input", itemStyle: { color: "#90CAF9" }, data: data.map((item) => item.cacheReadTokens) },
           { name: "缓存未命中", type: "bar", stack: "input", itemStyle: { color: "#1976D2" }, data: data.map((item) => item.noCacheTokens) },
         ]
-      : [{ type: "bar", data: data.map((item) => item[tokenField]) }];
+      : [{ name: "输出", type: "bar", itemStyle: { color: "#66BB6A" }, data: data.map((item) => item[tokenField]) }];
   return {
-    tooltip: { trigger: "axis" },
+    ...base,
+    tooltip: { ...(base.tooltip as object), trigger: "axis", formatter: mode === "input" ? axisCacheHitFormatter : undefined },
     xAxis: {
+      ...(base.xAxis as object),
       type: "category",
       data: data.map((_, index) => new Date(Date.now() - (payload.recent.length - 1 - index) * 86_400_000).toLocaleDateString("zh-CN")),
     },
-    yAxis: { type: "value" },
-    legend: mode === "input" ? { data: ["缓存命中", "缓存未命中"] } : undefined,
+    yAxis: { ...(base.yAxis as object), type: "value" },
+    legend: mode === "input" ? { ...(base.legend as object), data: ["缓存命中", "缓存未命中"] } : undefined,
     series,
   };
 }
 
 function hourlyOption(payload: UsagePayload, mode: "input" | "output"): Record<string, unknown> {
-  const tokenField = mode === "input" ? "inputTokens" : "outputTokens";
+  const base = darkAwareBase();
   const series =
     mode === "input"
       ? [
-          { name: "缓存命中", type: "bar", stack: "input", itemStyle: { color: "#90CAF9" }, data: payload.byHour.map((item) => item.cacheReadTokens) },
-          { name: "缓存未命中", type: "bar", stack: "input", itemStyle: { color: "#1976D2" }, data: payload.byHour.map((item) => item.noCacheTokens) },
+          {
+            name: "缓存命中",
+            type: "bar",
+            stack: "input",
+            itemStyle: { color: "#90CAF9" },
+            data: payload.byHour.map((item) => Math.round(item.cacheReadTokens)),
+          },
+          {
+            name: "缓存未命中",
+            type: "bar",
+            stack: "input",
+            itemStyle: { color: "#1976D2" },
+            data: payload.byHour.map((item) => Math.round(item.noCacheTokens)),
+          },
         ]
-      : [{ type: "bar", data: payload.byHour.map((item) => item[tokenField]) }];
+      : [{ name: "输出", type: "bar", itemStyle: { color: "#66BB6A" }, data: payload.byHour.map((item) => Math.round(item.outputTokens)) }];
   return {
-    tooltip: { trigger: "axis" },
-    xAxis: { type: "category", data: payload.byHour.map((_, hour) => `${hour}:00`) },
-    yAxis: { type: "value" },
-    legend: mode === "input" ? { data: ["缓存命中", "缓存未命中"] } : undefined,
+    ...base,
+    tooltip: { ...(base.tooltip as object), trigger: "axis", formatter: mode === "input" ? hourlyAxisCacheHitFormatter : hourlyAxisFormatter },
+    xAxis: { ...(base.xAxis as object), type: "category", data: payload.byHour.map((_, hour) => `${hour}:00`) },
+    yAxis: { ...(base.yAxis as object), type: "value" },
+    legend: mode === "input" ? { ...(base.legend as object), data: ["缓存命中", "缓存未命中"] } : undefined,
     series,
   };
-}
-
-export default function (ctx: Context): void {
-  ctx.slot({ type: "analytic-chart", component: createChartCard("近30天 Token 消耗", historyOption), order: 0 });
-  ctx.slot({ type: "analytic-chart", component: createChartCard("每小时 Token 消耗", hourlyOption), order: 0 });
-  ctx.slot({ type: "status-right", component: TokenRateStatus, order: 0 });
 }

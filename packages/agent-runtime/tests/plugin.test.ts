@@ -56,10 +56,7 @@ describe("plugin host", () => {
       ],
     });
 
-    await host.init({
-      legacySystemPrompt: "base",
-      baseTools: [{ name: "base", inputSchema: z.object({}) }] as never,
-    });
+    await host.init({ legacySystemPrompt: "base", baseTools: [{ name: "base", inputSchema: z.object({}) }] as never });
     await host.init({ legacySystemPrompt: "ignored", baseTools: [] });
 
     expect(calls).toEqual(["tools:pre", "prompt:pre", "legacy-prompt:normal", "legacy-tools:normal"]);

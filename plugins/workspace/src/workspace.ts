@@ -13,6 +13,62 @@ const DEFAULT_SYSTEM_BIN_PATHS = ["/usr/local/bin", "/usr/bin", "/bin"] as const
 const DEFAULT_SYSTEM_PATH = DEFAULT_SYSTEM_BIN_PATHS.join(":");
 const USR_LOCAL_BIN_PLACEHOLDER = "/usr/local/bin/.keep";
 
+/**
+ * Bootstrap script injected into js-exec to fix Node.js compatibility.
+ *
+ * just-bash's js-exec bridge returns stat results as plain objects with boolean
+ * fields (`isFile: true`), but Node.js's `fs.statSync()` returns `Stats` objects
+ * with **methods** (`isFile(): boolean`). Code using the standard Node.js pattern
+ * `stat.isFile()` fails with "not a function" without this shim.
+ *
+ * Additionally, `mtime` is returned as an ISO string from the bridge; Node.js
+ * returns a `Date` object.
+ */
+const STAT_COMPAT_BOOTSTRAP = `(function() {
+  var _fs = globalThis.fs;
+  var _origStatSync = _fs.statSync;
+  var _origLstatSync = _fs.lstatSync;
+
+  function wrapStatResult(raw) {
+    if (!raw || typeof raw !== 'object') return raw;
+    var _isFile = !!raw.isFile;
+    var _isDir = !!raw.isDirectory;
+    var _isSym = !!raw.isSymbolicLink;
+    raw.isFile = function() { return _isFile; };
+    raw.isDirectory = function() { return _isDir; };
+    raw.isSymbolicLink = function() { return _isSym; };
+    raw.isBlockDevice = function() { return false; };
+    raw.isCharacterDevice = function() { return false; };
+    raw.isFIFO = function() { return false; };
+    raw.isSocket = function() { return false; };
+    if (typeof raw.mtime === 'string') raw.mtime = new Date(raw.mtime);
+    if (typeof raw.atimeMs === 'undefined') raw.atimeMs = raw.mtime ? raw.mtime.getTime() : 0;
+    if (typeof raw.mtimeMs === 'undefined') raw.mtimeMs = raw.mtime ? raw.mtime.getTime() : 0;
+    return raw;
+  }
+
+  _fs.statSync = function(path) { return wrapStatResult(_origStatSync(path)); };
+  _fs.lstatSync = function(path) { return wrapStatResult(_origLstatSync(path)); };
+
+  // Also patch the promises namespace to return Node.js-compatible results
+  if (_fs.promises) {
+    var _origPromisesStat = _fs.promises.stat;
+    var _origPromisesLstat = _fs.promises.lstat;
+    if (_origPromisesStat) {
+      _fs.promises.stat = function(path) {
+        try { return Promise.resolve(wrapStatResult(_origStatSync(path))); }
+        catch(e) { return Promise.reject(e); }
+      };
+    }
+    if (_origPromisesLstat) {
+      _fs.promises.lstat = function(path) {
+        try { return Promise.resolve(wrapStatResult(_origLstatSync(path))); }
+        catch(e) { return Promise.reject(e); }
+      };
+    }
+  }
+})();`;
+
 type JustBash = typeof JustBashModule;
 
 export interface SandboxWorkspaceConfig {
@@ -69,7 +125,7 @@ export class Workspace {
       executionLimits: config.bash?.executionLimits,
       network: config.bash?.network,
       python: config.bash?.python ?? false,
-      javascript: config.bash?.javascript ?? false,
+      javascript: config.bash?.javascript ? { bootstrap: STAT_COMPAT_BOOTSTRAP } : false,
       customCommands: [createGitLazyCommand(this.fs, config.git)],
     });
     this.backend = {

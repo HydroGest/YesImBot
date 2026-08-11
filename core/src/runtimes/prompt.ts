@@ -4,7 +4,8 @@ import { join } from "node:path";
 import type { SystemModelMessage } from "ai";
 import type { Logger } from "koishi";
 
-import type { ChannelScope } from "../channels/index.js";
+import type { ChannelContext } from "../channels/index.js";
+
 export const DEFAULT_PERSONA = `# Athena
 你的名字是 Athena。你有自己的注意力、偏好、感受和判断。你不以满足每个人为目标，也不把每次交谈都变成任务。
 
@@ -22,13 +23,47 @@ export const DEFAULT_PERSONA = `# Athena
 
 # 成长
 新经历可以改变你的局部观点、兴趣、表达习惯和关系判断。不要为了维护静态人设而拒绝变化，也不要把一次情绪或一次对话宣布为永久改变。注意自己的重复模式、失败和新倾向。`;
+
 export interface CoreSystemPromptOptions {
   readonly basePath: string;
-  readonly channel: ChannelScope;
+  readonly channel: ChannelContext;
   readonly selfId: string;
   readonly customInnerThought: boolean;
   readonly logger?: Logger;
 }
+
+export async function readPersona(basePath: string, logger?: Logger): Promise<string> {
+  return (await readPromptFile(basePath, "PERSONA.md", logger)) ?? DEFAULT_PERSONA;
+}
+
+export async function buildCoreSystemPrompt(options: CoreSystemPromptOptions): Promise<SystemModelMessage[]> {
+  const [agents, persona] = await Promise.all([readPromptFile(options.basePath, "AGENTS.md", options.logger), readPersona(options.basePath, options.logger)]);
+
+  return [
+    { role: "system", content: coreConstitution(options.customInnerThought) },
+    wrap("persona", persona),
+    ...(agents ? [wrap("agents", agents)] : []),
+    formatRuntimeContext(options.channel, options.selfId),
+  ];
+}
+
+export async function ensureDefaultPersona(basePath: string): Promise<void> {
+  try {
+    await writeFile(join(basePath, "PERSONA.md"), DEFAULT_PERSONA, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+}
+
+/** Creates an empty AGENTS.md so operators have a place to write; Core provides no default content. */
+export async function ensureAgentsFile(basePath: string): Promise<void> {
+  try {
+    await writeFile(join(basePath, "AGENTS.md"), "", { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+}
+
 function coreConstitution(customInnerThought: boolean): string {
   return `你是一个运行在 YesImBot 中的 Agent。
 
@@ -98,34 +133,7 @@ ${
 需要原样呈现大段含尖括号的内容（代码、泛型、标签示例）时，用 <text>…</text> 包裹，其中的内容逐字交付、不做解析。
 `;
 }
-export async function readPersona(basePath: string, logger?: Logger): Promise<string> {
-  return (await readPromptFile(basePath, "PERSONA.md", logger)) ?? DEFAULT_PERSONA;
-}
-export async function buildCoreSystemPrompt(options: CoreSystemPromptOptions): Promise<SystemModelMessage[]> {
-  const [agents, persona] = await Promise.all([readPromptFile(options.basePath, "AGENTS.md", options.logger), readPersona(options.basePath, options.logger)]);
 
-  return [
-    { role: "system", content: coreConstitution(options.customInnerThought) },
-    wrap("persona", persona),
-    ...(agents ? [wrap("agents", agents)] : []),
-    formatRuntimeContext(options.channel, options.selfId),
-  ];
-}
-export async function ensureDefaultPersona(basePath: string): Promise<void> {
-  try {
-    await writeFile(join(basePath, "PERSONA.md"), DEFAULT_PERSONA, { encoding: "utf8", flag: "wx" });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-  }
-}
-/** Creates an empty AGENTS.md so operators have a place to write; Core provides no default content. */
-export async function ensureAgentsFile(basePath: string): Promise<void> {
-  try {
-    await writeFile(join(basePath, "AGENTS.md"), "", { encoding: "utf8", flag: "wx" });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-  }
-}
 async function readPromptFile(basePath: string, fileName: "AGENTS.md" | "PERSONA.md", logger?: Logger): Promise<string | undefined> {
   try {
     const content = (await readFile(join(basePath, fileName), "utf8")).trim();
@@ -139,13 +147,16 @@ async function readPromptFile(basePath: string, fileName: "AGENTS.md" | "PERSONA
     throw error;
   }
 }
+
 function escapeXml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 }
+
 function wrap(tag: "agents" | "persona", content: string): SystemModelMessage {
   return { role: "system", content: `<${tag}>\n${content}\n</${tag}>` };
 }
-function formatRuntimeContext(channel: ChannelScope, selfId: string): SystemModelMessage {
+
+function formatRuntimeContext(channel: ChannelContext, selfId: string): SystemModelMessage {
   return {
     role: "system",
     content: [

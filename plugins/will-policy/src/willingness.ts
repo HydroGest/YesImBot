@@ -1,4 +1,4 @@
-import type { Universal } from "koishi";
+import type { Logger, Universal } from "koishi";
 import { isMessage, type Event, type Message, type WillEngine } from "koishi-plugin-yesimbot";
 
 import { hasImage, hasQuote, mentionKind } from "./message-context.js";
@@ -11,13 +11,16 @@ export class PolicyWillingnessEngine implements WillEngine {
   private lastMessageAt: number | null = null;
   private lastDecayAt: number | null = null;
 
-  public constructor(private readonly config: PolicyWillingnessConfig) {
+  public constructor(
+    private readonly config: PolicyWillingnessConfig,
+    private readonly logger?: Pick<Logger, "debug">,
+  ) {
     this.score = config.initialScore;
   }
 
   public async decide(input: Message | Event, _state: Parameters<WillEngine["decide"]>[1]): Promise<"wait" | "trigger"> {
     if (!isMessage(input)) {
-      return isPokeEvent(input) ? this.decidePoke() : "wait";
+      return isPokeEvent(input) ? this.decidePoke(input) : "wait";
     }
 
     const now = Date.now();
@@ -30,11 +33,21 @@ export class PolicyWillingnessEngine implements WillEngine {
     this.lastMessageAt = now;
     this.lastDecayAt = now;
 
-    if (shouldForce(input.data, this.config)) return "trigger";
-    return Math.random() < probability ? "trigger" : "wait";
+    const forced = shouldForce(input.data, this.config);
+    const decision: "wait" | "trigger" = forced || Math.random() < probability ? "trigger" : "wait";
+    this.logger?.debug("will_policy.willingness", {
+      messageId: input.id,
+      channelId: input.data.channel.id,
+      previousScore: decayed,
+      score: next,
+      probability,
+      decision,
+      forced,
+    });
+    return decision;
   }
 
-  private decidePoke(): "wait" | "trigger" {
+  private decidePoke(input: Event): "wait" | "trigger" {
     const now = Date.now();
     const decayed =
       this.lastDecayAt === null || this.lastMessageAt === null ? this.score : decayScore(this.score, this.lastDecayAt, this.lastMessageAt, now, this.config);
@@ -45,11 +58,14 @@ export class PolicyWillingnessEngine implements WillEngine {
     this.lastMessageAt = now;
     this.lastDecayAt = now;
 
-    return Math.random() < probability ? "trigger" : "wait";
+    const decision: "wait" | "trigger" = Math.random() < probability ? "trigger" : "wait";
+    this.logger?.debug("will_policy.willingness", { messageId: input.id, channelId: input.data.channel.id, score: next, probability, decision, forced: true });
+    return decision;
   }
 
   public async onReply(): Promise<void> {
     this.score = Math.max(0, this.score - this.config.replyCost);
+    this.logger?.debug("will_policy.reply_cost", { score: this.score, replyCost: this.config.replyCost });
   }
 
   public getCurrentWillingness(): number {

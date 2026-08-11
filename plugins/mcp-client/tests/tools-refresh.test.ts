@@ -108,7 +108,7 @@ describe("mcp-client tool registry", () => {
 
     await plugin.start();
 
-    const channelScope = { type: "shared", platform: "test", channelId: "room" } as never;
+    const channelScope = { type: "guild", platform: "test", channelId: "room", guildId: "room" } as never;
     const runtimePlugin = await plugins[0]!.setup(channelScope, {} as never);
     expect(client.setNotificationHandler).toHaveBeenCalledOnce();
     expect(await resolveToolNames(runtimePlugin!)).toEqual(["docs-alpha", "docs-beta"]);
