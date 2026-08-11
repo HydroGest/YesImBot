@@ -2,7 +2,7 @@ import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import { createEntry, createJsonlStorage, type AgentEntry, type AgentStorage } from "@yesimbot/agent-runtime";
-import type { LanguageModel, LanguageModelUsage } from "ai";
+import type { LanguageModel } from "ai";
 
 import { executeCompact, filterEntriesForCompression } from "./compact.js";
 
@@ -19,7 +19,6 @@ export interface CompactInput {
   personaName: string;
   persona: string;
   signal?: AbortSignal;
-  onUsage?: (usage: LanguageModelUsage) => unknown;
 }
 
 export interface ConversationCompactConfig {
@@ -60,14 +59,12 @@ export class Conversation {
   public async list(): Promise<ConversationInfo[]> {
     const active = this.storagePathValue;
     return Promise.all(
-      (await this.files())
-        .reverse()
-        .map(async (filename) => ({
-          filename,
-          isActive: join(this.sessionsPath(), filename) === active,
-          size: (await stat(join(this.sessionsPath(), filename))).size,
-          createdAt: basename(filename, ".jsonl"),
-        })),
+      (await this.files()).reverse().map(async (filename) => ({
+        filename,
+        isActive: join(this.sessionsPath(), filename) === active,
+        size: (await stat(join(this.sessionsPath(), filename))).size,
+        createdAt: basename(filename, ".jsonl"),
+      })),
     );
   }
 
@@ -132,7 +129,6 @@ export class Conversation {
           previousMemory: this.memory,
           conversation: content,
           signal: input.signal,
-          onUsage: input.onUsage,
         })
       ).slice(0, 30_000);
       if (!summary) {

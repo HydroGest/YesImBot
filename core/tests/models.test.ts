@@ -80,7 +80,7 @@ describe("models.json modalities", () => {
     );
 
     expect(service.getDefaultEmbeddingModelId()).toBe("openai:text-embedding-3-small");
-    expect(service.resolveEmbedding("semantic")).toBe(embedding);
+    expect(service.resolveEmbedding("semantic")).not.toBe(embedding);
     expect(service.listEmbeddingModels()).toEqual([
       { fullId: "openai:text-embedding-3-small", config: { id: "text-embedding-3-small", dimension: 1536, name: "Semantic" } },
     ]);
@@ -126,5 +126,51 @@ describe("models.json modalities", () => {
     expect(provider.tools).toHaveBeenCalledWith("gpt-4o");
     expect(resolved.tools).toEqual(tools);
     expect(resolved.tools).not.toBe(tools);
+  });
+  it("wraps resolved chat models and emits their usage", async () => {
+    const ctx = new Context();
+    ctx.baseDir = "/";
+    const model = {
+      specificationVersion: "v3",
+      provider: "openai",
+      modelId: "gpt-4o",
+      supportedUrls: {},
+      async doGenerate() {
+        throw new Error("not implemented");
+      },
+      async doStream() {
+        return {
+          stream: new ReadableStream({
+            start(controller) {
+              controller.enqueue({ type: "finish", usage: { inputTokens: 3, outputTokens: 2 } });
+              controller.close();
+            },
+          }),
+        };
+      },
+    };
+    const service = new ModelService(ctx as never, { basePath: await createModelsPath({}).then((path) => path.slice(0, -"/models.json".length)) });
+    await service.start();
+    service.register({ ...createProvider(), chat: () => model as never });
+    let event: unknown;
+    ctx.on("yesimbot/model-usage" as never, (value: unknown) => {
+      event = value;
+    });
+    let wrapped = 0;
+    service.middleware({
+      specificationVersion: "v3",
+      wrapStream: async ({ doStream }) => {
+        wrapped++;
+        return doStream();
+      },
+    });
+
+    const context = { type: "guild" as const, platform: "onebot", channelId: "123", guildId: "123" };
+    const result = await (service.resolveChatModel("openai:gpt-4o", context).model as unknown as typeof model).doStream({} as never);
+    const reader = result.stream.getReader();
+    while (!(await reader.read()).done) continue;
+
+    expect(wrapped).toBe(1);
+    expect(event).toMatchObject({ context, modelId: "openai:gpt-4o", providerId: "openai", providerModelId: "gpt-4o", kind: "chat" });
   });
 });

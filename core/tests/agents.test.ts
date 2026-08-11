@@ -49,8 +49,7 @@ describe("createDescribeImageTool", () => {
       warnings: [],
       usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
     } as never);
-    const onUsage = vi.fn();
-    const tool = createDescribeImageTool({} as never, resources, onUsage);
+    const tool = createDescribeImageTool({} as never, resources);
 
     const result = await tool.execute({ uri: `asset://${id}`, question: "图片里有什么？" }, { toolCallId: "call", abortSignal: undefined } as never);
 
@@ -63,7 +62,6 @@ describe("createDescribeImageTool", () => {
     expect(parts[0]!.text).toContain("图片里有什么？");
     expect(parts[1]).toMatchObject({ type: "file", mediaType: "image/png" });
     expect(parts[1]!.data).toEqual(PNG_BYTES);
-    expect(onUsage).toHaveBeenCalledWith({ inputTokens: 1, outputTokens: 1, totalTokens: 2 });
   });
 
   it("rejects malformed URIs without touching the asset store", async () => {
@@ -160,21 +158,16 @@ class TestWillPlugin implements WillPlugin {
 }
 
 describe("Agents", () => {
-  it("resolves channel models, reports scoped usage, and composes trigger guards", async () => {
+  it("exposes only agent plugin and will registrations", () => {
     const agents = new Agents(new Context());
-    const report = vi.fn();
-    const disposeModel = agents.model(() => "provider:override");
-    agents.usage(report);
-    agents.guard(() => true);
-    agents.guard(() => false);
 
-    await expect(agents.resolveModel(scope, "provider:default")).resolves.toBe("provider:override");
-    await agents.reportUsage(scope, { kind: "compact", modelId: "provider:override", usage: { totalTokens: 3 } });
-    await expect(agents.allowTrigger(scope)).resolves.toBe(false);
-    expect(report).toHaveBeenCalledOnce();
-
-    disposeModel();
-    await expect(agents.resolveModel(scope, "provider:default")).resolves.toBe("provider:default");
+    expect(agents).toMatchObject({ use: expect.any(Function), will: expect.any(Function) });
+    expect("model" in agents).toBe(false);
+    expect("usage" in agents).toBe(false);
+    expect("guard" in agents).toBe(false);
+    expect("resolveModel" in agents).toBe(false);
+    expect("reportUsage" in agents).toBe(false);
+    expect("allowTrigger" in agents).toBe(false);
   });
 
   it("registers and disposes channel plugins in stable order", async () => {

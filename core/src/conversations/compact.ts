@@ -1,5 +1,5 @@
 import type { AgentEntry, AgentMessage } from "@yesimbot/agent-runtime";
-import { generateText, type AssistantContent, type LanguageModel, type LanguageModelUsage } from "ai";
+import { generateText, type AssistantContent, type LanguageModel } from "ai";
 import type { Element } from "koishi";
 
 export function filterEntriesForCompression(entries: readonly AgentEntry[]): string {
@@ -29,15 +29,13 @@ export async function executeCompact(input: {
   readonly previousMemory: string;
   readonly conversation: string;
   readonly signal?: AbortSignal;
-  readonly onUsage?: (usage: LanguageModelUsage) => unknown;
 }): Promise<string> {
-  const { text, usage } = await generateText({
+  const { text } = await generateText({
     model: input.model,
     system: `你正在为 ${input.personaName} 压缩长期对话记忆。保留关系、事实、偏好、未完成事项和重要上下文，不编造内容。`,
     prompt: `<persona>\n${input.persona}\n</persona>\n\n<previous_memory>\n${input.previousMemory || "(none)"}\n</previous_memory>\n\n<conversation>\n${input.conversation}\n</conversation>`,
     abortSignal: input.signal,
   });
-  await input.onUsage?.(usage);
   const summary = text.trim();
   if (!summary) throw new Error("Compaction produced an empty summary.");
   return summary;

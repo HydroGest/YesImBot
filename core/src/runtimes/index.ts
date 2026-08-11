@@ -1,4 +1,4 @@
-import type { LanguageModel, LanguageModelUsage } from "ai";
+import type { LanguageModel } from "ai";
 import type { Bot, Context, Logger, Session } from "koishi";
 
 import { Agents } from "../agents/index.js";
@@ -41,11 +41,10 @@ export class Runtimes {
         this.logger.debug("runtimes.get.recreate", { key, oldSelfId: current.selfId, newSelfId: bot.selfId });
         await current.stop();
       }
-      const chatModelId = await this.agents.resolveModel(channel.context, this.config.chatModel);
-      const chat = this.model.resolveChatModel(chatModelId);
-      const compactModel = this.resolveCompactModel(chat.model);
-      const vision = this.resolveVision();
-      const compactModelId = this.config.session.compact.model ?? chatModelId;
+      const chatModelId = this.config.chatModel;
+      const chat = this.model.resolveChatModel(chatModelId, channel.context);
+      const compactModel = this.resolveCompactModel(chat.model, channel.context);
+      const vision = this.resolveVision(channel.context);
       const runtime = new ChannelRuntime(this.ctx, {
         channel,
         bot,
@@ -56,12 +55,7 @@ export class Runtimes {
         visionModel: vision,
         imageOutputSupported: chat.entry.modalities?.input?.includes("image") ?? false,
         config: this.config,
-        plugins: await this.agents.setup(channel.context, bot, { modelId: chatModelId }),
-        reportUsage: (report) => this.agents.reportUsage(channel.context, report),
-        allowTrigger: () => this.agents.allowTrigger(channel.context),
-        modelId: chatModelId,
-        visionModelId: this.config.visionModel,
-        compactModelId,
+        plugins: await this.agents.setup(channel.context, bot),
         idleTimeout: this.config.session.compact.responseIdleMinutes * 60_000,
         archiveMaxBytes: this.config.session.archive.maxKB * 1024,
       });
@@ -116,19 +110,13 @@ export class Runtimes {
       if (runtime) await runtime.stop();
       this.runtimes.delete(key);
       const channel = await this.channels.resolve(ctx);
-      const chat = this.model.resolveChatModel(this.config.chatModel);
+      const chat = this.model.resolveChatModel(this.config.chatModel, channel.context);
       const input = noSummary
         ? undefined
         : {
-            model: this.resolveCompactModel(chat.model),
+            model: this.resolveCompactModel(chat.model, channel.context),
             personaName: "Athena",
             persona: await readPersona(this.config.basePath, this.ctx.logger("yesimbot/archive")),
-            onUsage: (usage: LanguageModelUsage) =>
-              this.agents.reportUsage(channel.context, {
-                kind: "compact",
-                modelId: this.config.session.compact.model ?? this.config.chatModel,
-                usage,
-              }),
           };
       await channel.conversation.archive(noSummary, input);
     });
@@ -149,13 +137,13 @@ export class Runtimes {
     return sessions.length ? sessions.map((session) => `${session.isActive ? "→ " : "  "}${session.filename}`).join("\n") : "无会话记录。";
   }
 
-  private resolveCompactModel(fallback: LanguageModel): LanguageModel {
-    return this.config.session.compact.model ? this.model.resolveChatModel(this.config.session.compact.model).model : fallback;
+  private resolveCompactModel(fallback: LanguageModel, context: ChannelContext): LanguageModel {
+    return this.config.session.compact.model ? this.model.resolveChatModel(this.config.session.compact.model, context).model : fallback;
   }
 
-  private resolveVision() {
+  private resolveVision(context: ChannelContext) {
     if (!this.config.visionModel) return undefined;
-    const vision = this.model.resolveChatModel(this.config.visionModel);
+    const vision = this.model.resolveChatModel(this.config.visionModel, context);
     return vision.entry.modalities?.input?.includes("image") ? vision.model : undefined;
   }
 

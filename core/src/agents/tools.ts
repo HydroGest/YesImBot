@@ -1,5 +1,5 @@
 import { jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
-import { generateText, type LanguageModel, type LanguageModelUsage } from "ai";
+import { generateText, type LanguageModel } from "ai";
 import type { Bot } from "koishi";
 
 import { parseReply } from "../messages/index.js";
@@ -84,11 +84,7 @@ export function createReadTool(resources: ChannelResources, imageOutputSupported
   };
 }
 
-export function createDescribeImageTool(
-  model: LanguageModel,
-  resources: ChannelResources,
-  onUsage?: (usage: LanguageModelUsage) => unknown,
-): AgentTool<DescribeImageInput, DescribeImageOutput> {
+export function createDescribeImageTool(model: LanguageModel, resources: ChannelResources): AgentTool<DescribeImageInput, DescribeImageOutput> {
   return {
     name: "describe_image",
     description:
@@ -127,7 +123,6 @@ export function createDescribeImageTool(
             },
           ],
         });
-        await onUsage?.(result.usage);
         return { text: result.text };
       } catch (cause) {
         return { error: `vision_call_failed: ${cause instanceof Error ? cause.message : String(cause)}` };

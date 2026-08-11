@@ -11,7 +11,6 @@ import {
 import type { AssistantContent, LanguageModel, ToolSet } from "ai";
 import { type Bot, type Context, type Element, type Logger } from "koishi";
 
-import type { UsageReport } from "../agents/index.js";
 import { createDescribeImageTool, createReadTool, createSendMessageTool } from "../agents/tools.js";
 import type { WillEngine, WillState } from "../agents/will.js";
 import { type Channel, type ChannelContext, deriveChannelKey } from "../channels/index.js";
@@ -75,11 +74,6 @@ export interface ChannelRuntimeOptions {
   readonly imageOutputSupported: boolean;
   readonly config: Config;
   readonly plugins: readonly AgentPlugin[];
-  readonly reportUsage?: (report: UsageReport) => Promise<void>;
-  readonly allowTrigger?: () => Promise<boolean>;
-  readonly modelId?: string;
-  readonly visionModelId?: string;
-  readonly compactModelId?: string;
   readonly compactModel?: LanguageModel;
   readonly idleTimeout?: number;
   readonly archiveMaxBytes?: number;
@@ -114,11 +108,7 @@ export class ChannelRuntime {
       createReadTool(options.channel.resources, options.imageOutputSupported),
     ];
     if (options.visionModel) {
-      tools.push(
-        createDescribeImageTool(options.visionModel, options.channel.resources, (usage) =>
-          options.reportUsage?.({ kind: "vision", modelId: options.visionModelId, usage }),
-        ),
-      );
+      tools.push(createDescribeImageTool(options.visionModel, options.channel.resources));
     }
     this.agent = createAgent({
       id: deriveChannelKey(this.context),
@@ -146,10 +136,6 @@ export class ChannelRuntime {
   public handle(record: MessageRecord | EventRecord): Promise<RuntimeResult> {
     return this.schedule(async () => {
       const input = await this.persist(record);
-      if (this.options.allowTrigger && !(await this.options.allowTrigger())) {
-        this.logger.debug("runtime.handle.blocked", { eventId: input.id });
-        return { kind: "wait", eventId: input.id };
-      }
       await this.archiveIfOversize();
       const decision = await this.options.will.decide(input, this.state());
       const result = decision === "wait" ? { kind: "wait" as const, eventId: input.id } : this.start(input, true, "join");
@@ -171,10 +157,6 @@ export class ChannelRuntime {
       this.assertOpen();
       if (trigger && ifBusy === "reject" && this.agent.getActiveTurnId() !== null) throw new AgentBusyError();
       const input = await this.persist(event);
-      if (trigger && this.options.allowTrigger && !(await this.options.allowTrigger())) {
-        this.logger.debug("runtime.post.blocked", { eventId: input.id, eventType: event.eventType });
-        return { kind: "wait", eventId: input.id };
-      }
       await this.archiveIfOversize();
       const result = !trigger ? { kind: "wait" as const, eventId: input.id } : this.start(input, false, ifBusy);
       this.logger.debug("runtime.post", { eventId: input.id, eventType: event.eventType, trigger, ifBusy, result: result.kind });
@@ -214,7 +196,6 @@ export class ChannelRuntime {
         model: this.options.compactModel ?? this.options.model,
         personaName: "Athena",
         persona: this.persona,
-        onUsage: (usage) => this.options.reportUsage?.({ kind: "compact", modelId: this.options.compactModelId ?? this.options.modelId, usage }),
       });
       if (result.compacted) await this.archiveIfOversize();
       return result;
@@ -376,7 +357,6 @@ export class ChannelRuntime {
       model: this.options.compactModel ?? this.options.model,
       personaName: "Athena",
       persona: this.persona,
-      onUsage: (usage) => this.options.reportUsage?.({ kind: "compact", modelId: this.options.compactModelId ?? this.options.modelId, usage }),
     });
   }
 

@@ -1,4 +1,4 @@
-import { isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
+import { isLoopFinished, streamText, type LanguageModel, type SystemModelMessage, type ToolSet } from "ai";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
@@ -47,6 +47,7 @@ export interface Agent {
   wait(options?: AgentWaitOptions): Promise<void>;
   interrupt(reason?: unknown): Promise<void>;
   getModel(): LanguageModel;
+  setModel(model: LanguageModel): void;
   clear(): Promise<void>;
   getActiveTurnId(): string | null;
   isIdle(): boolean;
@@ -55,30 +56,6 @@ export interface Agent {
 interface ResolvedSystemPrompt {
   legacy?: string;
   blocks: SystemModelMessage[];
-}
-
-function mergeUsage(current: Partial<LanguageModelUsage> | undefined, next: Partial<LanguageModelUsage> | undefined): Partial<LanguageModelUsage> | undefined {
-  if (!next) return current;
-  if (!current) return next;
-  const add = (left: number | undefined, right: number | undefined) => (left === undefined && right === undefined ? undefined : (left ?? 0) + (right ?? 0));
-  return {
-    ...current,
-    ...next,
-    inputTokens: add(current.inputTokens, next.inputTokens),
-    inputTokenDetails: {
-      noCacheTokens: add(current.inputTokenDetails?.noCacheTokens, next.inputTokenDetails?.noCacheTokens),
-      cacheReadTokens: add(current.inputTokenDetails?.cacheReadTokens, next.inputTokenDetails?.cacheReadTokens),
-      cacheWriteTokens: add(current.inputTokenDetails?.cacheWriteTokens, next.inputTokenDetails?.cacheWriteTokens),
-    },
-    outputTokens: add(current.outputTokens, next.outputTokens),
-    outputTokenDetails: {
-      textTokens: add(current.outputTokenDetails?.textTokens, next.outputTokenDetails?.textTokens),
-      reasoningTokens: add(current.outputTokenDetails?.reasoningTokens, next.outputTokenDetails?.reasoningTokens),
-    },
-    totalTokens: add(current.totalTokens, next.totalTokens),
-    reasoningTokens: add(current.reasoningTokens, next.reasoningTokens),
-    cachedInputTokens: add(current.cachedInputTokens, next.cachedInputTokens),
-  };
 }
 
 export function createAgent(config: AgentConfig): Agent {
@@ -103,15 +80,18 @@ export function createAgent(config: AgentConfig): Agent {
   };
   const state = createStateManager({ storage, initialState: config.initialState ?? config.defaultState });
 
-  const model = config.model;
+  let model = config.model;
   const baseTools = config.tools ?? [];
   let frozenSystemPrompt: string | SystemModelMessage[] | undefined;
   let frozenTools: AgentToolSet = [];
   let frozenProviderTools: ToolSet = {};
 
-  const pluginHost = createPluginHost({ plugins: config.plugins ?? [], runtime: { id, channel, state, storage } });
+  const pluginHost = createPluginHost({
+    plugins: config.plugins ?? [],
+    runtime: { id, channel, state, storage, getModel: () => model, setModel: (next) => (model = next) },
+  });
 
-  const runtimeContext = { runtime: { id }, channel, state, storage };
+  const runtimeContext = { runtime: { id }, channel, state, storage, getModel: () => model, setModel: (next: LanguageModel) => (model = next) };
 
   let initialized = false;
   let initPromise: Promise<void> | undefined;
@@ -182,7 +162,14 @@ export function createAgent(config: AgentConfig): Agent {
     }
 
     initPromise = (async () => {
-      const base = await resolveConfiguredSystemPrompt(config.systemPrompt, { id, channel, state, storage });
+      const base = await resolveConfiguredSystemPrompt(config.systemPrompt, {
+        id,
+        channel,
+        state,
+        storage,
+        getModel: () => model,
+        setModel: (next) => (model = next),
+      });
 
       await pluginHost.init({ legacySystemPrompt: base.legacy, baseTools });
 
@@ -395,7 +382,6 @@ export function createAgent(config: AgentConfig): Agent {
 
   const executeTurn = async (request: TurnRequest): Promise<TurnResult> => {
     const allMessages: AgentMessage[] = [];
-    let usage: Partial<LanguageModelUsage> | undefined;
     let currentBatch = request.messages.splice(0, request.messages.length);
     const abortSignal = request.signal;
 
@@ -446,7 +432,6 @@ export function createAgent(config: AgentConfig): Agent {
             aborted = true;
           },
           onStepFinish: async (step) => {
-            usage = mergeUsage(usage, step.usage);
             const responseMessages = step.response.messages.slice(persistedResponseMessageCount);
             persistedResponseMessageCount = step.response.messages.length;
             const stepMessages: AgentMessage[] = responseMessages.map((message) =>
@@ -498,13 +483,13 @@ export function createAgent(config: AgentConfig): Agent {
       }
 
       await emitInternal({ type: "turn.done", turnId: request.turnId });
-      const result: TurnResult = { turnId: request.turnId, status: "done", messages: allMessages, usage };
+      const result: TurnResult = { turnId: request.turnId, status: "done", messages: allMessages };
       await pluginHost.helpers.onTurnFinish(result, { runtime: { id }, channel, state, turnId: request.turnId });
       return result;
     } catch (error) {
       const aborted = error instanceof DOMException && error.name === "AbortError";
       const diagnostic = createDiagnostic(error);
-      const result: TurnResult = { turnId: request.turnId, status: aborted ? "aborted" : "failed", messages: allMessages, error: diagnostic, usage };
+      const result: TurnResult = { turnId: request.turnId, status: aborted ? "aborted" : "failed", messages: allMessages, error: diagnostic };
       await persistTerminalTurnEvent(
         aborted
           ? { type: "turn.aborted", turnId: request.turnId, reason: formatErrorCause(error) }
@@ -569,6 +554,9 @@ export function createAgent(config: AgentConfig): Agent {
     },
     getModel() {
       return model;
+    },
+    setModel(next) {
+      model = next;
     },
     async clear() {
       await storage.clear();

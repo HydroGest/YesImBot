@@ -172,6 +172,29 @@ describe("turn lifecycle", () => {
 
     expect(calls).toEqual(["init", "model"]);
   });
+  it("lets plugins replace the model before the first turn", async () => {
+    let initialModelCalled = false;
+    const replacement = createTextModel();
+    const agent = createAgent({
+      model: createFailingModel(() => {
+        initialModelCalled = true;
+      }),
+      plugins: [
+        {
+          name: "replace-model",
+          init(runtime) {
+            runtime.setModel(replacement);
+          },
+        },
+      ],
+    });
+
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    expect(agent.getModel()).toBe(replacement);
+    expect(initialModelCalled).toBe(false);
+  });
 
   it("settles the turn as failed when required plugin init fails", async () => {
     const events: string[] = [];

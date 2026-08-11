@@ -21,7 +21,7 @@ export default class YesImBotService extends Service<Config> {
 
   public readonly model: ModelService;
   public readonly messenger: Pick<Messenger, "use" | "post">;
-  public readonly agent: Pick<Agents, "use" | "will" | "model" | "usage" | "guard">;
+  public readonly agent: Pick<Agents, "use" | "will">;
   public readonly resource: Resources;
 
   private readonly channels: Channels;
