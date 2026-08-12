@@ -1212,7 +1212,6 @@ function adapterStateText(adapter: PanelAdapter): string {
 .yib-recent-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
 .yib-recent-item {
@@ -1220,10 +1219,13 @@ function adapterStateText(adapter: PanelAdapter): string {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 6px 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--k-color-divider);
-  border-radius: 8px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--k-color-divider);
   background: transparent;
+
+  &:last-child {
+    border-bottom: 0;
+  }
 
   &__time {
     font-size: 12px;
@@ -1236,13 +1238,10 @@ function adapterStateText(adapter: PanelAdapter): string {
     align-items: center;
     justify-self: start;
     max-width: 100%;
-    padding: 3px 8px;
-    border: 1px solid var(--k-color-divider);
-    border-radius: 999px;
-    background: transparent;
+    padding: 0;
     color: var(--k-text-normal, #666);
     font-family: monospace;
-    font-size: 11px;
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
