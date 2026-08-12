@@ -12,6 +12,7 @@ import { collectTurns, segmentTurns } from "./collector.js";
 import { applyCorrections } from "./corrections.js";
 import { buildPatternEmbeddingMap } from "./embedding.js";
 import { createFeedbackStore, type FeedbackStore } from "./feedback.js";
+import { rewriteAssistantEntries } from "./final-style.js";
 import { sendChatLearningForward } from "./forward.js";
 import {
   createEmptyGlobalRuleBank,
@@ -74,6 +75,7 @@ export const Config: Schema<ChatLearningConfig> = Schema.object({
   reflectionModel: Schema.dynamic("registry.chatModels").default("").description("可选：用独立模型评价 bot 最近发言并生成风格反思；留空则关闭"),
   maxInjectedReflections: Schema.number().min(1).max(10).default(3).description("每次注入提示词末尾的最近反思条数"),
   injectStyleAsSystem: Schema.boolean().default(false).description("将 chat-learning 风格参考作为 system 消息注入；默认使用尾部 user 消息以兼容更多 provider"),
+  finalStyleModel: Schema.dynamic("registry.chatModels").default("").description("可选：在 bot 最终发言发出前用独立模型按本群风格改写；留空则关闭"),
 });
 
 const LINK_KINDS = new Set<LinkKind | "*">(["quote", "reply", "at", "adjacent", "entity", "*"]);
@@ -212,6 +214,15 @@ export default class ChatLearningPlugin {
     const reflectionResultCache = new Map<string, string>();
     let currentEvent: ProactiveEventKind | undefined;
     let lastModelEnrichAt = state?.builtAt ?? 0;
+
+    const buildReferenceBlock = (): string | undefined => {
+      const block = buildPromptBlock(state, undefined, config, globalPatterns, globalChains, globalStylePatterns, globalMemeTemplates);
+      const reflectionBlock = buildReflectionHistory(reflectionStore, config.maxInjectedReflections);
+      const parts: string[] = [];
+      if (block) parts.push(block);
+      if (reflectionBlock) parts.push(reflectionBlock);
+      return parts.length > 0 ? parts.join("\n\n") : undefined;
+    };
 
     logger.debug("chat_learning.channel_plugin_created", { scope, key, cachedTurns: state?.turns.length ?? 0, cachedLinks: state?.links.length ?? 0 });
 
@@ -392,11 +403,24 @@ export default class ChatLearningPlugin {
         const eventKind = detectProactiveEvent(entries);
         currentEvent = eventKind;
         logger.debug("chat_learning.on_append", { scope, entries: entries.length, eventKind });
-        learnedEntries = [...learnedEntries, ...entries];
-        await historyStore.append(entries);
+        let next = entries;
+        const finalStyleModelId = config.finalStyleModel?.trim();
+        if (finalStyleModelId) {
+          const reference = buildReferenceBlock();
+          if (reference) {
+            try {
+              next = await rewriteAssistantEntries(next, ctx.yesimbot.model.resolveChatModel(finalStyleModelId).model, reference);
+              logger.debug("chat_learning.final_style_rewritten", { scope, entries: next.length });
+            } catch (cause) {
+              logger.warn("chat_learning.final_style_rewrite_failed", { scope, cause: cause instanceof Error ? cause.message : String(cause) });
+            }
+          }
+        }
+        learnedEntries = [...learnedEntries, ...next];
+        await historyStore.append(next);
         dirty = true;
         scheduleRebuild();
-        return [...entries];
+        return [...next];
       },
       prepareStep: async (messages: readonly ModelMessage[], context: PrepareStepContext) => {
         if (injectedTurn === context.turnId) return messages;

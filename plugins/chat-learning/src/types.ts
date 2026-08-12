@@ -166,6 +166,7 @@ export interface ChatLearningConfig {
   readonly maxModelThreads: number;
   readonly maxModelThreadMessages: number;
   readonly reflectionModel: string | undefined;
+  readonly finalStyleModel?: string;
   readonly maxInjectedReflections: number;
   readonly injectStyleAsSystem: boolean;
 }

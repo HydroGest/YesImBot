@@ -2,7 +2,7 @@
 
 从真实群聊中学习消息关系、回应规律与话题发起方式，并把学习结果以有界 prompt 块注入模型上下文。
 
-该插件不修改 Core、不直接改写 bot 输出、不做主动调度。它只负责把历史群聊转换为可审计、可纠错、可跨群聚合的风格先验，并在模型生成前按 token 预算注入。
+该插件不修改 Core、不做主动调度；默认不直接改写 bot 输出，只有在配置 `finalStyleModel` 后才会在最终发言发出前按本群风格改写。它负责把历史群聊转换为可审计、可纠错、可跨群聚合的风格先验，并在模型生成前按 token 预算注入。
 
 ## 项目定位
 
@@ -161,6 +161,11 @@ plugins/chat-learning/
 | `reflectionModel`           | 留空    | 可选独立模型；用于评价 bot 最近发言并生成风格反思，留空则关闭。               |
 | `maxInjectedReflections`    | `3`     | 每次注入提示词末尾的最近反思条数。                                            |
 | `injectStyleAsSystem`       | `false` | 将风格参考作为 system 消息注入；默认用尾部 user 消息以兼容更多 provider。     |
+| `finalStyleModel`           | 留空    | 可选独立模型；在最终发言发出前按本群风格改写，留空则关闭。                    |
+
+## 与 reflection 的关系
+
+`finalStyleModel` 改写发生在 `onAppend`，也就是 bot 最终消息写入历史并投递之前。`reflectionModel` 看到的是改写后的最终发言，因此评价对象和群友实际看到的文本一致。最终改写 prompt 也会带上已有的 reflection 历史，让人工或自动反思能影响后续改写。
 
 ## 持久化
 
