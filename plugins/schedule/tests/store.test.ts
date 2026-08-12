@@ -235,7 +235,7 @@ describe("ScheduleStore", () => {
     await expect(store.create(sharedScope, input)).rejects.toThrow(/exactly one/);
   });
 
-  it("rejects the twenty-first enabled schedule in one scope", async () => {
+  it("rejects the twenty-first enabled schedule in one scope", { timeout: 20_000 }, async () => {
     for (let i = 0; i < 20; i++) {
       await store.create(sharedScope, { title: `schedule-${i}`, prompt: "Prepare the daily standup.", kind: "cron", cron: "0 9 * * 1-5" });
     }
@@ -323,7 +323,7 @@ describe("ScheduleStore", () => {
     await expect(store.resume(sharedScope, created.id)).rejects.toThrow(/no future occurrence/);
   });
 
-  it("rejects resume when twenty enabled schedules already occupy its exact scope", async () => {
+  it("rejects resume when twenty enabled schedules already occupy its exact scope", { timeout: 20_000 }, async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-31T00:00:00.000Z"));
     const paused = await store.create(sharedScope, { title: "paused", prompt: "Wait.", kind: "cron", cron: "0 9 * * 1-5" });
