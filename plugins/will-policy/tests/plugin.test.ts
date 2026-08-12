@@ -37,6 +37,7 @@ async function createInstance(filter: () => boolean, shared = createShared()) {
     on: vi.fn(),
     filter,
     yesimbot: {
+      config: { logLevel: 3 },
       agent: {
         will: vi.fn((plugin: WillPlugin) => {
           registered.push(plugin);

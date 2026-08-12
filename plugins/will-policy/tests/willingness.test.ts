@@ -8,6 +8,7 @@ import { defaultWillingnessConfig } from "../src/types.js";
 import { PolicyWillingnessEngine } from "../src/willingness.js";
 
 const state = { activeTurnId: null };
+const logger = { debug: vi.fn() };
 
 function message(elements: unknown[], channelType = 0 as Universal.Channel.Type): Message {
   return createMessage({
@@ -42,16 +43,17 @@ function pokeEvent(): Event {
 
 describe("PolicyWillingnessEngine", () => {
   it("forces mention triggers when configured", async () => {
-    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 100, mentionForce: true });
+    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 100, mentionForce: true }, logger);
 
     await expect(engine.decide(message([{ type: "at", attrs: { id: "bot-1" }, children: [] }]), state)).resolves.toBe("trigger");
     expect(engine.getCurrentWillingness()).toBeGreaterThan(0);
+    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining("will_policy.willingness"), expect.any(Object));
   });
 
   it("samples probability from the willingness score", async () => {
     const random = vi.spyOn(Math, "random").mockReturnValue(0.9);
     try {
-      const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 0, textGain: 100, maxScore: 100 });
+      const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 0, textGain: 100, maxScore: 100 }, logger);
 
       await expect(engine.decide(message([]), state)).resolves.toBe("trigger");
     } finally {
@@ -60,26 +62,26 @@ describe("PolicyWillingnessEngine", () => {
   });
 
   it("adds image gain when a message contains an image", async () => {
-    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 0, imageGain: 60, textGain: 0, maxScore: 100 });
+    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 0, imageGain: 60, textGain: 0, maxScore: 100 }, logger);
 
     await expect(engine.decide(message([{ type: "img", attrs: { id: "asset-1" }, children: [] }]), state)).resolves.toBe("trigger");
     expect(engine.getCurrentWillingness()).toBeGreaterThan(0);
   });
 
   it("adds poke gain for poke events", async () => {
-    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 0, pokeGain: 80, maxScore: 100 });
+    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), probabilityThreshold: 0, pokeGain: 80, maxScore: 100 }, logger);
 
     await expect(engine.decide(pokeEvent(), state)).resolves.toBe("trigger");
     expect(engine.getCurrentWillingness()).toBeGreaterThan(0);
   });
 
   it("charges reply cost with a zero floor", async () => {
-    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), initialScore: 50, replyCost: 30 });
+    const engine = new PolicyWillingnessEngine({ ...defaultWillingnessConfig(), initialScore: 50, replyCost: 30 }, logger);
 
-    await engine.onReply?.();
+    await engine.observe({ turnId: "turn-1", status: "done", messages: [] });
     expect(engine["score"]).toBe(20);
 
-    await engine.onReply?.();
+    await engine.observe({ turnId: "turn-1", status: "done", messages: [] });
     expect(engine["score"]).toBe(0);
   });
 });
