@@ -131,6 +131,7 @@ export class Channels implements Resources {
   private async scan(): Promise<void> {
     await fs.mkdir(this.channelsPath, { recursive: true });
     for (const entry of await fs.readdir(this.channelsPath, { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) continue;
       if (!entry.isDirectory()) {
         this.logger.error("storage.directory.invalid", { entry: entry.name });
         continue;
@@ -159,7 +160,6 @@ export class Channels implements Resources {
         }
       } catch (cause) {
         this.logger.error("storage.manifest_invalid", { directoryName: entry.name, cause });
-        if (cause instanceof ChannelMigrationConflictError) throw cause;
       }
     }
   }
@@ -168,15 +168,21 @@ export class Channels implements Resources {
     const destination = join(this.channelsPath, destinationDirectory);
     if (sourceDirectory !== destinationDirectory) {
       try {
-        await fs.lstat(destination);
+        const destinationStat = await fs.lstat(destination);
+        if (destinationStat.isSymbolicLink()) throw new Error("Channel storage migration destination is a symbolic link");
+
+        // A prior version may have created the canonical directory while the legacy shared directory
+        // remained. Preserve both by quarantining the canonical copy, then migrate the legacy data.
+        const quarantine = join(this.channelsPath, `.conflict-${destinationDirectory}-${randomUUID()}`);
+        await fs.rename(destination, quarantine);
+        this.logger.warn("storage.manifest_conflict_quarantined", { sourceDirectory, destinationDirectory, quarantine });
       } catch (cause) {
         if (!(typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")) throw cause;
-        await fs.rename(join(this.channelsPath, sourceDirectory), destination);
-        await fs.writeFile(join(destination, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-        this.logger.info("storage.manifest_migrated", { sourceDirectory, destinationDirectory });
-        return;
       }
-      throw new ChannelMigrationConflictError(destinationDirectory);
+      await fs.rename(join(this.channelsPath, sourceDirectory), destination);
+      await fs.writeFile(join(destination, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+      this.logger.info("storage.manifest_migrated", { sourceDirectory, destinationDirectory });
+      return;
     }
     await fs.writeFile(join(destination, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   }
@@ -212,11 +218,6 @@ export class Channels implements Resources {
     const rel = relative(this.channelsPath, realRoot);
     if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) throw new Error("Resolved storage path escapes its channel root");
     return root;
-  }
-}
-class ChannelMigrationConflictError extends Error {
-  public constructor(destinationDirectory: string) {
-    super(`Channel storage migration destination already exists: ${destinationDirectory}`);
   }
 }
 

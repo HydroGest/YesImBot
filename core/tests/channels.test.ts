@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -98,7 +98,7 @@ describe("Channels", () => {
     });
   });
 
-  it("refuses a legacy migration when its canonical directory already exists", async () => {
+  it("quarantines an existing canonical directory before migrating legacy data", async () => {
     const root = await mkdtemp(join(tmpdir(), "yesimbot-channels-legacy-conflict-"));
     roots.push(root);
     const legacyRoot = join(root, "channels", "shared-onebot-101");
@@ -115,10 +115,26 @@ describe("Channels", () => {
     ]);
 
     const channels = new Channels(new Context(), { basePath: root });
+    const channel = await channels.resolve({ type: "guild", platform: "onebot", channelId: "101", guildId: "101" });
+    const entries = await readdir(join(root, "channels"));
+    const quarantine = entries.find((name) => name.startsWith(".conflict-guild-onebot-101-"));
 
-    await expect(channels.start()).rejects.toThrow(/migration destination already exists/i);
-    await expect(readFile(join(legacyRoot, "legacy.txt"), "utf8")).resolves.toBe("legacy data\n");
-    await expect(readFile(join(canonicalRoot, "current.txt"), "utf8")).resolves.toBe("current data\n");
+    expect(channel.root).toBe(canonicalRoot);
+    expect(quarantine).toBeDefined();
+    await expect(readFile(join(canonicalRoot, "legacy.txt"), "utf8")).resolves.toBe("legacy data\n");
+    await expect(readFile(join(canonicalRoot, "current.txt"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(legacyRoot, "legacy.txt"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(root, "channels", quarantine!, "current.txt"), "utf8")).resolves.toBe("current data\n");
+    expect(JSON.parse(await readFile(join(canonicalRoot, "channel.json"), "utf8"))).toMatchObject({
+      type: "guild",
+      platform: "onebot",
+      channelId: "101",
+      guildId: "101",
+      createdAt: "2026-08-01T00:00:00.000Z",
+    });
+
+    const restarted = new Channels(new Context(), { basePath: root });
+    await expect(restarted.start()).resolves.toBeUndefined();
   });
 
   it("migrates a legacy direct directory during startup", async () => {
