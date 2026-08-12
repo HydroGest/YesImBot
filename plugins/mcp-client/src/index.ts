@@ -22,6 +22,7 @@ interface McpToolOutputBlock {
   data?: string;
   mimeType?: string;
 }
+
 export default class McpClientPlugin {
   public static name = "yesimbot-mcp-client";
   public static usage = "MCP 客户端插件，用于连接 MCP 服务器并注册工具";
@@ -182,10 +183,12 @@ export default class McpClientPlugin {
     this.ctx.logger.success("MCP 客户端已清理");
   }
 }
+
 function safeToolName(name: string): string {
   const normalized = name.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^[_-]+|[_-]+$/g, "");
   return normalized || "mcp";
 }
+
 function uniqueToolName(base: string, used: Set<string>): string {
   if (!used.has(base)) {
     used.add(base);
@@ -199,6 +202,7 @@ function uniqueToolName(base: string, used: Set<string>): string {
   used.add(unique);
   return unique;
 }
+
 function wrapToolWithArtifacts(tool: AgentTool, artifacts: ArtifactStore): AgentTool {
   const writer = artifacts.forTool(tool.name);
   return {
@@ -252,15 +256,18 @@ function wrapToolWithArtifacts(tool: AgentTool, artifacts: ArtifactStore): Agent
     },
   };
 }
+
 function decodeInlineImage(data: string): Uint8Array | null {
   if (data.length === 0 || data.length > Math.ceil(MCP_IMAGE_MAX_BYTES / 3) * 4) return null;
   if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) return null;
   const bytes = Buffer.from(data, "base64");
   return bytes.byteLength > 0 && bytes.byteLength <= MCP_IMAGE_MAX_BYTES ? bytes : null;
 }
+
 function describeBlockType(type: string): string {
   return type.length > MCP_MAX_BLOCK_TYPE_CHARS ? `${type.slice(0, MCP_MAX_BLOCK_TYPE_CHARS)}…` : type;
 }
+
 function formatBytes(length: number): string {
   if (length >= 1024 * 1024) return `${(length / (1024 * 1024)).toFixed(1)} MiB`;
   if (length >= 1024) return `${(length / 1024).toFixed(1)} KiB`;

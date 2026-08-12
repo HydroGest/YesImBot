@@ -1,18 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import type { Context, Field, Types } from "koishi";
+import type { Context, Database, Field, Types } from "koishi";
 import type { ChannelContext } from "koishi-plugin-yesimbot";
 
-import {
-  retentionScore,
-  type Memory,
-  type MemoryCreateInput,
-  type MemoryQuery,
-  type MemoryRow,
-  type MemoryScope,
-  type MemoryType,
-  type MemoryUpdateInput,
-} from "../types.js";
+import { retentionScore, type Memory, type MemoryCreateInput, type MemoryQuery, type MemoryRow, type MemoryType, type MemoryUpdateInput } from "../types.js";
 
 export const MEMORY_TABLE = "yesimbot_memory";
 
@@ -40,24 +31,37 @@ const MEMORY_FIELDS = {
   embeddingModel: { type: "string", nullable: true, initial: null },
 } satisfies Field.Extension<MemoryRow, Types>;
 
-type MemoryModel = Pick<Context["model"], "extend" | "get" | "create" | "set" | "remove">;
+export interface PruneOptions {
+  readonly halfLifeDays: number;
+  readonly forgottenGraceDays: number;
+  readonly maxActivePerScope: number;
+}
+
+export interface PrunePlan {
+  readonly forgetIds: string[];
+  readonly removeIds: string[];
+}
 
 export class MemoryStore {
+  private readonly ctx: Context;
   private mutationTail: Promise<void> = Promise.resolve();
 
-  public constructor(private readonly model: MemoryModel) {}
+  public constructor(ctx: Context) {
+    this.ctx = ctx;
+    this.ctx.model.extend(MEMORY_TABLE, MEMORY_FIELDS);
+  }
   public create(input: MemoryCreateInput, id = randomUUID()): Promise<Memory> {
     return this.mutate(async () => {
       const now = Date.now();
       const row = toRow({ id, ...input, status: "active", createdAt: now, updatedAt: now, lastAccessedAt: now, accessCount: 0 });
-      await this.model.create(MEMORY_TABLE, row);
+      await this.ctx.model.create(MEMORY_TABLE, row);
       return fromRow(row);
     });
   }
 
   public get(id: string): Promise<Memory | undefined> {
     return this.mutate(async () => {
-      const row = ((await this.model.get(MEMORY_TABLE, { id })) as MemoryRow[])[0];
+      const row = ((await this.ctx.model.get(MEMORY_TABLE, { id })) as MemoryRow[])[0];
       return row && fromRow(row);
     });
   }
@@ -75,7 +79,7 @@ export class MemoryStore {
         lastAccessedAt: existing.lastAccessedAt,
         accessCount: existing.accessCount,
       });
-      await this.model.set(MEMORY_TABLE, { id }, next);
+      await this.ctx.model.set(MEMORY_TABLE, { id }, next);
       return fromRow(next);
     });
   }
@@ -94,8 +98,8 @@ export class MemoryStore {
         lastAccessedAt: canonical.lastAccessedAt,
         accessCount: canonical.accessCount,
       });
-      await this.model.set(MEMORY_TABLE, { id: canonicalId }, next);
-      await this.model.remove(MEMORY_TABLE, { id: mergedId });
+      await this.ctx.model.set(MEMORY_TABLE, { id: canonicalId }, next);
+      await this.ctx.model.remove(MEMORY_TABLE, { id: mergedId });
       return fromRow(next);
     });
   }
@@ -104,7 +108,7 @@ export class MemoryStore {
     return this.mutate(async () => {
       const memory = await this.require(id);
       const next = { ...memory, status: "forgotten" as const, forgottenAt: now, updatedAt: now };
-      await this.model.set(MEMORY_TABLE, { id }, toRow(next));
+      await this.ctx.model.set(MEMORY_TABLE, { id }, toRow(next));
       return next;
     });
   }
@@ -113,7 +117,7 @@ export class MemoryStore {
     return this.mutate(async () => {
       const memory = await this.require(id);
       const next = { ...memory, status: "active" as const, forgottenAt: undefined, updatedAt: now };
-      await this.model.set(MEMORY_TABLE, { id }, toRow(next));
+      await this.ctx.model.set(MEMORY_TABLE, { id }, toRow(next));
       return next;
     });
   }
@@ -123,7 +127,7 @@ export class MemoryStore {
       const scopes = query.scopes ?? ["channel", "user", "shared"];
       const terms = query.query?.toLocaleLowerCase();
       const requiredTags = query.tags ?? [];
-      const rows = (await this.model.get(MEMORY_TABLE, {})) as MemoryRow[];
+      const rows = (await this.ctx.model.get(MEMORY_TABLE, {})) as MemoryRow[];
       const memories = rows
         .map(fromRow)
         .filter((memory) => {
@@ -141,21 +145,21 @@ export class MemoryStore {
     return this.mutate(async () => {
       for (const id of ids) {
         const memory = await this.require(id);
-        await this.model.set(MEMORY_TABLE, { id }, { lastAccessedAt: now, accessCount: memory.accessCount + 1, updatedAt: now });
+        await this.ctx.model.set(MEMORY_TABLE, { id }, { lastAccessedAt: now, accessCount: memory.accessCount + 1, updatedAt: now });
       }
     });
   }
 
   public sweep(now: number, options: PruneOptions, removeEvidence: (memoryId: string) => Promise<void>): Promise<void> {
     return this.mutate(async () => {
-      const memories = ((await this.model.get(MEMORY_TABLE, {})) as MemoryRow[]).map(fromRow);
+      const memories = ((await this.ctx.model.get(MEMORY_TABLE, {})) as MemoryRow[]).map(fromRow);
       const plan = planPrune(memories, now, options);
       for (const id of plan.forgetIds) {
-        await this.model.set(MEMORY_TABLE, { id }, { status: "forgotten", forgottenAt: now, updatedAt: now });
+        await this.ctx.model.set(MEMORY_TABLE, { id }, { status: "forgotten", forgottenAt: now, updatedAt: now });
       }
       for (const id of plan.removeIds) {
         await removeEvidence(id);
-        await this.model.remove(MEMORY_TABLE, { id });
+        await this.ctx.model.remove(MEMORY_TABLE, { id });
       }
     });
   }
@@ -170,21 +174,10 @@ export class MemoryStore {
   }
 
   private async require(id: string): Promise<Memory> {
-    const row = ((await this.model.get(MEMORY_TABLE, { id })) as MemoryRow[])[0];
+    const row = ((await this.ctx.model.get(MEMORY_TABLE, { id })) as MemoryRow[])[0];
     if (!row) throw new Error(`memory ${id} not found`);
     return fromRow(row);
   }
-}
-
-export interface PruneOptions {
-  readonly halfLifeDays: number;
-  readonly forgottenGraceDays: number;
-  readonly maxActivePerScope: number;
-}
-
-export interface PrunePlan {
-  readonly forgetIds: string[];
-  readonly removeIds: string[];
 }
 
 export function planPrune(memories: readonly Memory[], now: number, options: PruneOptions): PrunePlan {

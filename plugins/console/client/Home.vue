@@ -290,8 +290,28 @@
 <script lang="ts" setup>
 import { socket, store } from "@koishijs/client";
 import { computed } from "vue";
-
 import YesImBotIcon from "./YesImBotIcon.vue";
+
+const connected = computed(() => Boolean(socket.value));
+
+const panel = computed(() => (store as { yesimbotPanel?: PanelPayload }).yesimbotPanel ?? emptyPanel());
+
+const enabledPluginCount = computed(() => panel.value.plugins.filter((plugin) => plugin.enabled).length);
+
+const onboardingProgress = computed(() => {
+  const steps = panel.value.onboarding.steps;
+  if (!steps || steps.length === 0) return 100;
+  const doneCount = steps.filter((s) => s.done).length;
+  return Math.round((doneCount / steps.length) * 100);
+});
+
+const recentItems = computed(() => panel.value.recent.slice(0, 8));
+
+const imageInputText = computed(() => {
+  if (!panel.value.model.imageInput) return "禁用";
+  const budget = panel.value.model.imageBudget;
+  return budget ? `启用 · ${budget.maxCount} 张 / ${formatSize(budget.maxBytesPerImage)}` : "启用";
+});
 
 interface PanelPayload {
   generatedAt: string;
@@ -361,29 +381,11 @@ interface PanelOnboarding {
   steps: PanelOnboardingStep[];
 }
 
-const connected = computed(() => Boolean(socket.value));
-const panel = computed(() => (store as { yesimbotPanel?: PanelPayload }).yesimbotPanel ?? emptyPanel());
-const enabledPluginCount = computed(() => panel.value.plugins.filter((plugin) => plugin.enabled).length);
-
-const onboardingProgress = computed(() => {
-  const steps = panel.value.onboarding.steps;
-  if (!steps || steps.length === 0) return 100;
-  const doneCount = steps.filter((s) => s.done).length;
-  return Math.round((doneCount / steps.length) * 100);
-});
-const recentItems = computed(() => panel.value.recent.slice(0, 8));
-
 function isCurrentStep(index: number): boolean {
   const steps = panel.value.onboarding.steps;
   const firstUndone = steps.findIndex((s) => !s.done);
   return firstUndone === index;
 }
-
-const imageInputText = computed(() => {
-  if (!panel.value.model.imageInput) return "禁用";
-  const budget = panel.value.model.imageBudget;
-  return budget ? `启用 · ${budget.maxCount} 张 / ${formatSize(budget.maxBytesPerImage)}` : "启用";
-});
 
 function emptyPanel(): PanelPayload {
   return {

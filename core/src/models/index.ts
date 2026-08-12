@@ -11,15 +11,6 @@ import { createEmptyModelsConfig, loadModelsConfig } from "./config.js";
 
 export type ModelId = `${string}:${string}`;
 
-export interface ChatModelRef {
-  fullId: ModelId;
-  providerId: string;
-  modelId: string;
-  entry: ChatModelConfig;
-  model: LanguageModel;
-  tools?: ToolSet;
-}
-
 export type ModelUsageEvent =
   | {
       readonly context?: ChannelContext;
@@ -40,10 +31,13 @@ export type ModelUsageEvent =
       readonly timestamp: number;
     };
 
-declare module "koishi" {
-  interface Events {
-    "yesimbot/model-usage"(event: ModelUsageEvent): void;
-  }
+export interface ChatModelRef {
+  fullId: ModelId;
+  providerId: string;
+  modelId: string;
+  entry: ChatModelConfig;
+  model: LanguageModel;
+  tools?: ToolSet;
 }
 
 interface Provider {
@@ -68,6 +62,12 @@ interface EmbeddingModelRecord {
   providerId: string;
   modelId: string;
   config: EmbeddingModelConfig;
+}
+
+declare module "koishi" {
+  interface Events {
+    "yesimbot/model-usage"(event: ModelUsageEvent): void;
+  }
 }
 
 export class ModelService {

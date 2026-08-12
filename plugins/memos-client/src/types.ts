@@ -1,13 +1,19 @@
 import type { ChannelContext } from "koishi-plugin-yesimbot";
 export type MemosChannelType = "private" | "group";
+
 export type MemosMemoryScope = "auto" | "channel" | "user";
+
 export type ResolvedMemosMemoryScope = Exclude<MemosMemoryScope, "auto">;
+
 export type MemosSearchFilterMode = "off" | "context" | "strict";
+
 export type MemosConversationKind = "runtime_turn" | "qq_import";
+
 export interface MemosSearchFilter {
   and?: Array<Record<string, unknown>>;
   or?: Array<Record<string, unknown>>;
 }
+
 export interface MemosClientConfig {
   baseUrl: string;
   apiKey: string;
@@ -24,6 +30,7 @@ export interface MemosClientConfig {
   tags: string[];
   includeRawIdentityInfo: boolean;
 }
+
 export interface MemosIdentityInput {
   channelScope: ChannelContext;
   channelType: MemosChannelType;
@@ -33,6 +40,7 @@ export interface MemosIdentityInput {
   memoryScope?: MemosMemoryScope;
   includeRawIdentityInfo?: boolean;
 }
+
 export interface MemosImportChunkIdentityInput {
   channelScope: ChannelContext;
   channelType: MemosChannelType;
@@ -43,6 +51,7 @@ export interface MemosImportChunkIdentityInput {
   chunkIndex: number;
   includeRawIdentityInfo?: boolean;
 }
+
 export interface MemosIdentityInfo {
   scene: "group_chat" | "private_chat";
   platform: string;
@@ -60,22 +69,26 @@ export interface MemosIdentityInfo {
   raw_self_id?: string;
   raw_message_id?: string;
 }
+
 export interface MemosIdentity {
   userId: string;
   conversationId: string;
   agentId: string;
   info: MemosIdentityInfo;
 }
+
 export interface MemosApiResponse<TData = unknown> {
   code: number;
   data?: TData;
   message?: string;
 }
+
 export interface MemosMessage {
   role: string;
   content: string;
   chat_time?: string;
 }
+
 export interface MemosSearchMemoryRequest {
   user_id: string;
   query: string;
@@ -86,6 +99,7 @@ export interface MemosSearchMemoryRequest {
   include_preference?: boolean;
   preference_limit_number?: number;
 }
+
 export interface MemosAddMessageRequest {
   user_id: string;
   conversation_id: string;

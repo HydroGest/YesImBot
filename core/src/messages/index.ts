@@ -191,9 +191,7 @@ function stripInnerThoughtRegions(source: string): string {
   let previous: string;
   do {
     previous = next;
-    next = previous
-      .replace(/<inner_thought\b[^>]*\/>/gi, "")
-      .replace(/<inner_thought\b[^>]*>[\s\S]*?<\/inner_thought\s*>/gi, "");
+    next = previous.replace(/<inner_thought\b[^>]*\/>/gi, "").replace(/<inner_thought\b[^>]*>[\s\S]*?<\/inner_thought\s*>/gi, "");
   } while (next !== previous);
   return next;
 }

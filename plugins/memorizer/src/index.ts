@@ -13,6 +13,23 @@ import { MemoryStore } from "./store/memory.js";
 import { PendingStore } from "./store/pending.js";
 import type { MemorizerConfig } from "./types.js";
 
+export const Config: Schema<MemorizerConfig> = Schema.object({
+  model: Schema.dynamic("registry.chatModels").required(),
+  embeddingModel: Schema.dynamic("registry.embeddingModels").default(""),
+  dataPath: Schema.string().default("data/yesimbot/memorizer"),
+  batchDelayMs: Schema.number()
+    .min(1_000)
+    .default(5 * 60 * 1_000),
+  maxPendingPerBatch: Schema.natural().min(1).default(10),
+  maxMessagesPerBatch: Schema.natural().min(1).default(300),
+  searchTimeoutMs: Schema.natural()
+    .min(1_000)
+    .default(60 * 1_000),
+  halfLifeDays: Schema.number().min(1).default(90),
+  forgottenGraceDays: Schema.number().min(1).default(30),
+  maxActivePerScope: Schema.natural().min(1).default(1_000),
+});
+
 const CHANNEL_MEMORY_PROMPT = `## 长期记忆工具
 
 你有三个记忆工具可用：
@@ -47,23 +64,6 @@ const CHANNEL_MEMORY_PROMPT = `## 长期记忆工具
 - 不适用于简单事实查询（用 recall）
 `;
 
-export const Config: Schema<MemorizerConfig> = Schema.object({
-  model: Schema.dynamic("registry.chatModels").required(),
-  embeddingModel: Schema.dynamic("registry.embeddingModels").default(""),
-  storageDir: Schema.string().default(""),
-  batchDelayMs: Schema.number()
-    .min(1_000)
-    .default(5 * 60 * 1_000),
-  maxPendingPerBatch: Schema.natural().min(1).default(10),
-  maxMessagesPerBatch: Schema.natural().min(1).default(300),
-  searchTimeoutMs: Schema.natural()
-    .min(1_000)
-    .default(60 * 1_000),
-  halfLifeDays: Schema.number().min(1).default(90),
-  forgottenGraceDays: Schema.number().min(1).default(30),
-  maxActivePerScope: Schema.natural().min(1).default(1_000),
-});
-
 export default class MemoryAgentPlugin {
   public static readonly name = "yesimbot-memorizer";
   public static readonly usage = "为 YesImBot 提供带证据的长期记忆";
@@ -83,8 +83,8 @@ export default class MemoryAgentPlugin {
     config: MemorizerConfig,
   ) {
     this.config = config;
-    const root = resolve(ctx.baseDir, config.storageDir || "data/yesimbot/memorizer");
-    this.store = new MemoryStore(ctx.model);
+    const root = resolve(ctx.baseDir, config.dataPath || "data/yesimbot/memorizer");
+    this.store = new MemoryStore(ctx);
     this.evidence = new EvidenceStore(root);
     this.pending = new PendingStore(root);
     this.scheduler = new MemoryScheduler(

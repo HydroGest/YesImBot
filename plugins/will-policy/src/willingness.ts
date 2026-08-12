@@ -64,7 +64,7 @@ export class PolicyWillingnessEngine implements WillEngine {
     return decision;
   }
 
-  public async observe(result: TurnResult): Promise<void> {
+  public async observe(_result: TurnResult): Promise<void> {
     this.score = Math.max(0, this.score - this.config.replyCost);
     this.logger.debug("will_policy.reply_cost", { score: this.score, replyCost: this.config.replyCost });
   }

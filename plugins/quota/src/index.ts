@@ -6,20 +6,6 @@ import { Schema, Time } from "koishi";
 import type { Context, Logger, Session } from "koishi";
 import type { ChannelContext, ModelUsageEvent } from "koishi-plugin-yesimbot";
 
-export interface Config {
-  quotaStorageDir: string;
-  defaultDailyLimit: number;
-  defaultModel: string;
-  quotaRules: QuotaRule[];
-  managementGroupId: string;
-  managementGroupPlatform: string;
-  sendBlockMessage: boolean;
-  maxDailyBlockNotifications: number;
-  blockMessage: string;
-  notifyIntervalMs: number;
-  quotaAdminAuthority: number;
-}
-
 export const Config: Schema<Config> = Schema.object({
   quotaStorageDir: Schema.string().default("data/yesimbot/quota").description("按会话额度记录与动态覆盖的存储目录"),
   defaultDailyLimit: Schema.natural().default(1_000_000).description("默认每日 Token 限额；0 表示不限额"),
@@ -46,6 +32,24 @@ export const Config: Schema<Config> = Schema.object({
   notifyIntervalMs: Schema.natural().role("ms").default(Time.minute).description("同一会话超额提示的最小间隔"),
   quotaAdminAuthority: Schema.natural().default(2).description("额度管理命令所需权限等级"),
 });
+
+type OverridesData = Record<string, QuotaOverride>;
+
+type Disposer = () => unknown;
+
+export interface Config {
+  quotaStorageDir: string;
+  defaultDailyLimit: number;
+  defaultModel: string;
+  quotaRules: QuotaRule[];
+  managementGroupId: string;
+  managementGroupPlatform: string;
+  sendBlockMessage: boolean;
+  maxDailyBlockNotifications: number;
+  blockMessage: string;
+  notifyIntervalMs: number;
+  quotaAdminAuthority: number;
+}
 
 export interface QuotaRule {
   platform: string;
@@ -94,38 +98,10 @@ export interface ScopeUsage {
   kindTokens: Record<string, number>;
 }
 
-export function scopeKey(context: ChannelContext): string {
-  return `${context.platform}:${context.type === "direct" ? "direct" : "group"}:${context.channelId}`;
+interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
 }
-
-export function normalizeRuleChannelId(rule: QuotaRule): string {
-  // direct 规则允许填裸账号（如 888888），规范化为平台实际使用的 private:<userId>
-  if (rule.isDirect === true && rule.channelId !== "*" && !rule.channelId.startsWith("private:")) {
-    return `private:${rule.channelId}`;
-  }
-  return rule.channelId;
-}
-
-export function matchesQuotaRule(context: ChannelContext, rule: QuotaRule): boolean {
-  if (rule.platform !== "*" && rule.platform !== context.platform) return false;
-  const ruleChannelId = context.type === "direct" ? normalizeRuleChannelId(rule) : rule.channelId;
-  if (ruleChannelId !== "*" && ruleChannelId !== context.channelId) return false;
-  return rule.isDirect === undefined || rule.isDirect === (context.type === "direct");
-}
-
-export function quotaDayKey(now = new Date()): string {
-  // 与旧版一致：固定按上海时区计算每日边界
-  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" });
-  return formatter.format(now);
-}
-
-export function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
-  return String(value);
-}
-
-type OverridesData = Record<string, QuotaOverride>;
 
 export class QuotaStore {
   private queue: Promise<unknown> = Promise.resolve();
@@ -314,8 +290,6 @@ export class QuotaStore {
     return counts;
   }
 }
-
-type Disposer = () => unknown;
 
 export default class QuotaPlugin {
   public static readonly name = "yesimbot-quota";
@@ -715,9 +689,35 @@ export default class QuotaPlugin {
   }
 }
 
-interface TokenUsage {
-  inputTokens: number;
-  outputTokens: number;
+export function scopeKey(context: ChannelContext): string {
+  return `${context.platform}:${context.type === "direct" ? "direct" : "group"}:${context.channelId}`;
+}
+
+export function normalizeRuleChannelId(rule: QuotaRule): string {
+  // direct 规则允许填裸账号（如 888888），规范化为平台实际使用的 private:<userId>
+  if (rule.isDirect === true && rule.channelId !== "*" && !rule.channelId.startsWith("private:")) {
+    return `private:${rule.channelId}`;
+  }
+  return rule.channelId;
+}
+
+export function matchesQuotaRule(context: ChannelContext, rule: QuotaRule): boolean {
+  if (rule.platform !== "*" && rule.platform !== context.platform) return false;
+  const ruleChannelId = context.type === "direct" ? normalizeRuleChannelId(rule) : rule.channelId;
+  if (ruleChannelId !== "*" && ruleChannelId !== context.channelId) return false;
+  return rule.isDirect === undefined || rule.isDirect === (context.type === "direct");
+}
+
+export function quotaDayKey(now = new Date()): string {
+  // 与旧版一致：固定按上海时区计算每日边界
+  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" });
+  return formatter.format(now);
+}
+
+export function formatTokens(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(value);
 }
 
 function normalizeUsage(usage: unknown): TokenUsage {

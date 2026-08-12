@@ -7,11 +7,16 @@ import { EvidenceStore } from "./store/evidence.js";
 import { MemoryStore } from "./store/memory.js";
 import type { Memory, MemoryQuery, MemorySearchReport } from "./types.js";
 
-interface SearchReport {
-  readonly answer: string;
-  readonly memoryIds: string[];
-  readonly unresolved: string[];
-}
+const REPORT_SCHEMA = jsonSchema<SearchReport>({
+  type: "object",
+  properties: {
+    answer: { type: "string", description: "对查询的完整回答，引用相关记忆 ID" },
+    memoryIds: { type: "array", items: { type: "string" }, description: "支撑回答的记忆 ID 列表" },
+    unresolved: { type: "array", items: { type: "string" }, description: "无法确定的子问题列表（找不到相关记忆或证据矛盾）" },
+  },
+  required: ["answer", "memoryIds", "unresolved"],
+  additionalProperties: false,
+});
 
 export interface SearchInput {
   readonly model: LanguageModel;
@@ -25,16 +30,11 @@ export interface SearchInput {
   readonly timeoutMs: number;
 }
 
-const REPORT_SCHEMA = jsonSchema<SearchReport>({
-  type: "object",
-  properties: {
-    answer: { type: "string", description: "对查询的完整回答，引用相关记忆 ID" },
-    memoryIds: { type: "array", items: { type: "string" }, description: "支撑回答的记忆 ID 列表" },
-    unresolved: { type: "array", items: { type: "string" }, description: "无法确定的子问题列表（找不到相关记忆或证据矛盾）" },
-  },
-  required: ["answer", "memoryIds", "unresolved"],
-  additionalProperties: false,
-});
+interface SearchReport {
+  readonly answer: string;
+  readonly memoryIds: string[];
+  readonly unresolved: string[];
+}
 
 export async function runSearch(input: SearchInput): Promise<MemorySearchReport> {
   const authorized = new Map<string, Memory>();

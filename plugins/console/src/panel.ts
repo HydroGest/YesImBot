@@ -53,6 +53,31 @@ const PLUGIN_ORDER = [
   "yesimbot-console",
 ];
 
+const ADAPTER_NAMES: Record<string, string> = {
+  napcat: "NapCat",
+  onebot: "OneBot",
+  discord: "Discord",
+  kook: "KOOK",
+  lark: "飞书",
+  line: "Line",
+  mail: "邮件",
+  matrix: "Matrix",
+  qq: "QQ",
+  satori: "Satori",
+  slack: "Slack",
+  telegram: "Telegram",
+  wecom: "企业微信",
+  "wechat-official": "微信公众号",
+  whatsapp: "WhatsApp",
+  zulip: "Zulip",
+  dingtalk: "钉钉",
+};
+
+const ADAPTER_PRIORITY: Record<string, number> = {
+  onebot: 0,
+  napcat: 1,
+};
+
 export interface PanelPayload {
   generatedAt: string;
   health: { online: boolean; botCount: number; botErrorCount: number; memory: { app: number; total: number }; uptimeSeconds: number };
@@ -304,31 +329,6 @@ function collectAdapters(ctx: Context): PanelAdapter[] {
       return leftPriority - rightPriority || Number(right.enabled) - Number(left.enabled) || left.name.localeCompare(right.name);
     });
 }
-
-const ADAPTER_NAMES: Record<string, string> = {
-  napcat: "NapCat",
-  onebot: "OneBot",
-  discord: "Discord",
-  kook: "KOOK",
-  lark: "飞书",
-  line: "Line",
-  mail: "邮件",
-  matrix: "Matrix",
-  qq: "QQ",
-  satori: "Satori",
-  slack: "Slack",
-  telegram: "Telegram",
-  wecom: "企业微信",
-  "wechat-official": "微信公众号",
-  whatsapp: "WhatsApp",
-  zulip: "Zulip",
-  dingtalk: "钉钉",
-};
-
-const ADAPTER_PRIORITY: Record<string, number> = {
-  onebot: 0,
-  napcat: 1,
-};
 
 function hasAdapterConnection(config: Record<string, unknown>): boolean {
   return ["selfId", "token", "endpoint", "appId", "appSecret", "botToken", "secret"].some((key) => typeof config[key] === "string" && Boolean(config[key]));

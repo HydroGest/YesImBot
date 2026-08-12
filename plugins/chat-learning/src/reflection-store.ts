@@ -3,6 +3,7 @@ import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export type ReflectionSource = "auto" | "human";
+
 export type ReflectionScore = -1 | 0 | 1;
 
 export interface ReflectionRecord {

@@ -6,27 +6,6 @@ import { MemoryStore } from "./store/memory.js";
 import { PendingStore } from "./store/pending.js";
 import { type MemoryRecall, type MemoryScope, type MemorySearchReport, type MemoryType } from "./types.js";
 
-interface RecallInput {
-  readonly query?: string;
-  readonly tags?: string[];
-  readonly types?: MemoryType[];
-  readonly scope?: MemoryScope;
-  readonly semantic?: boolean;
-  readonly limit?: number;
-}
-
-interface RememberInput {
-  readonly content: string;
-  readonly sources: string[];
-  readonly scope?: MemoryScope;
-}
-
-interface SearchInput {
-  readonly query: string;
-  readonly scope?: MemoryScope;
-  readonly limit?: number;
-}
-
 const RECALL_SCHEMA = jsonSchema<RecallInput>({
   type: "object",
   properties: {
@@ -65,6 +44,27 @@ const SEARCH_SCHEMA = jsonSchema<SearchInput>({
   required: ["query"],
   additionalProperties: false,
 });
+
+interface RecallInput {
+  readonly query?: string;
+  readonly tags?: string[];
+  readonly types?: MemoryType[];
+  readonly scope?: MemoryScope;
+  readonly semantic?: boolean;
+  readonly limit?: number;
+}
+
+interface RememberInput {
+  readonly content: string;
+  readonly sources: string[];
+  readonly scope?: MemoryScope;
+}
+
+interface SearchInput {
+  readonly query: string;
+  readonly scope?: MemoryScope;
+  readonly limit?: number;
+}
 
 export function createChannelTools(
   context: ChannelContext,

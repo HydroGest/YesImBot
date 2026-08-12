@@ -39,6 +39,17 @@ export interface ConversationReadOptions {
   limit?: number;
 }
 
+interface ReadMessage {
+  readonly record: MessageRecord;
+  readonly session: string;
+  readonly index: number;
+}
+
+interface ReadSession {
+  readonly filename: string;
+  readonly messages: ReadMessage[];
+}
+
 export class Conversation {
   private readonly root: string;
   private readonly compactConfig;
@@ -245,17 +256,6 @@ export class Conversation {
   private sessionsPath(): string {
     return join(this.root, "sessions");
   }
-}
-
-interface ReadMessage {
-  readonly record: MessageRecord;
-  readonly session: string;
-  readonly index: number;
-}
-
-interface ReadSession {
-  readonly filename: string;
-  readonly messages: ReadMessage[];
 }
 
 function validateReadOptions(options: ConversationReadOptions): void {

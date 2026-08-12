@@ -303,6 +303,7 @@ export class StickerStore {
     return next;
   }
 }
+
 export function registerStickerModel(model: StoreModel): void {
   if (registeredModels.has(model)) return;
   registeredModels.add(model);

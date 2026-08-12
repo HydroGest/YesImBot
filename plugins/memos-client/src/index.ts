@@ -100,6 +100,7 @@ export default class MemosClientPlugin {
     this.disposeAgentPlugin = undefined;
   }
 }
+
 function captureMessageEvent(message: AgentMessage, assign: (snapshot: { authorId: string; messageId: string; channelType: MemosChannelType }) => void): void {
   if (!isMessage(message)) {
     return;

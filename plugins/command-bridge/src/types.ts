@@ -1,6 +1,9 @@
 export type TrustMode = "locked" | "full";
+
 export type UserActorMode = "disabled" | "any";
+
 export type InteractiveMode = "reject" | "ask";
+
 export type CommandActor = { kind: "agent" } | { kind: "user"; userId: string };
 
 export interface CommandBridgeConfig {

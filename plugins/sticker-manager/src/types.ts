@@ -1,7 +1,10 @@
 import type { ChannelContext } from "koishi-plugin-yesimbot";
 export type StickerScopeMode = "global" | "channel";
+
 export type StickerSourceKind = "steal" | "import" | "v3" | "migrate";
+
 export type SaveStickerResult = { status: "created"; sticker: StickerProjection } | { status: "duplicate"; sticker: StickerProjection };
+
 export interface StickerConfig {
   scope: StickerScopeMode;
   storagePath: string;
@@ -14,6 +17,7 @@ export interface StickerConfig {
   sendStaticAsGif: boolean;
   stickerElement: boolean;
 }
+
 export interface StickerSource {
   kind: StickerSourceKind;
   platform?: string;
@@ -22,6 +26,7 @@ export interface StickerSource {
   messageId?: string;
   v3Id?: string;
 }
+
 export interface StickerRow {
   id: string;
   contentId: string;
@@ -36,6 +41,7 @@ export interface StickerRow {
   createdAt: string;
   updatedAt: string;
 }
+
 export interface StickerProjection {
   id: string;
   category: string;
@@ -47,14 +53,17 @@ export interface StickerProjection {
   lastUsedAt: string | null;
   createdAt: string;
 }
+
 export interface CategorySummary {
   category: string;
   count: number;
 }
+
 export interface TagSummary {
   tag: string;
   count: number;
 }
+
 export interface StickerQuery {
   category?: string;
   keyword?: string;
@@ -62,6 +71,7 @@ export interface StickerQuery {
   matchAllTags?: boolean;
   limit?: number;
 }
+
 export interface SaveStickerInput {
   scopeKey: string;
   bytes: Uint8Array;
@@ -70,11 +80,13 @@ export interface SaveStickerInput {
   tags?: readonly string[];
   source: StickerSource;
 }
+
 export interface CleanupResult {
   orphanFiles: number;
   missingFiles: string[];
   deletedOrphanFiles: number;
 }
+
 export interface ImportStats {
   total: number;
   success: number;
@@ -82,6 +94,7 @@ export interface ImportStats {
   failed: number;
   failedItems: string[];
 }
+
 export interface MigrationResult {
   total: number;
   imported: number;
@@ -90,10 +103,12 @@ export interface MigrationResult {
   failedItems: string[];
   removedSource: number;
 }
+
 export function scopeKeyFor(scope: ChannelContext, config: Pick<StickerConfig, "scope">): string {
   if (config.scope === "global") return "global";
   return scope.type === "direct" ? `direct:${scope.platform}:${scope.selfId}:${scope.channelId}` : `group:${scope.platform}:${scope.channelId}`;
 }
+
 export function normalizeCategory(value: string): string {
   const cleaned = [...value]
     .map((character) => {
@@ -106,6 +121,7 @@ export function normalizeCategory(value: string): string {
     .trim();
   return cleaned.length > 64 ? cleaned.slice(0, 64).trim() : cleaned;
 }
+
 export function normalizeTags(value: readonly string[] | undefined): string[] {
   const tags = new Set<string>();
   for (const raw of value ?? []) {
@@ -115,6 +131,7 @@ export function normalizeTags(value: readonly string[] | undefined): string[] {
   }
   return [...tags];
 }
+
 export function toProjection(row: StickerRow): StickerProjection {
   return {
     id: row.contentId,

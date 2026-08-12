@@ -3,13 +3,17 @@ import type { ChannelContext, EventRecord } from "koishi-plugin-yesimbot";
 const DIRECT_CHANNEL_TYPE = 1 satisfies Universal.Channel.Type;
 const TEXT_CHANNEL_TYPE = 0 satisfies Universal.Channel.Type;
 export type BrainPostKind = "share" | "question" | "insight";
+
 export type BrainReplySource = "agent" | "human";
+
 export type BrainStatus = "open" | "resolved";
+
 export type BrainContent =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "asset"; readonly blobId: string; readonly mediaType?: string; readonly filename?: string }
   | { readonly kind: "artifact"; readonly blobId: string; readonly mediaType?: string; readonly filename?: string }
   | { readonly kind: "forward"; readonly platform: string; readonly forwardId: string; readonly summary?: string };
+
 export interface BrainThread {
   readonly id: string;
   readonly kind: BrainPostKind;
@@ -21,6 +25,7 @@ export interface BrainThread {
   readonly createdAt: number;
   readonly resolvedAt?: number;
 }
+
 export interface BrainReply {
   readonly id: string;
   readonly threadId: string;
@@ -30,26 +35,31 @@ export interface BrainReply {
   readonly content: string;
   readonly createdAt: number;
 }
+
 export interface BrainThreadView {
   readonly thread: BrainThread;
   readonly replies: readonly BrainReply[];
   readonly localAssetUri?: string;
   readonly localForward?: { readonly forwardId: string; readonly sendTool: string };
 }
+
 export interface BrainImmediateShare {
   readonly id: string;
   readonly kind: BrainPostKind;
   readonly content: string;
   readonly tags: readonly string[];
 }
+
 export interface BrainDigest {
   readonly threads: readonly BrainThread[];
   readonly replies: readonly BrainThreadView[];
 }
+
 export interface BrainThreadStatus {
   readonly thread: BrainThread;
   readonly replyCount: number;
 }
+
 export interface GlobalBrainConfig {
   readonly storageDir?: string;
   readonly brainPrompt?: string;
@@ -76,6 +86,7 @@ export function buildImmediateShareEvent(scope: ChannelContext, selfId: string, 
     thread: { id: thread.id, kind: thread.kind, content: thread.content, tags: [...thread.tags] },
   };
 }
+
 export function scopeKey(scope: ChannelContext): string {
   if (scope.type === "direct") return `direct:${scope.platform}:${scope.selfId}:${scope.channelId}`;
   // guild and channel use the same key as the old "shared" type for JSONL backward compat

@@ -6,27 +6,6 @@ import { EvidenceStore } from "./store/evidence.js";
 import { MemoryStore } from "./store/memory.js";
 import type { MemoryCreateInput, MemoryQuery, MemoryScope, MemoryType, MemoryUpdateInput } from "./types.js";
 
-interface CreateInput {
-  sourceMessageIds: string[];
-  type: MemoryType;
-  content: string;
-  scope: MemoryScope;
-  userId?: string;
-  importance: number;
-  confidence: number;
-  tags: string[];
-}
-
-export interface MaintenanceInput {
-  readonly model: LanguageModel;
-  readonly context: ChannelContext;
-  readonly messages: readonly MessageRecord[];
-  readonly store: MemoryStore;
-  readonly evidence: EvidenceStore;
-  readonly request: string;
-  readonly allowShared: boolean;
-}
-
 const CREATE_SCHEMA = jsonSchema<CreateInput>({
   type: "object",
   properties: {
@@ -42,6 +21,27 @@ const CREATE_SCHEMA = jsonSchema<CreateInput>({
   required: ["sourceMessageIds", "type", "content", "scope", "importance", "confidence", "tags"],
   additionalProperties: false,
 });
+
+export interface MaintenanceInput {
+  readonly model: LanguageModel;
+  readonly context: ChannelContext;
+  readonly messages: readonly MessageRecord[];
+  readonly store: MemoryStore;
+  readonly evidence: EvidenceStore;
+  readonly request: string;
+  readonly allowShared: boolean;
+}
+
+interface CreateInput {
+  sourceMessageIds: string[];
+  type: MemoryType;
+  content: string;
+  scope: MemoryScope;
+  userId?: string;
+  importance: number;
+  confidence: number;
+  tags: string[];
+}
 
 export async function runMaintenance(input: MaintenanceInput): Promise<void> {
   const userIds = [...new Set(input.messages.map((message) => message.user.id))];

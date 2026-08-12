@@ -126,11 +126,17 @@ export default class GlobalBrainPlugin {
 }
 
 export type { GlobalBrainStore } from "./store.js";
+
 export { BrainStoreError, createGlobalBrainStore } from "./store.js";
+
 export { formatBrainDigest } from "./digest.js";
+
 export { formatBrainPrompt } from "./prompt.js";
+
 export { createBrainTools } from "./tools.js";
+
 export { buildImmediateShareEvent } from "./types.js";
+
 export type {
   BrainDigest,
   BrainImmediateShare,

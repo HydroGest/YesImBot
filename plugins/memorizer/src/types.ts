@@ -1,5 +1,15 @@
 import type { ChannelContext, MessageRecord } from "koishi-plugin-yesimbot";
 
+/** Per-type decay multiplier applied to halfLifeDays. Higher = slower decay. */
+export const TYPE_DECAY_FACTOR: Record<MemoryType, number> = {
+  fact: 1.0,
+  preference: 1.2,
+  event: 0.6,
+  relationship: 1.5,
+  knowledge: 2.0,
+  experience: 1.0,
+};
+
 export type MemoryScope = "channel" | "user" | "shared";
 
 export type MemoryType = "fact" | "preference" | "event" | "relationship" | "knowledge" | "experience";
@@ -72,12 +82,6 @@ export interface MemoryQuery {
   readonly limit?: number;
 }
 
-declare module "koishi" {
-  interface Tables {
-    yesimbot_memory: MemoryRow;
-  }
-}
-
 export interface MemoryEvidence {
   readonly memoryId: string;
   readonly messages: MessageRecord[];
@@ -119,7 +123,7 @@ export interface MemorySearchReport {
 export interface MemorizerConfig {
   readonly model: string;
   readonly embeddingModel?: string;
-  readonly storageDir?: string;
+  readonly dataPath?: string;
   readonly batchDelayMs?: number;
   readonly maxPendingPerBatch?: number;
   readonly maxMessagesPerBatch?: number;
@@ -127,6 +131,12 @@ export interface MemorizerConfig {
   readonly halfLifeDays?: number;
   readonly forgottenGraceDays?: number;
   readonly maxActivePerScope?: number;
+}
+
+declare module "koishi" {
+  interface Tables {
+    yesimbot_memory: MemoryRow;
+  }
 }
 
 export function toMemoryRecall(memory: Memory, now: number, evidenceCount: number): MemoryRecall {
@@ -142,16 +152,6 @@ export function toMemoryRecall(memory: Memory, now: number, evidenceCount: numbe
     evidenceCount,
   };
 }
-
-/** Per-type decay multiplier applied to halfLifeDays. Higher = slower decay. */
-export const TYPE_DECAY_FACTOR: Record<MemoryType, number> = {
-  fact: 1.0,
-  preference: 1.2,
-  event: 0.6,
-  relationship: 1.5,
-  knowledge: 2.0,
-  experience: 1.0,
-};
 
 export function retentionScore(memory: Pick<Memory, "type" | "importance" | "lastAccessedAt" | "accessCount">, now: number, halfLifeDays: number): number {
   const factor = TYPE_DECAY_FACTOR[memory.type] ?? 1.0;

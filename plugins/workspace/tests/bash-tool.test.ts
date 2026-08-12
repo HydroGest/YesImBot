@@ -11,6 +11,7 @@ async function createWorkspace(): Promise<Workspace> {
   const root = await mkdtemp(join(tmpdir(), "yesimbot-bash-tool-"));
   return Workspace.create({ root, filesystem: {}, bash: { cwd: "/home/workspace", timeoutMs: 1000 } });
 }
+
 type BackendCall = { command: string; options?: { cwd?: string; signal?: AbortSignal } };
 
 function createFakeBackend(output = { stdout: "out", stderr: "err", exitCode: 7 }) {

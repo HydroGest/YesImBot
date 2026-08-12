@@ -66,7 +66,7 @@ function createAbortSignalScope(): AbortSignalScope {
 }
 
 function withName(name: string, tool: Tool, abortSignals?: AbortSignalScope): AgentTool {
-  const agentTool = { ...tool, name } as AgentTool;
+  const agentTool = { ...tool, name } as unknown as AgentTool;
 
   if (!agentTool.execute || !abortSignals) {
     return agentTool;
