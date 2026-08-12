@@ -87,6 +87,26 @@ describe("generateReflection", () => {
     expect(mocks.generateText).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("这条回复太正式了") }));
   });
 
+  it("does not feed provider reasoning parts into reflection prompts", async () => {
+    mocks.generateText.mockResolvedValue({ text: "更好" });
+    const entry = createMessageEntry(
+      createAssistantMessage(
+        [
+          { type: "reasoning", text: "private chain" },
+          { type: "text", text: "visible reply" },
+        ],
+        { id: "message-1", timestamp: 1000 },
+      ),
+      { id: "entry-1", timestamp: 1000 },
+    );
+
+    const result = await generateReflection({} as never, "<group_examples>example</group_examples>", [entry], { maxMessages: 5 });
+
+    expect(result).toBe("更好");
+    expect(mocks.generateText).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.stringContaining("visible reply") }));
+    expect(mocks.generateText).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.not.stringContaining("private chain") }));
+  });
+
   it("returns undefined when there are no recent assistant messages", async () => {
     const result = await generateReflection({} as never, "<group_examples>example</group_examples>", [], { maxMessages: 5 });
 

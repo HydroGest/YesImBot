@@ -128,7 +128,7 @@ export function formatElements(elements: readonly Element[]): string {
 }
 
 export function parseReply(raw: string): Element[][] {
-  const source = raw.replaceAll(MARK, "");
+  const source = stripInnerThoughtRegions(raw.replaceAll(MARK, ""));
   const nonce = `${MARK}t${Math.random().toString(36).slice(2)}`;
   const captured: string[] = [];
   let masked = "";
@@ -184,6 +184,18 @@ export function parseReply(raw: string): Element[][] {
     return segments;
   };
   return split(h.parse(masked).flatMap(restore));
+}
+
+function stripInnerThoughtRegions(source: string): string {
+  let next = source;
+  let previous: string;
+  do {
+    previous = next;
+    next = previous
+      .replace(/<inner_thought\b[^>]*\/>/gi, "")
+      .replace(/<inner_thought\b[^>]*>[\s\S]*?<\/inner_thought\s*>/gi, "");
+  } while (next !== previous);
+  return next;
 }
 
 function formatElement(element: Element): string {

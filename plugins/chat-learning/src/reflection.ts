@@ -103,6 +103,7 @@ function renderAssistantText(content: unknown): string {
     .map((item) => {
       if (typeof item === "string") return item;
       if (typeof item === "object" && item !== null && "text" in item) {
+        if ((item as { type?: unknown }).type === "reasoning") return "";
         return String((item as { text?: unknown }).text ?? "");
       }
       return "";

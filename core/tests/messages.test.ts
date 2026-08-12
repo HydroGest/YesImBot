@@ -434,6 +434,12 @@ describe("parseReply", () => {
     expect(text(segments[0])).toBe("visible");
   });
 
+  it("fully removes inner thought protected by a text container", () => {
+    const segments = parseReply("<text>visible<inner_thought>private</inner_thought> after</text>");
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("visible after");
+  });
+
   it("does not create empty segments around message boundaries", () => {
     expect(parseReply("one<message/>two")).toEqual([[h.text("one")], [h.text("two")]]);
   });
