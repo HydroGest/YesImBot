@@ -263,6 +263,30 @@ function installFingerprint(directory, extra = "") {
   return createHash("sha256").update(`${extra}\n${manifest}\n${lock}`).digest("hex");
 }
 
+function workspaceManifestFingerprint(root) {
+  const files = [];
+  const skipped = new Set([".git", ".turbo", ".yarn", "dist", "lib", "node_modules", "references"]);
+
+  function walk(directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (skipped.has(entry.name)) continue;
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.name === "package.json") {
+        files.push(fullPath);
+      }
+    }
+  }
+
+  walk(root);
+  const hasher = createHash("sha256");
+  for (const file of files.sort()) {
+    hasher.update(`${path.relative(root, file)}\0${fs.readFileSync(file, "utf8")}\0`);
+  }
+  return hasher.digest("hex");
+}
+
 function dependenciesReady(directory, extra = "") {
   if (!fs.existsSync(path.join(directory, "node_modules")) || !fs.existsSync(path.join(directory, "yarn.lock"))) {
     return false;
@@ -623,8 +647,9 @@ function main() {
 
   saveAppPath();
 
-  runInstallIfMissing(yesimbotRoot, "yesimbot workspace");
-  const repoFingerprint = installFingerprint(yesimbotRoot);
+  const repoWorkspaceFingerprint = workspaceManifestFingerprint(yesimbotRoot);
+  runInstallIfMissing(yesimbotRoot, "yesimbot workspace", { extraFingerprint: repoWorkspaceFingerprint });
+  const repoFingerprint = installFingerprint(yesimbotRoot, repoWorkspaceFingerprint);
 
   const plugins = collectPluginPackages();
 
