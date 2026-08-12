@@ -68,6 +68,10 @@ export class PolicyWillingnessEngine implements WillEngine {
     this.logger?.debug("will_policy.reply_cost", { score: this.score, replyCost: this.config.replyCost });
   }
 
+  public async observe(): Promise<void> {
+    await this.onReply();
+  }
+
   public getCurrentWillingness(): number {
     return this.score;
   }
