@@ -25,7 +25,11 @@ export class OutputQueue<T> implements AsyncIterable<T> {
       else if (this.done) {
         if (this.failure) throw this.failure;
         return;
-      } else yield await new Promise<T>((resolve, reject) => this.waiters.push({ resolve: (result) => resolve(result.value), reject }));
+      } else {
+        const result = await new Promise<IteratorResult<T>>((resolve, reject) => this.waiters.push({ resolve, reject }));
+        if (result.done) return;
+        yield result.value;
+      }
     }
   }
 }
