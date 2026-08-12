@@ -6,9 +6,10 @@ import { createEntry } from "@yesimbot/agent-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const generateText = vi.hoisted(() => vi.fn());
+vi.mock("koishi", async () => import("@koishijs/core"));
 vi.mock("ai", async (original) => ({ ...(await original<typeof import("ai")>()), generateText }));
-
 import { Conversation } from "../src/conversations/index.js";
+import { createMessage, type MessageRecord } from "../src/messages/index.js";
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
@@ -228,5 +229,74 @@ describe("Conversation archiving policies", () => {
     await expect(conversation.archiveIfOversize(1)).resolves.toBe(true);
     expect((await conversation.list()).filter((item) => item.isActive)).toHaveLength(1);
     expect(await conversation.storage.read()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Conversation.read
+// ---------------------------------------------------------------------------
+
+function record(messageId: string, timestamp: number, userId = "user-1"): MessageRecord {
+  return {
+    platform: "test",
+    selfId: "bot-1",
+    timestamp,
+    channel: { id: "room-1", type: 0 },
+    user: { id: userId, name: userId },
+    messageId,
+    elements: [],
+  };
+}
+
+describe("Conversation.read", () => {
+  it("reads platform messages across active and archived sessions in chronological source windows", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-read-"));
+    roots.push(root);
+    const conversation = new Conversation(root);
+    await conversation.init();
+    await conversation.storage.append(
+      createEntry("message", createMessage(record("first", 1))),
+      createEntry("message", { id: "assistant", timestamp: 2, role: "assistant", content: "ignored" }),
+      createEntry("event", { type: "started", turnId: "turn" }),
+      createEntry("message", createMessage(record("source", 3, "user-2"))),
+    );
+    await conversation.archive(true);
+    await conversation.storage.append(createEntry("message", createMessage(record("last", 4))));
+
+    await expect(conversation.read({ messageIds: ["source", "last"], before: 1, after: 1, userIds: ["user-1", "user-2"] })).resolves.toMatchObject([
+      { messageId: "first" },
+      { messageId: "source" },
+      { messageId: "last" },
+    ]);
+  });
+
+  it("limits source windows without dropping sources and uses newest entries without sources", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-read-limit-"));
+    roots.push(root);
+    const conversation = new Conversation(root);
+    await conversation.init();
+    await conversation.storage.append(
+      createEntry("message", createMessage(record("one", 1))),
+      createEntry("message", createMessage(record("two", 2))),
+      createEntry("message", createMessage(record("three", 3))),
+    );
+
+    await expect(conversation.read({ messageIds: ["one", "three"], before: 1, after: 1, limit: 1 })).resolves.toMatchObject([
+      { messageId: "one" },
+      { messageId: "three" },
+    ]);
+    await expect(conversation.read({ limit: 2 })).resolves.toMatchObject([{ messageId: "two" }, { messageId: "three" }]);
+  });
+  it("rejects missing and duplicate source ids", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-read-errors-"));
+    roots.push(root);
+    const conversation = new Conversation(root);
+    await conversation.init();
+    await conversation.storage.append(createEntry("message", createMessage(record("duplicate", 1))));
+    await conversation.archive(true);
+    await conversation.storage.append(createEntry("message", createMessage(record("duplicate", 2))));
+
+    await expect(conversation.read({ messageIds: ["missing"] })).rejects.toThrow("missing");
+    await expect(conversation.read({ messageIds: ["duplicate"] })).rejects.toThrow("duplicate");
   });
 });

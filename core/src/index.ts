@@ -12,6 +12,8 @@ export type { ChannelPlugin, WillEngine, WillPlugin, WillState } from "./agents/
 
 export type { ChannelContext, ChannelKey } from "./channels/index.js";
 
+export type { ConversationReadOptions } from "./conversations/index.js";
+
 export * from "./messages/index.js";
 
 export type { Translator } from "./messengers/index.js";

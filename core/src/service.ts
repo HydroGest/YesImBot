@@ -4,8 +4,11 @@ import { type Context, Service } from "koishi";
 
 import { Agents } from "./agents/index.js";
 import { Channels } from "./channels/index.js";
+import type { ChannelContext } from "./channels/index.js";
 import { registerSessionCommands } from "./commands/index.js";
 import { Config } from "./config.js";
+import type { ConversationReadOptions } from "./conversations/index.js";
+import type { MessageRecord } from "./messages/index.js";
 import { Messenger } from "./messengers/index.js";
 import { ModelService } from "./models/index.js";
 import { registerPlatforms } from "./platforms/index.js";
@@ -23,6 +26,7 @@ export default class YesImBotService extends Service<Config> {
   public readonly messenger: Pick<Messenger, "use" | "post">;
   public readonly agent: Pick<Agents, "use" | "will">;
   public readonly resource: Resources;
+  public readonly conversation: { read: (context: ChannelContext, options: ConversationReadOptions) => Promise<MessageRecord[]> };
 
   private readonly channels: Channels;
   private readonly runtimes: Runtimes;
@@ -53,6 +57,7 @@ export default class YesImBotService extends Service<Config> {
     this.agent = agents;
     this.resource = this.channels;
     this.commandDisposer = registerSessionCommands(ctx, this.runtimes, { authority: 4 });
+    this.conversation = { read: (context, options) => this.channels.readConversation(context, options) };
   }
 
   public override async start(): Promise<void> {

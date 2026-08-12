@@ -6,6 +6,7 @@ import { z } from "zod";
 import { createAgent } from "../src/agent.js";
 import { ToolConflictError } from "../src/errors.js";
 import type { AgentInternalEvent } from "../src/event.js";
+import type { AgentMessage } from "../src/message.js";
 import { createUserMessage } from "../src/message.js";
 import { mergeTools, runAfterToolHooks, runBeforeToolHooks } from "../src/tools.js";
 
@@ -250,7 +251,7 @@ describe("tools", () => {
   });
 
   it("injects turn execution context into stable tool calls", async () => {
-    const seen: Array<{ runtimeId: string; toolCallId: string; turnId: string; hasSignal: boolean }> = [];
+    const seen: Array<{ runtimeId: string; toolCallId: string; turnId: string; hasSignal: boolean; messages: readonly string[] }> = [];
     const agent = createAgent({
       id: "runtime_tools",
       model: createSingleToolCallModel(),
@@ -267,8 +268,10 @@ describe("tools", () => {
                   toolCallId: context.toolCallId,
                   turnId: context.turnId,
                   hasSignal: context.abortSignal instanceof AbortSignal,
+                  messages: context.messages.map((message) => (message.role === "user" && typeof message.content === "string" ? message.content : "other")),
                 });
-                return "ok";
+                const mutableSnapshot = context.messages as AgentMessage[];
+                expect(() => mutableSnapshot.push(createUserMessage("mutated"))).not.toThrow();
               },
             },
           ],
@@ -280,7 +283,10 @@ describe("tools", () => {
     await agent.wait();
     expect(agent.isIdle()).toBe(true);
 
-    expect(seen).toEqual([{ runtimeId: "runtime_tools", toolCallId: "call_1", turnId, hasSignal: true }]);
+    expect(seen).toEqual([{ runtimeId: "runtime_tools", toolCallId: "call_1", turnId, hasSignal: true, messages: ["hello"] }]);
+    expect((await agent.storage.read()).filter((entry) => entry.type === "message").map((entry) => entry.data)).not.toContainEqual(
+      expect.objectContaining({ role: "user", content: "mutated" }),
+    );
   });
 
   it("reports cumulative usage for a multi-step tool turn", async () => {

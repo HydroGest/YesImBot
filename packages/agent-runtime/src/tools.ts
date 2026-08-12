@@ -3,6 +3,7 @@ import { type Tool, type ToolExecutionOptions, type ToolSet } from "ai";
 import type { AgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
 import { ToolConflictError } from "./errors.js";
+import type { AgentMessage } from "./message.js";
 import type { AgentPlugin, ToolCallContext, ToolHookContext, ToolResultContext } from "./plugin.js";
 import type { AgentStateManager } from "./state.js";
 import type { AgentStorage } from "./storage.js";
@@ -11,15 +12,20 @@ export type AgentTool<IN = any, OUT = any> = Omit<Tool<IN, OUT>, "execute"> & {
   name: string;
   execute: (input: IN, options: AgentToolExecuteContext) => Promise<OUT> | OUT;
 };
+
 export type AgentToolSet = AgentTool[];
+
 export type ToolDecision = { type: "allow" } | { type: "block"; reason: string } | { type: "replace"; args: unknown };
-export interface AgentToolExecuteContext extends ToolExecutionOptions {
+
+export interface AgentToolExecuteContext extends Omit<ToolExecutionOptions, "messages"> {
   readonly runtime: { id: string };
   readonly channel: AgentChannel;
   readonly state: AgentStateManager;
   readonly storage: AgentStorage<AgentEntry>;
   readonly turnId: string;
+  readonly messages: readonly AgentMessage[];
 }
+
 export function mergeTools(toolSets: readonly AgentToolSet[]): AgentToolSet {
   const merged: AgentToolSet = [];
   const seen = new Set<string>();
@@ -36,6 +42,7 @@ export function mergeTools(toolSets: readonly AgentToolSet[]): AgentToolSet {
 
   return merged;
 }
+
 export async function runBeforeToolHooks(plugins: readonly AgentPlugin[], call: ToolCallContext, context: ToolHookContext): Promise<ToolDecision> {
   let current = call;
   let currentDecision: ToolDecision = { type: "allow" };
@@ -56,6 +63,7 @@ export async function runBeforeToolHooks(plugins: readonly AgentPlugin[], call: 
 
   return currentDecision;
 }
+
 export async function runAfterToolHooks(plugins: readonly AgentPlugin[], result: ToolResultContext, context: ToolHookContext): Promise<ToolResultContext> {
   let current = result;
 
@@ -68,6 +76,7 @@ export async function runAfterToolHooks(plugins: readonly AgentPlugin[], result:
 
   return current;
 }
+
 export function toAiToolSet(tools: AgentToolSet): ToolSet {
   const result: ToolSet = {};
   for (const tool of tools) {
@@ -76,7 +85,7 @@ export function toAiToolSet(tools: AgentToolSet): ToolSet {
     }
 
     const { name: _name, ...aiTool } = tool;
-    result[tool.name] = aiTool as Tool;
+    result[tool.name] = aiTool as unknown as Tool;
   }
   return result;
 }

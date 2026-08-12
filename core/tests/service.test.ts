@@ -7,7 +7,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
+import type { ChannelContext } from "../src/channels/index.js";
 import type { Config } from "../src/config.js";
+import type { ConversationReadOptions } from "../src/conversations/index.js";
 import YesImBotService from "../src/index.js";
 
 const config: Config = {
@@ -34,7 +36,7 @@ describe("YesImBotService facade", () => {
     expect((service as unknown as { config: Config }).config.logLevel).toBe(2);
   });
 
-  it("exposes exactly the four approved domain entries", () => {
+  it("exposes only narrow domain entries", () => {
     const ctx = new Context();
     ctx.baseDir = tmpdir();
     Object.assign(ctx, { "yesimbot.model": {}, database: { get: vi.fn() } });
@@ -44,10 +46,26 @@ describe("YesImBotService facade", () => {
     expect(service.messenger).toMatchObject({ use: expect.any(Function), post: expect.any(Function) });
     expect(service.agent).toMatchObject({ use: expect.any(Function), will: expect.any(Function) });
     expect(service.resource).toMatchObject({ get: expect.any(Function), use: expect.any(Function) });
+    expect(service.conversation).toMatchObject({ read: expect.any(Function) });
     expect("trigger" in service).toBe(false);
     expect("reset" in service).toBe(false);
     expect("assets" in service).toBe(false);
     expect("getStoragePath" in service).toBe(false);
+  });
+
+  it("delegates conversation reads to the resolved channel", async () => {
+    const ctx = new Context();
+    ctx.baseDir = tmpdir();
+    Object.assign(ctx, { "yesimbot.model": {}, database: { get: vi.fn() } });
+    const service = new YesImBotService(ctx as never, { ...config, basePath: join(tmpdir(), `yesimbot-service-${randomUUID()}`) });
+    const context: ChannelContext = { type: "guild", platform: "test", channelId: "room", guildId: "room" };
+    const options: ConversationReadOptions = { limit: 2 };
+    const result = [{ messageId: "message" }];
+    const resolve = vi.fn().mockResolvedValue({ conversation: { read: vi.fn().mockResolvedValue(result) } });
+    (service as unknown as { channels: { resolve: typeof resolve } }).channels.resolve = resolve;
+
+    await expect(service.conversation.read(context, options)).resolves.toEqual(result);
+    expect(resolve).toHaveBeenCalledWith(context);
   });
   it("threads image input and converts resource timeout seconds", async () => {
     vi.useFakeTimers();

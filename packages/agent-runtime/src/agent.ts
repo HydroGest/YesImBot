@@ -203,7 +203,7 @@ export function createAgent(config: AgentConfig): Agent {
     return initPromise;
   };
 
-  const resolveTools = (turnId: string, signal?: AbortSignal): AgentToolSet => {
+  const resolveTools = (turnId: string, currentMessages: () => readonly AgentMessage[], signal?: AbortSignal): AgentToolSet => {
     const merged = frozenTools;
 
     let serial = Promise.resolve();
@@ -242,6 +242,7 @@ export function createAgent(config: AgentConfig): Agent {
                     storage,
                     turnId,
                     abortSignal: hookContext.signal,
+                    messages: [...currentMessages()],
                   };
                   const output = await raceAbort(Promise.resolve(execute(nextInput, executeContext)), hookContext.signal);
                   throwIfAborted(hookContext.signal);
@@ -405,7 +406,7 @@ export function createAgent(config: AgentConfig): Agent {
           model,
           system: frozenSystemPrompt,
           messages: modelMessages,
-          tools: { ...toAiToolSet(resolveTools(request.turnId, abortSignal)), ...frozenProviderTools },
+          tools: { ...toAiToolSet(resolveTools(request.turnId, () => allMessages, abortSignal)), ...frozenProviderTools },
           stopWhen: isLoopFinished(),
           abortSignal,
           prepareStep: async ({ stepNumber }) => {

@@ -4,8 +4,8 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { Context, Logger } from "koishi";
 
-import { Conversation } from "../conversations/index.js";
-import type { ConversationCompactConfig } from "../conversations/index.js";
+import { Conversation, type ConversationCompactConfig, type ConversationReadOptions } from "../conversations/index.js";
+import type { MessageRecord } from "../messages/index.js";
 import { ChannelResources, type Disposer, type ResourceReader, type Resources } from "../resources/index.js";
 import { type ChannelContext, type ChannelKey, deriveChannelKey } from "./context.js";
 
@@ -87,6 +87,10 @@ export class Channels implements Resources {
 
   public async get(ctx: ChannelContext): Promise<ChannelResources> {
     return (await this.resolve(ctx)).resources;
+  }
+
+  public async readConversation(context: ChannelContext, options: ConversationReadOptions): Promise<MessageRecord[]> {
+    return (await this.resolve(context)).conversation.read(options);
   }
 
   public use(reader: ResourceReader): Disposer {

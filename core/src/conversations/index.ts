@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 import { createEntry, createJsonlStorage, type AgentEntry, type AgentStorage } from "@yesimbot/agent-runtime";
 import type { LanguageModel } from "ai";
 
+import type { MessageRecord } from "../messages/index.js";
 import { executeCompact, filterEntriesForCompression } from "./compact.js";
 
 export type CompactReason = "auto" | "idle" | "manual";
@@ -26,6 +27,16 @@ export interface ConversationCompactConfig {
   maxFailures: number;
   threshold?: number;
   charTokenRatio?: number;
+}
+
+export interface ConversationReadOptions {
+  messageIds?: string[];
+  before?: number;
+  after?: number;
+  from?: number;
+  to?: number;
+  userIds?: string[];
+  limit?: number;
 }
 
 export class Conversation {
@@ -154,6 +165,39 @@ export class Conversation {
     }
   }
 
+  public async read(options: ConversationReadOptions = {}): Promise<MessageRecord[]> {
+    validateReadOptions(options);
+    const sessions: ReadSession[] = [];
+    const sourceMatches = new Map<string, ReadMessage[]>();
+
+    for (const filename of await this.files()) {
+      const messages: ReadMessage[] = [];
+      for (const entry of await createJsonlStorage(join(this.sessionsPath(), filename)).read()) {
+        if (entry.type !== "message" || !isPlatformMessage(entry.data)) continue;
+        messages.push({ record: { ...entry.data.data, timestamp: entry.data.timestamp }, session: filename, index: messages.length });
+      }
+      sessions.push({ filename, messages });
+      for (const message of messages) {
+        if (!options.messageIds?.includes(message.record.messageId)) continue;
+        const matches = sourceMatches.get(message.record.messageId) ?? [];
+        matches.push(message);
+        sourceMatches.set(message.record.messageId, matches);
+      }
+    }
+
+    const sourceIds = options.messageIds ?? [];
+    for (const sourceId of sourceIds) {
+      const matches = sourceMatches.get(sourceId) ?? [];
+      if (matches.length !== 1)
+        throw new Error(`Conversation source message ID ${JSON.stringify(sourceId)} ${matches.length ? "is duplicated" : "is missing"}`);
+    }
+
+    const selected = sourceIds.length ? selectSourceWindows(sessions, sourceMatches, options) : sessions.flatMap(({ messages }) => messages);
+    const filtered = selected.filter((message) => matchesReadFilter(message.record, options));
+    const limited = sourceIds.length ? limitSourceMessages(filtered, sourceMatches, options.limit) : limitNewestMessages(filtered, options.limit);
+    return limited.sort((left, right) => left.record.timestamp - right.record.timestamp).map(({ record }) => record);
+  }
+
   private setStorage(path: string): void {
     this.storagePathValue = path;
     this.fileStorageValue = createJsonlStorage(path);
@@ -201,6 +245,91 @@ export class Conversation {
   private sessionsPath(): string {
     return join(this.root, "sessions");
   }
+}
+
+interface ReadMessage {
+  readonly record: MessageRecord;
+  readonly session: string;
+  readonly index: number;
+}
+
+interface ReadSession {
+  readonly filename: string;
+  readonly messages: ReadMessage[];
+}
+
+function validateReadOptions(options: ConversationReadOptions): void {
+  for (const name of ["before", "after"] as const) {
+    const value = options[name];
+    if (value !== undefined && (!Number.isInteger(value) || value < 0)) throw new Error(`Conversation read ${name} must be a non-negative integer`);
+  }
+  if (options.from !== undefined && !Number.isFinite(options.from)) throw new Error("Conversation read from must be a finite timestamp");
+  if (options.to !== undefined && !Number.isFinite(options.to)) throw new Error("Conversation read to must be a finite timestamp");
+  if (options.from !== undefined && options.to !== undefined && options.from > options.to) throw new Error("Conversation read from must not exceed to");
+  if (options.limit !== undefined && (!Number.isInteger(options.limit) || options.limit <= 0))
+    throw new Error("Conversation read limit must be a positive integer");
+}
+
+function selectSourceWindows(
+  sessions: readonly ReadSession[],
+  matches: ReadonlyMap<string, readonly ReadMessage[]>,
+  options: ConversationReadOptions,
+): ReadMessage[] {
+  const selected = new Map<string, ReadMessage>();
+  const before = options.before ?? 0;
+  const after = options.after ?? 0;
+  for (const source of matches.values()) {
+    const message = source[0]!;
+    const session = sessions.find(({ filename }) => filename === message.session)!;
+    const start = Math.max(0, message.index - before);
+    const end = Math.min(session.messages.length, message.index + after + 1);
+    for (const nearby of session.messages.slice(start, end)) selected.set(readMessageKey(nearby), nearby);
+  }
+  return [...selected.values()];
+}
+
+function matchesReadFilter(record: MessageRecord, options: ConversationReadOptions): boolean {
+  return (
+    (options.from === undefined || record.timestamp >= options.from) &&
+    (options.to === undefined || record.timestamp <= options.to) &&
+    (options.userIds === undefined || options.userIds.includes(record.user.id))
+  );
+}
+
+function limitSourceMessages(messages: readonly ReadMessage[], matches: ReadonlyMap<string, readonly ReadMessage[]>, limit: number | undefined): ReadMessage[] {
+  if (limit === undefined) return [...messages];
+  const sourceKeys = new Set([...matches.values()].map(([message]) => readMessageKey(message!)));
+  const sources = messages.filter((message) => sourceKeys.has(readMessageKey(message)));
+  if (sources.length >= limit) return sources;
+  const distance = (message: ReadMessage) =>
+    Math.min(...sources.filter((source) => source.session === message.session).map((source) => Math.abs(source.index - message.index)));
+  return [
+    ...sources,
+    ...messages
+      .filter((message) => !sourceKeys.has(readMessageKey(message)))
+      .sort((left, right) => distance(left) - distance(right) || left.record.timestamp - right.record.timestamp)
+      .slice(0, limit - sources.length),
+  ];
+}
+
+function limitNewestMessages(messages: readonly ReadMessage[], limit: number | undefined): ReadMessage[] {
+  if (limit === undefined) return [...messages];
+  return [...messages].sort((left, right) => right.record.timestamp - left.record.timestamp).slice(0, limit);
+}
+
+function readMessageKey(message: ReadMessage): string {
+  const { platform, selfId, channel, messageId } = message.record;
+  return `${platform}\u0000${selfId}\u0000${channel.id}\u0000${messageId}`;
+}
+
+function isPlatformMessage(value: AgentEntry["data"]): value is {
+  readonly role: "custom";
+  readonly id: string;
+  readonly type: "yesimbot.message";
+  readonly timestamp: number;
+  readonly data: Omit<MessageRecord, "timestamp">;
+} {
+  return typeof value === "object" && value !== null && "role" in value && value.role === "custom" && "type" in value && value.type === "yesimbot.message";
 }
 
 function formatTimestamp(date: Date): string {
