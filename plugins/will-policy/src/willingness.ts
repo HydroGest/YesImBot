@@ -1,5 +1,6 @@
+import { TurnResult } from "@yesimbot/agent-runtime";
 import type { Logger, Universal } from "koishi";
-import { isMessage, type Event, type Message, type WillEngine } from "koishi-plugin-yesimbot";
+import { isMessage, type WillState, type Event, type Message, type WillEngine } from "koishi-plugin-yesimbot";
 
 import { hasImage, hasQuote, mentionKind } from "./message-context.js";
 import type { PolicyWillingnessConfig } from "./types.js";
@@ -13,12 +14,12 @@ export class PolicyWillingnessEngine implements WillEngine {
 
   public constructor(
     private readonly config: PolicyWillingnessConfig,
-    private readonly logger?: Pick<Logger, "debug">,
+    private readonly logger: Logger,
   ) {
     this.score = config.initialScore;
   }
 
-  public async decide(input: Message | Event, _state: Parameters<WillEngine["decide"]>[1]): Promise<"wait" | "trigger"> {
+  public async decide(input: Message | Event, _state: WillState): Promise<"wait" | "trigger"> {
     if (!isMessage(input)) {
       return isPokeEvent(input) ? this.decidePoke(input) : "wait";
     }
@@ -35,7 +36,7 @@ export class PolicyWillingnessEngine implements WillEngine {
 
     const forced = shouldForce(input.data, this.config);
     const decision: "wait" | "trigger" = forced || Math.random() < probability ? "trigger" : "wait";
-    this.logger?.debug("will_policy.willingness", {
+    this.logger.debug("will_policy.willingness", {
       messageId: input.id,
       channelId: input.data.channel.id,
       previousScore: decayed,
@@ -59,17 +60,13 @@ export class PolicyWillingnessEngine implements WillEngine {
     this.lastDecayAt = now;
 
     const decision: "wait" | "trigger" = Math.random() < probability ? "trigger" : "wait";
-    this.logger?.debug("will_policy.willingness", { messageId: input.id, channelId: input.data.channel.id, score: next, probability, decision, forced: true });
+    this.logger.debug("will_policy.willingness", { messageId: input.id, channelId: input.data.channel.id, score: next, probability, decision, forced: true });
     return decision;
   }
 
-  public async onReply(): Promise<void> {
+  public async observe(result: TurnResult): Promise<void> {
     this.score = Math.max(0, this.score - this.config.replyCost);
-    this.logger?.debug("will_policy.reply_cost", { score: this.score, replyCost: this.config.replyCost });
-  }
-
-  public async observe(): Promise<void> {
-    await this.onReply();
+    this.logger.debug("will_policy.reply_cost", { score: this.score, replyCost: this.config.replyCost });
   }
 
   public getCurrentWillingness(): number {

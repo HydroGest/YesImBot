@@ -72,6 +72,10 @@ export class Conversation {
     return { active: (await this.list()).find((item) => item.isActive) ?? null };
   }
 
+  public failuresCount(): number {
+    return this.failures;
+  }
+
   public async switch(id: string): Promise<void> {
     await this.init();
     const filename = id.endsWith(".jsonl") ? id : `${id}.jsonl`;

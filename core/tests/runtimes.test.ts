@@ -458,3 +458,28 @@ describe("Runtimes identity", () => {
     }
   });
 });
+
+describe("Runtimes status", () => {
+  it("reports active session details from its persisted entries", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-runtimes-"));
+    try {
+      const ctx = new Context();
+      const channels = new Channels(ctx, { basePath: root });
+      const model = { resolveChatModel: vi.fn(() => ({ model: {} as never, entry: {} })) };
+      const runtimes = new Runtimes(ctx, channels, model as never, { ...config, basePath: root }, new Agents(ctx));
+      const scope = { type: "guild", platform: "test", channelId: "room", guildId: "room" } as const;
+      const conversation = (await channels.resolve(scope)).conversation;
+      await conversation.storage.append(
+        createEntry("message", { id: "before", timestamp: 1, role: "user", content: "before" }),
+        createEntry("compact", { summary: "summary", lastEntryId: "before", sourceSession: "old" }),
+        createEntry("message", { id: "after", timestamp: 1_723_456_789_000, role: "assistant", content: "after" }),
+      );
+
+      await expect(runtimes.status(scope)).resolves.toMatch(
+        /^活动会话：\d{8}T\d{6}Z\.jsonl\n消息：2\n压缩：1\n最后活跃：\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\n自上次压缩以来消息：1\n连续失败：0\n文件大小：\d+ B$/,
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

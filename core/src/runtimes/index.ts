@@ -128,8 +128,24 @@ export class Runtimes {
   }
 
   public async status(ctx: ChannelContext): Promise<string> {
-    const active = await (await this.channels.resolve(ctx)).conversation.status();
-    return active.active ? `活动会话：${active.active.filename}` : "无会话记录。";
+    const conversation = (await this.channels.resolve(ctx)).conversation;
+    const active = await conversation.status();
+    if (!active.active) return "无会话记录。";
+    const entries = await conversation.storage.read();
+    const lastCompactIndex = entries.reduce((last, entry, index) => (entry.type === "compact" ? index : last), -1);
+    const lastEntry = entries.at(-1);
+    const messages = entries.filter((entry) => entry.type === "message").length;
+    const compacts = entries.filter((entry) => entry.type === "compact").length;
+    const messagesSinceLastCompact = entries.slice(lastCompactIndex + 1).filter((entry) => entry.type === "message").length;
+    return [
+      `活动会话：${active.active.filename}`,
+      `消息：${messages}`,
+      `压缩：${compacts}`,
+      `最后活跃：${lastEntry ? new Date(lastEntry.timestamp).toISOString() : "无"}`,
+      `自上次压缩以来消息：${messagesSinceLastCompact}`,
+      `连续失败：${conversation.failuresCount()}`,
+      `文件大小：${formatBytes(active.active.size)}`,
+    ].join("\n");
   }
 
   public async list(ctx: ChannelContext): Promise<string> {
@@ -169,6 +185,11 @@ export class Runtimes {
   private runtimeCount(): number {
     return [...this.runtimes.values()].length;
   }
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  return `${(size / 1024).toFixed(1)} KiB`;
 }
 
 function runtimeKey(ctx: ChannelContext): ChannelKey {

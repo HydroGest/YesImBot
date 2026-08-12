@@ -8,7 +8,7 @@ declare module "koishi" {
 
 export default YesImBotService;
 
-export type { ChannelPlugin, WillEngine, WillPlugin } from "./agents/index.js";
+export type { ChannelPlugin, WillEngine, WillPlugin, WillState } from "./agents/index.js";
 
 export type { ChannelContext, ChannelKey } from "./channels/index.js";
 

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { Context, Logger, Schema, type Command, type Session } from "koishi";
-import type { ChannelContext, WillEngine } from "koishi-plugin-yesimbot";
+import type { ChannelContext, WillEngine, WillPlugin } from "koishi-plugin-yesimbot";
 
 import { resolvePolicy } from "./policy.js";
 import { PolicyRoutingEngine } from "./routing.js";
@@ -73,7 +73,7 @@ const DEBUG_ACTION: unique symbol = Symbol("yesimbot.will-policy.debug-action");
 
 type DebugCommand = Command & { [DEBUG_ACTION]?: boolean };
 
-export default class WillPolicyPlugin {
+export default class WillPolicyPlugin implements WillPlugin {
   public static readonly name = "yesimbot-will-policy";
   public static readonly reusable = true;
   public static readonly inject = ["yesimbot"];
@@ -93,7 +93,7 @@ export default class WillPolicyPlugin {
     this.config = config;
     this.priority = config.priority ?? 1000;
     this.logger = ctx.logger("yesimbot.will-policy");
-    this.logger.level = ctx.yesimbot?.config?.logLevel ?? 2;
+    this.logger.level = ctx.yesimbot.config.logLevel ?? 2;
     ctx.on("ready", this.start.bind(this));
     ctx.on("dispose", this.stop.bind(this));
   }
@@ -136,15 +136,18 @@ export default class WillPolicyPlugin {
       });
       return false;
     }
+
+    const isDirect = context.type === "direct";
+
     const session = bot.session({
       type: "message-created",
-      subtype: context.type === "direct" ? "private" : "group",
+      subtype: isDirect ? "private" : "group",
       platform: context.platform,
       selfId: context.selfId,
       timestamp: Date.now(),
-      channel: { id: context.channelId, type: context.type === "direct" ? 1 : 0 },
-      ...(context.type !== "direct" && context.guildId ? { guild: { id: context.guildId } } : {}),
-      ...(context.type === "direct" ? { user: { id: context.userId, ...(context.userName ? { name: context.userName } : {}) } } : {}),
+      channel: { id: context.channelId, type: isDirect ? 1 : 0 },
+      ...(!isDirect && context.guildId ? { guild: { id: context.guildId } } : {}),
+      ...(isDirect ? { user: { id: context.userId, ...(context.userName ? { name: context.userName } : {}) } } : {}),
     } as never) as Session;
     const matched = this.ctx.filter(session);
     this.logger.debug("will_policy.match_context", {
@@ -153,7 +156,7 @@ export default class WillPolicyPlugin {
       engine: this.config.engine,
       platform: context.platform,
       channelId: context.channelId,
-      guildId: context.type === "direct" ? undefined : context.guildId,
+      guildId: isDirect ? undefined : context.guildId,
       matched,
     });
     return matched;

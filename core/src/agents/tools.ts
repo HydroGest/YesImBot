@@ -24,8 +24,7 @@ export function createSendMessageTool(bot: Bot, currentChannelId: string, resour
     name: "sendMessage",
     description: [
       "向当前频道以外的指定频道发送一条消息。不要使用本工具回复当前频道；直接输出文本即可。",
-      "content 使用与直接输出相同的元素语法：<message/> 分隔消息，<text> 保留逐字内容，<inner_thought> 不会被发送。",
-      "只有 <img> 和 <file> 的 src 会按 read 工具列出的 URI 方案解析为可发送数据；资源解析失败时仅丢弃对应元素。",
+      "content 使用与直接输出相同的元素语法。",
       "返回 {ok:true,messageIds} 或 {ok:false,error}；必须检查 ok，失败时不会发出消息。",
     ].join("\n"),
     inputSchema: jsonSchema<SendMessageInput>({
@@ -52,9 +51,35 @@ export function createSendMessageTool(bot: Bot, currentChannelId: string, resour
 
 export function createReadTool(resources: ChannelResources, imageOutputSupported: boolean): AgentTool<{ uri: string }, ResourceReadResult> {
   const pendingImages = new Map<string, { bytes: Uint8Array; mediaType: string }>();
+  const imageEnabled = imageOutputSupported && resources.imageInput;
+  const lines = [
+    "读取资源内容。仅在确实需要内容时读取精确 URI，不要猜测或拼造 URI。",
+    "URI 形如 scheme://authority[/path]，不能包含 ?、#、%，也不能有 . 或 .. 路径段。",
+    "- asset://<32位十六进制id>：平台输入的不可变资源，包括图片与文本文件。消息里看到的 [图片：asset://xxx] 和 [文件：名字 asset://xxx] 就是它；路径部分必须为空。",
+    "- artifact://<tool>/<uuid>：工具输出的不可变工件，uuid 由工具返回，原样传入。",
+  ];
+  for (const reader of resources
+    .listReaders()
+    .slice()
+    .sort((a, b) => a.scheme.localeCompare(b.scheme))) {
+    lines.push(`- ${reader.scheme}://：${reader.prompt}`);
+  }
+  lines.push(
+    "",
+    "返回 {uri, filename?, mediaType?, text?, error?}。",
+    "- 文本资源在 text 中直接给出内容，过长会被截断并以 [内容已截断] 结尾。",
+    imageEnabled
+      ? "- 图片资源：读取后图片字节将随结果返回，你可以直接查看图片内容。查看图片必须使用本工具读取。"
+      : "- 图片资源只给出占位描述，不包含图片字节，当前无法查看图片内容。",
+  );
+  if (!imageEnabled) lines.push("- 需要图片内容时，使用 describe_image 工具获取图片描述。");
+  lines.push(
+    "- 其他二进制只给出类型与大小，无法查看内容。",
+    "- error 存在时不会有 text：invalid_resource_uri 表示 URI 形状不合法，检查后重写而不是原样重试；resource_not_found 表示资源不存在，换来源；resource_unavailable 表示该方案当前未启用；resource_too_large 表示超出读取上限，无法读取；timeout 与 resource_read_aborted 可以重试一次；resource_read_failed 表示读取失败。",
+  );
   return {
     name: "read",
-    description: readDescription(resources, imageOutputSupported),
+    description: lines.join("\n"),
     inputSchema: jsonSchema<ResourceReadInput>({ type: "object", properties: { uri: { type: "string", description: "要读取的资源 URI" } }, required: ["uri"] }),
     execute: async ({ uri }, execution) => {
       let opened: Awaited<ReturnType<ChannelResources["openStrict"]>>;
@@ -129,36 +154,6 @@ export function createDescribeImageTool(model: LanguageModel, resources: Channel
       }
     },
   };
-}
-
-function readDescription(resources: ChannelResources, imageOutputSupported: boolean): string {
-  const imageEnabled = imageOutputSupported && resources.imageInput;
-  const lines = [
-    "读取资源内容。仅在确实需要内容时读取精确 URI，不要猜测或拼造 URI。",
-    "URI 形如 scheme://authority[/path]，不能包含 ?、#、%，也不能有 . 或 .. 路径段。",
-    "- asset://<32位十六进制id>：平台输入的不可变资源，包括图片与文本文件。消息里看到的 [图片：asset://xxx] 和 [文件：名字 asset://xxx] 就是它；路径部分必须为空。",
-    "- artifact://<tool>/<uuid>：工具输出的不可变工件，uuid 由工具返回，原样传入。",
-  ];
-  for (const reader of resources
-    .listReaders()
-    .slice()
-    .sort((a, b) => a.scheme.localeCompare(b.scheme))) {
-    lines.push(`- ${reader.scheme}://：${reader.prompt}`);
-  }
-  lines.push(
-    "",
-    "返回 {uri, filename?, mediaType?, text?, error?}。",
-    "- 文本资源在 text 中直接给出内容，过长会被截断并以 [内容已截断] 结尾。",
-    imageEnabled
-      ? "- 图片资源：读取后图片字节将随结果返回，你可以直接查看图片内容。查看图片必须使用本工具读取。"
-      : "- 图片资源只给出占位描述，不包含图片字节，当前无法查看图片内容。",
-  );
-  if (!imageEnabled) lines.push("- 需要图片内容时，使用 describe_image 工具获取图片描述。");
-  lines.push(
-    "- 其他二进制只给出类型与大小，无法查看内容。",
-    "- error 存在时不会有 text：invalid_resource_uri 表示 URI 形状不合法，检查后重写而不是原样重试；resource_not_found 表示资源不存在，换来源；resource_unavailable 表示该方案当前未启用；resource_too_large 表示超出读取上限，无法读取；timeout 与 resource_read_aborted 可以重试一次；resource_read_failed 表示读取失败。",
-  );
-  return lines.join("\n");
 }
 
 function describeBytes(bytes: Uint8Array, mediaType?: string): string {
