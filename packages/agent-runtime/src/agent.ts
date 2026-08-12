@@ -1,4 +1,4 @@
-import { isLoopFinished, streamText, type LanguageModel, type SystemModelMessage, type ToolSet } from "ai";
+import { isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
@@ -382,6 +382,7 @@ export function createAgent(config: AgentConfig): Agent {
 
   const executeTurn = async (request: TurnRequest): Promise<TurnResult> => {
     const allMessages: AgentMessage[] = [];
+    let turnUsage: Partial<LanguageModelUsage> | undefined;
     let currentBatch = request.messages.splice(0, request.messages.length);
     const abortSignal = request.signal;
 
@@ -439,6 +440,7 @@ export function createAgent(config: AgentConfig): Agent {
                 ? createAssistantMessage(message.content, { providerOptions: message.providerOptions, usage: step.usage, finishReason: step.finishReason })
                 : createToolMessage(message.content),
             );
+            turnUsage = mergeUsage(turnUsage, step.usage);
 
             if (stepMessages.length > 0) {
               const stepEntries = await appendEntries(
@@ -483,7 +485,12 @@ export function createAgent(config: AgentConfig): Agent {
       }
 
       await emitInternal({ type: "turn.done", turnId: request.turnId });
-      const result: TurnResult = { turnId: request.turnId, status: "done", messages: allMessages };
+      const result: TurnResult = {
+        turnId: request.turnId,
+        status: "done",
+        messages: allMessages,
+        ...(turnUsage ? { usage: turnUsage } : {}),
+      };
       await pluginHost.helpers.onTurnFinish(result, { runtime: { id }, channel, state, turnId: request.turnId });
       return result;
     } catch (error) {
@@ -570,6 +577,18 @@ export function createAgent(config: AgentConfig): Agent {
   };
 
   return agent;
+}
+
+function mergeUsage(current: Partial<LanguageModelUsage> | undefined, next: LanguageModelUsage | undefined): Partial<LanguageModelUsage> | undefined {
+  if (!next) return current;
+  return {
+    ...current,
+    inputTokens: (current?.inputTokens ?? 0) + (next.inputTokens ?? 0),
+    outputTokens: (current?.outputTokens ?? 0) + (next.outputTokens ?? 0),
+    totalTokens: (current?.totalTokens ?? 0) + (next.totalTokens ?? 0),
+    ...(next.reasoningTokens !== undefined ? { reasoningTokens: (current?.reasoningTokens ?? 0) + next.reasoningTokens } : {}),
+    ...(next.cachedInputTokens !== undefined ? { cachedInputTokens: (current?.cachedInputTokens ?? 0) + next.cachedInputTokens } : {}),
+  };
 }
 
 function createAbortError(): DOMException {

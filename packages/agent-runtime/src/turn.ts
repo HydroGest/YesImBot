@@ -1,3 +1,5 @@
+import type { LanguageModelUsage } from "ai";
+
 import { AgentBusyError } from "./errors.js";
 import { createRandomId } from "./id.js";
 import { AgentMessage } from "./message.js";
@@ -30,6 +32,7 @@ export interface TurnResult {
   status: Exclude<TurnStatus, "queued" | "running">;
   messages: AgentMessage[];
   error?: TurnError;
+  usage?: Partial<LanguageModelUsage>;
 }
 
 export interface AgentWaitOptions {
