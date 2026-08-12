@@ -136,15 +136,27 @@ export class Channels implements Resources {
         continue;
       }
       try {
-        const value = JSON.parse(await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")) as unknown;
-        const manifest = parseManifest(value);
-        const directory = channelDirectoryName(manifest);
-        if (isLegacySharedManifest(value) && (entry.name === legacySharedDirectoryName(manifest) || entry.name === directory)) {
-          await this.migrateLegacySharedDirectory(entry.name, directory, manifest);
-        } else if (directory !== entry.name) {
+        const raw = JSON.parse(await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")) as unknown;
+        const manifest = parseManifest(raw);
+        const canonical = channelDirectoryName(manifest);
+
+        if (entry.name === canonical) {
+          // Directory name is already canonical; rewrite manifest if raw was normalized (e.g. userId added)
+          if (!manifestMatchesRaw(raw, manifest)) {
+            await fs.writeFile(join(this.channelsPath, entry.name, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+          }
+          this.manifests.set(deriveChannelKey(manifest), manifest);
+          continue;
+        }
+
+        // Directory name differs from canonical — check known legacy formats
+        const legacyNames = legacyDirectoryNames(raw, manifest);
+        if (legacyNames.includes(entry.name)) {
+          await this.migrateLegacyDirectory(entry.name, canonical, manifest);
+          this.manifests.set(deriveChannelKey(manifest), manifest);
+        } else {
           throw new Error("Manifest directory name does not match directory");
         }
-        this.manifests.set(deriveChannelKey(manifest), manifest);
       } catch (cause) {
         this.logger.error("storage.manifest_invalid", { directoryName: entry.name, cause });
         if (cause instanceof ChannelMigrationConflictError) throw cause;
@@ -152,7 +164,7 @@ export class Channels implements Resources {
     }
   }
 
-  private async migrateLegacySharedDirectory(sourceDirectory: string, destinationDirectory: string, manifest: ChannelManifest): Promise<void> {
+  private async migrateLegacyDirectory(sourceDirectory: string, destinationDirectory: string, manifest: ChannelManifest): Promise<void> {
     const destination = join(this.channelsPath, destinationDirectory);
     if (sourceDirectory !== destinationDirectory) {
       try {
@@ -232,12 +244,38 @@ function encodeDirectorySegment(value: string): string {
   return [...value].map((char) => (/[A-Za-z0-9]/.test(char) ? char : `%${char.codePointAt(0)!.toString(16)}%`)).join("");
 }
 
-function legacySharedDirectoryName(manifest: ChannelManifest): string {
-  return ["shared", encodeDirectorySegment(manifest.platform), encodeDirectorySegment(manifest.channelId)].join("-");
+function legacyDirectoryNames(raw: unknown, manifest: ChannelManifest): string[] {
+  const names: string[] = [];
+  const obj = raw as Record<string, unknown> | null;
+
+  // Legacy shared: old type "shared" with directory "shared-<platform>-<channelId>"
+  if (typeof obj === "object" && obj !== null && obj.type === "shared") {
+    names.push(["shared", encodeDirectorySegment(manifest.platform), encodeDirectorySegment(manifest.channelId)].join("-"));
+  }
+
+  // Legacy direct: old directory used channelId where canonical now uses userId
+  if (typeof obj === "object" && obj !== null && obj.type === "direct" && typeof obj.channelId === "string" && typeof obj.selfId === "string") {
+    const channelIdDir = [
+      "direct",
+      encodeDirectorySegment(manifest.platform),
+      encodeDirectorySegment(obj.channelId as string),
+      encodeDirectorySegment(obj.selfId as string),
+    ].join("-");
+    if (channelIdDir !== channelDirectoryName(manifest)) {
+      names.push(channelIdDir);
+    }
+  }
+
+  return names;
 }
 
-function isLegacySharedManifest(value: unknown): boolean {
-  return typeof value === "object" && value !== null && "type" in value && value.type === "shared";
+function manifestMatchesRaw(raw: unknown, manifest: ChannelManifest): boolean {
+  if (typeof raw !== "object" || raw === null) return false;
+  const obj = raw as Record<string, unknown>;
+  for (const key of Object.keys(manifest)) {
+    if (obj[key] !== (manifest as unknown as Record<string, unknown>)[key]) return false;
+  }
+  return Object.keys(obj).length === Object.keys(manifest).length;
 }
 
 /**

@@ -120,4 +120,70 @@ describe("Channels", () => {
     await expect(readFile(join(legacyRoot, "legacy.txt"), "utf8")).resolves.toBe("legacy data\n");
     await expect(readFile(join(canonicalRoot, "current.txt"), "utf8")).resolves.toBe("current data\n");
   });
+
+  it("migrates a legacy direct directory during startup", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-channels-legacy-direct-"));
+    roots.push(root);
+    // Legacy direct format: direct-${platform}-${channelId}-${selfId}
+    const legacyRoot = join(root, "channels", "direct-onebot-user123-bot456");
+    await mkdir(legacyRoot, { recursive: true });
+    await Promise.all([
+      writeFile(
+        join(legacyRoot, "channel.json"),
+        '{"type":"direct","platform":"onebot","channelId":"user123","selfId":"bot456","createdAt":"2026-08-01T00:00:00.000Z"}\n',
+      ),
+      writeFile(join(legacyRoot, "legacy.txt"), "legacy direct data\n"),
+    ]);
+
+    const channels = new Channels(new Context(), { basePath: root });
+    await channels.start();
+    // New format uses userId instead of channelId
+    const channel = await channels.resolve({ type: "direct", platform: "onebot", selfId: "bot456", channelId: "user123", userId: "user123" });
+    const canonicalRoot = join(root, "channels", "direct-onebot-user123-bot456");
+
+    // For this case, channelId === userId, so directory name stays the same
+    expect(channel.root).toBe(canonicalRoot);
+    await expect(readFile(join(canonicalRoot, "legacy.txt"), "utf8")).resolves.toBe("legacy direct data\n");
+    expect(JSON.parse(await readFile(join(canonicalRoot, "channel.json"), "utf8"))).toMatchObject({
+      type: "direct",
+      platform: "onebot",
+      channelId: "user123",
+      selfId: "bot456",
+      userId: "user123",
+      createdAt: "2026-08-01T00:00:00.000Z",
+    });
+  });
+
+  it("migrates a legacy direct directory with different channelId and userId", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-channels-legacy-direct-diff-"));
+    roots.push(root);
+    // Legacy direct format: direct-${platform}-${channelId}-${selfId}
+    // But manifest already has userId (different from channelId)
+    const legacyRoot = join(root, "channels", "direct-onebot-private-bot456");
+    await mkdir(legacyRoot, { recursive: true });
+    await Promise.all([
+      writeFile(
+        join(legacyRoot, "channel.json"),
+        '{"type":"direct","platform":"onebot","channelId":"private","selfId":"bot456","userId":"user789","createdAt":"2026-08-01T00:00:00.000Z"}\n',
+      ),
+      writeFile(join(legacyRoot, "legacy.txt"), "legacy direct data\n"),
+    ]);
+
+    const channels = new Channels(new Context(), { basePath: root });
+    await channels.start();
+    const channel = await channels.resolve({ type: "direct", platform: "onebot", selfId: "bot456", channelId: "private", userId: "user789" });
+    const canonicalRoot = join(root, "channels", "direct-onebot-user789-bot456");
+
+    expect(channel.root).toBe(canonicalRoot);
+    await expect(readFile(join(canonicalRoot, "legacy.txt"), "utf8")).resolves.toBe("legacy direct data\n");
+    await expect(readFile(join(legacyRoot, "legacy.txt"), "utf8")).rejects.toThrow();
+    expect(JSON.parse(await readFile(join(canonicalRoot, "channel.json"), "utf8"))).toMatchObject({
+      type: "direct",
+      platform: "onebot",
+      channelId: "private",
+      selfId: "bot456",
+      userId: "user789",
+      createdAt: "2026-08-01T00:00:00.000Z",
+    });
+  });
 });
