@@ -54,7 +54,7 @@
             :class="{
               'is-done': step.done,
               'is-active': !step.done && isCurrentStep(index),
-              'is-pending': !step.done && !isCurrentStep(index)
+              'is-pending': !step.done && !isCurrentStep(index),
             }"
           >
             <!-- 步骤序号/状态图标 -->
@@ -80,11 +80,7 @@
 
                 <!-- 步骤主操作 -->
                 <div class="yib-step-item__actions">
-                  <router-link
-                    v-if="!step.done && step.id !== 'adapter'"
-                    class="yib-btn yib-btn--primary"
-                    :to="step.target"
-                  >
+                  <router-link v-if="!step.done && step.id !== 'adapter'" class="yib-btn yib-btn--primary" :to="step.target">
                     去配置
                     <k-icon name="chevron-right"></k-icon>
                   </router-link>
@@ -94,12 +90,7 @@
               <!-- 适配器子面板展开项 -->
               <div v-if="step.id === 'adapter' && !step.done" class="yib-adapter-section">
                 <div class="yib-adapter-grid">
-                  <article
-                    v-for="adapter in panel.adapters"
-                    :key="adapter.key"
-                    class="yib-adapter-card"
-                    :class="adapter.state"
-                  >
+                  <article v-for="adapter in panel.adapters" :key="adapter.key" class="yib-adapter-card" :class="adapter.state">
                     <div class="yib-adapter-card__left">
                       <div class="yib-adapter-card__icon">
                         <k-icon :name="adapterIcon(adapter.platform)"></k-icon>
@@ -118,23 +109,13 @@
                     </div>
 
                     <div class="yib-adapter-card__action">
-                      <router-link
-                        v-if="!adapter.enabled"
-                        class="yib-btn yib-btn--sm yib-btn--secondary"
-                        :to="`/plugins/${adapter.configPath}`"
-                      >
+                      <router-link v-if="!adapter.enabled" class="yib-btn yib-btn--sm yib-btn--secondary" :to="`/plugins/${adapter.configPath}`">
                         启用
                       </router-link>
-                      <router-link
-                        v-else-if="adapter.state !== 'online'"
-                        class="yib-btn yib-btn--sm yib-btn--primary"
-                        :to="`/plugins/${adapter.configPath}`"
-                      >
+                      <router-link v-else-if="adapter.state !== 'online'" class="yib-btn yib-btn--sm yib-btn--primary" :to="`/plugins/${adapter.configPath}`">
                         配置
                       </router-link>
-                      <span v-else class="yib-text-success yib-text-sm">
-                        <k-icon name="check-full"></k-icon> 正常
-                      </span>
+                      <span v-else class="yib-text-success yib-text-sm"> <k-icon name="check-full"></k-icon> 正常 </span>
                     </div>
                   </article>
                 </div>
@@ -154,11 +135,7 @@
 
       <!-- 告警与异常提示 -->
       <section v-if="panel.attention.length" class="yib-alerts">
-        <article
-          v-for="issue in panel.attention"
-          :key="issue.message"
-          :class="['yib-alert-card', `yib-alert-card--${issue.level}`]"
-        >
+        <article v-for="issue in panel.attention" :key="issue.message" :class="['yib-alert-card', `yib-alert-card--${issue.level}`]">
           <k-icon :name="issue.level === 'error' ? 'times-full' : 'info-full'" class="yib-alert-icon" />
           <div class="yib-alert-message">{{ issue.message }}</div>
         </article>
@@ -210,14 +187,10 @@
       <section v-if="panel.recent.length" class="yib-panel">
         <div class="yib-panel__title-bar">
           <h2>最近问题反馈</h2>
-          <span class="yib-badge yib-badge--neutral">实时拦截</span>
+          <span class="yib-badge yib-badge--neutral">最近 {{ recentItems.length }} 条</span>
         </div>
         <div class="yib-recent-list">
-          <article
-            v-for="item in panel.recent"
-            :key="`${item.timestamp}-${item.message}`"
-            class="yib-recent-item"
-          >
+          <article v-for="item in recentItems" :key="`${item.timestamp}-${item.message}`" class="yib-recent-item">
             <time class="yib-recent-item__time">{{ formatDate(item.timestamp) }}</time>
             <span class="yib-recent-item__channel">{{ item.channel }}</span>
             <p class="yib-recent-item__msg">{{ item.message }}</p>
@@ -272,22 +245,13 @@
           <h2>扩展功能组件</h2>
         </div>
         <div v-if="panel.plugins.length" class="yib-plugin-grid">
-          <article
-            v-for="plugin in panel.plugins"
-            :key="plugin.key"
-            class="yib-plugin-card"
-            :class="plugin.status"
-          >
+          <article v-for="plugin in panel.plugins" :key="plugin.key" class="yib-plugin-card" :class="plugin.status">
             <div class="yib-plugin-card__status-dot"></div>
             <div class="yib-plugin-card__content">
               <strong>{{ plugin.label }}</strong>
               <p>{{ plugin.detail }}</p>
             </div>
-            <router-link
-              class="yib-plugin-card__btn"
-              :to="`/plugins/${plugin.configPath}`"
-              title="配置该插件"
-            >
+            <router-link class="yib-plugin-card__btn" :to="`/plugins/${plugin.configPath}`" title="配置该插件">
               <k-icon name="edit"></k-icon>
             </router-link>
           </article>
@@ -407,6 +371,7 @@ const onboardingProgress = computed(() => {
   const doneCount = steps.filter((s) => s.done).length;
   return Math.round((doneCount / steps.length) * 100);
 });
+const recentItems = computed(() => panel.value.recent.slice(0, 8));
 
 function isCurrentStep(index: number): boolean {
   const steps = panel.value.onboarding.steps;
@@ -462,7 +427,9 @@ function formatDuration(seconds: number): string {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleString("zh-CN", { hour12: false });
+  const date = new Date(value);
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function adapterIcon(platform: string): string {
@@ -860,9 +827,15 @@ function adapterStateText(adapter: PanelAdapter): string {
       gap: 4px;
       color: var(--k-text-normal, #666);
 
-      &.online { color: var(--k-color-success, #67c23a); }
-      &.error { color: var(--k-color-error, #f56c6c); }
-      &.unconfigured { color: var(--k-color-warning, #e6a23c); }
+      &.online {
+        color: var(--k-color-success, #67c23a);
+      }
+      &.error {
+        color: var(--k-color-error, #f56c6c);
+      }
+      &.unconfigured {
+        color: var(--k-color-warning, #e6a23c);
+      }
     }
   }
 
@@ -1232,6 +1205,58 @@ function adapterStateText(adapter: PanelAdapter): string {
     background: transparent;
     border: 1px solid var(--k-color-warning, #e6a23c);
     color: var(--k-color-warning, #e6a23c);
+  }
+}
+
+/* 最近问题反馈 */
+.yib-recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.yib-recent-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--k-color-divider);
+  border-radius: 8px;
+  background: transparent;
+
+  &__time {
+    font-size: 12px;
+    color: var(--k-text-normal, #666);
+    white-space: nowrap;
+  }
+
+  &__channel {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    max-width: 100%;
+    padding: 3px 8px;
+    border: 1px solid var(--k-color-divider);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--k-text-normal, #666);
+    font-family: monospace;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__msg {
+    grid-column: 1 / -1;
+    margin: 2px 0 0;
+    color: var(--k-color-error, #f56c6c);
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 }
 
