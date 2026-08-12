@@ -1,4 +1,5 @@
 import { isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
+import { z } from "zod";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
@@ -30,6 +31,7 @@ export interface AgentConfig {
   providerTools?: ToolSet;
   storage?: AgentStorage<AgentEntry>;
   plugins?: AgentPlugin[];
+  terminalTool?: { name: string; description?: string };
   initialState?: AgentState;
   defaultState?: AgentState;
 }
@@ -82,6 +84,7 @@ export function createAgent(config: AgentConfig): Agent {
 
   let model = config.model;
   const baseTools = config.tools ?? [];
+  const baseTerminalTool = config.terminalTool ? createTerminalTool(config.terminalTool) : undefined;
   let frozenSystemPrompt: string | SystemModelMessage[] | undefined;
   let frozenTools: AgentToolSet = [];
   let frozenProviderTools: ToolSet = {};
@@ -182,7 +185,7 @@ export function createAgent(config: AgentConfig): Agent {
           : blocks.length > 0
             ? blocks
             : undefined;
-      frozenTools = [...pluginHost.stableTools];
+      frozenTools = [...pluginHost.stableTools, ...(baseTerminalTool ? [baseTerminalTool] : [])];
       frozenProviderTools = {};
       const toolNames = new Set(frozenTools.map((tool) => tool.name));
       for (const [name, tool] of Object.entries(config.providerTools ?? {})) {
@@ -577,6 +580,15 @@ export function createAgent(config: AgentConfig): Agent {
   };
 
   return agent;
+}
+
+function createTerminalTool(config: NonNullable<AgentConfig["terminalTool"]>): AgentTool {
+  return {
+    name: config.name,
+    description: config.description ?? "结束本轮回复，不输出任何对外内容。",
+    inputSchema: z.object({}),
+    execute: async () => ({ ok: true }),
+  };
 }
 
 function mergeUsage(current: Partial<LanguageModelUsage> | undefined, next: LanguageModelUsage | undefined): Partial<LanguageModelUsage> | undefined {

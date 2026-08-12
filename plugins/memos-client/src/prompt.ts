@@ -9,5 +9,5 @@ This runtime supports memory search and addition only. It does not provide persi
 
 A \`persisted\` add outcome confirms storage. An \`accepted\` outcome confirms only that MemOS accepted asynchronous work; do not claim that the memory is searchable yet. A \`failed\` outcome confirms no successful write. If search or addition fails, continue from the available conversation context and do not invent a memory result.
 
-Write the final user-visible reply before memory write tools. After required memory tools finish, call \`finalize_response({})\` when that terminal tool is available, and do not generate additional reply text.`;
+Write the final user-visible reply before memory write tools. After required memory tools finish, call \`finalize({})\` when that terminal tool is available, and do not generate additional reply text.`;
 }

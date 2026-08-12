@@ -113,6 +113,16 @@ describe("tools", () => {
     ).toThrow(ToolConflictError);
   });
 
+  it("registers an optional terminal tool with the model", async () => {
+    const model = createToolModel();
+    const agent = createAgent({ model, terminalTool: { name: "finalize", description: "结束本轮回复" } });
+
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    expect(model.observedToolNames[0]).toContain("finalize");
+  });
+
   it("copies descriptors from every stable tool source", () => {
     const baseExecute = async () => "base";
     const pluginExecute = async () => "plugin";

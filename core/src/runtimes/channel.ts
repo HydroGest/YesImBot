@@ -124,6 +124,10 @@ export class ChannelRuntime {
         }),
       tools,
       providerTools: options.providerTools,
+      terminalTool: {
+        name: "finalize",
+        description: "结束本轮回复，不输出任何对外内容。调用后不要再生成文本或调用其他工具。",
+      },
       plugins: [COMPACT_HISTORY_PLUGIN, MODEL_INPUT_PLUGIN, ...options.plugins],
     });
   }
