@@ -190,11 +190,7 @@ export class PanelProvider extends DataService<PanelPayload> {
   }
 }
 
-function buildPanelPayload(
-  ctx: Context,
-  registry: Map<string, YesImBotPackageMeta>,
-  recent: PanelRecent[],
-): PanelPayload {
+function buildPanelPayload(ctx: Context, registry: Map<string, YesImBotPackageMeta>, recent: PanelRecent[]): PanelPayload {
   const issues: PanelIssue[] = [];
   const plugins = collectPlugins(ctx, registry);
   const coreConfig = readCoreConfig(ctx);
@@ -236,17 +232,10 @@ function buildPanelPayload(
   };
 }
 
-function buildOnboarding(
-  ctx: Context,
-  coreConfig: ReturnType<typeof readCoreConfig>,
-  hasProvider: boolean,
-  adapters: PanelAdapter[],
-): PanelOnboarding {
+function buildOnboarding(ctx: Context, coreConfig: ReturnType<typeof readCoreConfig>, hasProvider: boolean, adapters: PanelAdapter[]): PanelOnboarding {
   const adapterDone = adapters.some((adapter) => adapter.state === "online");
   const enabledAdapter = adapters.find((adapter) => adapter.enabled);
-  const adapterTarget = enabledAdapter?.configPath
-    ? `/plugins/${enabledAdapter.configPath}`
-    : "/plugins/adapter";
+  const adapterTarget = enabledAdapter?.configPath ? `/plugins/${enabledAdapter.configPath}` : "/plugins/adapter";
   const adapterDescription = adapterDone
     ? "平台适配器已在线。"
     : !adapters.length
@@ -375,21 +364,22 @@ function readCoreConfig(
 function readModelState(ctx: Context, config: ReturnType<typeof readCoreConfig>, issues: PanelIssue[]): PanelPayload["model"] {
   const model = ctx.yesimbot.model;
   const providers = model.listProviders();
-  const chatModels = model.listChatModels().length;
+  const registeredChatModels = model.listChatModels();
+  const chatModels = registeredChatModels.length;
   const embeddingModels = model.listEmbeddingModels().length;
   const defaultChat = model.getDefaultChatModelId() ?? null;
   const defaultEmbedding = model.getDefaultEmbeddingModelId() ?? null;
 
   if (!config.chatModel) {
     issues.push({ level: "error", message: "未配置 chatModel" });
-  } else {
+  } else if (!registeredChatModels.some((entry) => entry.fullId === config.chatModel)) {
     try {
       model.resolveChatModel(config.chatModel);
     } catch (cause) {
       issues.push({ level: "error", message: `chatModel 解析失败：${messageOf(cause)}` });
     }
   }
-  if (config.visionModel) {
+  if (config.visionModel && !registeredChatModels.some((entry) => entry.fullId === config.visionModel)) {
     try {
       model.resolveChatModel(config.visionModel);
     } catch (cause) {
