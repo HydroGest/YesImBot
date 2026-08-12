@@ -113,9 +113,8 @@ describe("sendMessage tool", () => {
 
     expect(tool.description).toContain("当前频道");
     expect(tool.description).toContain("必须检查 ok");
-    expect(tool.description).toContain("<message/>");
-    expect(tool.description).toContain("<img>");
-    expect(tool.description).toContain("资源解析失败");
+    expect(tool.description).toContain("元素语法");
+    expect(tool.description).toContain("直接输出文本即可");
     await expect(tool.execute({ channelId: "room", content: "ignored" }, { toolCallId: "call-1", abortSignal: undefined } as never)).resolves.toMatchObject({
       ok: false,
       error: { name: "InvalidChannel" },
