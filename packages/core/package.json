@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-yesimbot",
   "description": "Yes! I'm Bot! 机械壳，人类心",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "homepage": "https://github.com/YesWeAreBot/YesImBot",
