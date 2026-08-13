@@ -191,6 +191,7 @@ yarn turbo run check-types --filter=koishi-plugin-yesimbot
 感谢以下赞助者对 YesImBot 的支持：
 
 - Preca（QQ 2379626851）
+- [Miaow](https://github.com/MiaowFISH)（QQ 1293865264）
 
 ---
 
