@@ -10,10 +10,10 @@ yarn-error.log
 tsconfig.tsbuildinfo
 tsconfig.temp.json
 package-lock.json
-yarn.lock
 bun.lock
 *.tgz
 
+.yarn/
 .turbo
 .idea
 .vscode

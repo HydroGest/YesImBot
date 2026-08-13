@@ -20,23 +20,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Install Dependencies
-        run: bun install --frozen-lockfile
+        run: corepack yarn install --immutable
 
       - name: Build All Packages
-        run: bun turbo run build
+        run: corepack yarn turbo run build
 
       - name: Create Release Pull Request or Publish to npm
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: bun changeset publish
-          version: bun changeset version
+          publish: corepack yarn changeset publish
+          version: corepack yarn changeset version
           commit: "chore(release): 🔨 version packages"
           title: "chore(release): version packages for release"
         env:
