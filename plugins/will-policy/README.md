@@ -67,7 +67,19 @@ plugins:
         - 代码
       keywordMultiplier: 1.8
       mentionForce: true
+
+      # 按频道覆盖基础增益和关键词乘数；第一条匹配规则生效
+      channelOverrides:
+        - platform: onebot
+          channelId: "123456789"  # 替换为实际的群号
+          isDirect: false
+          textGain: 1
+          keywordMultiplier: 1.2
 ```
+
+`channelOverrides` 只影响 `willingness` 引擎。`platform` 和 `channelId` 可以使用 `*` 作为通配值；`isDirect`
+留空时同时匹配群聊与私聊。匹配私聊时可直接填账号，插件会按 `private:<账号>` 匹配实际频道；也可显式填写完整的 `private:<账号>`。
+未匹配任何规则的频道继续使用全局 `textGain` 和 `keywordMultiplier`。
 
 ## 什么时候走哪套配置
 

@@ -34,6 +34,15 @@ export interface PolicyWillingnessConfig {
   readonly mentionForce: boolean;
   readonly quoteForce: boolean;
   readonly directForce: boolean;
+  readonly channelOverrides?: PolicyWillingnessChannelOverride[];
+}
+
+export interface PolicyWillingnessChannelOverride {
+  readonly platform: string;
+  readonly channelId: string;
+  readonly isDirect?: boolean;
+  readonly textGain?: number;
+  readonly keywordMultiplier?: number;
 }
 
 export interface WillPolicyConfig {
