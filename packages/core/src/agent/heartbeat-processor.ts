@@ -46,7 +46,7 @@ export class HeartbeatProcessor {
 
                 if (result) {
                     shouldContinueHeartbeat = result.continue;
-                    success = true; // 至少成功一次心跳
+                    success = result.success ?? true;
                 } else {
                     shouldContinueHeartbeat = false;
                 }
@@ -60,7 +60,7 @@ export class HeartbeatProcessor {
         return success;
     }
 
-    private async performSingleHeartbeat(turnId: string, percept: Percept): Promise<{ continue: boolean } | null> {
+    private async performSingleHeartbeat(turnId: string, percept: Percept): Promise<{ continue: boolean; success?: boolean } | null> {
         let attempt = 0;
         let selected: SelectedChatModel | null = null;
         let startTime: number;
@@ -245,6 +245,11 @@ export class HeartbeatProcessor {
                         const result = await this.plugin.invoke(action.name, action.params ?? {}, context);
                         const def = await this.plugin.getFunction(action.name, context);
 
+                        if (result.status === "failed") {
+                            this.logger.warn(`动作 "${action.name}" 执行失败: ${String(result.error ?? "未知错误")}`);
+                            return { continue: false, success: false };
+                        }
+
                         if (def && def.type === FunctionType.Tool) {
                             this.logger.debug(`工具 "${action.name}" 触发心跳继续`);
                             actionContinue = true;
@@ -346,7 +351,7 @@ export class HeartbeatProcessor {
                     continue;
                 } else {
                     this.logger.error("达到最大重试次数，跳过本次心跳");
-                    return { continue: false };
+                    return { continue: false, success: false };
                 }
             }
         }

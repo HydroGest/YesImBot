@@ -117,7 +117,9 @@ export default class CoreUtilPlugin extends Plugin<CoreUtilConfig> {
 
             return Success();
         } catch (error: any) {
-            return Failed(`发送消息失败，可能是已被禁言或网络错误。错误: ${error.message}`);
+            const detail = formatError(error);
+            this.ctx.logger.error(`发送消息失败 | 目标: ${target || "当前频道"} | 错误: ${detail}`);
+            return Failed(`发送消息失败，可能是已被禁言或网络错误。错误: ${detail}`);
         }
     }
 
@@ -161,24 +163,40 @@ export default class CoreUtilPlugin extends Plugin<CoreUtilConfig> {
             if (!options)
                 return Failed(`视觉模型未注册: ${this.visionModelFullName}`);
 
-            const response = await generateText({
-                ...options,
-                messages: [
-                    {
-                        role: "user",
-                        content: [
-                            { type: "text", text: prompt },
-                            { type: "image_url", image_url: { url: image, detail: this.config.vision.detail } },
+            let lastError: unknown;
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    const response = await generateText({
+                        ...options,
+                        messages: [
+                            {
+                                role: "user",
+                                content: [
+                                    { type: "text", text: prompt },
+                                    { type: "image_url", image_url: { url: image, detail: this.config.vision.detail } },
+                                ],
+                            },
                         ],
-                    },
-                ],
-                temperature: 0.2,
-            } as any);
+                        temperature: 0.2,
+                    } as any);
 
-            return Success(response.text);
+                    const description = response.text?.trim();
+                    if (description)
+                        return Success(description);
+
+                    this.ctx.logger.warn(`视觉模型第 ${attempt} 次返回空内容`);
+                } catch (error: any) {
+                    lastError = error;
+                    if (attempt === 2)
+                        throw error;
+                }
+            }
+
+            throw lastError ?? new Error("视觉模型连续两次返回空内容");
         } catch (error: any) {
-            this.ctx.logger.error(`图片描述失败: ${error.message}`);
-            return Failed(`图片描述失败: ${error.message}`);
+            const detail = formatError(error);
+            this.ctx.logger.error(`图片描述失败: ${detail}`);
+            return Failed(`图片描述失败: ${detail}`);
         }
     }
 
@@ -245,9 +263,10 @@ export default class CoreUtilPlugin extends Plugin<CoreUtilConfig> {
 
             const messageIds = await bot.sendMessage(channelId, content);
 
-            if (messageIds && messageIds.length > 0) {
-                this.emitAfterSendEvent(bot, channelId, msg, messageIds[0], isDirect);
+            if (!messageIds || messageIds.length === 0) {
+                throw new Error("平台未返回消息 ID，消息可能未发送成功");
             }
+            this.emitAfterSendEvent(bot, channelId, msg, messageIds[0], isDirect);
 
             if (i < messages.length - 1) {
                 const paragraphDelay = 1000 + Math.random() * 1500;
@@ -271,5 +290,18 @@ export default class CoreUtilPlugin extends Plugin<CoreUtilConfig> {
             },
         });
         this.ctx.emit("after-send", session as Session);
+    }
+}
+
+function formatError(error: unknown): string {
+    if (error instanceof Error)
+        return error.message || error.stack || String(error);
+    if (typeof error === "string")
+        return error;
+    try {
+        return JSON.stringify(error);
+    }
+    catch {
+        return String(error);
     }
 }

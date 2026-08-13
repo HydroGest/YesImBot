@@ -46,6 +46,10 @@ export interface WillingnessConfig {
         isQuote: Computed<number>;
         /** 在私聊场景下的额外加成。私聊通常期望更高的响应度 */
         isDirectMessage: Computed<number>;
+        /** 被 @ 时是否强制触发回复，不受概率阈值限制 */
+        mentionForce: Computed<boolean>;
+        /** 私聊消息是否强制触发回复，不受概率阈值限制 */
+        directForce: Computed<boolean>;
     };
 
     // 基于内容计算一个乘数，影响最终得分。
@@ -82,6 +86,8 @@ const WillingnessConfig: Schema<WillingnessConfig> = Schema.object({
         atMention: Schema.computed<Schema<number>>(Schema.number().default(100)).default(100).description("被@时的额外加成"),
         isQuote: Schema.computed<Schema<number>>(Schema.number().default(15)).default(15).description("作为回复/引用时的额外加成"),
         isDirectMessage: Schema.computed<Schema<number>>(Schema.number().default(40)).default(40).description("在私聊场景下的额外加成"),
+        mentionForce: Schema.computed<Schema<boolean>>(Schema.boolean().default(true)).default(true).description("被 @ 时强制触发回复"),
+        directForce: Schema.computed<Schema<boolean>>(Schema.boolean().default(true)).default(true).description("私聊消息强制触发回复"),
     }),
     interest: Schema.object({
         keywords: Schema.computed<Schema<string[]>>(Schema.array(Schema.string()).default([]))

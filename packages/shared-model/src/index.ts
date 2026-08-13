@@ -5,7 +5,7 @@ import type {
     ModelProvider,
     SpeechProvider,
     TranscriptionProvider,
-} from "@xsai-ext/shared-providers";
+} from "./types";
 import type { CommonRequestOptions } from "xsai";
 import type { AnyFetch } from "./utils";
 import { fetch as ufetch } from "undici";

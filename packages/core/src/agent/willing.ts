@@ -76,6 +76,8 @@ export class WillingnessManager {
                 atMention: session.resolve(config.attribute.atMention),
                 isQuote: session.resolve(config.attribute.isQuote),
                 isDirectMessage: session.resolve(config.attribute.isDirectMessage),
+                mentionForce: session.resolve(config.attribute.mentionForce),
+                directForce: session.resolve(config.attribute.directForce),
             },
             interest: {
                 keywords: session.resolve(config.interest.keywords),
@@ -279,19 +281,37 @@ export class WillingnessManager {
         const { cid: chatId } = session;
         this.sessions.set(chatId, session);
 
-        const context: MessageContext = {
-            chatId: session.cid,
-            content: session.content,
-            isMentioned: session.stripped.atSelf || session.elements.some(e => e.type === "at" && e.attrs.id === session.bot.selfId),
-            isQuote: session.quote && session.quote?.user.id === session.bot.selfId,
-            isDirect: session.isDirect,
-        };
+        const context = this.buildMessageContext(session);
 
         const probability = this.calculateReplyProbability(session, context);
+        const forced = this.isForcedReply(session);
 
-        const decision = Math.random() < probability;
+        const decision = forced || Math.random() < probability;
 
         return { decision, probability };
+    }
+
+    /**
+     * 判断消息是否属于需要绕过概率阈值强制响应的场景
+     */
+    public isForcedReply(session: Session): boolean {
+        const context = this.buildMessageContext(session);
+        const { mentionForce, directForce } = this._getResolvedConfig(session).attribute;
+        return (context.isMentioned && mentionForce) || (context.isDirect && directForce);
+    }
+
+    private buildMessageContext(session: Session): MessageContext {
+        return {
+            chatId: session.cid,
+            content: session.content,
+            isMentioned: this.isMentioned(session),
+            isQuote: Boolean(session.quote?.user.id === session.bot.selfId),
+            isDirect: session.isDirect,
+        };
+    }
+
+    private isMentioned(session: Session): boolean {
+        return session.stripped.atSelf || session.elements.some(e => e.type === "at" && e.attrs.id === session.bot.selfId);
     }
 
     /**

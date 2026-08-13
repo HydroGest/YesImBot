@@ -76,12 +76,15 @@
     "gray-matter": "^4.0.3",
     "jimp": "^1.6.0",
     "jsonrepair": "^3.12.0",
-    "mustache": "^4.2.0"
+    "mustache": "^4.2.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/json-schema": "^7.0.15",
     "@types/mustache": "^4.2.6",
-    "koishi": "^4.18.7"
+    "@xsai/shared-chat": "^0.4.4",
+    "koishi": "^4.18.7",
+    "koishi-plugin-adapter-onebot": "^6.8.0"
   },
   "peerDependencies": {
     "koishi": "^4.18.7"

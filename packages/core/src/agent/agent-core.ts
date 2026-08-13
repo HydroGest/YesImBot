@@ -35,6 +35,7 @@ export class AgentCore extends Service<Config> {
     private readonly runningTasks = new Set<string>();
     private readonly debouncedReplyTasks = new Map<string, WithDispose<(percept: Percept) => void>>();
     private readonly deferredTimers = new Map<string, NodeJS.Timeout>();
+    private readonly queuedMessages = new Map<string, UserMessagePercept[]>();
 
     constructor(ctx: Context, config: Config) {
         super(ctx, Services.Agent, true);
@@ -67,6 +68,7 @@ export class AgentCore extends Service<Config> {
     protected stop(): void {
         this.debouncedReplyTasks.forEach((task) => task.dispose());
         this.deferredTimers.forEach((timer) => clearTimeout(timer));
+        this.queuedMessages.clear();
         this.willing.stopDecayCycle();
     }
 
@@ -130,7 +132,15 @@ export class AgentCore extends Service<Config> {
                 const channelKey = `${channel.platform}:${channel.id}`;
 
                 if (this.runningTasks.has(channelKey)) {
-                    this.logger.info(`[${channelKey}] 频道当前有任务在运行，跳过本次响应`);
+                    if (this.isForcedPercept(percept)) {
+                        const queue = this.queuedMessages.get(channelKey) ?? [];
+                        queue.push(percept);
+                        this.queuedMessages.set(channelKey, queue);
+                        this.logger.info(`[${channelKey}] 频道忙，@/私聊消息已排队，等待当前任务结束`);
+                    }
+                    else {
+                        this.logger.info(`[${channelKey}] 频道当前有任务在运行，跳过本次响应`);
+                    }
                     return;
                 }
 
@@ -166,10 +176,27 @@ export class AgentCore extends Service<Config> {
                 } finally {
                     this.runningTasks.delete(channelKey);
                     this.logger.debug(`[${channelKey}] 频道锁已释放`);
+
+                    const queue = this.queuedMessages.get(channelKey);
+                    const next = queue?.shift();
+                    if (next) {
+                        if (queue.length === 0)
+                            this.queuedMessages.delete(channelKey);
+                        this.logger.debug(`[${channelKey}] 开始处理排队消息`);
+                        this.schedule(next);
+                    }
+                    else if (queue) {
+                        this.queuedMessages.delete(channelKey);
+                    }
                 }
             }, this.config.debounceMs);
             this.debouncedReplyTasks.set(channelKey, debouncedTask);
         }
         return debouncedTask;
+    }
+
+    private isForcedPercept(percept: UserMessagePercept): boolean {
+        const session = percept.runtime?.session;
+        return session ? this.willing.isForcedReply(session) : false;
     }
 }

@@ -1,10 +1,28 @@
-import type {
-    ChatProvider,
-    EmbedProvider,
-    ImageProvider,
-    SpeechProvider,
-    TranscriptionProvider,
-} from "@xsai-ext/shared-providers";
+import type { CommonRequestOptions } from "xsai";
+
+export interface ChatProvider<T = string> {
+    chat: (model: (string & {}) | T) => CommonRequestOptions;
+}
+
+export interface EmbedProvider<T = string> {
+    embed: (model: (string & {}) | T) => CommonRequestOptions;
+}
+
+export interface ImageProvider<T = string> {
+    image: (model: (string & {}) | T) => CommonRequestOptions;
+}
+
+export interface ModelProvider {
+    model: () => Omit<CommonRequestOptions, "model">;
+}
+
+export interface SpeechProvider<T = string> {
+    speech: (model: (string & {}) | T) => CommonRequestOptions;
+}
+
+export interface TranscriptionProvider<T = string> {
+    transcription: (model: (string & {}) | T) => CommonRequestOptions;
+}
 
 export enum ModelType {
     Chat = "chat",

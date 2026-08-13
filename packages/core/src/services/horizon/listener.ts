@@ -192,7 +192,7 @@ export class EventListener {
             const memberData: Partial<MemberEntity> = {
                 name: session.author.nick || session.author.name,
                 attributes: {
-                    roles: session.author.roles || [],
+                    roles: (session.author.roles ?? []).map(role => role.id || role.name || String(role)),
                     platform: session.platform,
                     avatar: session.author.avatar,
                 },
