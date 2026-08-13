@@ -1,5 +1,13 @@
-import { hasToolCall, isLoopFinished, stepCountIs, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
-import { z } from "zod";
+import {
+  isLoopFinished,
+  stepCountIs,
+  streamText,
+  type StopCondition,
+  type LanguageModel,
+  type LanguageModelUsage,
+  type SystemModelMessage,
+  type ToolSet,
+} from "ai";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
 import type { AgentEntry } from "./entry.js";
@@ -33,7 +41,6 @@ export interface AgentConfig {
   providerTools?: ToolSet;
   storage?: AgentStorage<AgentEntry>;
   plugins?: AgentPlugin[];
-  terminalTool?: { name: string; description?: string };
   maxSteps?: number;
   initialState?: AgentState;
   defaultState?: AgentState;
@@ -87,7 +94,6 @@ export function createAgent(config: AgentConfig): Agent {
 
   let model = config.model;
   const baseTools = config.tools ?? [];
-  const baseTerminalTool = config.terminalTool ? createTerminalTool(config.terminalTool) : undefined;
   const maxSteps = Math.max(1, config.maxSteps ?? DEFAULT_MAX_STEPS);
   let frozenSystemPrompt: string | SystemModelMessage[] | undefined;
   let frozenTools: AgentToolSet = [];
@@ -189,7 +195,7 @@ export function createAgent(config: AgentConfig): Agent {
           : blocks.length > 0
             ? blocks
             : undefined;
-      frozenTools = [...pluginHost.stableTools, ...(baseTerminalTool ? [baseTerminalTool] : [])];
+      frozenTools = [...pluginHost.stableTools];
       frozenProviderTools = {};
       const toolNames = new Set(frozenTools.map((tool) => tool.name));
       for (const [name, tool] of Object.entries(config.providerTools ?? {})) {
@@ -411,7 +417,7 @@ export function createAgent(config: AgentConfig): Agent {
           system: frozenSystemPrompt,
           messages: modelMessages,
           tools: { ...toAiToolSet(resolveTools(request.turnId, () => allMessages, abortSignal)), ...frozenProviderTools },
-          stopWhen: [isLoopFinished(), stepCountIs(maxSteps), ...(baseTerminalTool ? [hasToolCall(baseTerminalTool.name)] : [])],
+          stopWhen: [isLoopFinished(), stepCountIs(maxSteps), allToolCallsTerminal(frozenTools)],
           abortSignal,
           prepareStep: async ({ stepNumber }) => {
             let messages = modelMessages;
@@ -587,12 +593,16 @@ export function createAgent(config: AgentConfig): Agent {
   return agent;
 }
 
-function createTerminalTool(config: NonNullable<AgentConfig["terminalTool"]>): AgentTool {
-  return {
-    name: config.name,
-    description: config.description ?? "结束本轮回复，不输出任何对外内容。",
-    inputSchema: z.object({}),
-    execute: async () => ({ ok: true }),
+// eslint-disable-next-line typescript/no-explicit-any
+function allToolCallsTerminal(tools: AgentToolSet): StopCondition<any> {
+  const terminalNames = new Set(tools.filter((t) => t.terminal).map((t) => t.name));
+  return ({ steps }: { steps: Array<{ toolCalls: Array<{ toolName: string }> }> }) => {
+    if (terminalNames.size === 0) return false;
+    const last = steps.at(-1);
+    if (!last) return false;
+    const calls = last.toolCalls;
+    if (calls.length === 0) return false;
+    return calls.every((call) => terminalNames.has(call.toolName));
   };
 }
 

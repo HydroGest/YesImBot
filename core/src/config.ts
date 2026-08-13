@@ -35,7 +35,7 @@ export const Config: Schema<Config> = Schema.intersect([
       charactersPerSecond: Schema.number().min(1).default(8).description("分段回复的发送速度（字符/秒）"),
       maxTotalDelayMs: Schema.number().min(1).default(60_000).description("单次回复的最大累计延迟（毫秒）"),
     }).description("分段回复节奏"),
-    customInnerThought: Schema.boolean().default(false).description("在系统提示中加入 Core 自定义 <inner_thought> 内心独白协议"),
+    customInnerThought: Schema.boolean().default(true).description("在系统提示中加入 Core 自定义 <inner_thought> 内心独白协议"),
   }),
   Schema.object({
     session: Schema.object({

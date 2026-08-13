@@ -212,9 +212,9 @@ describe("tools", () => {
     ).toThrow(ToolConflictError);
   });
 
-  it("registers an optional terminal tool with the model", async () => {
+  it("registers a terminal tool with the model", async () => {
     const model = createToolModel();
-    const agent = createAgent({ model, terminalTool: { name: "finalize", description: "结束本轮回复" } });
+    const agent = createAgent({ model, tools: [{ name: "finalize", terminal: true, inputSchema: z.object({}), execute: async () => ({ ok: true }) }] });
 
     agent.send(createUserMessage("hello"));
     await agent.wait();
@@ -222,12 +222,12 @@ describe("tools", () => {
     expect(model.observedToolNames[0]).toContain("finalize");
   });
 
-  it("stops the turn after the configured terminal tool is called", async () => {
+  it("stops the turn when all tool calls in a step are terminal", async () => {
     const model = createFinalizeToolLoopModel();
     const onTurnFinish = vi.fn();
     const agent = createAgent({
       model,
-      terminalTool: { name: "finalize" },
+      tools: [{ name: "finalize", terminal: true, inputSchema: z.object({}), execute: async () => ({ ok: true }) }],
       plugins: [{ name: "result-observer", onTurnFinish }],
     });
 

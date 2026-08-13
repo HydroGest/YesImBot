@@ -17,7 +17,7 @@ const config: Config = {
   imageInput: false,
   resourceReadTimeout: 30,
   pacing: { charactersPerSecond: 100_000, maxTotalDelayMs: 60_000 },
-  customInnerThought: false,
+  customInnerThought: true,
   session: { compact: { responseIdleMinutes: 0, minMessages: 20, maxFailures: 3, model: undefined }, archive: { maxKB: 0 } },
 };
 

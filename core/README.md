@@ -81,12 +81,11 @@ resolved `basePath` with the inline default content only when the file is absent
 user-authored and empty files are never touched. No package prompt resources are
 published or loaded, and there is no constitution version constant.
 
-`customInnerThought` (default `false`) adds the Core-owned custom
-`<inner_thought>` protocol to the constitution when enabled; when disabled the
-prompt contains no Core-owned inner-thought instruction. Provider-native
-reasoning parts are preserved by `@yesimbot/agent-runtime` either way.
-`<message>` is the sole explicit message boundary. Core passes its element tree to
-the selected platform encoder, including nested `message` elements; Core never
+`customInnerThought` (default `true`) controls whether the Core-owned
+`<inner_thought>` protocol section is included in the constitution.
+Provider-native reasoning parts are preserved by `@yesimbot/agent-runtime`
+either way. Message element syntax documentation is injected as a separate
+system message. `<message/>` is the sole explicit message boundary; Core never
 splits blank-line prose.
 
 ## Storage and records

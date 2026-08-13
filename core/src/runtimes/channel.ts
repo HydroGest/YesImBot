@@ -11,7 +11,7 @@ import {
 import type { AssistantContent, LanguageModel, ToolSet } from "ai";
 import { type Bot, type Context, type Element, type Logger } from "koishi";
 
-import { createDescribeImageTool, createReadTool, createSendMessageTool } from "../agents/tools.js";
+import { createDescribeImageTool, createFinishTool, createReadTool, createSendMessageTool } from "../agents/tools.js";
 import type { WillEngine, WillState } from "../agents/will.js";
 import { type Channel, type ChannelContext, deriveChannelKey } from "../channels/index.js";
 import type { Config } from "../config.js";
@@ -106,6 +106,7 @@ export class ChannelRuntime {
     const tools: AgentToolSet = [
       createSendMessageTool(options.bot, this.context.channelId, options.channel.resources),
       createReadTool(options.channel.resources, options.imageOutputSupported),
+      createFinishTool(),
     ];
     if (options.visionModel) {
       tools.push(createDescribeImageTool(options.visionModel, options.channel.resources));
@@ -119,15 +120,11 @@ export class ChannelRuntime {
           basePath: options.config.basePath,
           channel: this.context,
           selfId: this.selfId,
-          logger: this.logger,
           customInnerThought: options.config.customInnerThought,
+          logger: this.logger,
         }),
       tools,
       providerTools: options.providerTools,
-      terminalTool: {
-        name: "finalize",
-        description: "结束本轮回复，不输出任何对外内容。调用后不要再生成文本或调用其他工具。",
-      },
       plugins: [COMPACT_HISTORY_PLUGIN, MODEL_INPUT_PLUGIN, ...options.plugins],
     });
   }

@@ -201,3 +201,21 @@ function formatBytes(length: number): string {
   if (length >= 1024) return `${(length / 1024).toFixed(1)} KiB`;
   return `${length} B`;
 }
+
+type FinishInput = { reason: string };
+
+type FinishOutput = { ok: true };
+
+export function createFinishTool(): AgentTool<FinishInput, FinishOutput> {
+  return {
+    name: "finish",
+    terminal: true,
+    description: "结束本轮回复，不输出任何对外内容。当不需要或不适合参与回复，或者需要主动结束工具调用循环时使用此工具。",
+    inputSchema: jsonSchema<FinishInput>({
+      type: "object",
+      properties: { reason: { type: "string", description: "结束原因" } },
+      required: ["reason"],
+    }),
+    execute: async () => ({ ok: true }),
+  };
+}

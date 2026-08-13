@@ -10,6 +10,7 @@ import type { AgentStorage } from "./storage.js";
 // eslint-disable-next-line typescript/no-explicit-any
 export type AgentTool<IN = any, OUT = any> = Omit<Tool<IN, OUT>, "execute"> & {
   name: string;
+  terminal?: boolean;
   execute: (input: IN, options: AgentToolExecuteContext) => Promise<OUT> | OUT;
 };
 
