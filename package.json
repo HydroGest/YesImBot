@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.16.2",
+    "@changesets/cli": "^3.0.0",
     "@types/node": "^22.16.2",
     "bumpp": "^10.2.0",
     "dumble": "^0.2.2",
