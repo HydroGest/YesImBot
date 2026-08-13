@@ -104,6 +104,64 @@ function createSingleToolCallModel() {
   } as unknown as LanguageModelV3 & { observedPrompts: LanguageModelV3CallOptions["prompt"][]; observedToolNames: string[][] };
 }
 
+function createFinalizeToolLoopModel() {
+  const stopReason = "stop" as unknown as LanguageModelV3FinishReason;
+  const toolCallsReason = "tool-calls" as unknown as LanguageModelV3FinishReason;
+  let callCount = 0;
+  const observedPrompts: LanguageModelV3CallOptions["prompt"][] = [];
+
+  return {
+    specificationVersion: "v3",
+    provider: "mock-provider",
+    modelId: "mock-model",
+    supportedUrls: {},
+    async doGenerate() {
+      throw new Error("not implemented");
+    },
+    async doStream(options: LanguageModelV3CallOptions) {
+      observedPrompts.push(structuredClone(options.prompt));
+      callCount += 1;
+      if (callCount > 1) {
+        return {
+          stream: new ReadableStream<LanguageModelV3StreamPart>({
+            start(controller) {
+              controller.enqueue({ type: "stream-start", warnings: [] });
+              controller.enqueue({ type: "text-start", id: "unexpected" });
+              controller.enqueue({ type: "text-delta", id: "unexpected", delta: "unexpected" });
+              controller.enqueue({ type: "text-end", id: "unexpected" });
+              controller.enqueue({
+                type: "finish",
+                finishReason: stopReason,
+                usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } },
+              });
+              controller.close();
+            },
+          }),
+        };
+      }
+
+      return {
+        stream: new ReadableStream<LanguageModelV3StreamPart>({
+          start(controller) {
+            controller.enqueue({ type: "stream-start", warnings: [] });
+            controller.enqueue({ type: "tool-input-start", id: "call_finalize", toolName: "finalize" });
+            controller.enqueue({ type: "tool-input-delta", id: "call_finalize", delta: "{}" });
+            controller.enqueue({ type: "tool-input-end", id: "call_finalize" });
+            controller.enqueue({ type: "tool-call", toolCallId: "call_finalize", toolName: "finalize", input: "{}" });
+            controller.enqueue({
+              type: "finish",
+              finishReason: toolCallsReason,
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 0, reasoning: 0 } },
+            });
+            controller.close();
+          },
+        }),
+      };
+    },
+    observedPrompts,
+  } as unknown as LanguageModelV3 & { observedPrompts: LanguageModelV3CallOptions["prompt"][] };
+}
+
 describe("tools", () => {
   it("throws on duplicate tool names", () => {
     expect(() =>
@@ -122,6 +180,23 @@ describe("tools", () => {
     await agent.wait();
 
     expect(model.observedToolNames[0]).toContain("finalize");
+  });
+
+  it("stops the turn after the configured terminal tool is called", async () => {
+    const model = createFinalizeToolLoopModel();
+    const onTurnFinish = vi.fn();
+    const agent = createAgent({
+      model,
+      terminalTool: { name: "finalize" },
+      plugins: [{ name: "result-observer", onTurnFinish }],
+    });
+
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    expect(model.observedPrompts).toHaveLength(1);
+    expect(agent.isIdle()).toBe(true);
+    expect(onTurnFinish).toHaveBeenCalledWith(expect.objectContaining({ status: "done" }), expect.any(Object));
   });
 
   it("copies descriptors from every stable tool source", () => {

@@ -1,4 +1,4 @@
-import { isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
+import { hasToolCall, isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
@@ -407,7 +407,7 @@ export function createAgent(config: AgentConfig): Agent {
           system: frozenSystemPrompt,
           messages: modelMessages,
           tools: { ...toAiToolSet(resolveTools(request.turnId, () => allMessages, abortSignal)), ...frozenProviderTools },
-          stopWhen: isLoopFinished(),
+          stopWhen: baseTerminalTool ? [isLoopFinished(), hasToolCall(baseTerminalTool.name)] : isLoopFinished(),
           abortSignal,
           prepareStep: async ({ stepNumber }) => {
             let messages = modelMessages;
