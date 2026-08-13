@@ -146,6 +146,8 @@ OneBot Translator 内置于 `koishi-plugin-yesimbot`，通过同一 PlatformTran
 | DeepSeek  | `@yesimbot/koishi-plugin-provider-deepseek`  |
 | Google    | `@yesimbot/koishi-plugin-provider-google`    |
 
+Provider 不绑定具体厂商：OpenAI Provider 可通过 `baseURL` 接入任意 OpenAI-compatible API；各 Provider 支持克隆多开，只需保证实例 `id` 唯一。
+
 ## Architecture
 
 Athena 是一个 message-first Koishi agent runtime。入站路径如下：
