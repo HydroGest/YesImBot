@@ -199,6 +199,26 @@ describe("ChannelRuntime scheduling", () => {
     }
   });
 
+  it("observes a passive silent turn after the stream ends", async () => {
+    state.decide.mockResolvedValue("trigger");
+    state.run.mockReturnValue(
+      (async function* () {
+        yield { type: "turn.start", turnId: "turn-1" };
+        yield { type: "turn.done", turnId: "turn-1" };
+      })(),
+    );
+    const { value, root } = await runtime();
+    try {
+      const result = await value.handle(event);
+      expect(result.kind).toBe("run");
+      if (result.kind === "run") await Array.fromAsync(result.output);
+      expect(state.observe).toHaveBeenCalledWith(expect.objectContaining({ turnId: "turn-1", status: "done" }));
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("records delivery failure through the same Runtime FIFO", async () => {
     const { value, root } = await runtime();
     try {

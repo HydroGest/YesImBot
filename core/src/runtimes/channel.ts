@@ -262,6 +262,7 @@ export class ChannelRuntime {
     try {
       for await (const event of stream) {
         if (event.type === "turn.start") {
+          turnId = event.turnId;
           this.logger.debug("runtime.turn.start", { turnId: event.turnId });
           continue;
         }
@@ -313,7 +314,7 @@ export class ChannelRuntime {
         }
       }
       completed = true;
-      if (passive && assistant) await this.options.will.observe?.({ turnId, status: "done", messages: [] });
+      if (passive && completed) await this.options.will.observe?.({ turnId, status: "done", messages: [] });
       output.close();
     } catch (cause) {
       output.close(cause);
