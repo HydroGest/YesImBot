@@ -1,0 +1,36 @@
+{{!
+  environment.mustache
+  环境模块 - 描述当前所在的频道和参与者信息
+}}
+<environment>
+{{! ==================== 频道信息 ==================== }}
+<channel>
+{{#channel.type}}
+{{#_isGroup}}你正在「{{channel.name}}」群聊中。{{/_isGroup}}
+{{#_isPrivate}}你正在和 {{channel.name}} 私聊。{{/_isPrivate}}
+{{/channel.type}}
+{{^channel.type}}
+你正在「{{channel.name}}」中。
+{{/channel.type}}
+<details platform="{{channel.platform}}" id="{{channel.id}}" type="{{channel.type}}" />
+</channel>
+
+{{! ==================== 参与者信息 ==================== }}
+{{#participants.length}}
+<participants>
+以下是当前对话中涉及的人：
+{{#participants}}
+<user id="{{id}}">
+  <name>{{name}}</name>
+  {{#relationship}}
+  <relationship>
+    {{#intimacy}}<intimacy>{{.}}</intimacy>{{/intimacy}}
+    {{#notes}}<notes>{{.}}</notes>{{/notes}}
+  </relationship>
+  {{/relationship}}
+  {{#recentImpression}}<recent_impression>{{.}}</recent_impression>{{/recentImpression}}
+</user>
+{{/participants}}
+</participants>
+{{/participants.length}}
+</environment>

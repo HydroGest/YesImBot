@@ -13,7 +13,7 @@ export interface AssetServiceConfig {
     };
     image: {
         processedCachePath: string;
-        //resizeEnabled: boolean;
+        // resizeEnabled: boolean;
         targetSize: number;
         maxSizeMB: number;
         gifProcessingStrategy: "firstFrame" | "stitch";
@@ -22,12 +22,14 @@ export interface AssetServiceConfig {
     recoveryEnabled: boolean;
 }
 
-export const AssetServiceConfigSchema: Schema<AssetServiceConfig> = Schema.object({
+export const AssetServiceConfig: Schema<AssetServiceConfig> = Schema.object({
     storagePath: Schema.path({ allowCreate: true, filters: ["directory"] })
         .default("data/assets")
         .description("资源本地存储路径"),
 
-    driver: Schema.union(["local"]).default("local").description("存储驱动类型"),
+    driver: Schema.union([Schema.const("local")])
+        .default("local")
+        .description("存储驱动类型"),
 
     assetEndpoint: Schema.string().role("link").description("公开访问端点 URL (可选)"),
 
@@ -44,7 +46,7 @@ export const AssetServiceConfigSchema: Schema<AssetServiceConfig> = Schema.objec
         processedCachePath: Schema.path({ allowCreate: true, filters: ["directory"] })
             .default("data/assets/processed")
             .description("处理后图片的缓存存储路径"),
-        //resizeEnabled: Schema.boolean().default(true).description("读取图片时是否启用动态缩放和压缩"),
+        // resizeEnabled: Schema.boolean().default(true).description("读取图片时是否启用动态缩放和压缩"),
         targetSize: Schema.union([512, 768, 1024, 1536, 2048]).default(1024).description("图片处理后长边的目标最大像素") as Schema<number>,
         maxSizeMB: Schema.number().min(0.5).max(10).default(3).description("处理后图片文件的最大体积（MB）"),
         gifProcessingStrategy: Schema.union(["firstFrame", "stitch"])

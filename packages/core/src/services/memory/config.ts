@@ -5,7 +5,7 @@ export interface MemoryConfig {
     coreMemoryPath: string;
 }
 
-export const MemoryConfigSchema: Schema<MemoryConfig> = Schema.object({
+export const MemoryConfig: Schema<MemoryConfig> = Schema.object({
     coreMemoryPath: Schema.path({ allowCreate: true, filters: ["directory"] })
         .default("data/yesimbot/memory/core")
         .description("核心记忆文件的存放路径"),

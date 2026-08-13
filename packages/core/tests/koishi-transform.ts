@@ -1,4 +1,5 @@
-import { h , Element  } from "koishi";
+import type { Element } from "koishi";
+import { h } from "koishi";
 
 const text = `欢迎 <at id="{userId}"/> 入群！<image id="{userId}" src="1234"/>`;
 

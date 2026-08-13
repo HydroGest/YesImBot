@@ -1,0 +1,1 @@
+# @yesimbot/shared-model

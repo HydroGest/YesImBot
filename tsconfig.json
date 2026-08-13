@@ -6,5 +6,6 @@
       "koishi-plugin-yesimbot": ["packages/core/src"],
       "@yesimbot/*": ["packages/*/src"]
     }
-  }
+  },
+  "files": []
 }

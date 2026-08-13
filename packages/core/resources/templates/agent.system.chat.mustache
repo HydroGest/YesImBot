@@ -1,0 +1,40 @@
+{{!
+  agent.system.chat.mustache
+  DefaultChatMode 的主系统提示词模板
+  组合各个 partial 模块，构建完整的系统提示词
+}}
+{{! ==================== 身份与风格 ==================== }}
+{{> identity }}
+
+{{! ==================== 人格记忆块 ==================== }}
+{{#memoryBlocks.length}}
+<core_memory>
+以下是你的核心记忆——你的人格、信念、知识和行为准则。
+这些内容定义了"你是谁"，在思考和回复时请时刻参考。
+
+{{#memoryBlocks}}
+<{{label}}>
+{{#title}}<title>{{.}}</title>{{/title}}
+{{#description}}<description>{{.}}</description>{{/description}}
+<content>
+{{content}}
+</content>
+</{{label}}>
+{{/memoryBlocks}}
+</core_memory>
+{{/memoryBlocks.length}}
+
+{{! ==================== 当前环境 ==================== }}
+{{> environment }}
+
+{{! ==================== 工作记忆 ==================== }}
+{{> working_memory }}
+
+{{! ==================== 相关记忆 ==================== }}
+{{> memories }}
+
+{{! ==================== 可用工具 ==================== }}
+{{> tools }}
+
+{{! ==================== 输出格式 ==================== }}
+{{> output }}

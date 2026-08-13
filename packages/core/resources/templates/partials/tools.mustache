@@ -1,0 +1,28 @@
+{{! tools.mustache - 工具定义模块 }}
+<capabilities>
+你可以使用以下能力来获取信息或执行操作：
+- **Tool（工具）**：用于获取信息，调用后会返回结果供你继续处理
+- **Action（动作）**：用于执行操作，执行后你会"休眠"直到下一个事件
+
+你可以同时执行多个Tool或Action，只需要输出列表即可，工具将按顺序执行。
+
+{{#tools.length}}
+<tools description="调用后会返回结果，你可以继续处理">
+{{#tools}}
+{{.}}
+{{/tools}}
+</tools>
+{{/tools.length}}
+
+{{#actions.length}}
+<actions description="执行后本轮响应结束">
+{{#actions}}
+{{.}}
+{{/actions}}
+</actions>
+{{/actions.length}}
+
+<usage_note>
+每次调用工具或动作时，请先在心里想清楚"我为什么要这么做"——这个内心独白（inner_thoughts）会帮助你保持角色一致性。
+</usage_note>
+</capabilities>

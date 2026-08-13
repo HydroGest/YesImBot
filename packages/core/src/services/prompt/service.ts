@@ -1,9 +1,10 @@
-import { Context, Logger, Service, Session } from "koishi";
-
-import { Config } from "@/config";
+import type { Context, Session } from "koishi";
+import type { IRenderer } from "./renderer";
+import type { Config } from "@/config";
+import { Service } from "koishi";
 import { Services } from "@/shared/constants";
 import { formatDate, isEmpty } from "@/shared/utils";
-import { IRenderer, MustacheRenderer } from "./renderer";
+import { MustacheRenderer } from "./renderer";
 
 export type Snippet = (currentScope: Record<string, any>) => any | Promise<any>;
 
@@ -17,19 +18,16 @@ export interface Injection {
 }
 
 export class PromptService extends Service<Config> {
-    static readonly inject = [Services.Logger];
     private readonly renderer: IRenderer;
     private readonly templates: Map<string, string> = new Map();
     private readonly snippets: Map<string, Snippet> = new Map();
     private readonly injections: Injection[] = [];
-    private _logger: Logger;
 
     constructor(ctx: Context, config: Config) {
         super(ctx, Services.Prompt, true);
         this.ctx = ctx;
         this.config = config;
         this.renderer = new MustacheRenderer();
-        this._logger = this.ctx[Services.Logger].getLogger("[提示词]");
     }
 
     protected async start() {
@@ -54,7 +52,7 @@ export class PromptService extends Service<Config> {
             throw new Error("Snippet key cannot be empty");
         }
         if (this.snippets.has(key)) {
-            this._logger.warn(`覆盖已存在的片段 "${key}"`);
+            this.ctx.logger.warn(`覆盖已存在的片段 "${key}"`);
         }
         this.snippets.set(key, snippetFn);
     }
@@ -68,7 +66,7 @@ export class PromptService extends Service<Config> {
     public inject(name: string, priority: number, renderFn: Snippet): void {
         const existingIndex = this.injections.findIndex((i) => i.name === name);
         if (existingIndex > -1) {
-            this._logger.warn(`覆盖已存在的注入 "${name}"`);
+            this.ctx.logger.warn(`覆盖已存在的注入 "${name}"`);
             this.injections[existingIndex] = { name, priority, renderFn };
         } else {
             this.injections.push({ name, priority, renderFn });
@@ -82,9 +80,18 @@ export class PromptService extends Service<Config> {
      */
     public registerTemplate(name: string, content: string): void {
         if (this.templates.has(name)) {
-            this._logger.warn(`覆盖已存在的模板 "${name}"`);
+            this.ctx.logger.warn(`覆盖已存在的模板 "${name}"`);
         }
         this.templates.set(name, content);
+    }
+
+    /**
+     * 检查模板是否已注册
+     * @param name - 模板名称
+     * @returns 模板是否存在
+     */
+    public hasTemplate(name: string): boolean {
+        return this.templates.has(name);
     }
 
     /**
@@ -99,7 +106,8 @@ export class PromptService extends Service<Config> {
             throw new Error(`未找到模板 "${templateName}"`);
         }
 
-        const scope = await this.buildScope(initialScope);
+        const requiredVariables = this.getRequiredVariables(templateContent);
+        const scope = await this.buildScope(initialScope, requiredVariables);
         const partials = Object.fromEntries(this.templates);
 
         return this.renderer.render(templateContent, scope, partials, { maxDepth: this.config.maxRenderDepth });
@@ -109,7 +117,8 @@ export class PromptService extends Service<Config> {
      * 渲染一个原始的模板字符串，不经过注册
      */
     public async renderRaw(templateContent: string, initialScope: Record<string, any> = {}): Promise<string> {
-        const scope = await this.buildScope(initialScope);
+        const requiredVariables = this.getRequiredVariables(templateContent);
+        const scope = await this.buildScope(initialScope, requiredVariables);
         return this.renderer.render(templateContent, scope, undefined, { maxDepth: this.config.maxRenderDepth });
     }
 
@@ -121,7 +130,8 @@ export class PromptService extends Service<Config> {
 
         this.registerSnippet("bot", async (scope) => {
             const { session } = scope as { session?: Session };
-            if (!session) return {};
+            if (!session)
+                return {};
             return {
                 id: session.bot.selfId,
                 name: session.bot.user.name,
@@ -132,7 +142,8 @@ export class PromptService extends Service<Config> {
 
         this.registerSnippet("user", async (scope) => {
             const { session } = scope as { session?: Session };
-            if (!session) return {};
+            if (!session)
+                return {};
             return {
                 id: session.author.id,
                 name: session.author.name,
@@ -152,13 +163,14 @@ export class PromptService extends Service<Config> {
                 this.injections.map(async (injection) => {
                     try {
                         const result = await injection.renderFn(scope);
-                        if (!result) return "";
+                        if (!result)
+                            return "";
                         return `<${injection.name}>\n${result}\n</${injection.name}>`;
-                    } catch (error) {
-                        this._logger.error(`执行注入片段 "${injection.name}" 时出错: ${error.message}`);
+                    } catch (error: any) {
+                        this.ctx.logger.error(`执行注入片段 "${injection.name}" 时出错: ${error.message}`);
                         return `<!-- Error in injection: ${injection.name} -->`;
                     }
-                })
+                }),
             );
 
             // 过滤掉空的片段，并用换行符连接
@@ -166,18 +178,60 @@ export class PromptService extends Service<Config> {
         });
     }
 
-    private async buildScope(initialScope: Record<string, any>): Promise<Record<string, any>> {
+    private async buildScope(initialScope: Record<string, any>, requiredVariables?: Set<string>): Promise<Record<string, any>> {
         const scope = { ...initialScope };
 
         for (const [key, snippetFn] of this.snippets.entries()) {
+            if (requiredVariables && !this.isSnippetRequired(key, requiredVariables)) {
+                continue;
+            }
             try {
                 const value = await snippetFn(scope);
                 this.setNestedProperty(scope, key, value);
-            } catch (error) {
+            } catch (error: any) {
                 this.setNestedProperty(scope, key, null);
             }
         }
         return scope;
+    }
+
+    private getRequiredVariables(templateContent: string): Set<string> {
+        const visitedPartials = new Set<string>();
+        const allVariables = new Set<string>();
+
+        const process = (content: string) => {
+            const { variables, partials } = this.renderer.parse(content);
+            for (const v of variables) allVariables.add(v);
+
+            for (const p of partials) {
+                if (!visitedPartials.has(p)) {
+                    visitedPartials.add(p);
+                    const partialContent = this.templates.get(p);
+                    if (partialContent) {
+                        process(partialContent);
+                    }
+                }
+            }
+        };
+
+        process(templateContent);
+        return allVariables;
+    }
+
+    private isSnippetRequired(snippetKey: string, requiredVariables: Set<string>): boolean {
+        if (requiredVariables.has(snippetKey))
+            return true;
+
+        for (const req of requiredVariables) {
+            // Snippet is a parent of a required variable (e.g. snippet "user", required "user.name")
+            if (req.startsWith(`${snippetKey}.`))
+                return true;
+            // Snippet is a child of a required variable (e.g. snippet "time.now", required "time")
+            if (snippetKey.startsWith(`${req}.`))
+                return true;
+        }
+
+        return false;
     }
 
     private setNestedProperty(obj: Record<string, any>, path: string, value: any): void {

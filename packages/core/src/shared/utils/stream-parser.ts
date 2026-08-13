@@ -1,7 +1,9 @@
 import { JsonParser } from "./json-parser";
 
 type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[];
-type Schema = { [key: string]: any };
+interface Schema {
+    [key: string]: any;
+}
 
 interface StreamState {
     controller: ReadableStreamDefaultController<any>;
@@ -32,7 +34,7 @@ export class StreamParser {
      * @param key 必须是 schema 中定义的顶层键之一
      */
     public stream<T = any>(key: string): ReadableStream<T> {
-        if (!this.schema.hasOwnProperty(key)) {
+        if (!Object.prototype.hasOwnProperty.call(this.schema, key)) {
             throw new Error(`Key "${key}" does not exist in the provided schema.`);
         }
         if (this.streamStates.has(key)) {
@@ -109,7 +111,7 @@ export class StreamParser {
                     state,
                     currentValue as Record<string, JsonValue>,
                     lastValue as Record<string, JsonValue> | undefined,
-                    schemaValue
+                    schemaValue,
                 );
             }
             // 2. 处理数组类型
@@ -132,7 +134,7 @@ export class StreamParser {
         state: StreamState,
         current: Record<string, JsonValue>,
         last: Record<string, JsonValue> | undefined,
-        subSchema: Schema
+        subSchema: Schema,
     ): void {
         const progress = state.progress as Set<string>;
         const subKeys = Object.keys(subSchema);
@@ -154,9 +156,10 @@ export class StreamParser {
         }
     }
 
-    private processArray(state: StreamState, current: JsonValue[], last: JsonValue[] | undefined): void {
+    private processArray(state: StreamState, current: JsonValue[], _last: JsonValue[] | undefined): void {
         let progress = state.progress as number;
         // 当新元素开始出现时，前面的元素肯定是完整的
+        // eslint-disable-next-line no-unmodified-loop-condition
         while (current && progress < current.length - 1) {
             state.controller.enqueue(current[progress]);
             progress++;
@@ -164,7 +167,7 @@ export class StreamParser {
         state.progress = progress;
     }
 
-    private processPrimitive(state: StreamState, current: JsonValue, last: JsonValue | undefined): void {
+    private processPrimitive(_state: StreamState, _current: JsonValue, _last: JsonValue | undefined): void {
         // 在 completeStream 或 finalize 中解析最终值，确保值是完整的
     }
 
@@ -180,7 +183,7 @@ export class StreamParser {
         }
 
         // 即使状态是 'pending'，但在 finalize 时也应处理
-        const wasPending = state.status === "pending";
+        const _wasPending = state.status === "pending";
         state.status = "streaming"; // 标记为正在处理，以进行数据推送
 
         const value = finalParsed[key];
@@ -240,12 +243,12 @@ export class StreamParser {
         }
 
         // 确保所有控制器都被关闭（作为安全措施）
-        for (const [key, state] of this.streamStates.entries()) {
+        for (const [_key, state] of this.streamStates.entries()) {
             if (state.status !== "completed") {
                 try {
                     // completeStream 应该已经关闭了它，但以防万一
                     state.controller.close();
-                } catch (e) {
+                } catch (_e) {
                     /* might already be closed */
                 }
             }

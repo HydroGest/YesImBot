@@ -1,0 +1,20 @@
+{{! memories.mustache - 记忆模块 }}
+{{#memories.length}}
+<memories>
+这些是你脑海中浮现的相关记忆片段，来自过去的对话和经历。
+它们可以帮助你更好地理解当前情境，但请注意：
+- 这些记忆是用来启发你的，不是让你复述的
+- 如果你想说的话和记忆内容太像，换一种方式表达
+- 不要反复提起相同的话题，让对话保持新鲜
+
+<retrieved_memories>
+{{#memories}}
+<memory relevance="{{relevance}}" {{#timestamp}}time="{{timestamp}}"{{/timestamp}}>
+{{#type}}<type>{{.}}</type>{{/type}}
+{{#context}}<context>{{.}}</context>{{/context}}
+<content>{{content}}</content>
+</memory>
+{{/memories}}
+</retrieved_memories>
+</memories>
+{{/memories.length}}

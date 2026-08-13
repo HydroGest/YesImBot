@@ -1,8 +1,0 @@
-{
-  "indextts": {
-    "USE_EMO_REF": "使用情感参考音频",
-    "USE_EMO_VECTOR": "使用情感向量控制",
-    "USE_EMO_TEXT": "使用情感描述文本控制",
-    "SAME_AS_TIMBRE": "与音色参考音频相同"
-  }
-}

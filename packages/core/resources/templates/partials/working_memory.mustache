@@ -1,0 +1,20 @@
+{{! working_memory.mustache - 工作记忆模块 }}
+{{#workingMemory.length}}
+<working_memory>
+这是你刚才调用工具的结果，请根据这些信息继续行动：
+{{#workingMemory}}
+{{#isAction}}
+Action: {{message}}
+{{/isAction}}
+{{#isThought}}
+Thought: {{message}}
+{{/isThought}}
+{{#isTool}}
+Tool: {{message}}
+{{/isTool}}
+{{#isToolResult}}
+ToolResult: {{message}}
+{{/isToolResult}}
+{{/workingMemory}}
+</working_memory>
+{{/workingMemory.length}}

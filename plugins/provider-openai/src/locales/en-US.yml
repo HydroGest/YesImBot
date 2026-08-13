@@ -1,0 +1,15 @@
+_config:
+  baseURL: OpenAI API baseURL
+  apiKey: OpenAI API Key
+  proxy: Proxy server address
+  retry: Number of retries on request failure
+  retryDelay: Retry interval (milliseconds)
+  modelConfig:
+    $desc: Model Config
+    temperature:
+    topP:
+    frequencyPenalty:
+    presencePenalty:
+    reasoning_effort:
+    max_completion_tokens:
+    headers:

@@ -1,4 +1,0 @@
-### 对话上下文 (CONVERSATION CONTEXT) ###
-{{#WORLD_STATE}}
-{{> agent.partial.world_state }}
-{{/WORLD_STATE}}

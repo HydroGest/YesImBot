@@ -1,3 +1,3 @@
 export { AgentCore } from "./agent-core";
 
-export * from "./config"
+export * from "./config";

@@ -6,8 +6,7 @@
 
 [![npm](https://img.shields.io/npm/v/koishi-plugin-yesimbot?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-yesimbot) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](http://choosealicense.com/licenses/mit/) ![Language](https://img.shields.io/badge/language-TypeScript-brightgreen) ![NPM Downloads](https://img.shields.io/npm/dw/koishi-plugin-yesimbot) ![Static Badge](https://img.shields.io/badge/QQ交流群-857518324-green)
 
-
-*✨机器壳，人类心。✨*
+_✨机器壳，人类心。✨_
 
 </div>
 
@@ -19,7 +18,28 @@
 
 YesImBot / Athena 是一个 [Koishi](https://koishi.chat/zh-CN/) 插件，旨在让人工智能大模型能够自然地参与到群聊讨论中，模拟真实的人类互动体验。插件基于中间件架构设计，具有高度的可扩展性和灵活性。
 
-*新的文档站已上线：[https://docs.yesimbot.chat/](https://docs.yesimbot.chat/)*
+## 🏗️ 架构与模块
+
+Athena（core）采用模块化架构，核心功能由多个子系统协作实现：
+
+- **Agent 智能体系统**：负责对话意愿、行为调度与主动性模拟。
+- **Service 服务层**：包括记忆（Memory）、模型（Model）、提示词（Prompt）、工具（Tool）、资源（Asset）、日志（Logger）、世界状态（WorldState）等服务，分别管理不同的AI能力与资源。
+- **工具调用框架**：支持多种工具扩展，便于实现消息发送、记忆管理、外部API调用等高级操作。
+- **配置与命令系统**：支持热更新、版本迁移和灵活的参数定制。
+
+所有模块均以插件方式集成于 Koishi 生态，支持按需启用、扩展和二次开发，便于开发者基于 Athena 进行功能增强或个性化定制。
+
+## 🔌 可扩展性与生态集成
+
+Athena 充分利用 Koishi 的插件机制，具备如下优势：
+
+- **高度可扩展**：开发者可自定义服务、工具、指令等，轻松集成第三方 LLM、RAG、TTS/STT、图片识别等能力。
+- **生态兼容**：可与 Koishi 现有插件（如通知、数据库、Puppeteer等）无缝协作，支持多平台、多协议机器人部署。
+- **二次开发友好**：清晰的服务接口和模块边界，便于社区贡献和业务集成。
+
+Athena 致力于成为最具“人性化”的 AI 群聊插件，助力开发者和用户打造独特的智能机器人体验。
+
+_新的文档站已上线：[https://docs.yesimbot.chat/](https://docs.yesimbot.chat/)_
 
 ## 🎹 特性
 
@@ -35,7 +55,7 @@ YesImBot / Athena 是一个 [Koishi](https://koishi.chat/zh-CN/) 插件，旨在
 
 - **自定义人格与行为**：轻松定制Bot的名字、性格、响应模式等，打造独特的交互体验。
 
-- *AND MORE...*
+- _AND MORE..._
 
 ## 🌈 开始使用
 
@@ -117,11 +137,13 @@ Debug:
 你可以根据自己的需求自定义系统提示词。`StoreFile` 的内容将被添加到系统提示词的末尾。
 
 - 消息队列呈现给LLM的格式：
+
 ```text
 [messageId][{date} from_guild:{channelId}] {senderName}<{senderId}> 说: {userContent}
 ```
 
 - Athena期望LLM返回的格式：
+
 ```json
 {
     "function": "{functionName}",
@@ -143,11 +165,13 @@ Debug:
 - [GPTGOD](https://gptgod.online/#/register?invite_code=envrd6lsla9nydtipzrbvid2r)
 
 ## ✨ 效果
+
 <details>
   <summary>截图</summary>
 
-  ![截图1](https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/screenshot-1.png)
-  ![截图2](https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/screenshot-2.png)
+![截图1](https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/screenshot-1.png)
+![截图2](https://raw.githubusercontent.com/HydroGest/YesImBot/main/img/screenshot-2.png)
+
 </details>
 
 ## 🍧 TODO

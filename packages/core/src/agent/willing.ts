@@ -1,33 +1,31 @@
-import { Services } from "@/shared/constants";
-import { Context, Eval, Logger, Session, merge } from "koishi";
-import { WillingnessConfig } from "./config";
-import { Config } from "@/config";
+import type { Context, Eval, Session } from "koishi";
+
+import type { WillingnessConfig } from "./config";
+import type { Config } from "@/config";
 
 export interface MessageContext {
     chatId: string;
     content: string;
-    //isImage: boolean;
-    //isEmoji: boolean;
     isMentioned: boolean;
     isQuote: boolean;
     isDirect: boolean;
 }
 
-type ResolveComputed<T> =
+type ResolveComputed<T>
     // 如果是函数
-    T extends (session: Session) => infer R
+    = T extends (session: Session) => infer R
         ? ResolveComputed<R>
-        : // 如果是 Eval.Expr
-          T extends Eval.Expr<infer U, boolean>
-          ? ResolveComputed<U>
-          : // 如果是数组
-            T extends Array<infer V>
-            ? ResolveComputed<V>[]
-            : // 如果是对象（排除 null）
-              T extends object
-              ? { [K in keyof T]: ResolveComputed<T[K]> }
-              : // 基本类型
-                T;
+        // 如果是 Eval.Expr
+        : T extends Eval.Expr<infer U, boolean>
+            ? ResolveComputed<U>
+            // 如果是数组
+            : T extends Array<infer V>
+                ? ResolveComputed<V>[]
+                // 如果是对象（排除 null）
+                : T extends object
+                    ? { [K in keyof T]: ResolveComputed<T[K]> }
+                    // 基本类型
+                    : T;
 
 // 从 WillingnessConfig 中解析出所有 Computed 后的纯净类型
 type ResolvedWillingnessConfig = ResolveComputed<WillingnessConfig>;
@@ -44,7 +42,6 @@ export interface ReplyDecision {
 export class WillingnessManager {
     private readonly ctx: Context;
     private readonly baseConfig: Config;
-    private logger: Logger;
 
     // --- 状态存储 ---
     private willingnessScores: Map<string, number> = new Map();
@@ -56,7 +53,6 @@ export class WillingnessManager {
     constructor(ctx: Context, config: Config) {
         this.ctx = ctx;
         this.baseConfig = config;
-        this.logger = ctx[Services.Logger].getLogger("[意愿管理器]");
 
         ctx.on("dispose", () => {
             this.stopDecayCycle();
@@ -73,13 +69,15 @@ export class WillingnessManager {
         const resolved: Omit<ResolvedWillingnessConfig, "system"> = {
             base: {
                 text: session.resolve(config.base.text),
-                //image: session.resolve(config.base.image),
-                //emoji: session.resolve(config.base.emoji),
+                // image: session.resolve(config.base.image),
+                // emoji: session.resolve(config.base.emoji),
             },
             attribute: {
                 atMention: session.resolve(config.attribute.atMention),
                 isQuote: session.resolve(config.attribute.isQuote),
                 isDirectMessage: session.resolve(config.attribute.isDirectMessage),
+                mentionForce: session.resolve(config.attribute.mentionForce),
+                directForce: session.resolve(config.attribute.directForce),
             },
             interest: {
                 keywords: session.resolve(config.interest.keywords),
@@ -92,7 +90,7 @@ export class WillingnessManager {
                 probabilityThreshold: session.resolve(config.lifecycle.probabilityThreshold),
                 probabilityAmplifier: session.resolve(config.lifecycle.probabilityAmplifier),
                 replyCost: session.resolve(config.lifecycle.replyCost),
-                //refractoryPeriodMs: session.resolve(config.lifecycle.refractoryPeriodMs),
+                // refractoryPeriodMs: session.resolve(config.lifecycle.refractoryPeriodMs),
             },
         };
 
@@ -100,7 +98,8 @@ export class WillingnessManager {
     }
 
     public startDecayCycle(): void {
-        if (this.decayInterval) return;
+        if (this.decayInterval)
+            return;
         this.decayInterval = setInterval(() => this._decay(), 1000);
     }
 
@@ -115,16 +114,18 @@ export class WillingnessManager {
         const now = Date.now();
         for (const chatId of this.willingnessScores.keys()) {
             const session = this.sessions.get(chatId);
-            if (!session) continue;
+            if (!session)
+                continue;
 
             const config = this._getResolvedConfig(session);
             const { decayHalfLifeSeconds, probabilityThreshold } = config.lifecycle;
 
             const currentScore = this.willingnessScores.get(chatId) || 0;
-            if (currentScore === 0) continue;
+            if (currentScore === 0)
+                continue;
 
             // --- 智能衰减逻辑 ---
-            const baseFactor = Math.pow(0.5, 1 / decayHalfLifeSeconds);
+            const baseFactor = 0.5 ** (1 / decayHalfLifeSeconds);
             let effectiveFactor = baseFactor;
 
             // 1. 弹性衰减：意愿值高时，衰减减慢
@@ -139,7 +140,8 @@ export class WillingnessManager {
             if (silenceDurationMs < 15000) {
                 // 15秒内有消息，视为"热"
                 effectiveFactor = 1.0 - (1.0 - effectiveFactor) * 0.3; // 衰减强度再减70%
-            } else if (silenceDurationMs < 60000) {
+            }
+            else if (silenceDurationMs < 60000) {
                 // 1分钟内，视为"温"
                 effectiveFactor = 1.0 - (1.0 - effectiveFactor) * 0.7; // 衰减强度再减30%
             }
@@ -164,12 +166,15 @@ export class WillingnessManager {
         let score = base.text;
 
         // 2. 叠加属性加成
-        if (context.isMentioned) score += attribute.atMention;
-        if (context.isQuote) score += attribute.isQuote;
-        if (context.isDirect) score += attribute.isDirectMessage;
+        if (context.isMentioned)
+            score += attribute.atMention;
+        if (context.isQuote)
+            score += attribute.isQuote;
+        if (context.isDirect)
+            score += attribute.isDirectMessage;
 
         // 3. 应用兴趣度乘数
-        const hasKeyword = interest.keywords.some((kw) => context.content.includes(kw));
+        const hasKeyword = interest.keywords.some(kw => context.content.includes(kw));
         const multiplier = hasKeyword ? interest.keywordMultiplier : interest.defaultMultiplier;
 
         const rawGain = score * multiplier;
@@ -178,7 +183,7 @@ export class WillingnessManager {
         const currentWillingness = this.willingnessScores.get(context.chatId) || 0;
         const maxWillingness = config.lifecycle.maxWillingness;
         // 当意愿值越高时，新的增益效果越差，防止无限累积
-        const gainMultiplier = 1 - Math.pow(currentWillingness / maxWillingness, 2);
+        const gainMultiplier = 1 - (currentWillingness / maxWillingness) ** 2;
 
         return rawGain * Math.max(0, gainMultiplier);
     }
@@ -249,8 +254,8 @@ export class WillingnessManager {
 
         // 策略2：更狠一点，直接清零或设置为一个很低的基础值
         // 这种做法可以有效防止AI在一次回复后，因为意愿值依然很高而立即对下一条消息做出反应，从而避免"连麦"
-        //this.willingnessScores.set(chatId, 0); // 直接清零，等待新刺激
-        //this.logger.debug(`[${chatId}] 回复成功，意愿值已重置。`);
+        // this.willingnessScores.set(chatId, 0); // 直接清零，等待新刺激
+        // this.logger.debug(`[${chatId}] 回复成功，意愿值已重置。`);
 
         // 策略3：动态成本（高级）
         // 回复得越长，消耗的"精力"越多
@@ -276,19 +281,37 @@ export class WillingnessManager {
         const { cid: chatId } = session;
         this.sessions.set(chatId, session);
 
-        const context: MessageContext = {
-            chatId: session.cid,
-            content: session.content,
-            isMentioned: session.stripped.atSelf || session.elements.some((e) => e.type === "at" && e.attrs.id === session.bot.selfId),
-            isQuote: session.quote && session.quote?.user.id === session.bot.selfId,
-            isDirect: session.isDirect,
-        };
+        const context = this.buildMessageContext(session);
 
         const probability = this.calculateReplyProbability(session, context);
+        const forced = this.isForcedReply(session);
 
-        const decision = Math.random() < probability;
+        const decision = forced || Math.random() < probability;
 
         return { decision, probability };
+    }
+
+    /**
+     * 判断消息是否属于需要绕过概率阈值强制响应的场景
+     */
+    public isForcedReply(session: Session): boolean {
+        const context = this.buildMessageContext(session);
+        const { mentionForce, directForce } = this._getResolvedConfig(session).attribute;
+        return (context.isMentioned && mentionForce) || (context.isDirect && directForce);
+    }
+
+    private buildMessageContext(session: Session): MessageContext {
+        return {
+            chatId: session.cid,
+            content: session.content,
+            isMentioned: this.isMentioned(session),
+            isQuote: Boolean(session.quote?.user.id === session.bot.selfId),
+            isDirect: session.isDirect,
+        };
+    }
+
+    private isMentioned(session: Session): boolean {
+        return session.stripped.atSelf || session.elements.some(e => e.type === "at" && e.attrs.id === session.bot.selfId);
     }
 
     /**
@@ -303,11 +326,11 @@ export class WillingnessManager {
         const current = this.willingnessScores.get(chatId) || 0;
         const newValue = Math.min(
             current + resolvedMaxWillingness * 0.7, // 提升70%的意愿值
-            resolvedMaxWillingness
+            resolvedMaxWillingness,
         );
 
         this.willingnessScores.set(chatId, newValue);
-        this.logger.debug(`[${chatId}] 引导关注被跳过话题，意愿值: ${current.toFixed(2)} -> ${newValue.toFixed(2)}`);
+        this.ctx.logger.debug(`[${chatId}] 引导关注被跳过话题，意愿值: ${current.toFixed(2)} -> ${newValue.toFixed(2)}`);
     }
 }
 
@@ -328,16 +351,18 @@ function getDynamicGainMultiplier(current: number, max: number): number {
         // --- 启动区 ---
         // 线性增益或轻微负反馈
         return 1.0;
-    } else if (ratio >= activationPoint && ratio < saturationPoint) {
+    }
+    else if (ratio >= activationPoint && ratio < saturationPoint) {
         // --- 陡增区 (正反馈) ---
         // 可以设计一个放大函数，例如一个二次函数，在中间点达到峰值
         // 这是一个示例，你可以调整曲线形状
         const midpoint = (saturationPoint + activationPoint) / 2;
         const peakMultiplier = 2.0; // 峰值放大倍数
         // 简单的抛物线，开口向下
-        const curve = -Math.pow((ratio - midpoint) * 2, 2) + peakMultiplier;
+        const curve = -(((ratio - midpoint) * 2) ** 2) + peakMultiplier;
         return Math.max(1.0, curve); // 保证至少是1倍
-    } else {
+    }
+    else {
         // --- 饱和区 (负反馈) ---
         // 增益迅速下降
         // 使用你之前的负反馈模型，但更陡峭

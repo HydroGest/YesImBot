@@ -11,10 +11,31 @@ export interface RenderOptions {
 }
 
 /**
+ * 模板解析结果
+ */
+export interface ParseResult {
+    /**
+     * 模板中使用的变量名集合
+     */
+    variables: Set<string>;
+    /**
+     * 模板中引用的子模板名称集合
+     */
+    partials: Set<string>;
+}
+
+/**
  * 渲染器接口
  * 定义了将模板和作用域结合生成最终字符串的标准方法
  */
 export interface IRenderer {
+    /**
+     * 解析模板，提取变量和子模板引用
+     * @param templateContent - 模板字符串
+     * @returns 解析结果
+     */
+    parse: (templateContent: string) => ParseResult;
+
     /**
      * 渲染模板
      * @param templateContent - 模板字符串
@@ -23,7 +44,7 @@ export interface IRenderer {
      * @param options - 渲染选项，如最大深度
      * @returns 渲染后的字符串
      */
-    render(templateContent: string, scope: Record<string, any>, partials?: Record<string, string>, options?: RenderOptions): string;
+    render: (templateContent: string, scope: Record<string, any>, partials?: Record<string, string>, options?: RenderOptions) => string;
 }
 
 /**
@@ -31,6 +52,34 @@ export interface IRenderer {
  * 支持二次渲染和循环保护
  */
 export class MustacheRenderer implements IRenderer {
+    public parse(templateContent: string): ParseResult {
+        const tokens = Mustache.parse(templateContent);
+        const variables = new Set<string>();
+        const partials = new Set<string>();
+
+        const traverse = (tokens: any[]) => {
+            for (const token of tokens) {
+                const type = token[0];
+                const value = token[1];
+
+                // 'name' (variable), '#' (section), '^' (inverted section), '&' (unescaped)
+                if (type === "name" || type === "#" || type === "^" || type === "&") {
+                    variables.add(value);
+                } else if (type === ">") {
+                    partials.add(value);
+                }
+
+                // token[4] contains sub-tokens for sections
+                if (token[4]) {
+                    traverse(token[4]);
+                }
+            }
+        };
+
+        traverse(tokens as any[]);
+        return { variables, partials };
+    }
+
     public render(templateContent: string, scope: Record<string, any>, partials?: Record<string, string>, options?: RenderOptions): string {
         const maxDepth = options?.maxDepth ?? 3;
         let output = templateContent;

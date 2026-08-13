@@ -1,6 +1,7 @@
-lib
-dist
-external
+lib/
+dist/
+external/
+conversation/
 
 node_modules
 npm-debug.log
@@ -10,20 +11,13 @@ tsconfig.tsbuildinfo
 tsconfig.temp.json
 package-lock.json
 yarn.lock
+bun.lock
 *.tgz
 
 .turbo
-.eslintcache
-.DS_Store
 .idea
 .vscode
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-bun.lock
 
-*.mdt
 coverage
 data/logs
 data/cache
@@ -32,3 +26,7 @@ data/queue.json
 data/emojis.json
 
 __snapshots__
+
+.github/instructions
+.github/prompts
+.github/copilot-instructions.md

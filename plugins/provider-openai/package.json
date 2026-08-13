@@ -1,0 +1,29 @@
+{
+  "name": "@yesimbot/koishi-plugin-provider-openai",
+  "version": "0.0.1",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc -b && dumble",
+    "clean": "rm -rf lib .turbo tsconfig.tsbuildinfo",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "require": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "devDependencies": {
+    "koishi": "^4.18.9"
+  },
+  "peerDependencies": {
+    "koishi": "^4.18.9"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.77",
+    "@yesimbot/shared-model": "^0.0.1"
+  }
+}

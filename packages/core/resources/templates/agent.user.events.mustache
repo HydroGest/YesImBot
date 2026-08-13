@@ -1,0 +1,33 @@
+{{! agent.user.events.mustache - User Prompt 模板 }}
+<conversation>
+现在是 {{date.now}}。
+以下是最近的对话记录。标记为 [你] 的是你之前的发言。
+
+{{#events}}
+{{#isActive}}
+{{#isUserMessage}}
+[{{#timestamp}}{{_formatDate}}{{/timestamp}}] {{sender.name}}: {{content}}
+{{/isUserMessage}}
+{{#isSelfMessage}}
+[{{#timestamp}}{{_formatDate}}{{/timestamp}}] [你]: {{content}}
+{{/isSelfMessage}}
+{{#isSystemEvent}}
+[系统] {{message}}
+{{/isSystemEvent}}
+{{/isActive}}
+{{/events}}
+---
+↑ 以上是历史消息
+↓ 以下是触发你响应的新事件
+
+{{#events}}
+{{#isNew}}
+{{#isUserMessage}}
+[{{#timestamp}}{{_formatDate}}{{/timestamp}}] {{sender.name}}: {{content}}
+{{/isUserMessage}}
+{{#isSystemEvent}}
+[系统事件] {{message}}
+{{/isSystemEvent}}
+{{/isNew}}
+{{/events}}
+</conversation>

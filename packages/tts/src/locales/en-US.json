@@ -1,8 +1,0 @@
-{
-  "indextts": {
-    "USE_EMO_REF": "Use emotion reference audio",
-    "USE_EMO_VECTOR": "Use emotion vectors",
-    "USE_EMO_TEXT": "Use text description to control emotion",
-    "SAME_AS_TIMBRE": "Same as the voice reference"
-  }
-}

@@ -1,60 +1,45 @@
 {
   "name": "@root/yesimbot",
   "version": "0.0.0",
-  "packageManager": "bun@1.2.0",
   "private": true,
-  "homepage": "https://github.com/HydroGest/YesImBot",
+  "packageManager": "yarn@4.5.3",
   "contributors": [
     "HydroGest <2445691453@qq.com>",
     "Dispure <3116716016@qq.com>",
-    "Miaowfish <1293865264@qq.com>",
+    "MiaowFISH <1293865264@qq.com>",
     "Touch-Night <1762918301@qq.com>"
   ],
   "license": "MIT",
+  "homepage": "github:HydroGest/YesImBot",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "plugins/*"
   ],
   "scripts": {
-    "dev": "turbo run dev",
     "build": "turbo run build",
-    "test": "turbo run test",
-    "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf .turbo",
-    "pack": "turbo run pack",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
     "prepare": "husky install",
-    "add-changeset": "changeset add",
-    "version-packages": "changeset version",
-    "release": "bun run build && changeset publish",
-    "create-packages": "changeset version && turbo run pack",
-    "collect-packages": "bun scripts/collect-packages.js",
-    "optimize-canary-version": "node scripts/optimize-canary-version.js",
-    "sync-npmmirror": "node scripts/sync-npmmirror.js",
-    "sync-npmmirror:test": "node scripts/sync-npmmirror.js --dry-run",
-    "commit": "cz"
+    "test": "turbo run test",
+    "bump": "bumpp"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.5",
-    "@commitlint/cli": "^19.8.1",
-    "@commitlint/config-conventional": "^19.8.1",
+    "@antfu/eslint-config": "^4.16.2",
     "@types/node": "^22.16.2",
-    "commitizen": "^4.3.1",
-    "cz-git": "^1.12.0",
-    "esbuild": "^0.25.6",
-    "glob": "^11.0.3",
+    "bumpp": "^10.2.0",
+    "dumble": "^0.2.2",
+    "esbuild": "^0.27.1",
+    "eslint": "^9.33.0",
     "husky": "^9.1.7",
-    "lint-staged": "^16.1.2",
+    "lint-staged": "^16.2.7",
+    "pkgroll": "^2.21.4",
     "prettier": "^3.6.2",
-    "tsc-alias": "^1.8.16",
-    "turbo": "2.5.4",
-    "typescript": "^5.8.3",
+    "turbo": "^2.6.3",
+    "typescript": "^5.9.3",
     "yml-register": "^1.2.5"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx,json,md,yml}": "prettier --write"
-  },
-  "config": {
-    "commitizen": {
-      "path": "cz-git"
-    }
   }
 }

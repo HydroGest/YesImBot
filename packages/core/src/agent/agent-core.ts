@@ -1,17 +1,16 @@
-import { Context, Service, Session } from "koishi";
+import type { Context, Session } from "koishi";
+import type { Config } from "@/config";
 
-import { Config } from "@/config";
-import { ChatModelSwitcher, ModelService, TaskType } from "@/services/model";
-import { loadTemplate, PromptService } from "@/services/prompt";
-import { AgentStimulus } from "@/services/worldstate";
-import { WorldStateService } from "@/services/worldstate/index";
+import type { HorizonService, Percept, UserMessagePercept } from "@/services/horizon";
+import type { ModelService } from "@/services/model";
+import type { PromptService } from "@/services/prompt";
+import { Service } from "koishi";
+import { ChatModelSwitcher } from "@/services/model";
 import { Services } from "@/shared/constants";
-import { AppError, handleError } from "@/shared/errors";
-import { ErrorDefinitions } from "@/shared/errors/definitions";
-import { PromptContextBuilder } from "./context-builder";
 import { HeartbeatProcessor } from "./heartbeat-processor";
-import { StimulusScheduler } from "./scheduler";
 import { WillingnessManager } from "./willing";
+
+type WithDispose<T> = T & { dispose: () => void };
 
 declare module "koishi" {
     interface Events {
@@ -20,140 +19,184 @@ declare module "koishi" {
 }
 
 export class AgentCore extends Service<Config> {
-    static readonly inject = [
-        Services.Asset,
-        Services.Logger,
-        Services.Memory,
-        Services.Model,
-        Services.Prompt,
-        Services.Tool,
-        Services.WorldState,
-    ];
+    static readonly inject = [Services.Asset, Services.Memory, Services.Model, Services.Prompt, Services.Plugin, Services.Horizon];
 
     // 依赖的服务
-    private readonly worldState: WorldStateService;
-    private readonly modelService: ModelService;
-    private readonly promptService: PromptService;
+    private readonly horizon: HorizonService;
+    private readonly model: ModelService;
+    private readonly prompt: PromptService;
 
     // 核心组件
     private willing: WillingnessManager;
-    private scheduler: StimulusScheduler;
-    private contextBuilder: PromptContextBuilder;
     private processor: HeartbeatProcessor;
 
     private modelSwitcher: ChatModelSwitcher;
 
+    private readonly runningTasks = new Set<string>();
+    private readonly debouncedReplyTasks = new Map<string, WithDispose<(percept: Percept) => void>>();
+    private readonly deferredTimers = new Map<string, NodeJS.Timeout>();
+    private readonly queuedMessages = new Map<string, UserMessagePercept[]>();
+
     constructor(ctx: Context, config: Config) {
         super(ctx, Services.Agent, true);
         this.config = config;
-        this.logger = ctx[Services.Logger].getLogger("[智能体核心]");
 
-        this.worldState = this.ctx[Services.WorldState];
-        this.modelService = this.ctx[Services.Model];
-        this.promptService = this.ctx[Services.Prompt];
+        this.horizon = this.ctx[Services.Horizon];
+        this.model = this.ctx[Services.Model];
+        this.prompt = this.ctx[Services.Prompt];
 
-        this.modelSwitcher = this.modelService.useChatGroup(TaskType.Chat);
-        if (!this.modelSwitcher) {
-            const notifier = ctx.notifier.create({
-                type: "danger",
-                content: `未给 '聊天 (Chat)' 任务类型配置任何模型组，请前往“模型服务”设置，并为 '聊天' 任务类型至少配置一个模型`,
-            });
-        }
+        const groupName = this.config.chatModelGroup || this.config.groups?.[0]?.name;
+        const group = this.config.groups?.find((g) => g.name === groupName);
+        if (!group)
+            throw new Error(`无法找到聊天模型组: ${groupName}`);
 
+        const models = this.model.resolveChatModels(group.name);
+
+        this.modelSwitcher = new ChatModelSwitcher(this.logger, this.model, { name: group.name, models }, this.config.switchConfig);
         this.willing = new WillingnessManager(ctx, config);
-
-        this.contextBuilder = new PromptContextBuilder(ctx, config, this.modelSwitcher);
-        this.processor = new HeartbeatProcessor(
-            ctx,
-            config,
-            this.modelSwitcher,
-            ctx[Services.Prompt],
-            ctx[Services.Tool],
-            this.worldState.l1_manager,
-            this.contextBuilder
-        );
-
-        this.scheduler = new StimulusScheduler(ctx, config, async (stimulus) => {
-            const { channelCid } = stimulus;
-
-            this.willing.handlePreReply(channelCid);
-
-            const success = await this.processor.runCycle(stimulus);
-
-            if (success) {
-                const willingnessBeforeReply = this.willing.getCurrentWillingness(channelCid);
-                this.willing.handlePostReply(stimulus.session, channelCid);
-                const willingnessAfterReply = this.willing.getCurrentWillingness(channelCid);
-
-                /* prettier-ignore */
-                this.logger.debug(`[${channelCid}] 回复成功，意愿值已更新: ${willingnessBeforeReply.toFixed(2)} -> ${willingnessAfterReply.toFixed(2)}`);
-            }
-        });
+        this.processor = new HeartbeatProcessor(ctx, config, this.modelSwitcher);
     }
 
     protected async start(): Promise<void> {
-        this._registerPromptTemplates();
-
-        this.ctx.on("agent/stimulus", (stimulus: AgentStimulus<any>) => {
-            const { type, channelCid, session } = stimulus;
-
-            let decision = false;
-
-            if (type === "user_message") {
-                try {
-                    const willingnessBefore = this.willing.getCurrentWillingness(channelCid);
-                    const result = this.willing.shouldReply(session);
-                    const willingnessAfter = this.willing.getCurrentWillingness(channelCid); // 获取衰减后的值
-                    decision = result.decision;
-
-                    /* prettier-ignore */
-                    this.logger.debug(`[${channelCid}] 意愿计算: ${willingnessBefore.toFixed(2)} -> ${willingnessAfter.toFixed(2)} | 回复概率: ${(result.probability * 100).toFixed(1)}% | 初步决策: ${decision}`);
-                } catch (error) {
-                    handleError(
-                        this.logger,
-                        new AppError(ErrorDefinitions.WILLINGNESS.CALCULATION_FAILED, {
-                            cause: error as Error,
-                            context: { channelCid },
-                        }),
-                        `Willingness calculation (Channel: ${channelCid})`
-                    );
-                    return;
-                }
-            } else {
-                decision = true;
-                this.logger.info(`[${channelCid}] 接收到系统刺激 [${type}]，自动触发响应。`);
-            }
-
-            if (!decision) {
-                return;
-            }
-
-            if (this.worldState.isBotMuted(channelCid)) {
-                this.logger.warn(`[${channelCid}] 机器人已被禁言，响应终止。`);
-                return;
-            }
-
-            this.scheduler.schedule(stimulus);
+        this.ctx.on("horizon/percept", (percept) => {
+            this.dispatch(percept);
         });
 
         this.willing.startDecayCycle();
     }
 
     protected stop(): void {
-        this.scheduler.dispose();
+        this.debouncedReplyTasks.forEach((task) => task.dispose());
+        this.deferredTimers.forEach((timer) => clearTimeout(timer));
+        this.queuedMessages.clear();
         this.willing.stopDecayCycle();
     }
 
-    private _registerPromptTemplates(): void {
-        // 注册所有可重用的局部模板
-        this.promptService.registerTemplate("agent.partial.world_state", loadTemplate("world_state"));
-        this.promptService.registerTemplate("agent.partial.l1_history_item", loadTemplate("l1_history_item"));
+    /**
+     * 感知分发器
+     * 根据感知类型分发到不同的处理逻辑
+     */
+    private dispatch(percept: Percept): void {
+        switch (percept.type) {
+            case "user.message": // PerceptType.UserMessage
+                this.handleUserMessage(percept);
+                break;
+            // case PerceptType.SystemSignal:
+            //     this.handleSystemSignal(percept);
+            //     break;
+            default:
+                this.logger.warn(`未知的感知类型: ${(percept as any).type}`);
+        }
+    }
 
-        // 注册主模板
-        this.promptService.registerTemplate("agent.system", this.config.systemTemplate);
-        this.promptService.registerTemplate("agent.user", this.config.userTemplate);
+    private handleUserMessage(percept: UserMessagePercept): void {
+        const { channel, sender } = percept.payload;
+        const channelKey = `${channel.platform}:${channel.id}`;
 
-        // 注册动态片段
-        this.promptService.registerSnippet("agent.context.currentTime", () => new Date().toISOString());
+        // 1. 意愿检测 (Willingness)
+        let decision = false;
+        try {
+            // 注意：这里我们需要传递 session 给 willing 模块，因为它可能依赖 session 的某些属性
+            // 如果 willing 模块未来解耦，这里也可以只传 payload
+            if (!percept.runtime?.session) {
+                this.logger.warn(`[${channelKey}] 缺少运行时 Session，跳过意愿检测`);
+                return;
+            }
+
+            const willingnessBefore = this.willing.getCurrentWillingness(channelKey);
+            const result = this.willing.shouldReply(percept.runtime.session);
+            const willingnessAfter = this.willing.getCurrentWillingness(channelKey);
+
+            decision = result.decision;
+            /* prettier-ignore */
+            this.logger.debug(`[${channelKey}] 意愿计算: ${willingnessBefore.toFixed(2)} -> ${willingnessAfter.toFixed(2)} | 回复概率: ${(result.probability * 100).toFixed(1)}% | 初步决策: ${decision}`);
+        } catch (error: any) {
+            this.logger.error(`计算意愿值失败，已阻止本次响应: ${error.message}`);
+            return;
+        }
+
+        if (!decision) {
+            return;
+        }
+
+        // 2. 调度任务
+        this.schedule(percept);
+    }
+
+    public schedule(percept: Percept): void {
+        const { type } = percept;
+
+        switch (type) {
+            case "user.message": { // PerceptType.UserMessage
+                const { channel } = percept.payload;
+                const channelKey = `${channel.platform}:${channel.id}`;
+
+                if (this.runningTasks.has(channelKey)) {
+                    if (this.isForcedPercept(percept)) {
+                        const queue = this.queuedMessages.get(channelKey) ?? [];
+                        queue.push(percept);
+                        this.queuedMessages.set(channelKey, queue);
+                        this.logger.info(`[${channelKey}] 频道忙，@/私聊消息已排队，等待当前任务结束`);
+                    }
+                    else {
+                        this.logger.info(`[${channelKey}] 频道当前有任务在运行，跳过本次响应`);
+                    }
+                    return;
+                }
+
+                const schedulingStack = new Error("Scheduling context stack").stack;
+
+                // 将堆栈传递给任务
+                this.getDebouncedTask(channelKey, schedulingStack)(percept);
+                break;
+            }
+        }
+    }
+
+    private getDebouncedTask(channelKey: string, _schedulingStack?: string): WithDispose<(percept: UserMessagePercept) => void> {
+        let debouncedTask = this.debouncedReplyTasks.get(channelKey);
+        if (!debouncedTask) {
+            debouncedTask = this.ctx.debounce(async (percept: UserMessagePercept) => {
+                this.runningTasks.add(channelKey);
+                this.logger.debug(`[${channelKey}] 锁定频道并开始执行任务`);
+                try {
+                    const { channel } = percept.payload;
+                    const chatKey = `${channel.platform}:${channel.id}`;
+                    this.willing.handlePreReply(chatKey);
+                    const success = await this.processor.runCycle(percept);
+                    if (success && percept.runtime?.session) {
+                        const willingnessBeforeReply = this.willing.getCurrentWillingness(chatKey);
+                        this.willing.handlePostReply(percept.runtime.session, chatKey);
+                        const willingnessAfterReply = this.willing.getCurrentWillingness(chatKey);
+                        /* prettier-ignore */
+                        this.logger.debug(`[${chatKey}] 回复成功，意愿值已更新: ${willingnessBeforeReply.toFixed(2)} -> ${willingnessAfterReply.toFixed(2)}`);
+                    }
+                } catch (error: any) {
+                    this.logger.error(`调度任务执行失败 (Channel: ${channelKey}): ${error.message}`);
+                } finally {
+                    this.runningTasks.delete(channelKey);
+                    this.logger.debug(`[${channelKey}] 频道锁已释放`);
+
+                    const queue = this.queuedMessages.get(channelKey);
+                    const next = queue?.shift();
+                    if (next) {
+                        if (queue.length === 0)
+                            this.queuedMessages.delete(channelKey);
+                        this.logger.debug(`[${channelKey}] 开始处理排队消息`);
+                        this.schedule(next);
+                    }
+                    else if (queue) {
+                        this.queuedMessages.delete(channelKey);
+                    }
+                }
+            }, this.config.debounceMs);
+            this.debouncedReplyTasks.set(channelKey, debouncedTask);
+        }
+        return debouncedTask;
+    }
+
+    private isForcedPercept(percept: UserMessagePercept): boolean {
+        const session = percept.runtime?.session;
+        return session ? this.willing.isForcedReply(session) : false;
     }
 }

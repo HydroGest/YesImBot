@@ -1,0 +1,30 @@
+{
+  "name": "@yesimbot/shared-model",
+  "version": "0.0.1",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "resources"
+  ],
+  "scripts": {
+    "build": "tsc -b && dumble",
+    "build:bundle": "tsc -b && pkgroll --clean-dist --srcdist src:lib --sourcemap",
+    "sync": "tsx scripts/fetch-model-info.ts",
+    "clean": "rm -rf lib .turbo tsconfig.tsbuildinfo",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "require": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@xsai-ext/providers": "^0.4.0-beta.12",
+    "undici": "^7.16.0",
+    "xsai": "^0.4.0-beta.12"
+  }
+}

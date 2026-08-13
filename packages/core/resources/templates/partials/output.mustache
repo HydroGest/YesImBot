@@ -1,0 +1,42 @@
+{{!
+  output.mustache
+  输出格式模块 - 定义响应的JSON结构
+}}
+<output>
+你的输出必须是一个 JSON 对象，格式如下：
+
+```json
+{
+{{#enableThoughts}}
+  "thoughts": "你的思考过程（可选，自由格式）",
+{{/enableThoughts}}
+  "actions": [
+    {
+      "name": "动作或工具名称",
+      "params": {
+        "inner_thoughts": "我为什么要这么做...",
+        "其他参数": "值"
+      }
+    }
+  ]
+}
+```
+
+**要求：**
+- 输出必须是纯 JSON，不要有任何额外的文字
+- `actions` 数组可以包含多个动作，按顺序执行
+- 每个动作的 `params` 中都应该包含 `inner_thoughts`，写下你的内心独白
+{{#enableThoughts}}
+- `thoughts` 字段用于记录你的整体思考过程，帮助你理清思路
+{{/enableThoughts}}
+{{^enableThoughts}}
+- 当前模式下不需要输出 `thoughts` 字段
+{{/enableThoughts}}
+
+**如果你决定不做任何事情：**
+```json
+{
+  "actions": []
+}
+```
+</output>

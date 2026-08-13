@@ -47,18 +47,20 @@ export default {
          * subject-case: 限制 subject（变更描述）的格式
          * 这里设置为禁止首字母大写，保持简洁
          */
-        "subject-case": [2, "always", "lower-case"],
+        "subject-case": [1, "always", "lower-case"],
 
         /**
          * scope-case: 限制 scope 的格式，这里强制小写
          */
-        "scope-case": [2, "always", "lower-case"],
+        "scope-case": [1, "always", "lower-case"],
 
         /**
          * header-max-length: 限制头部信息最大长度（type+scope+subject）
          * 这里参考 GitHub 推荐值 72
          */
-        "header-max-length": [2, "always", 72],
+        "header-max-length": [1, "always", 72],
+
+        "body-max-line-length": [1, "always", 100],
     },
 
     prompt: {
@@ -113,7 +115,6 @@ export default {
         allowBreakingChanges: ['feat', 'fix'],
 
         // 其他配置
-        breaklineNumber: 100,
         breaklineChar: '|',
         skipQuestions: [],
         issuePrefixes: [
@@ -122,8 +123,5 @@ export default {
         allowCustomIssuePrefix: true,
         allowEmptyIssuePrefix: true,
         confirmColorize: true,
-        maxHeaderLength: 72,
-        maxSubjectLength: 72,
-        minSubjectLength: 1
     },
 };

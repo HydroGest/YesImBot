@@ -1,76 +1,9 @@
-import { Awaitable, Context, Logger, Schema, Service } from "koishi";
-
-import { Config } from "@/config";
+import type { ChatModelInfo, CommonRequestOptions, EmbedModelInfo, ModelInfo, SharedProvider, UnionProvider } from "@yesimbot/shared-model";
+import type { Context } from "koishi";
+import type { ModelGroup, ModelServiceConfig } from "./config";
+import { ChatModelAbility, ModelType } from "@yesimbot/shared-model";
+import { Schema, Service } from "koishi";
 import { Services } from "@/shared/constants";
-import { AppError, ErrorDefinitions } from "@/shared/errors";
-import { isNotEmpty } from "@/shared/utils";
-import { GenerateTextResult } from "@xsai/generate-text";
-import { BaseModel } from "./base-model";
-import { ChatRequestOptions, IChatModel } from "./chat-model";
-import { CircuitBreakerPolicy, ContentFailureAction, ModelDescriptor, ModelSwitchingStrategy } from "./config";
-import { IEmbedModel } from "./embed-model";
-import { ProviderFactoryRegistry } from "./factories";
-import { ProviderInstance } from "./provider-instance";
-
-enum CircuitBreakerState {
-    CLOSED, // 允许请求
-    OPEN, // 阻止请求
-    HALF_OPEN, // 允许一次探测请求
-}
-
-class CircuitBreaker {
-    private state = CircuitBreakerState.CLOSED;
-    private failureCount = 0;
-    private lastFailureTime: number = 0;
-    private readonly logger: Logger;
-
-    constructor(
-        private readonly policy: CircuitBreakerPolicy,
-        parentLogger: Logger,
-        private readonly modelId: string
-    ) {
-        this.logger = parentLogger.extend(`[断路器][${modelId}]`);
-    }
-
-    /** 检查断路器是否处于“打开”状态（即阻止请求） */
-    public isOpen(): boolean {
-        if (this.state === CircuitBreakerState.OPEN) {
-            const now = Date.now();
-            if (now - this.lastFailureTime > this.policy.cooldownSeconds * 1000) {
-                this.state = CircuitBreakerState.HALF_OPEN;
-                this.logger.info(`状态变更: OPEN -> HALF_OPEN (冷却期结束，准备探测)`);
-                return false; // 允许一次探测请求
-            }
-            return true; // 仍然在冷却期，保持打开
-        }
-        return false;
-    }
-
-    /** 记录一次成功调用 */
-    public recordSuccess(): void {
-        if (this.state !== CircuitBreakerState.CLOSED) {
-            this.logger.success(`状态变更: -> CLOSED (探测成功，恢复服务)`);
-        }
-        this.state = CircuitBreakerState.CLOSED;
-        this.failureCount = 0;
-    }
-
-    /** 记录一次失败调用 */
-    public recordFailure(): void {
-        this.failureCount++;
-        this.lastFailureTime = Date.now();
-
-        if (this.state === CircuitBreakerState.HALF_OPEN) {
-            this.state = CircuitBreakerState.OPEN;
-            this.logger.warn(`状态变更: HALF_OPEN -> OPEN (探测失败，重新开启断路器)`);
-        } else if (this.failureCount >= this.policy.failureThreshold) {
-            if (this.state !== CircuitBreakerState.OPEN) {
-                this.state = CircuitBreakerState.OPEN;
-                this.logger.warn(`状态变更: -> OPEN (达到失败阈值 ${this.policy.failureThreshold})`);
-            }
-        }
-    }
-}
 
 declare module "koishi" {
     interface Context {
@@ -78,459 +11,237 @@ declare module "koishi" {
     }
 }
 
-export class ModelService extends Service<Config> {
-    static readonly inject = [Services.Logger];
-    private readonly providerInstances = new Map<string, ProviderInstance>();
+export class ModelService extends Service<ModelServiceConfig> {
+    public static readonly separator = ">";
+    private readonly providers: Map<string, SharedProvider<UnionProvider>> = new Map();
+    private readonly chatModelInfos: Map<string, ChatModelInfo> = new Map();
+    private readonly embedModelInfos: Map<string, EmbedModelInfo> = new Map();
+    private readonly unknownModelInfos: Map<string, ModelInfo> = new Map();
 
-    constructor(ctx: Context, config: Config) {
+    constructor(ctx: Context, config: ModelServiceConfig) {
         super(ctx, Services.Model, true);
         this.config = config;
-        this.logger = ctx[Services.Logger].getLogger("[模型服务]");
-
-        try {
-            this.validateConfig();
-            this.initializeProviders();
-            this.registerSchemas();
-        } catch (error) {
-            this.logger.error(`模型服务初始化失败 | ${error.message}`);
-            ctx.notifier.create({ type: "danger", content: `模型服务初始化失败 | ${error.message}` });
-        }
+        this.refreshSchemas();
     }
 
-    private initializeProviders(): void {
-        this.logger.info("--- 开始初始化模型提供商 ---");
-        for (const providerConfig of this.config.providers) {
-            const providerId = `${providerConfig.name} (${providerConfig.type})`;
+    private parseFullName(fullName: string): { providerName: string; modelName: string } | null {
+        const separator = ModelService.separator;
+        const index = fullName.indexOf(separator);
+        if (index <= 0)
+            return null;
 
-            const factory = ProviderFactoryRegistry.get(providerConfig.type);
-            if (!factory) {
-                this.logger.error(`❌ 不支持的类型 | 提供商: ${providerId}`);
-                continue;
-            }
+        const providerName = fullName.slice(0, index).trim();
+        const modelName = fullName.slice(index + separator.length).trim();
 
-            try {
-                const client = factory.createClient(providerConfig);
-                const instance = new ProviderInstance(this.ctx, providerConfig, client);
-                this.providerInstances.set(instance.name, instance);
-                this.logger.success(`✅ 初始化成功 | 提供商: ${providerId} | 共 ${providerConfig.models.length} 个模型`);
-            } catch (error) {
-                this.logger.error(`❌ 初始化失败 | 提供商: ${providerId} | 错误: ${error.message}`);
-            }
-        }
-        this.logger.info("--- 模型提供商初始化完成 ---");
+        if (!providerName || !modelName)
+            return null;
+
+        return { providerName, modelName };
     }
 
-    public getChatModel(providerName: string, modelId: string): IChatModel | null {
-        const instance = this.providerInstances.get(providerName);
-        return instance ? instance.getChatModel(modelId) : null;
+    private formatFullName(providerName: string, modelName: string): string {
+        const separator = ModelService.separator;
+        return `${providerName}${separator}${modelName}`;
     }
 
-    public getEmbedModel(providerName: string, modelId: string): IEmbedModel | null {
-        const instance = this.providerInstances.get(providerName);
-        return instance ? instance.getEmbedModel(modelId) : null;
+    public getChatModelInfo(fullName: string): ChatModelInfo | undefined {
+        return this.chatModelInfos.get(fullName);
     }
 
-    public useChatGroup(name: string): ChatModelSwitcher | undefined {
-        const groupName = this.resolveGroupName(name);
-        if (!groupName) return undefined;
-
-        const group = this.config.modelGroups.find((g) => g.name === groupName);
-        if (!group) {
-            this.logger.warn(`查找模型组失败 | 组名不存在: ${groupName}`);
-            return undefined;
-        }
-        try {
-            return new ChatModelSwitcher(this.ctx, group, this.getChatModel.bind(this));
-        } catch (error) {
-            this.logger.error(`创建模型组 "${groupName}" 失败 | ${error.message}`);
-            return undefined;
-        }
+    public isVisionChatModel(fullName: string): boolean {
+        const info = this.getChatModelInfo(fullName);
+        return Boolean((info?.abilities ?? []).includes(ChatModelAbility.ImageInput));
     }
 
-    /**
-     * 验证是否有无效配置
-     * 1. 至少有一个 Provider
-     * 2. 每个 Provider 至少有一个模型
-     * 3. 每个模型组至少有一个模型，且模型存在于已启用的 Provider 中
-     * 4. 为核心任务分配的模型组存在
-     */
-    private validateConfig(): void {
-        let modified = false;
-        // this.logger.debug("开始验证服务配置");
-        if (!this.config.providers || this.config.providers.length === 0) {
-            throw new AppError(ErrorDefinitions.CONFIG.INVALID, {
-                args: ["至少需要配置一个提供商"],
-            });
-        }
-
-        for (const providerConfig of this.config.providers) {
-            if (providerConfig.models.length === 0) {
-                throw new Error(`配置错误: 提供商 ${providerConfig.name} 至少需要配置一个模型`);
-            }
-        }
-
-        if (this.config.modelGroups.length === 0) {
-            const defaultGroup = {
-                name: "default",
-                models: this.config.providers.map((p) => p.models.map((m) => ({ providerName: p.name, modelId: m.modelId }))).flat(),
-                strategy: ModelSwitchingStrategy.Failover,
-            };
-            this.config.modelGroups.push(defaultGroup);
-            modified = true;
-        }
-
-        for (const group of this.config.modelGroups) {
-            if (group.models.length === 0) {
-                throw new Error(`配置错误: 模型组 ${group.name} 至少需要包含一个模型`);
-            }
-        }
-
-        const defaultGroup = this.config.modelGroups.find((g) => g.models.length > 0);
-
-        for (const task in this.config.task) {
-            const groupName = this.config.task[task];
-            if (!this.config.modelGroups.some((group) => group.name === groupName)) {
-                this.config.task[task] = defaultGroup.name;
-                this.logger.warn(`配置错误: 为任务 ${task} 分配的模型组 ${groupName} 不存在，已自动更正为默认组 ${defaultGroup.name}`);
-                modified = true;
-            }
-        }
-        if (modified) {
-            this.ctx.scope.update(this.config);
-        } else {
-            //this.logger.debug("配置验证通过");
-        }
+    public resolveChatModels(nameOrGroup: string): string[] {
+        const group = (this.config.groups ?? []).find((g) => g.name === nameOrGroup);
+        if (group)
+            return group.models;
+        return [nameOrGroup];
     }
 
-    private registerSchemas() {
-        const models = this.config.providers.map((p) => p.models.map((m) => ({ providerName: p.name, modelId: m.modelId }))).flat();
+    private createUnion(options: Schema[], fallback: Schema): Schema {
+        if (!options.length)
+            return fallback;
+        return Schema.union(options);
+    }
 
-        const selectableModels = models
-            .filter((m) => isNotEmpty(m.modelId) && isNotEmpty(m.providerName))
-            .map((m) => {
-                /* prettier-ignore */
-                return Schema.const({ providerName: m.providerName, modelId: m.modelId }).description(`${m.providerName} - ${m.modelId}`);
-            });
-        this.ctx.schema.set(
-            "modelService.selectableModels",
-            Schema.union([
-                ...selectableModels,
-                Schema.object({
-                    providerName: Schema.string().required().description("提供商名称"),
-                    modelId: Schema.string().required().description("模型ID"),
-                })
-                    .role("table")
-                    .description("自定义模型"),
-            ]).default({ providerName: "", modelId: "" })
+    private refreshSchemas(): void {
+        // Chat models
+        const chatOptions = Array.from(this.chatModelInfos.values()).map((m) =>
+            Schema.const(this.formatFullName(m.providerName, m.modelId)).description(`${m.providerName} - ${m.modelId}`),
         );
 
+        const chatVisionOptions = Array.from(this.chatModelInfos.values())
+            .filter((m) => (m.abilities ?? []).includes(ChatModelAbility.ImageInput))
+            .map((m) =>
+                Schema.const(this.formatFullName(m.providerName, m.modelId)).description(`${m.providerName} - ${m.modelId}`),
+            );
+
+        const embedOptions = Array.from(this.embedModelInfos.values()).map((m) =>
+            Schema.const(this.formatFullName(m.providerName, m.modelId)).description(`${m.providerName} - ${m.modelId}`),
+        );
+
+        const customModel = Schema.string().description("自定义模型 (例如 google>gemini-3-pro)");
+
+        this.ctx.schema.set("registry.chatModels", Schema.union([...chatOptions, customModel]).default(""));
+
         this.ctx.schema.set(
-            "modelService.availableGroups",
-            Schema.union([
-                ...this.config.modelGroups.map((group) => {
-                    return Schema.const(group.name).description(group.name);
-                }),
-                Schema.string().description("自定义模型组"),
-            ]).default("default")
+            "registry.chatVisionModels",
+            this.createUnion(chatVisionOptions, customModel).default(""),
+        );
+
+        this.ctx.schema.set("registry.embedModels", this.createUnion(embedOptions, customModel).default(""));
+
+        // Groups
+        const groupNames = (this.config.groups ?? []).map((g) => g.name);
+        const groupOptions = groupNames.map((name) => Schema.const(name).description(name));
+        const customGroup = Schema.string().description("自定义模型组");
+
+        this.ctx.schema.set(
+            "registry.availableGroups",
+            Schema.union([...groupOptions, customGroup]).default(""),
+        );
+
+        // Mixed: group or chat model
+        const groupOrModelOptions = [
+            ...groupNames.map((name) => Schema.const(name).description(`模型组 - ${name}`)),
+            ...chatOptions,
+        ];
+
+        this.ctx.schema.set(
+            "registry.chatModelOrGroup",
+            this.createUnion(groupOrModelOptions, Schema.string().description("模型/模型组")).default(""),
         );
     }
 
-    protected start(): Awaitable<void> {}
-
-    public useEmbeddingGroup(name: string): ModelSwitcher<IEmbedModel> | undefined {
-        const groupName = this.resolveGroupName(name);
-        if (!groupName) return undefined; // resolveGroupName 内部会记录日志
-
-        const group = this.config.modelGroups.find((g) => g.name === groupName);
-        if (!group) {
-            this.logger.warn(`查找模型组失败 | 组名不存在: ${groupName}`);
-            return undefined;
+    /** Register a provider implementation for request options generation. */
+    public setProvider(name: string, provider: SharedProvider): void {
+        if (this.providers.has(name)) {
+            throw new Error(`Provider with name "${name}" is already registered.`);
         }
-        try {
-            // 直接创建 ModelSwitcher<IEmbedModel> 实例
-            return new ModelSwitcher<IEmbedModel>(this.ctx, group, this.getEmbedModel.bind(this));
-        } catch (error) {
-            this.logger.error(`创建模型组 "${groupName}" 失败 | ${error.message}`);
-            return undefined;
-        }
+        this.providers.set(name, provider);
     }
 
-    private resolveGroupName(name: string): string | undefined {
-        if (this.config.task[name]) {
-            return this.config.task[name];
+    public removeProvider(name: string): void {
+        if (!this.providers.has(name)) {
+            throw new Error(`Provider with name "${name}" is not registered.`);
         }
-
-        this.logger.warn(`[切换器] ⚠ 无效的任务名称 | 任务: ${String(name)}`);
-        return undefined;
-    }
-}
-
-// --- 新增: 请求执行器 (RequestExecutor) ---
-// 职责：封装单次请求的全部执行逻辑，包括重试、超时、断路器检查和故障转移。
-class RequestExecutor {
-    private readonly logger: Logger;
-    private readonly accumulatedErrors: { modelId: string; error: Error }[] = [];
-
-    constructor(
-        ctx: Context,
-        private readonly groupName: string,
-        private readonly candidateModels: IChatModel[],
-        private readonly circuitBreakers: Map<string, CircuitBreaker>
-    ) {
-        this.logger = ctx[Services.Logger].getLogger(`[请求执行器][${groupName}]`);
+        this.providers.delete(name);
     }
 
-    public async execute(options: ChatRequestOptions): Promise<GenerateTextResult> {
-        const originalMessages = JSON.parse(JSON.stringify(options.messages));
-
-        for (const model of this.candidateModels) {
-            const breaker = this.circuitBreakers.get(model.id);
-            if (breaker?.isOpen()) {
-                this.logger.info(`[跳过] 模型 ${model.id} (断路器开启)`);
-                continue;
-            }
-
-            // 执行单个模型的请求尝试（包含内部重试）
-            const result = await this.tryRequestWithModel(model, options, originalMessages);
-
-            // 如果成功，立即返回
-            if (result.success) {
-                breaker?.recordSuccess();
-                return result.data;
-            } else {
-                // 如果失败，记录错误并继续尝试下一个模型（故障转移）
-                breaker?.recordFailure();
-                this.accumulatedErrors.push({ modelId: model.id, error: (result as any).error });
-            }
+    /** Register chat model metadata used for schema filtering (e.g. vision-capable). */
+    public addChatModels(providerName: string, models: Array<Omit<ChatModelInfo, "providerName">>): void {
+        for (const model of models) {
+            const info: ChatModelInfo = { ...model, providerName, modelType: model.modelType } as ChatModelInfo;
+            this.chatModelInfos.set(this.formatFullName(providerName, model.modelId), info);
         }
-
-        // 所有模型都尝试失败后
-        this.logger.error("所有可用模型均未能成功处理请求");
-        const individualErrors = this.accumulatedErrors.map((e) => e.error);
-        throw new AppError(ErrorDefinitions.MODEL.ALL_FAILED_IN_GROUP, {
-            args: [this.groupName],
-
-            cause: new AggregateError(individualErrors, "所有模型均失败"),
-            context: {
-                failedModels: this.accumulatedErrors.map((e) => ({ modelId: e.modelId, errorCode: (e.error as AppError).code })),
-                accumulatedErrors: this.accumulatedErrors,
-            },
-        });
+        this.refreshSchemas();
     }
 
-    private async tryRequestWithModel(
-        model: IChatModel,
-        options: ChatRequestOptions,
-        originalMessages: any[]
-    ): Promise<{ success: true; data: GenerateTextResult } | { success: false; error: Error }> {
-        const retryPolicy = model.config.retryPolicy ?? {
-            maxRetries: 0,
-            onContentFailure: ContentFailureAction.FailoverToNext,
-        };
-        const timeoutPolicy = model.config.timeoutPolicy ?? { totalTimeout: 90 };
+    /** Register embedding model metadata used for schema listing. */
+    public addEmbedModels(providerName: string, models: Array<Omit<EmbedModelInfo, "providerName">>): void {
+        for (const model of models) {
+            const info: EmbedModelInfo = { ...model, providerName, modelType: model.modelType } as EmbedModelInfo;
+            this.embedModelInfos.set(this.formatFullName(providerName, model.modelId), info);
+        }
+        this.refreshSchemas();
+    }
 
-        for (let attempt = 0; attempt <= retryPolicy.maxRetries; attempt++) {
-            const attemptLogger = this.logger.extend(`[${model.id}] [尝试 ${attempt + 1}/${retryPolicy.maxRetries + 1}]`);
-            const controller = new AbortController();
-
-            const firstTokenTimeoutId = setTimeout(() => {
-                const timeoutError = new Error(`First token not received within ${timeoutPolicy.firstTokenTimeout}s`);
-                timeoutError.name = "AbortError";
-                timeoutError["duration"] = timeoutPolicy.firstTokenTimeout;
-                controller.abort(timeoutError);
-            }, timeoutPolicy.firstTokenTimeout * 1000);
-
-            const timeoutId = setTimeout(() => {
-                const timeoutError = new Error(`Request timed out after ${timeoutPolicy.totalTimeout}s`);
-                timeoutError.name = "AbortError";
-                timeoutError["duration"] = timeoutPolicy.totalTimeout;
-                controller.abort(timeoutError);
-            }, timeoutPolicy.totalTimeout * 1000);
-
-            const options_copy = { ...options };
-
-            options_copy.abortSignal = controller.signal;
-
-            options_copy.onStreamStart = () => {
-                clearTimeout(firstTokenTimeoutId);
+    /** Register unknown/unclassified models for manual categorization. */
+    public addUnknownModels(providerName: string, modelIds: string[]): void {
+        for (const modelId of modelIds) {
+            const info: ModelInfo = {
+                providerName,
+                modelId,
+                modelType: ModelType.Unknown,
             };
-
-            try {
-                //attemptLogger.info("发送请求...");
-                const result = await model.chat(options_copy);
-                clearTimeout(timeoutId);
-                //attemptLogger.success("请求成功");
-                return { success: true, data: result };
-            } catch (error) {
-                clearTimeout(timeoutId);
-
-                // 内容验证失败的特定处理
-                if (error instanceof AppError && error.code === ErrorDefinitions.LLM.OUTPUT_PARSING_FAILED.code) {
-                    if (retryPolicy.onContentFailure === ContentFailureAction.AugmentAndRetry && attempt < retryPolicy.maxRetries) {
-                        const rawResponse = error.context.rawResponse;
-
-                        // 简单判断是否是有效内容
-                        if (rawResponse) {
-                            const keywords = ["thoughts", "observe", "analyze_infer", "plan", "actions", "function", "params"];
-                            const isValid = keywords.every((keyword) => rawResponse.includes(keyword));
-                            if (isValid) {
-                                attemptLogger.warn("内容无效，尝试使用LLM进行修复");
-                                const systemPrompt = `You are a JSON formatter. Your task is to fix the formatting of the given JSON string. The output must be a valid JSON string. Do not add any extra text or commentary.
-### 1. Format Rules
-- Your entire output MUST be a single, raw \`\`\`json ... \`\`\` code block.
-- No text, spaces, or newlines before \` \`\`\`json \` or after \` \`\`\` \`.
-
-### 2. JSON Structure
-\`\`\`json
-{
-  "thoughts": {
-    "observe": "...",
-    "analyze_infer": "...",
-    "plan": "..."
-  },
-  "actions": [
-    {
-      "function": "function_name",
-      "params": {
-        "inner_thoughts": "Your commentary on this specific action.",
-        "...": "..."
-      }
+            this.unknownModelInfos.set(this.formatFullName(providerName, modelId), info);
+        }
+        // Unknown models don't affect schemas automatically
     }
-  ],
-  "request_heartbeat": false
-}
-\`\`\`
-                                `;
-                                // 使用LLM修正JSON
-                                // 直接修改原始消息，下一次循环时会发送到模型
-                                options.messages = [
-                                    { role: "system", content: systemPrompt },
-                                    { role: "user", content: rawResponse },
-                                ];
-                                continue;
-                            }
-                        }
-                    } else {
-                        attemptLogger.error(`内容无效，放弃重试 | 错误: ${error.message}`);
-                        return { success: false, error }; // 放弃当前模型
-                    }
-                }
 
-                // 其他错误（网络，API限流等）
-                attemptLogger.error(`请求失败 | 错误: ${error.message}`);
-                if (attempt >= retryPolicy.maxRetries) {
-                    return { success: false, error };
-                }
+    /** Get all unknown models for a provider or all providers. */
+    public getUnknownModels(providerName?: string): ModelInfo[] {
+        const models = Array.from(this.unknownModelInfos.values());
+        if (providerName) {
+            return models.filter((m) => m.providerName === providerName);
+        }
+        return models;
+    }
 
-                await new Promise((res) => setTimeout(res, 500 * (attempt + 1))); // 退避等待
+    /** Promote an unknown model to a specific type with metadata. */
+    public promoteModel(
+        fullName: string,
+        targetType: ModelType.Chat,
+        metadata: Omit<ChatModelInfo, "providerName" | "modelId" | "modelType">,
+    ): void;
+    public promoteModel(
+        fullName: string,
+        targetType: ModelType.Embed,
+        metadata: Omit<EmbedModelInfo, "providerName" | "modelId" | "modelType">,
+    ): void;
+    public promoteModel(fullName: string, targetType: ModelType, metadata: any): void {
+        const unknownModel = this.unknownModelInfos.get(fullName);
+        if (!unknownModel) {
+            throw new Error(`Model "${fullName}" not found in unknown models`);
+        }
+
+        this.unknownModelInfos.delete(fullName);
+
+        switch (targetType) {
+            case ModelType.Chat: {
+                const chatInfo: ChatModelInfo = {
+                    ...metadata,
+                    providerName: unknownModel.providerName,
+                    modelId: unknownModel.modelId,
+                    modelType: ModelType.Chat,
+                };
+                this.chatModelInfos.set(fullName, chatInfo);
+                break;
             }
-        }
-        return {
-            success: false,
-            error: new AppError(ErrorDefinitions.MODEL.RETRY_EXHAUSTED, { args: [model.id] }),
-        };
-    }
-}
-
-// --- 简化的模型切换器 (ModelSwitcher) ---
-// 职责：管理一个模型组中的模型列表，并根据上下文（如是否包含图片）提供合适的模型。
-export class ModelSwitcher<T extends BaseModel> {
-    protected readonly logger: Logger;
-    protected readonly _models: T[];
-    private readonly circuitBreakers = new Map<string, CircuitBreaker>();
-
-    constructor(
-        protected readonly ctx: Context,
-        protected readonly groupConfig: { name: string; models: ModelDescriptor[] },
-        modelGetter: (providerName: string, modelId: string) => T | null
-    ) {
-        this.logger = ctx[Services.Logger].getLogger(`[模型组][${groupConfig.name}]`);
-
-        this._models = groupConfig.models
-            .map((desc) => modelGetter(desc.providerName, desc.modelId))
-            .filter((model): model is T => {
-                //if (!model) this.logger.warn(`模型加载失败，将从组中移除`);
-                return model !== null;
-            });
-
-        if (this._models.length === 0) {
-            const errorMsg = "模型组中无任何可用的模型 (请检查模型配置和能力声明)";
-            this.logger.error(`❌ 加载失败 | ${errorMsg}`);
-
-            throw new AppError(ErrorDefinitions.MODEL.GROUP_INIT_FAILED, { args: [groupConfig.name] });
-        }
-
-        // 初始化断路器
-        this._models.forEach((model) => {
-            if (model.config.circuitBreakerPolicy) {
-                this.circuitBreakers.set(model.id, new CircuitBreaker(model.config.circuitBreakerPolicy, this.logger, model.id));
+            case ModelType.Embed: {
+                const embedInfo: EmbedModelInfo = {
+                    ...metadata,
+                    providerName: unknownModel.providerName,
+                    modelId: unknownModel.modelId,
+                    modelType: ModelType.Embed,
+                };
+                this.embedModelInfos.set(fullName, embedInfo);
+                break;
             }
-        });
-
-        //this.logger.debug(`✅ 加载成功 | 可用模型数: ${this._models.length}`);
-    }
-
-    public getModels(): readonly T[] {
-        return this._models;
-    }
-
-    protected getCircuitBreakers(): Map<string, CircuitBreaker> {
-        return this.circuitBreakers;
-    }
-}
-
-// --- 专用于聊天的模型切换器 ---
-// 职责：提供一个简单的 `.chat()` 接口，内部处理视觉/非视觉模型选择，并调用 RequestExecutor。
-export class ChatModelSwitcher extends ModelSwitcher<IChatModel> {
-    private readonly visionModels: IChatModel[];
-    private readonly nonVisionModels: IChatModel[];
-
-    constructor(
-        ctx: Context,
-        groupConfig: { name: string; models: ModelDescriptor[] },
-        modelGetter: (providerName: string, modelId: string) => IChatModel | null
-    ) {
-        super(ctx, groupConfig, modelGetter);
-
-        // 根据能力对模型进行分类
-        this.visionModels = this._models.filter((m) => m.isVisionModel?.());
-        this.nonVisionModels = this._models.filter((m) => !m.isVisionModel?.());
-        //this.logger.debug(`模型能力分类 | 视觉: ${this.visionModels.length} | 非视觉: ${this.nonVisionModels.length}`);
-    }
-
-    public hasVisionCapability(): boolean {
-        return this.visionModels.length > 0;
-    }
-
-    public async chat(options: ChatRequestOptions): Promise<GenerateTextResult> {
-        /* prettier-ignore */
-        // @ts-ignore
-        const hasImages = options.messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === "image_url"));
-
-        let candidateModels: IChatModel[];
-
-        if (hasImages) {
-            if (this.visionModels.length > 0) {
-                this.logger.info("检测到图片内容，将使用视觉模型");
-                candidateModels = this.visionModels;
-            } else {
-                this.logger.warn("检测到图片内容，但组内无视觉模型，将忽略图片按纯文本处理");
-                candidateModels = this.nonVisionModels;
-            }
-        } else {
-            candidateModels = this._models; // 无图片，使用所有模型
+            default:
+                throw new Error(`Unsupported target type: ${targetType}`);
         }
 
-        if (candidateModels.length === 0) {
-            // throw new AppError(`模型组 "${this.groupConfig.name}" 中没有合适的模型来处理此请求`, {
-            //     code: ErrorCodes.RESOURCE.NOT_FOUND,
-            // });
-            throw new AppError(ErrorDefinitions.MODEL.NO_SUITABLE_MODEL, {
-                args: [this.groupConfig.name],
-            });
-        }
+        this.refreshSchemas();
+    }
 
-        const executor = new RequestExecutor(this.ctx, this.groupConfig.name, candidateModels, this.getCircuitBreakers());
-        return executor.execute(options);
+    /** Replace model group config and refresh schemas. */
+    public setGroups(groups: ModelGroup[]): void {
+        this.config.groups = groups;
+        this.refreshSchemas();
+    }
+
+    public getChatModel(fullName: string): CommonRequestOptions | undefined {
+        const parsed = this.parseFullName(fullName);
+        if (!parsed)
+            return undefined;
+
+        const provider = this.providers.get(parsed.providerName);
+        if (provider && provider.chat) {
+            return provider.chat(parsed.modelName);
+        }
+    }
+
+    public getEmbedModel(fullName: string): CommonRequestOptions | undefined {
+        const parsed = this.parseFullName(fullName);
+        if (!parsed)
+            return undefined;
+
+        const provider = this.providers.get(parsed.providerName);
+        if (provider && provider.embed) {
+            return provider.embed(parsed.modelName);
+        }
     }
 }

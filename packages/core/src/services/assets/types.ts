@@ -1,3 +1,5 @@
+import type { Buffer } from "node:buffer";
+
 /**
  * 数据库中存储的资源元数据模型
  */
@@ -40,12 +42,12 @@ export interface FileStats {
  * 存储驱动接口
  */
 export interface StorageDriver {
-    write(id: string, buffer: Buffer): Promise<void>;
-    read(id: string): Promise<Buffer>;
-    delete(id: string): Promise<void>;
-    exists(id: string): Promise<boolean>;
-    getStats?(id: string): Promise<FileStats | null>;
-    listFiles?(): Promise<string[]>;
+    write: (id: string, buffer: Buffer) => Promise<void>;
+    read: (id: string) => Promise<Buffer>;
+    delete: (id: string) => Promise<void>;
+    exists: (id: string) => Promise<boolean>;
+    getStats?: (id: string) => Promise<FileStats | null>;
+    listFiles?: () => Promise<string[]>;
 }
 
 /**

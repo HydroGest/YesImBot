@@ -1,0 +1,15 @@
+_config:
+  baseURL: OpenAI API 基础地址
+  apiKey: OpenAI API 密钥
+  proxy: 代理服务器地址
+  retry: 请求失败时的重试次数
+  retryDelay: 重试间隔（毫秒）
+  modelConfig:
+    $desc: 模型配置
+    temperature:
+    topP:
+    frequencyPenalty:
+    presencePenalty:
+    reasoning_effort:
+    max_completion_tokens:
+    headers:

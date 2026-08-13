@@ -1,22 +1,12 @@
-import { readFileSync } from "fs";
-import { Computed, Schema } from "koishi";
-import path from "path";
+/* eslint-disable ts/no-redeclare */
+import type { Computed } from "koishi";
+import { Schema } from "koishi";
 
-import { SystemConfig } from "@/config";
-import { PROMPTS_DIR } from "@/shared/constants";
-
-export const SystemBaseTemplate = readFileSync(path.resolve(PROMPTS_DIR, "memgpt_v2_chat.txt"), "utf-8");
-export const UserBaseTemplate = readFileSync(path.resolve(PROMPTS_DIR, "user_base.txt"), "utf-8");
-export const MultiModalSystemBaseTemplate = `Images that appear in the conversation will be provided first, numbered in the format 'Image #[ID]:'.
-In the subsequent conversation text, placeholders in the format <img id="[ID]" /> will be used to refer to these images.
-Please participate in the conversation considering the full context of both images and text.
-If image data is not provided, use \`get_image_description\` to describe the image.`;
-
-export type ChannelDescriptor = {
+export interface ChannelDescriptor {
     platform: string;
     type: "private" | "guild";
     id: string;
-};
+}
 
 /** Agent 的唤醒条件配置 */
 export interface ArousalConfig {
@@ -26,7 +16,7 @@ export interface ArousalConfig {
     debounceMs: number;
 }
 
-export const ArousalConfigSchema: Schema<ArousalConfig> = Schema.object({
+export const ArousalConfig: Schema<ArousalConfig> = Schema.object({
     allowedChannels: Schema.array(
         Schema.object({
             platform: Schema.string().required().description("平台"),
@@ -34,7 +24,7 @@ export const ArousalConfigSchema: Schema<ArousalConfig> = Schema.object({
                 .default("guild")
                 .description("频道类型"),
             id: Schema.string().required().description("频道或用户 ID"),
-        })
+        }),
     )
         .role("table")
         .default([{ platform: "onebot", type: "guild", id: "*" }])
@@ -56,6 +46,10 @@ export interface WillingnessConfig {
         isQuote: Computed<number>;
         /** 在私聊场景下的额外加成。私聊通常期望更高的响应度 */
         isDirectMessage: Computed<number>;
+        /** 被 @ 时是否强制触发回复，不受概率阈值限制 */
+        mentionForce: Computed<boolean>;
+        /** 私聊消息是否强制触发回复，不受概率阈值限制 */
+        directForce: Computed<boolean>;
     };
 
     // 基于内容计算一个乘数，影响最终得分。
@@ -80,11 +74,9 @@ export interface WillingnessConfig {
         /** 决定回复后，扣除的"发言精力惩罚"基础值 */
         replyCost: Computed<number>;
     };
-
-    readonly system?: SystemConfig;
 }
 
-const WillingnessConfigSchema: Schema<WillingnessConfig> = Schema.object({
+const WillingnessConfig: Schema<WillingnessConfig> = Schema.object({
     base: Schema.object({
         text: Schema.computed<Schema<number>>(Schema.number().default(12))
             .default(12)
@@ -94,6 +86,8 @@ const WillingnessConfigSchema: Schema<WillingnessConfig> = Schema.object({
         atMention: Schema.computed<Schema<number>>(Schema.number().default(100)).default(100).description("被@时的额外加成"),
         isQuote: Schema.computed<Schema<number>>(Schema.number().default(15)).default(15).description("作为回复/引用时的额外加成"),
         isDirectMessage: Schema.computed<Schema<number>>(Schema.number().default(40)).default(40).description("在私聊场景下的额外加成"),
+        mentionForce: Schema.computed<Schema<boolean>>(Schema.boolean().default(true)).default(true).description("被 @ 时强制触发回复"),
+        directForce: Schema.computed<Schema<boolean>>(Schema.boolean().default(true)).default(true).description("私聊消息强制触发回复"),
     }),
     interest: Schema.object({
         keywords: Schema.computed<Schema<string[]>>(Schema.array(Schema.string()).default([]))
@@ -121,11 +115,7 @@ const WillingnessConfigSchema: Schema<WillingnessConfig> = Schema.object({
         replyCost: Schema.computed<Schema<number>>(Schema.number().default(35))
             .min(0)
             .default(35)
-            .description('决定回复后，扣除的"发言精力惩罚"'),
-        // refractoryPeriodMs: Schema.computed<Schema<number>>(Schema.number())
-        //     .min(0)
-        //     .default(3000)
-        //     .description("回复后的“不应期”（毫秒），防止AI连续发言"),
+            .description("决定回复后，扣除的\"发言精力惩罚\""),
     }),
 });
 
@@ -145,7 +135,7 @@ export interface VisionConfig {
     detail: "low" | "high" | "auto";
 }
 
-export const VisionConfigSchema: Schema<VisionConfig> = Schema.object({
+export const VisionConfig: Schema<VisionConfig> = Schema.object({
     enableVision: Schema.boolean().default(false).description("是否启用视觉功能"),
     allowedImageTypes: Schema.array(Schema.string()).default(["image/jpeg", "image/png"]).description("允许的图片类型"),
     maxImagesInContext: Schema.number().default(3).description("在上下文中允许包含的最大图片数量"),
@@ -153,49 +143,19 @@ export const VisionConfigSchema: Schema<VisionConfig> = Schema.object({
     detail: Schema.union(["low", "high", "auto"]).default("low").description("图片细节程度"),
 });
 
-export type AgentBehaviorConfig = ArousalConfig &
-    WillingnessConfig &
-    VisionConfig & {
-        systemTemplate: string;
-        userTemplate: string;
-        multiModalSystemTemplate: string;
-    } & {
+export type AgentBehaviorConfig = ArousalConfig
+    & WillingnessConfig
+    & VisionConfig & {
         streamAction: boolean;
         heartbeat: number;
-
-        newMessageStrategy: "skip" | "immediate" | "deferred";
-        deferredProcessingTime?: number;
     };
 
-export const AgentBehaviorConfigSchema: Schema<AgentBehaviorConfig> = Schema.intersect([
-    ArousalConfigSchema.description("唤醒条件"),
-    WillingnessConfigSchema.description("响应意愿"),
-    VisionConfigSchema.description("视觉配置"),
-    Schema.object({
-        systemTemplate: Schema.string()
-            .default(SystemBaseTemplate)
-            .role("textarea", { rows: [2, 4] })
-            .description("系统提示词模板"),
-        userTemplate: Schema.string()
-            .default(UserBaseTemplate)
-            .role("textarea", { rows: [2, 4] })
-            .description("用户提示词模板"),
-        multiModalSystemTemplate: Schema.string()
-            .default(MultiModalSystemBaseTemplate)
-            .role("textarea", { rows: [2, 4] })
-            .description("多模态系统提示词 (用于向模型解释图片占位符)"),
-    }).description("提示词模板"),
+export const AgentBehaviorConfig: Schema<AgentBehaviorConfig> = Schema.intersect([
+    ArousalConfig.description("唤醒条件"),
+    WillingnessConfig.description("响应意愿"),
+    VisionConfig.description("视觉配置"),
     Schema.object({
         streamAction: Schema.boolean().default(false).experimental(),
         heartbeat: Schema.number().min(1).max(10).default(5).role("slider").step(1).description("每轮对话最大心跳次数"),
-
-        newMessageStrategy: Schema.union([
-            Schema.const("skip").description("跳过新消息（默认）"),
-            Schema.const("immediate").description("立即处理新消息"),
-            Schema.const("deferred").description("延迟处理被跳过话题"),
-        ])
-            .default("skip")
-            .description("处理新消息的策略"),
-        deferredProcessingTime: Schema.number().default(10000).description("延迟处理策略的安静期时间（毫秒）"),
     }),
 ]);
