@@ -162,6 +162,46 @@ function createFinalizeToolLoopModel() {
   } as unknown as LanguageModelV3 & { observedPrompts: LanguageModelV3CallOptions["prompt"][] };
 }
 
+function createInfiniteToolLoopModel() {
+  const toolCallsReason = "tool-calls" as unknown as LanguageModelV3FinishReason;
+  let callCount = 0;
+  const observedPrompts: LanguageModelV3CallOptions["prompt"][] = [];
+
+  return {
+    specificationVersion: "v3",
+    provider: "mock-provider",
+    modelId: "mock-model",
+    supportedUrls: {},
+    async doGenerate() {
+      throw new Error("not implemented");
+    },
+    async doStream(options: LanguageModelV3CallOptions) {
+      observedPrompts.push(structuredClone(options.prompt));
+      callCount += 1;
+      const toolCallId = `call_${callCount}`;
+
+      return {
+        stream: new ReadableStream<LanguageModelV3StreamPart>({
+          start(controller) {
+            controller.enqueue({ type: "stream-start", warnings: [] });
+            controller.enqueue({ type: "tool-input-start", id: toolCallId, toolName: "inspect" });
+            controller.enqueue({ type: "tool-input-delta", id: toolCallId, delta: "{}" });
+            controller.enqueue({ type: "tool-input-end", id: toolCallId });
+            controller.enqueue({ type: "tool-call", toolCallId, toolName: "inspect", input: "{}" });
+            controller.enqueue({
+              type: "finish",
+              finishReason: toolCallsReason,
+              usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 0, reasoning: 0 } },
+            });
+            controller.close();
+          },
+        }),
+      };
+    },
+    observedPrompts,
+  } as unknown as LanguageModelV3 & { observedPrompts: LanguageModelV3CallOptions["prompt"][] };
+}
+
 describe("tools", () => {
   it("throws on duplicate tool names", () => {
     expect(() =>
@@ -195,6 +235,24 @@ describe("tools", () => {
     await agent.wait();
 
     expect(model.observedPrompts).toHaveLength(1);
+    expect(agent.isIdle()).toBe(true);
+    expect(onTurnFinish).toHaveBeenCalledWith(expect.objectContaining({ status: "done" }), expect.any(Object));
+  });
+
+  it("caps the tool loop at the configured maxSteps", async () => {
+    const model = createInfiniteToolLoopModel();
+    const onTurnFinish = vi.fn();
+    const agent = createAgent({
+      model,
+      maxSteps: 2,
+      tools: [{ name: "inspect", inputSchema: z.object({}), execute: async () => "ok" }],
+      plugins: [{ name: "result-observer", onTurnFinish }],
+    });
+
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    expect(model.observedPrompts).toHaveLength(2);
     expect(agent.isIdle()).toBe(true);
     expect(onTurnFinish).toHaveBeenCalledWith(expect.objectContaining({ status: "done" }), expect.any(Object));
   });

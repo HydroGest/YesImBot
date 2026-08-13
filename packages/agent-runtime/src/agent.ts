@@ -1,4 +1,4 @@
-import { hasToolCall, isLoopFinished, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
+import { hasToolCall, isLoopFinished, stepCountIs, streamText, type LanguageModel, type LanguageModelUsage, type SystemModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 
 import { AgentChannel, createAgentChannel } from "./channel.js";
@@ -19,6 +19,8 @@ import type { AgentToolExecuteContext } from "./tools.js";
 import { AgentTool, AgentToolSet, toAiToolSet } from "./tools.js";
 import { createTurnQueue, TurnResult, type AgentWaitOptions, type TurnRequest } from "./turn.js";
 
+const DEFAULT_MAX_STEPS = 20;
+
 export interface AgentSendOptions {
   ifBusy?: "defer" | "join" | "reject";
 }
@@ -32,6 +34,7 @@ export interface AgentConfig {
   storage?: AgentStorage<AgentEntry>;
   plugins?: AgentPlugin[];
   terminalTool?: { name: string; description?: string };
+  maxSteps?: number;
   initialState?: AgentState;
   defaultState?: AgentState;
 }
@@ -85,6 +88,7 @@ export function createAgent(config: AgentConfig): Agent {
   let model = config.model;
   const baseTools = config.tools ?? [];
   const baseTerminalTool = config.terminalTool ? createTerminalTool(config.terminalTool) : undefined;
+  const maxSteps = Math.max(1, config.maxSteps ?? DEFAULT_MAX_STEPS);
   let frozenSystemPrompt: string | SystemModelMessage[] | undefined;
   let frozenTools: AgentToolSet = [];
   let frozenProviderTools: ToolSet = {};
@@ -407,7 +411,7 @@ export function createAgent(config: AgentConfig): Agent {
           system: frozenSystemPrompt,
           messages: modelMessages,
           tools: { ...toAiToolSet(resolveTools(request.turnId, () => allMessages, abortSignal)), ...frozenProviderTools },
-          stopWhen: baseTerminalTool ? [isLoopFinished(), hasToolCall(baseTerminalTool.name)] : isLoopFinished(),
+          stopWhen: [isLoopFinished(), stepCountIs(maxSteps), ...(baseTerminalTool ? [hasToolCall(baseTerminalTool.name)] : [])],
           abortSignal,
           prepareStep: async ({ stepNumber }) => {
             let messages = modelMessages;
