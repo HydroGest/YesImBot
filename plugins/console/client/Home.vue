@@ -261,6 +261,15 @@
 
       <!-- 快捷入口 -->
       <section class="yib-quick-actions">
+        <router-link class="yib-action-card" to="/yesimbot/channels">
+          <div class="yib-action-card__icon"><k-icon name="clipboard-list"></k-icon></div>
+          <div class="yib-action-card__info">
+            <strong>会话浏览</strong>
+            <p>查看频道历史、工具调用与内部思考</p>
+          </div>
+          <k-icon name="chevron-right" class="yib-action-card__arrow"></k-icon>
+        </router-link>
+
         <router-link class="yib-action-card" to="/analytics">
           <div class="yib-action-card__icon"><k-icon name="tag"></k-icon></div>
           <div class="yib-action-card__info">
@@ -1112,7 +1121,7 @@ function adapterStateText(adapter: PanelAdapter): string {
 /* 快捷操作卡片 */
 .yib-quick-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -1271,6 +1280,10 @@ function adapterStateText(adapter: PanelAdapter): string {
 @media screen and (max-width: 900px) {
   .yib-metrics-grid,
   .yib-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .yib-quick-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

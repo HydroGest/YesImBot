@@ -1,6 +1,6 @@
 import { TurnResult } from "@yesimbot/agent-runtime";
 import type { Logger, Universal } from "koishi";
-import { isMessage, type WillState, type Event, type Message, type WillEngine } from "koishi-plugin-yesimbot";
+import { isMessage, type WillDebug, type WillState, type Event, type Message, type WillEngine } from "koishi-plugin-yesimbot";
 
 import { hasImage, hasQuote, mentionKind } from "./message-context.js";
 import type { PolicyWillingnessConfig } from "./types.js";
@@ -71,6 +71,15 @@ export class PolicyWillingnessEngine implements WillEngine {
 
   public getCurrentWillingness(): number {
     return this.score;
+  }
+
+  public debug(): WillDebug {
+    return {
+      engine: "willingness",
+      score: this.score,
+      probability: calculateProbability(this.score, this.config),
+      config: this.config as unknown as Record<string, unknown>,
+    };
   }
 }
 

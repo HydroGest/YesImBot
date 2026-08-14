@@ -215,6 +215,7 @@ describe("Agents", () => {
     expect(willEngine.decide(message(0, [h.at("bot-1")]), { activeTurnId: null })).toBe("trigger");
     expect(willEngine.decide(message(0), { activeTurnId: null })).toBe("wait");
     expect(directWillEngine.decide(message(0), { activeTurnId: null })).toBe("wait");
-    expect(Object.keys(willEngine)).toEqual(["decide"]);
+    expect(Object.keys(willEngine)).toEqual(["decide", "debug"]);
+    expect(willEngine.debug?.()).toMatchObject({ engine: "default" });
   });
 });

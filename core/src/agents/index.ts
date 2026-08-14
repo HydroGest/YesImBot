@@ -72,4 +72,4 @@ export class Agents {
   }
 }
 
-export type { WillEngine, WillPlugin, WillState } from "./will.js";
+export type { WillDebug, WillEngine, WillPlugin, WillState } from "./will.js";

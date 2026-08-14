@@ -1,5 +1,5 @@
 import type { Logger, Universal } from "koishi";
-import { isMessage, type Event, type Message, type WillEngine } from "koishi-plugin-yesimbot";
+import { isMessage, type Event, type Message, type WillDebug, type WillEngine } from "koishi-plugin-yesimbot";
 
 import { hasImage, hasQuote, mentionKind } from "./message-context.js";
 import type { PolicyRoutingConfig } from "./types.js";
@@ -16,6 +16,10 @@ export class PolicyRoutingEngine implements WillEngine {
     const decision: "wait" | "trigger" = this.resolve(input);
     this.logger?.debug("will_policy.routing", { messageId: input.id, channelId: input.data.channel.id, decision });
     return decision;
+  }
+
+  public debug(): WillDebug {
+    return { engine: "routing", config: this.config as unknown as Record<string, unknown> };
   }
 
   private resolve(input: Message | Event): "wait" | "trigger" {

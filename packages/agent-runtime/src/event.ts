@@ -22,7 +22,8 @@ export type AgentInternalEventInit =
   | ToolFailedEvent
   | ToolBlockedEvent
   | PluginErrorEvent
-  | PluginDisabledEvent;
+  | PluginDisabledEvent
+  | WillDecisionEvent;
 
 export type AgentInternalEvent<T extends AgentInternalEventInit = AgentInternalEventInit> = T & AgentInternalEventMeta;
 
@@ -126,6 +127,13 @@ export interface PluginDisabledEvent {
   type: "plugin.disabled";
   plugin: string;
   reason?: AgentDiagnostic;
+}
+
+export interface WillDecisionEvent {
+  type: "will.decision";
+  eventId: string;
+  decision: "wait" | "trigger";
+  debug?: unknown;
 }
 
 export interface AgentInternalEventMeta {

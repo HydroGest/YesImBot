@@ -2,6 +2,8 @@ import {
   AgentBusyError,
   createAgent,
   createEntry,
+  createEventEntry,
+  createInternalEvent,
   createSystemMessage,
   type Agent,
   type AgentInternalEvent,
@@ -140,6 +142,13 @@ export class ChannelRuntime {
       const input = await this.persist(record);
       await this.archiveIfOversize();
       const decision = await this.options.will.decide(input, this.state());
+      try {
+        await this.options.channel.conversation.storage.append(
+          createEventEntry(createInternalEvent({ type: "will.decision", eventId: input.id, decision, debug: this.options.will.debug?.() })),
+        );
+      } catch (cause) {
+        this.logger.warn("runtime.will_decision_persist_failed", { eventId: input.id, cause });
+      }
       const result = decision === "wait" ? { kind: "wait" as const, eventId: input.id } : this.start(input, true, "join");
       this.logger.debug("runtime.handle", {
         eventId: input.id,
