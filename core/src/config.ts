@@ -52,8 +52,8 @@ export const Config: Schema<Config> = Schema.intersect([
           .default(5 * 1024)
           .description("单个会话文件归档上限（KB）；0 = 禁用"),
       }).description("自动归档"),
-    }),
-  }).description("会话管理"),
+    }).description("会话管理"),
+  }),
 ]) as Schema<Config>;
 
 export interface ChannelAllowRule {
