@@ -24,6 +24,7 @@ export function defaultConfig(overrides: Partial<Config> = {}): Config {
     will: { engine: "routing", direct: "trigger", mention: "trigger", group: "wait" },
     pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
     customInnerThought: true,
+    wrapFinalReply: false,
     session: { compact: { responseIdleMinutes: 120, minMessages: 20, maxFailures: 3, model: undefined }, archive: { maxKB: 5 * 1024 } },
     ...overrides,
   };

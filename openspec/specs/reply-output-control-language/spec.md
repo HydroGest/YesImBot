@@ -50,6 +50,20 @@ Core MUST remove every `<inner_thought>` subtree from the delivered element stre
 - **THEN** Core MUST preserve the `message` element
 - **AND** its delivered children MUST contain `visible` but no inner-thought content
 
+### Requirement: Optional Final Reply Wrapper
+
+Core MAY expose a configuration that adds a final-reply wrapper protocol for
+relay/proxy stations which merge untagged reasoning into message content. When
+enabled, Core MUST instruct the model to place all user-visible output inside one
+`<reply>…</reply>` element. If an assistant message contains a complete
+`<reply>` wrapper, Core MUST deliver only the wrapper contents and MUST discard
+text outside the wrapper; raw assistant output MUST remain unchanged in history.
+
+#### Scenario: Untagged reasoning precedes a wrapped final reply
+- **WHEN** Core enables final reply wrapping and an assistant message contains untagged reasoning followed by `<reply>visible</reply>`
+- **THEN** Core MUST deliver only `visible`
+- **AND** Core MUST retain the raw message including the untagged reasoning in channel history
+
 ### Requirement: Literal Element Syntax
 Assistant output that intends to display `<` or `>` as text MUST encode them as `&lt;` or `&gt;`, or place the complete literal region in `<text>…</text>`. Core MUST pass unprotected element-looking syntax to the Koishi parser as structured message elements.
 

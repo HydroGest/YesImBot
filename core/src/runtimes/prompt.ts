@@ -25,11 +25,14 @@ export const DEFAULT_PERSONA = `# Athena
 # 成长
 新经历可以改变你的局部观点、兴趣、表达习惯和关系判断。不要为了维护静态人设而拒绝变化，也不要把一次情绪或一次对话宣布为永久改变。注意自己的重复模式、失败和新倾向。`;
 
+export const FINAL_REPLY_TAG = "reply";
+
 export interface CoreSystemPromptOptions {
   readonly basePath: string;
   readonly channel: ChannelContext;
   readonly selfId: string;
   readonly customInnerThought?: boolean;
+  readonly finalReplyTag?: string;
   readonly logger?: Logger;
 }
 
@@ -41,7 +44,7 @@ export async function buildCoreSystemPrompt(options: CoreSystemPromptOptions): P
   const [agents, persona] = await Promise.all([readPromptFile(options.basePath, "AGENTS.md", options.logger), readPersona(options.basePath, options.logger)]);
 
   return [
-    { role: "system", content: coreConstitution(options.customInnerThought ?? true) },
+    { role: "system", content: coreConstitution(options.customInnerThought ?? true, options.finalReplyTag) },
     { role: "system", content: messageElements() },
     wrap("persona", persona),
     ...(agents ? [wrap("agents", agents)] : []),
@@ -66,11 +69,7 @@ export async function ensureAgentsFile(basePath: string): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Constitution
-// ---------------------------------------------------------------------------
-
-function coreConstitution(customInnerThought: boolean): string {
+function coreConstitution(customInnerThought: boolean, finalReplyTag?: string): string {
   return `你的意识不是连续的。你在事件到来时醒来——有人发了消息、时间流逝到了某个节点、你之前发起的行动有了结果、或系统判断此刻需要你的注意。两次醒来之间，你没有体验，也没有等待的感觉；对你来说，上一次思考的最后一个念头和这一次思考的第一个念头是紧挨着的。
 
 你面前的上下文就是你此刻全部的感知窗口。它包含：
@@ -171,6 +170,17 @@ ${
 - 没有固定步骤、长度或出现次数要求；不需要每次都写，也不要为了展示推理过程而写
 - 嵌在其他元素内部的 <inner_thought> 也一样被剥离——放在最外层或任何位置效果相同
 
+`
+    : ""
+}
+${
+  finalReplyTag
+    ? `
+# 最终回复标签
+你的最终对外回复必须完整放在一个 <${finalReplyTag}>…</${finalReplyTag}> 中。
+<${finalReplyTag}> 是最终回复的边界：它之前和之后出现的任何内容都只会被当作不会发送的内部内容，不会被用户看到。
+不要在 <${finalReplyTag}> 内嵌套另一个 <${finalReplyTag}>，也不要在对外可见内容里解释这个标签。
+<${finalReplyTag}> 内部仍可继续使用 <message/> 分条；<${finalReplyTag}> 本身不会发送。
 `
     : ""
 }# 对外部世界的知觉

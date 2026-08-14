@@ -30,7 +30,7 @@ import {
 } from "../messages/index.js";
 import { prepareOutputSegments } from "../resources/index.js";
 import { OutputQueue } from "./output.js";
-import { buildCoreSystemPrompt, readPersona } from "./prompt.js";
+import { buildCoreSystemPrompt, FINAL_REPLY_TAG, readPersona } from "./prompt.js";
 
 const MODEL_INPUT_PLUGIN: AgentPlugin = {
   name: "core.model-input",
@@ -121,6 +121,7 @@ export class ChannelRuntime {
           channel: this.context,
           selfId: this.selfId,
           customInnerThought: options.config.customInnerThought,
+          finalReplyTag: options.config.wrapFinalReply ? FINAL_REPLY_TAG : undefined,
           logger: this.logger,
         }),
       tools,
@@ -293,7 +294,11 @@ export class ChannelRuntime {
           turnId = event.turnId;
           const content = renderAssistantText(event.message.content);
           if (content !== undefined) {
-            const segments = await prepareOutputSegments(parseReply(content), this.options.channel.resources, controller.signal);
+            const segments = await prepareOutputSegments(
+              parseReply(content, { finalReplyTag: this.options.config.wrapFinalReply ? FINAL_REPLY_TAG : undefined }),
+              this.options.channel.resources,
+              controller.signal,
+            );
             if (segments.length) {
               this.logger.debug("runtime.output.segments", { turnId, messageId: event.message.id, segmentCount: segments.length });
               output.push({ turnId, messageId: event.message.id, segments });

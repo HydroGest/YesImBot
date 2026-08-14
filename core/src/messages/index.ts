@@ -45,6 +45,10 @@ export interface DeliveredPayload {
   readonly text: string;
 }
 
+export interface ParseReplyOptions {
+  readonly finalReplyTag?: string;
+}
+
 declare module "@yesimbot/agent-runtime" {
   interface AgentCustomMessages {
     "yesimbot.event": Event;
@@ -127,7 +131,7 @@ export function formatElements(elements: readonly Element[]): string {
   return elements.map(formatElement).join("");
 }
 
-export function parseReply(raw: string): Element[][] {
+export function parseReply(raw: string, options: ParseReplyOptions = {}): Element[][] {
   const source = stripInnerThoughtRegions(raw.replaceAll(MARK, ""));
   const nonce = `${MARK}t${Math.random().toString(36).slice(2)}`;
   const captured: string[] = [];
@@ -147,6 +151,7 @@ export function parseReply(raw: string): Element[][] {
     if (close < 0) break;
     cursor = close + 7;
   }
+  masked = stripFinalReplyRegions(masked, options.finalReplyTag);
   const restore = (element: Element): Element[] => {
     if (element.type === "inner_thought") return [];
     if (element.type !== "text") return [h(element.type, element.attrs, element.children.flatMap(restore))];
@@ -184,6 +189,13 @@ export function parseReply(raw: string): Element[][] {
     return segments;
   };
   return split(h.parse(masked).flatMap(restore));
+}
+
+function stripFinalReplyRegions(source: string, tagName: string | undefined): string {
+  if (!tagName) return source;
+  const matches = [...source.matchAll(new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}\\s*>`, "gi"))];
+  if (matches.length === 0) return source;
+  return matches.map((match) => match[1]).join("\n");
 }
 
 function stripInnerThoughtRegions(source: string): string {

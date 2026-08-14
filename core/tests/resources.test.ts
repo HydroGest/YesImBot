@@ -56,7 +56,8 @@ describe("session-live input resources", () => {
     );
     const resources = { assets: { put: vi.fn(async () => "0123456789abcdef0123456789abcdef") } };
 
-    const elements = await persistElements({ http } as never, [h("img", { src: "https://example.test/image.png" })], resources as never);
+    const ctx = { http, logger: vi.fn(() => ({ debug: vi.fn() })) };
+    const elements = await persistElements(ctx as never, [h("img", { src: "https://example.test/image.png" })], resources as never);
 
     expect(resources.assets.put).toHaveBeenCalledWith(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
     expect(elements).toEqual([h("img", { id: "0123456789abcdef0123456789abcdef" })]);
@@ -65,8 +66,9 @@ describe("session-live input resources", () => {
   it("persists a base64:// image element without downloading", async () => {
     const http = vi.fn();
     const resources = { assets: { put: vi.fn(async () => "0123456789abcdef0123456789abcdef") } };
+    const ctx = { http, logger: vi.fn(() => ({ debug: vi.fn() })) };
 
-    const elements = await persistElements({ http } as never, [h("img", { src: `base64://${Buffer.from(PNG_BYTES).toString("base64")}` })], resources as never);
+    const elements = await persistElements(ctx as never, [h("img", { src: `base64://${Buffer.from(PNG_BYTES).toString("base64")}` })], resources as never);
 
     expect(resources.assets.put).toHaveBeenCalledWith(PNG_BYTES);
     expect(elements).toEqual([h("img", { id: "0123456789abcdef0123456789abcdef" })]);

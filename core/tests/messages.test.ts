@@ -440,6 +440,29 @@ describe("parseReply", () => {
     expect(text(segments[0])).toBe("visible after");
   });
 
+  it("keeps only the tagged final reply when the final reply tag is enabled", () => {
+    const segments = parseReply("中转站思考内容<reply>这是最终回复</reply>尾巴", { finalReplyTag: "reply" });
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("这是最终回复");
+  });
+
+  it("discards untagged content around a final reply tag while preserving message boundaries", () => {
+    const segments = parseReply("思考内容<reply><message>一</message><message>二</message></reply>尾巴", { finalReplyTag: "reply" });
+    expect(segments.map(text)).toEqual(["一", "二"]);
+  });
+
+  it("keeps raw output unchanged when the final reply tag is missing", () => {
+    const segments = parseReply("普通回复", { finalReplyTag: "reply" });
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("普通回复");
+  });
+
+  it("does not treat a final reply tag inside a text container as a wrapper boundary", () => {
+    const segments = parseReply("<reply><text>show <reply> tag</text></reply>", { finalReplyTag: "reply" });
+    expect(segments).toHaveLength(1);
+    expect(text(segments[0])).toBe("show <reply> tag");
+  });
+
   it("does not create empty segments around message boundaries", () => {
     expect(parseReply("one<message/>two")).toEqual([[h.text("one")], [h.text("two")]]);
   });

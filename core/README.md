@@ -88,6 +88,13 @@ either way. Message element syntax documentation is injected as a separate
 system message. `<message/>` is the sole explicit message boundary; Core never
 splits blank-line prose.
 
+`wrapFinalReply` (default `false`) adds a final-reply wrapper protocol for relay
+stations that merge untagged reasoning into message content. When enabled, the
+constitution requires all user-visible output inside `<reply>…</reply>`, and Core
+drops text outside complete wrapper regions before delivery while preserving the
+raw assistant output in history. If no complete wrapper is present, delivery
+falls back to the raw output so normal replies are not silently dropped.
+
 ## Storage and records
 
 Each channel root is named `shared-<platform>-<channelId>` or

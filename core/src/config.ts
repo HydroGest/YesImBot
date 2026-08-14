@@ -36,6 +36,7 @@ export const Config: Schema<Config> = Schema.intersect([
       maxTotalDelayMs: Schema.number().min(1).default(60_000).description("单次回复的最大累计延迟（毫秒）"),
     }).description("分段回复节奏"),
     customInnerThought: Schema.boolean().default(true).description("在系统提示中加入 Core 自定义 <inner_thought> 内心独白协议"),
+    wrapFinalReply: Schema.boolean().default(false).description("要求模型用 <reply>…</reply> 包裹最终回复；启用后仅发送标签内内容，用于中转站思维链未标记场景"),
   }),
   Schema.object({
     session: Schema.object({
@@ -92,5 +93,6 @@ export interface Config {
   resourceReadTimeout: number;
   pacing: PacingConfig;
   customInnerThought: boolean;
+  wrapFinalReply: boolean;
   session: SessionConfig;
 }
