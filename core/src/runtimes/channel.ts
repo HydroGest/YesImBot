@@ -21,7 +21,7 @@ import {
   createEvent,
   createMessage,
   formatInput,
-  parseReply,
+  parseReplyWithMetadata,
   isEvent,
   isMessage,
   isMessageRecord,
@@ -269,6 +269,7 @@ export class ChannelRuntime {
   ): Promise<void> {
     let assistant = false;
     let completed = false;
+    let finalReplyFeedbackInjected = false;
     let turnId = "";
     try {
       for await (const event of stream) {
@@ -307,8 +308,23 @@ export class ChannelRuntime {
           turnId = event.turnId;
           const content = renderAssistantText(event.message.content);
           if (content !== undefined) {
+            const finalReplyTag = this.options.config.wrapFinalReply ? FINAL_REPLY_TAG : undefined;
+            const parsed = parseReplyWithMetadata(content, { finalReplyTag });
+            if (parsed.missingFinalReply && !finalReplyFeedbackInjected) {
+              finalReplyFeedbackInjected = true;
+              try {
+                const feedback = createSystemMessage(
+                  `上一轮的回复因未使用必需的 <${FINAL_REPLY_TAG}>…</${FINAL_REPLY_TAG}> 格式而被拦截。下一轮如需向用户发送内容，必须将完整的最终回复放在且仅放在一个 <${FINAL_REPLY_TAG}>…</${FINAL_REPLY_TAG}> 中；内部思考和工具调用不要放入标签。`,
+                );
+                if (this.agent.getActiveTurnId() === event.turnId) this.agent.send(feedback, { ifBusy: "join" });
+                else await this.agent.append(feedback);
+                this.logger.debug("runtime.output.final_reply_feedback", { turnId, messageId: event.message.id });
+              } catch (cause) {
+                this.logger.warn("runtime.output.final_reply_feedback_failed", { turnId, messageId: event.message.id, cause });
+              }
+            }
             const segments = await prepareOutputSegments(
-              parseReply(content, { finalReplyTag: this.options.config.wrapFinalReply ? FINAL_REPLY_TAG : undefined }),
+              parsed.segments,
               this.options.channel.resources,
               controller.signal,
             );
