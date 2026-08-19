@@ -63,7 +63,7 @@ const event = {
 // ChannelRuntime scheduling
 // ---------------------------------------------------------------------------
 
-async function runtime(providerTools?: ToolSet) {
+async function runtime(providerTools?: ToolSet, configOverrides: Partial<Config> = {}) {
   const root = await mkdtemp(join(tmpdir(), "yesimbot-runtime-"));
   const channel = new Channel({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, root);
   await channel.conversation.init();
@@ -73,7 +73,7 @@ async function runtime(providerTools?: ToolSet) {
     will: { decide: state.decide, observe: state.observe } as never,
     model: {} as never,
     imageOutputSupported: false,
-    config,
+    config: { ...config, ...configOverrides },
     plugins: [],
     providerTools,
   });
@@ -172,8 +172,39 @@ describe("ChannelRuntime scheduling", () => {
           { turnId: "turn-1", messageId: "message-1", segments: [[expect.objectContaining({ type: "text", attrs: { content: "reply" } })]] },
         ]);
       }
+      expect(state.send).not.toHaveBeenCalled();
       expect(state.decide).not.toHaveBeenCalled();
       expect(state.run).toHaveBeenCalledOnce();
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("re-prompts the active turn once after discarding unwrapped replies", async () => {
+    state.run.mockReturnValue(
+      (async function* () {
+        state.active = "turn-1";
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "internal planning" } };
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-2", content: "still unwrapped" } };
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-3", content: "<reply>corrected reply</reply>" } };
+        state.active = null;
+      })(),
+    );
+    const { value, root } = await runtime(undefined, { wrapFinalReply: true });
+    try {
+      const result = await value.post(event);
+      expect(result.kind).toBe("run");
+      if (result.kind === "run") {
+        await expect(Array.fromAsync(result.output)).resolves.toEqual([
+          { turnId: "turn-1", messageId: "message-3", segments: [[expect.objectContaining({ type: "text", attrs: { content: "corrected reply" } })]] },
+        ]);
+      }
+      expect(state.send).toHaveBeenCalledOnce();
+      expect(state.send).toHaveBeenCalledWith(
+        expect.objectContaining({ role: "system", content: expect.stringMatching(/下一轮.*<reply>.*<\/reply>/s) }),
+        { ifBusy: "join" },
+      );
     } finally {
       await value.stop();
       await rm(root, { recursive: true, force: true });

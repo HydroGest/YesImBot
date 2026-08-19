@@ -451,10 +451,9 @@ describe("parseReply", () => {
     expect(segments.map(text)).toEqual(["一", "二"]);
   });
 
-  it("keeps raw output unchanged when the final reply tag is missing", () => {
+  it("discards untagged output when the final reply tag is required", () => {
     const segments = parseReply("普通回复", { finalReplyTag: "reply" });
-    expect(segments).toHaveLength(1);
-    expect(text(segments[0])).toBe("普通回复");
+    expect(segments).toEqual([]);
   });
 
   it("does not treat a final reply tag inside a text container as a wrapper boundary", () => {

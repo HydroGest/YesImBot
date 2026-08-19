@@ -23,6 +23,7 @@ const SCHEDULE_FIELDS = {
   channelId: "string",
   title: "string",
   prompt: "text",
+  delivery: { type: "string", initial: "channel" },
   kind: "string",
   at: { type: "string", nullable: true, initial: null },
   cron: { type: "string", nullable: true, initial: null },
@@ -65,6 +66,7 @@ export class ScheduleStore {
         channelId: scope.channelId,
         title: input.title,
         prompt: input.prompt,
+        delivery: input.delivery ?? "channel",
         kind: rule.kind,
         at: rule.kind === "once" ? rule.at : null,
         cron: rule.kind === "cron" ? rule.cron : null,
@@ -95,6 +97,7 @@ export class ScheduleStore {
       }
       const title = input.title ?? row.title;
       const prompt = input.prompt ?? row.prompt;
+      const delivery = input.delivery ?? row.delivery ?? "channel";
       if (title.length > MAX_TITLE_LENGTH) {
         throw new Error(`title must not exceed ${MAX_TITLE_LENGTH} characters`);
       }
@@ -120,8 +123,8 @@ export class ScheduleStore {
         if (row.state === "enabled") next = nextRunAt(rule, now);
       }
       const updatedAt = new Date(Date.now()).toISOString();
-      await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { title, prompt, kind, at, cron, nextRunAt: next, updatedAt });
-      return toSchedule({ ...row, title, prompt, kind, at, cron, nextRunAt: next, updatedAt });
+      await this.model.set(SCHEDULE_TABLE, { ...scopeQuery(scope), id }, { title, prompt, delivery, kind, at, cron, nextRunAt: next, updatedAt });
+      return toSchedule({ ...row, title, prompt, delivery, kind, at, cron, nextRunAt: next, updatedAt });
     });
   }
 
@@ -303,6 +306,7 @@ function toSchedule(row: ScheduleRow): Schedule {
     channelId: row.channelId,
     title: row.title,
     prompt: row.prompt,
+    delivery: row.delivery ?? "channel",
     state: row.state,
     nextRunAt: row.nextRunAt,
     lastResult: row.lastResult ?? undefined,

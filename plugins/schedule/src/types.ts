@@ -1,4 +1,5 @@
 export type ScheduleState = "enabled" | "paused" | "cancelled" | "completed";
+export type ScheduleDelivery = "channel" | "silent";
 
 export type ScheduleLastResult = {
   occurrenceAt: string;
@@ -15,6 +16,7 @@ export type Schedule = {
   channelId: string;
   title: string;
   prompt: string;
+  delivery: ScheduleDelivery;
   state: ScheduleState;
   /** Null while the schedule is paused, cancelled, or completed. */
   nextRunAt: string | null;
@@ -23,9 +25,12 @@ export type Schedule = {
   updatedAt: string;
 } & ({ kind: "once"; at: string; cron?: never } | { kind: "cron"; cron: string; at?: never });
 
-export type ScheduleCreateInput = { title: string; prompt: string } & ({ kind: "once"; at: string; cron?: never } | { kind: "cron"; cron: string; at?: never });
+export type ScheduleCreateInput = { title: string; prompt: string; delivery?: ScheduleDelivery } & (
+  | { kind: "once"; at: string; cron?: never }
+  | { kind: "cron"; cron: string; at?: never }
+);
 
-export type ScheduleUpdateInput = { title?: string; prompt?: string } & (
+export type ScheduleUpdateInput = { title?: string; prompt?: string; delivery?: ScheduleDelivery } & (
   | { kind?: "once"; at?: string; cron?: never }
   | { kind?: "cron"; cron?: string; at?: never }
 );
@@ -38,6 +43,7 @@ export type ScheduleUpdateInput = { title?: string; prompt?: string } & (
 export type ScheduleProjection = {
   id: string;
   title: string;
+  delivery: ScheduleDelivery;
   kind: "once" | "cron";
   state: ScheduleState;
   nextRunAt: string | null;
@@ -57,6 +63,7 @@ export type ScheduleRow = {
   channelId: string;
   title: string;
   prompt: string;
+  delivery: ScheduleDelivery;
   kind: "once" | "cron";
   at: string | null;
   cron: string | null;
