@@ -194,7 +194,7 @@ export function parseReply(raw: string, options: ParseReplyOptions = {}): Elemen
 function stripFinalReplyRegions(source: string, tagName: string | undefined): string {
   if (!tagName) return source;
   const matches = [...source.matchAll(new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}\\s*>`, "gi"))];
-  if (matches.length === 0) return source;
+  if (matches.length === 0) return "";
   return matches.map((match) => match[1]).join("\n");
 }
 

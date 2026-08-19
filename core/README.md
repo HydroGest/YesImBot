@@ -92,8 +92,8 @@ splits blank-line prose.
 stations that merge untagged reasoning into message content. When enabled, the
 constitution requires all user-visible output inside `<reply>…</reply>`, and Core
 drops text outside complete wrapper regions before delivery while preserving the
-raw assistant output in history. If no complete wrapper is present, delivery
-falls back to the raw output so normal replies are not silently dropped.
+raw assistant output in history. If no complete wrapper is present, Core drops
+the entire output instead of risking delivery of untagged reasoning.
 
 ## Storage and records
 
