@@ -64,7 +64,11 @@ export type RuntimeResult =
   | { readonly kind: "join"; readonly eventId: string; readonly turnId: string }
   | { readonly kind: "run"; readonly eventId: string; readonly output: AsyncIterable<ChannelOutput>; readonly signal: AbortSignal };
 
-export type PostOptions = { readonly trigger?: boolean; readonly ifBusy?: "defer" | "join" | "reject" };
+export type PostOptions = {
+  readonly trigger?: boolean;
+  readonly ifBusy?: "defer" | "join" | "reject";
+  readonly delivery?: "channel" | "silent";
+};
 
 export interface ChannelRuntimeOptions {
   readonly channel: Channel;

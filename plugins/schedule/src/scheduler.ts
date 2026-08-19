@@ -107,7 +107,7 @@ export class ScheduleScheduler {
   private async runTrigger(row: Schedule, occurrenceAt: string): Promise<void> {
     const event = buildDueEvent(row, occurrenceAt);
     try {
-      await this.ctx.yesimbot.messenger.post(event);
+      await this.ctx.yesimbot.messenger.post(event, { trigger: true, ifBusy: "defer", delivery: row.delivery });
       await this.store.finish(row.id, occurrenceAt, "accepted");
     } catch (cause) {
       const error = cause instanceof Error ? { name: cause.name, message: cause.message } : { name: "Error", message: String(cause) };

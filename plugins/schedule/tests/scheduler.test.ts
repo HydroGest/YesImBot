@@ -195,11 +195,24 @@ describe("ScheduleScheduler", () => {
       schedule: { id: created.id, title: "standup", kind: "once", scheduledFor: T0 },
     });
     expect(event.timestamp).toBe(Date.parse(T0));
+    expect(trigger.mock.calls[0][1]).toEqual({ trigger: true, ifBusy: "defer", delivery: "channel" });
 
     const [updated] = await store.list(sharedScope);
     expect(updated.state).toBe("completed");
     expect(updated.nextRunAt).toBeNull();
     expect(updated.lastResult).toMatchObject({ occurrenceAt: T0, status: "accepted" });
+  });
+
+  it("runs a silent schedule without channel delivery", async () => {
+    vi.setSystemTime(new Date(Date.parse(T0) - 3_600_000));
+    await store.create(sharedScope, { title: "memory maintenance", prompt: "Update memory without replying.", delivery: "silent", kind: "once", at: T0 });
+
+    vi.setSystemTime(new Date(T0));
+    await scheduler.start();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(trigger.mock.calls[0][1]).toEqual({ trigger: true, ifBusy: "defer", delivery: "silent" });
   });
 
   it("submits consecutive cron occurrences without overlap", async () => {

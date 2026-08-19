@@ -64,6 +64,33 @@ describe("Messenger", () => {
     expect(runtime.fail).not.toHaveBeenCalled();
   });
 
+  it("runs a silent active post without delivering its output to the channel", async () => {
+    const ctx = new Context();
+    const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
+    ctx.bots.push(bot as never);
+    const runtime = {
+      context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" },
+      fail: vi.fn(async () => undefined),
+      post: vi.fn(async () => ({
+        kind: "run" as const,
+        eventId: "event-1",
+        output: (async function* () {
+          yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("internal maintenance report")]] };
+        })(),
+        signal: new AbortController().signal,
+      })),
+    };
+    const channels = { resolve: vi.fn(async () => ({ context: runtime.context })) };
+    const runtimes = { get: vi.fn(async () => runtime) };
+    const messenger = new Messenger(ctx, config, channels as never, runtimes as never);
+
+    await messenger.post(event, { trigger: true, ifBusy: "defer", delivery: "silent" });
+
+    expect(runtime.post).toHaveBeenCalledWith(event, { trigger: true, ifBusy: "defer", delivery: "silent" });
+    expect(bot.sendMessage).not.toHaveBeenCalled();
+    expect(runtime.fail).not.toHaveBeenCalled();
+  });
+
   it("keeps the Session live through default translation and resource persistence", async () => {
     const ctx = new Context();
     const bot = { platform: "test", selfId: "bot-1", status: 1, sendMessage: vi.fn(async () => []) };

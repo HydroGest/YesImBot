@@ -68,7 +68,8 @@ export class Messenger {
     if (!bot) throw new Error(`No Bot is available for ${event.platform}:${event.selfId}`);
     const channel = await this.channels.resolve(contextFromRecord(event)!);
     const runtime = await this.runtimes.get(channel, bot);
-    const result = await runtime.post(event, options ?? { trigger: true, ifBusy: "defer" });
+    const postOptions = options ?? { trigger: true, ifBusy: "defer" };
+    const result = await runtime.post(event, postOptions);
     this.logger.debug("messenger.post", {
       eventType: event.eventType,
       platform: event.platform,
@@ -76,7 +77,10 @@ export class Messenger {
       result: result.kind,
       eventId: result.eventId,
     });
-    if (result.kind === "run") await this.track(this.deliverActive(bot, event.channel.id, runtime, result));
+    if (result.kind === "run") {
+      const delivery = postOptions.delivery === "silent" ? this.discardActive(runtime, result) : this.deliverActive(bot, event.channel.id, runtime, result);
+      await this.track(delivery);
+    }
   }
 
   public async stop(): Promise<void> {
@@ -146,6 +150,20 @@ export class Messenger {
         await this.failDelivery(runtime, result, delivery, cause);
       }
     });
+  }
+
+  private async discardActive(runtime: ChannelRuntime, result: RunResult): Promise<void> {
+    const delivery = emptyDeliveryContext(result.eventId);
+    try {
+      for await (const output of result.output) {
+        if (result.signal.aborted) return;
+        delivery.turnId = output.turnId;
+        delivery.messageId = output.messageId;
+        delivery.segmentTotal = output.segments.length;
+      }
+    } catch (cause) {
+      await this.failDelivery(runtime, result, delivery, cause);
+    }
   }
 
   private async *pacedSegments(result: RunResult, delivery: DeliveryContext): AsyncIterable<readonly Element[]> {

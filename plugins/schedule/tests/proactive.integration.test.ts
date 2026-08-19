@@ -233,6 +233,7 @@ describe("Schedule proactive trigger integration", () => {
     expect(fixture.trigger).toHaveBeenCalledTimes(1);
     expect(fixture.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "schedule.due", platform: "test", selfId: "bot-1", channel: { id: "room-1", type: Universal.Channel.Type.TEXT } }),
+      { trigger: true, ifBusy: "defer", delivery: "channel" },
     );
     const event = fixture.trigger.mock.calls[0][0] as EventRecord<"schedule.due">;
     expect(event).toMatchObject({

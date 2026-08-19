@@ -180,6 +180,7 @@ describe("ScheduleStore", () => {
       channelId: "room-1",
       title: "Standup",
       prompt: "Prepare the daily standup.",
+      delivery: "channel",
       kind: "once",
       at: FUTURE,
       state: "enabled",
@@ -187,6 +188,23 @@ describe("ScheduleStore", () => {
     });
     expect(schedule.id).toBeDefined();
     expect(schedule.lastResult).toBeUndefined();
+  });
+
+  it("persists and updates silent delivery without changing the schedule rule", async () => {
+    const created = await store.create(sharedScope, {
+      title: "Memory maintenance",
+      prompt: "Update memory without replying.",
+      delivery: "silent",
+      kind: "once",
+      at: FUTURE,
+    });
+    expect(created.delivery).toBe("silent");
+
+    const updated = await store.update(sharedScope, created.id, { delivery: "channel" });
+    expect(updated.delivery).toBe("channel");
+    expect(updated.kind).toBe("once");
+    expect(updated.at).toBe(FUTURE);
+    expect(updated.nextRunAt).toBe(FUTURE);
   });
 
   it("rejects a cron interval below the 15-minute limit", async () => {
