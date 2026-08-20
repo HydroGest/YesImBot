@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { buildCoreSystemPrompt } from "../src/runtimes/prompt.js";
 
 describe("buildCoreSystemPrompt", () => {
-  it("injects final reply wrapper instructions when enabled", async () => {
+  it("tells the model that text output is never delivered and send_message is the only path", async () => {
     const root = await mkdtemp(join(tmpdir(), "yesimbot-prompt-"));
     try {
       const prompt = await buildCoreSystemPrompt({
@@ -15,28 +15,52 @@ describe("buildCoreSystemPrompt", () => {
         channel: { type: "guild", platform: "test", channelId: "room", guildId: "room" },
         selfId: "bot",
         customInnerThought: false,
-        finalReplyTag: "reply",
       });
 
-      expect(prompt[0].content).toContain("# 最终回复标签");
-      expect(prompt[0].content).toContain("<reply>…</reply>");
+      const constitution = String(prompt[0].content);
+      expect(constitution).toContain("你输出的文本不会被发送到任何地方");
+      expect(constitution).toContain("send_message");
+      expect(constitution).not.toContain("# 最终回复标签");
+      expect(constitution).not.toContain("<reply>");
+      expect(constitution).not.toContain("<message/>");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  it("omits final reply wrapper instructions when disabled", async () => {
+  it("points inner thought at the send_message field instead of an output tag", async () => {
     const root = await mkdtemp(join(tmpdir(), "yesimbot-prompt-"));
     try {
-      const prompt = await buildCoreSystemPrompt({
+      const enabled = await buildCoreSystemPrompt({
+        basePath: root,
+        channel: { type: "guild", platform: "test", channelId: "room", guildId: "room" },
+        selfId: "bot",
+        customInnerThought: true,
+      });
+      const disabled = await buildCoreSystemPrompt({
         basePath: root,
         channel: { type: "guild", platform: "test", channelId: "room", guildId: "room" },
         selfId: "bot",
         customInnerThought: false,
       });
 
-      expect(String(prompt[0].content)).not.toContain("# 最终回复标签");
-      expect(String(prompt[0].content)).not.toContain("<reply>");
+      expect(String(enabled[0].content)).toContain("send_message 的 inner_thought 字段");
+      expect(String(disabled[0].content)).not.toContain("# 内心独白");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("no longer emits a separate message-elements system block", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yesimbot-prompt-"));
+    try {
+      const prompt = await buildCoreSystemPrompt({
+        basePath: root,
+        channel: { type: "guild", platform: "test", channelId: "room", guildId: "room" },
+        selfId: "bot",
+      });
+
+      expect(prompt.map((block) => String(block.content)).some((content) => content.startsWith("# 消息元素"))).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

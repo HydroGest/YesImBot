@@ -10,7 +10,12 @@ import type { AgentStorage } from "./storage.js";
 // eslint-disable-next-line typescript/no-explicit-any
 export type AgentTool<IN = any, OUT = any> = Omit<Tool<IN, OUT>, "execute"> & {
   name: string;
-  terminal?: boolean;
+  /**
+   * Marks the tool as able to end the current turn. `true` always ends it; a predicate decides per
+   * call from the model-generated input. A turn stops only when every tool call in the final step
+   * is terminal.
+   */
+  terminal?: boolean | ((input: IN) => boolean);
   execute: (input: IN, options: AgentToolExecuteContext) => Promise<OUT> | OUT;
 };
 

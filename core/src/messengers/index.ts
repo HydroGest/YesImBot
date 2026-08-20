@@ -1,16 +1,12 @@
-import type { Awaitable, Bot, Context, Element, Logger, Session } from "koishi";
+import type { Awaitable, Context, Logger, Session } from "koishi";
 import { Universal } from "koishi";
 
 import type { Channels } from "../channels/index.js";
-import { type ChannelContext, deriveChannelKey, contextFromSession, contextFromRecord } from "../channels/index.js";
-import type { ChannelAllowRule, Config, PacingConfig } from "../config.js";
+import { type ChannelContext, contextFromSession, contextFromRecord } from "../channels/index.js";
+import type { ChannelAllowRule, Config } from "../config.js";
 import type { EventRecord, MessageRecord, RecordBase } from "../messages/index.js";
 import type { ChannelResources } from "../resources/index.js";
-import type { ChannelRuntime, PostOptions, RuntimeResult, Runtimes } from "../runtimes/index.js";
-
-type RunResult = Extract<RuntimeResult, { readonly kind: "run" }>;
-
-type DeliveryContext = { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number };
+import type { PostOptions, Runtimes } from "../runtimes/index.js";
 
 export interface Translator {
   readonly platform: string;
@@ -22,7 +18,6 @@ export class Messenger {
   private readonly translators = new Map<string, Translator>();
   private readonly sessions = new WeakSet<object>();
   private readonly tasks = new Set<Promise<void>>();
-  private readonly deliveryTails = new Map<string, Promise<void>>();
   private readonly disposers: Array<() => unknown> = [];
   private closed = false;
 
@@ -77,10 +72,7 @@ export class Messenger {
       result: result.kind,
       eventId: result.eventId,
     });
-    if (result.kind === "run") {
-      const delivery = postOptions.delivery === "silent" ? this.discardActive(runtime, result) : this.deliverActive(bot, event.channel.id, runtime, result);
-      await this.track(delivery);
-    }
+    if (result.kind === "run") await this.track(result.done);
   }
 
   public async stop(): Promise<void> {
@@ -124,91 +116,9 @@ export class Messenger {
       const runtime = await this.runtimes.get(channel, bot, session);
       const result = await runtime.handle(record);
       this.logger.debug("messenger.route.result", { routeId, result: result.kind, eventId: result.eventId });
-      if (result.kind === "run") await this.deliverPassive(session, runtime, result);
+      if (result.kind === "run") await result.done;
     } catch (cause) {
       this.warn("messenger.route_failed", cause, session.platform);
-    }
-  }
-
-  private async deliverPassive(session: Session, runtime: ChannelRuntime, result: RunResult): Promise<void> {
-    const delivery = emptyDeliveryContext(result.eventId);
-    await this.serializeDelivery(runtime.context, async () => {
-      try {
-        for await (const segment of this.pacedSegments(result, delivery)) await session.send([...segment]);
-      } catch (cause) {
-        await this.failDelivery(runtime, result, delivery, cause);
-      }
-    });
-  }
-
-  private async deliverActive(bot: Bot, channelId: string, runtime: ChannelRuntime, result: RunResult): Promise<void> {
-    const delivery = emptyDeliveryContext(result.eventId);
-    await this.serializeDelivery(runtime.context, async () => {
-      try {
-        for await (const segment of this.pacedSegments(result, delivery)) await bot.sendMessage(channelId, [...segment]);
-      } catch (cause) {
-        await this.failDelivery(runtime, result, delivery, cause);
-      }
-    });
-  }
-
-  private async discardActive(runtime: ChannelRuntime, result: RunResult): Promise<void> {
-    const delivery = emptyDeliveryContext(result.eventId);
-    try {
-      for await (const output of result.output) {
-        if (result.signal.aborted) return;
-        delivery.turnId = output.turnId;
-        delivery.messageId = output.messageId;
-        delivery.segmentTotal = output.segments.length;
-      }
-    } catch (cause) {
-      await this.failDelivery(runtime, result, delivery, cause);
-    }
-  }
-
-  private async *pacedSegments(result: RunResult, delivery: DeliveryContext): AsyncIterable<readonly Element[]> {
-    let elapsed = 0;
-    for await (const output of result.output) {
-      for (const [index, segment] of output.segments.entries()) {
-        if (result.signal.aborted) return;
-        this.logger.debug("messenger.delivery.segment", {
-          turnId: output.turnId,
-          messageId: output.messageId,
-          segmentIndex: index + 1,
-          segmentTotal: output.segments.length,
-        });
-        const delay = pacedDelay(segment, this.config.pacing, elapsed);
-        const startedAt = Date.now();
-        await sleep(delay, result.signal);
-        elapsed += Math.max(delay, Date.now() - startedAt);
-        if (result.signal.aborted) return;
-        delivery.turnId = output.turnId;
-        delivery.messageId = output.messageId;
-        delivery.segmentIndex = index + 1;
-        delivery.segmentTotal = output.segments.length;
-        yield segment;
-      }
-    }
-  }
-
-  private async failDelivery(runtime: ChannelRuntime, result: RunResult, delivery: DeliveryContext, cause: unknown): Promise<void> {
-    await runtime.fail(result.eventId, cause, delivery);
-    this.warn("delivery.failed", cause, runtime.context.platform);
-  }
-
-  private async serializeDelivery(ctx: ChannelContext, task: () => Promise<void>): Promise<void> {
-    const key = deriveChannelKey(ctx);
-    const previous = this.deliveryTails.get(key) ?? Promise.resolve();
-    const next = previous.then(task, task);
-    const settled = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.deliveryTails.set(key, settled);
-    try {
-      await next;
-    } finally {
-      if (this.deliveryTails.get(key) === settled) this.deliveryTails.delete(key);
     }
   }
 
@@ -262,36 +172,4 @@ async function translateDefault(ctx: Context, session: Session, resources: Chann
     },
   };
   return { ...base, messageId: session.messageId, elements: await resources.persistElements(ctx, session.elements) };
-}
-
-function emptyDeliveryContext(eventId: string): DeliveryContext {
-  return { turnId: "", messageId: eventId, segmentIndex: 0, segmentTotal: 0 };
-}
-
-function pacedDelay(segment: readonly Element[], pacing: PacingConfig, elapsed: number): number {
-  const characters = segment.reduce((total, element) => total + elementTextLength(element), 0);
-  const delay = Math.min(Math.max(250, Math.ceil((characters / pacing.charactersPerSecond) * 1000)), 10_000);
-  return elapsed + delay >= pacing.maxTotalDelayMs ? 250 : Math.round(delay);
-}
-
-function elementTextLength(element: Element): number {
-  return (
-    (typeof element.attrs.content === "string" ? element.attrs.content.length : 0) +
-    element.children.reduce((total, child) => total + elementTextLength(child), 0)
-  );
-}
-
-function sleep(timeout: number, signal: AbortSignal): Promise<void> {
-  const { promise, resolve } = (
-    Promise as PromiseConstructor & { withResolvers<T>(): { promise: Promise<T>; resolve: (value?: T | PromiseLike<T>) => void } }
-  ).withResolvers<void>();
-  let timer: NodeJS.Timeout;
-  const finish = () => {
-    clearTimeout(timer);
-    signal.removeEventListener("abort", finish);
-    resolve();
-  };
-  timer = setTimeout(finish, timeout);
-  signal.addEventListener("abort", finish, { once: true });
-  return promise;
 }

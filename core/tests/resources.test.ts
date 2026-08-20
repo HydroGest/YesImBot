@@ -104,44 +104,134 @@ describe("ChannelResources binary stores", () => {
 });
 
 // ---------------------------------------------------------------------------
-// sendMessage tool
+// send_message tool
 // ---------------------------------------------------------------------------
 
-describe("sendMessage tool", () => {
-  it("rejects sending to the current channel before dispatch", async () => {
+const PACING = { charactersPerSecond: 10_000, maxTotalDelayMs: 1 };
+
+describe("send_message tool", () => {
+  it("documents the tool-only delivery contract and ends the turn unless asked to continue", async () => {
     const resources = await createResources();
     const sendMessage = vi.fn(async () => ["message-1"]);
-    const tool = createSendMessageTool({ sendMessage } as never, "room", resources);
+    const tool = createSendMessageTool({ bot: { sendMessage } as never, channelId: "room", resources, pacing: PACING, innerThought: true });
 
-    expect(tool.description).toContain("当前频道");
+    expect(tool.description).toContain("唯一途径");
     expect(tool.description).toContain("必须检查 ok");
-    expect(tool.description).toContain("元素语法");
-    expect(tool.description).toContain("直接输出文本即可");
-    await expect(tool.execute({ channelId: "room", content: "ignored" }, { toolCallId: "call-1", abortSignal: undefined } as never)).resolves.toMatchObject({
-      ok: false,
-      error: { name: "InvalidChannel" },
-    });
-    expect(sendMessage).not.toHaveBeenCalled();
+    expect(tool.description).toContain("inner_thought");
+    expect(typeof tool.terminal).toBe("function");
+    expect((tool.terminal as (input: unknown) => boolean)({ messages: ["hi"] })).toBe(true);
+    expect((tool.terminal as (input: unknown) => boolean)({ messages: ["hi"], continue: true })).toBe(false);
   });
 
-  it("prepares resource elements and returns every delivered message id", async () => {
+  it("omits the inner_thought field when the monologue protocol is disabled", async () => {
     const resources = await createResources();
-    resources.use(reader("workspace", "workspace 文件引用", async () => ({ bytes: PNG_BYTES, mediaType: "image/png" })));
-    const sent: readonly unknown[][] = [];
-    const sendMessage = vi.fn(async (_channelId: string, elements: readonly unknown[]) => {
-      (sent as unknown[][]).push([...elements]);
-      return sent.length === 1 ? ["message-1"] : [];
+    const tool = createSendMessageTool({
+      bot: { sendMessage: vi.fn(async () => []) } as never,
+      channelId: "room",
+      resources,
+      pacing: PACING,
+      innerThought: false,
     });
-    const tool = createSendMessageTool({ sendMessage } as never, "room", resources);
+
+    expect(tool.description).not.toContain("inner_thought");
+    expect(JSON.stringify(tool.inputSchema)).not.toContain("inner_thought");
+  });
+
+  it("sends to the current channel by default, one platform message per list item", async () => {
+    const resources = await createResources();
+    const sent: unknown[][] = [];
+    const sendMessage = vi.fn(async (channelId: string, elements: readonly unknown[]) => {
+      sent.push([channelId, ...elements]);
+      return [`message-${sent.length}`];
+    });
+    const tool = createSendMessageTool({ bot: { sendMessage } as never, channelId: "room", resources, pacing: PACING, innerThought: false });
 
     await expect(
-      tool.execute({ channelId: "other-room", content: '<message>hello</message><message><img src="workspace:///chart.png"/></message>' }, {
+      tool.execute({ messages: ["先说结论", "再说原因"] }, { toolCallId: "call-1", turnId: "turn-1", abortSignal: undefined } as never),
+    ).resolves.toEqual({ ok: true, messageIds: ["message-1", "message-2"], count: 2 });
+    expect(sent.map((entry) => entry[0])).toEqual(["room", "room"]);
+  });
+
+  it("resolves resource URIs in element mode and reports each delivered id", async () => {
+    const resources = await createResources();
+    resources.use(reader("workspace", "workspace 文件引用", async () => ({ bytes: PNG_BYTES, mediaType: "image/png" })));
+    const sent: unknown[][] = [];
+    const sendMessage = vi.fn(async (_channelId: string, elements: readonly unknown[]) => {
+      sent.push([...elements]);
+      return [`message-${sent.length}`];
+    });
+    const tool = createSendMessageTool({ bot: { sendMessage } as never, channelId: "room", resources, pacing: PACING, innerThought: false });
+
+    await expect(
+      tool.execute({ messages: ["hello", '<img src="workspace:///chart.png"/>'], channel: "other-room" }, {
         toolCallId: "call-1",
+        turnId: "turn-1",
         abortSignal: undefined,
       } as never),
-    ).resolves.toEqual({ ok: true, messageIds: ["message-1"] });
+    ).resolves.toEqual({ ok: true, messageIds: ["message-1", "message-2"], count: 2 });
     expect(sendMessage).toHaveBeenCalledTimes(2);
     expect(sent[1]?.[0]).toMatchObject({ type: "img", attrs: { src: expect.stringContaining("data:image/png;base64,") } });
+  });
+
+  it("delivers raw mode literally without parsing elements", async () => {
+    const resources = await createResources();
+    const sent: unknown[][] = [];
+    const sendMessage = vi.fn(async (_channelId: string, elements: readonly unknown[]) => {
+      sent.push([...elements]);
+      return ["message-1"];
+    });
+    const tool = createSendMessageTool({ bot: { sendMessage } as never, channelId: "room", resources, pacing: PACING, innerThought: false });
+
+    await expect(
+      tool.execute({ messages: ['当 x<10 且 y>5 时 <at id="1"/>'], mode: "raw" }, {
+        toolCallId: "call-1",
+        turnId: "turn-1",
+        abortSignal: undefined,
+      } as never),
+    ).resolves.toMatchObject({ ok: true });
+    expect(sent[0]).toEqual([h.text('当 x<10 且 y>5 时 <at id="1"/>')]);
+  });
+
+  it("stops at the first failure and reports what was already sent", async () => {
+    const resources = await createResources();
+    const failed: unknown[] = [];
+    const sendMessage = vi.fn(async () => {
+      if (sendMessage.mock.calls.length === 2) throw new Error("offline");
+      return ["message-1"];
+    });
+    const tool = createSendMessageTool({
+      bot: { sendMessage } as never,
+      channelId: "room",
+      resources,
+      pacing: PACING,
+      innerThought: false,
+      onFailed: (notice) => failed.push(notice),
+    });
+
+    await expect(tool.execute({ messages: ["一", "二", "三"] }, { toolCallId: "call-1", turnId: "turn-1", abortSignal: undefined } as never)).resolves.toEqual({
+      ok: false,
+      error: { name: "Error", message: "offline" },
+      sent: ["message-1"],
+      failedAt: 1,
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(failed).toEqual([{ channelId: "room", turnId: "turn-1", failedAt: 1, total: 3, error: { name: "Error", message: "offline" } }]);
+  });
+
+  it("reports every delivered message to the owner", async () => {
+    const resources = await createResources();
+    const delivered: unknown[] = [];
+    const tool = createSendMessageTool({
+      bot: { sendMessage: vi.fn(async () => ["message-1"]) } as never,
+      channelId: "room",
+      resources,
+      pacing: PACING,
+      innerThought: false,
+      onDelivered: (notice) => delivered.push(notice),
+    });
+
+    await tool.execute({ messages: ["hi"] }, { toolCallId: "call-1", turnId: "turn-1", abortSignal: undefined } as never);
+    expect(delivered).toEqual([{ channelId: "room", messageId: "message-1", turnId: "turn-1", text: "hi" }]);
   });
 });
 

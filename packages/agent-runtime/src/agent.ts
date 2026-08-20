@@ -593,16 +593,37 @@ export function createAgent(config: AgentConfig): Agent {
   return agent;
 }
 
+/**
+ * Stops the turn when every tool call in the final step is terminal. Tools declaring
+ * `terminal: true` always qualify; predicate tools decide from the model-generated input, so a
+ * single tool can both end the turn and opt into another step. Invalid calls never qualify.
+ */
 // eslint-disable-next-line typescript/no-explicit-any
 function allToolCallsTerminal(tools: AgentToolSet): StopCondition<any> {
-  const terminalNames = new Set(tools.filter((t) => t.terminal).map((t) => t.name));
-  return ({ steps }: { steps: Array<{ toolCalls: Array<{ toolName: string }> }> }) => {
-    if (terminalNames.size === 0) return false;
+  const always = new Set<string>();
+  const predicates = new Map<string, (input: unknown) => boolean>();
+  for (const tool of tools) {
+    if (tool.terminal === true) always.add(tool.name);
+    else if (typeof tool.terminal === "function") predicates.set(tool.name, tool.terminal as (input: unknown) => boolean);
+  }
+  const isTerminal = (call: { toolName: string; input?: unknown; invalid?: boolean }): boolean => {
+    if (call.invalid) return false;
+    if (always.has(call.toolName)) return true;
+    const predicate = predicates.get(call.toolName);
+    if (!predicate) return false;
+    try {
+      return predicate(call.input);
+    } catch {
+      return false;
+    }
+  };
+  return ({ steps }: { steps: Array<{ toolCalls: Array<{ toolName: string; input?: unknown; invalid?: boolean }> }> }) => {
+    if (always.size === 0 && predicates.size === 0) return false;
     const last = steps.at(-1);
     if (!last) return false;
     const calls = last.toolCalls;
     if (calls.length === 0) return false;
-    return calls.every((call) => terminalNames.has(call.toolName));
+    return calls.every(isTerminal);
   };
 }
 

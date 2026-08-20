@@ -45,15 +45,6 @@ export interface DeliveredPayload {
   readonly text: string;
 }
 
-export interface ParseReplyOptions {
-  readonly finalReplyTag?: string;
-}
-
-export interface ParsedReply {
-  readonly segments: Element[][];
-  readonly missingFinalReply: boolean;
-}
-
 declare module "@yesimbot/agent-runtime" {
   interface AgentCustomMessages {
     "yesimbot.event": Event;
@@ -136,11 +127,12 @@ export function formatElements(elements: readonly Element[]): string {
   return elements.map(formatElement).join("");
 }
 
-export function parseReply(raw: string, options: ParseReplyOptions = {}): Element[][] {
-  return parseReplyWithMetadata(raw, options).segments;
-}
-
-export function parseReplyWithMetadata(raw: string, options: ParseReplyOptions = {}): ParsedReply {
+/**
+ * Parses model-authored message content into deliverable segments: `<text>` blocks are kept
+ * verbatim, `<inner_thought>` regions are stripped, and `<message/>` splits the result into one
+ * segment per outgoing message.
+ */
+export function parseReply(raw: string): Element[][] {
   const source = stripInnerThoughtRegions(raw.replaceAll(MARK, ""));
   const nonce = `${MARK}t${Math.random().toString(36).slice(2)}`;
   const captured: string[] = [];
@@ -160,8 +152,6 @@ export function parseReplyWithMetadata(raw: string, options: ParseReplyOptions =
     if (close < 0) break;
     cursor = close + 7;
   }
-  const finalReply = extractFinalReplyRegions(masked, options.finalReplyTag);
-  masked = finalReply.content;
   const restore = (element: Element): Element[] => {
     if (element.type === "inner_thought") return [];
     if (element.type !== "text") return [h(element.type, element.attrs, element.children.flatMap(restore))];
@@ -198,14 +188,7 @@ export function parseReplyWithMetadata(raw: string, options: ParseReplyOptions =
     flush();
     return segments;
   };
-  return { segments: split(h.parse(masked).flatMap(restore)), missingFinalReply: finalReply.missing };
-}
-
-function extractFinalReplyRegions(source: string, tagName: string | undefined): { content: string; missing: boolean } {
-  if (!tagName) return { content: source, missing: false };
-  const matches = [...source.matchAll(new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}\\s*>`, "gi"))];
-  if (matches.length === 0) return { content: "", missing: true };
-  return { content: matches.map((match) => match[1]).join("\n"), missing: false };
+  return split(h.parse(masked).flatMap(restore));
 }
 
 function stripInnerThoughtRegions(source: string): string {

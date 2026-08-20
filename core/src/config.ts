@@ -32,11 +32,10 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description("模型输入与资源读取"),
   Schema.object({
     pacing: Schema.object({
-      charactersPerSecond: Schema.number().min(1).default(8).description("分段回复的发送速度（字符/秒）"),
-      maxTotalDelayMs: Schema.number().min(1).default(60_000).description("单次回复的最大累计延迟（毫秒）"),
-    }).description("分段回复节奏"),
-    customInnerThought: Schema.boolean().default(true).description("在系统提示中加入 Core 自定义 <inner_thought> 内心独白协议"),
-    wrapFinalReply: Schema.boolean().default(false).description("要求模型用 <reply>…</reply> 包裹最终回复；启用后仅发送标签内内容，用于中转站思维链未标记场景"),
+      charactersPerSecond: Schema.number().min(1).default(8).description("send_message 相邻消息之间的发送速度（字符/秒）"),
+      maxTotalDelayMs: Schema.number().min(1).default(60_000).description("单次 send_message 调用的最大累计延迟（毫秒）"),
+    }).description("消息发送节奏"),
+    customInnerThought: Schema.boolean().default(true).description("为 send_message 提供 inner_thought 字段，记录不发送的内心独白"),
   }),
   Schema.object({
     session: Schema.object({
@@ -93,6 +92,5 @@ export interface Config {
   resourceReadTimeout: number;
   pacing: PacingConfig;
   customInnerThought: boolean;
-  wrapFinalReply: boolean;
   session: SessionConfig;
 }

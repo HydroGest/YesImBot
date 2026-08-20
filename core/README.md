@@ -81,21 +81,38 @@ resolved `basePath` with the inline default content only when the file is absent
 user-authored and empty files are never touched. No package prompt resources are
 published or loaded, and there is no constitution version constant.
 
-`customInnerThought` (default `true`) controls whether the Core-owned
-`<inner_thought>` protocol section is included in the constitution.
-Provider-native reasoning parts are preserved by `@yesimbot/agent-runtime`
-either way. Message element syntax documentation is injected as a separate
-system message. `<message/>` is the sole explicit message boundary; Core never
-splits blank-line prose.
+`customInnerThought` (default `true`) controls whether the Core-owned inner
+monologue section is included in the constitution. When enabled, `send_message`
+gains an optional `inner_thought` field; the monologue is a tool argument rather
+than an output format, so the model never has to emit a bare `<inner_thought>`
+block to record a judgement. Provider-native reasoning parts are preserved by
+`@yesimbot/agent-runtime` either way. Message element syntax documentation lives
+in the `send_message` tool description, not in a separate system message.
 
-`wrapFinalReply` (default `false`) adds a final-reply wrapper protocol for relay
-stations that merge untagged reasoning into message content. When enabled, the
-constitution requires all user-visible output inside `<reply>…</reply>`, and Core
-drops text outside complete wrapper regions before delivery while preserving the
-raw assistant output in history. If no complete wrapper is present, Core drops
-the entire output instead of risking delivery of untagged reasoning, then feeds
-a format correction back into the active turn (or persists it for the next turn
-if the turn has already finished).
+## Output and delivery
+
+Model text output is never delivered. It is recorded in history and logged as the
+model's internal working space, which removes the whole class of `保持沉默` /
+`无需回复` literals reaching a channel.
+
+`send_message` is the only path to a platform and owns delivery end to end:
+
+- `messages` is a list; each item becomes one platform message.
+- `channel` defaults to the current channel and may target any other channel.
+- `mode` selects `element` (default, Koishi element parsing plus resource URI
+  resolution) or `raw` (literal text, no parsing or escaping).
+- `continue` (default `false`) decides whether the turn ends. The tool is
+  terminal through a predicate over its own input, so one tool covers both
+  "reply and stop" and "reply and keep working".
+- Adjacent messages are paced by `pacing`; a failure stops the remaining items
+  and returns `{ok:false, error, sent, failedAt}` so the model sees exactly what
+  was delivered.
+
+`finish` ends a turn without sending anything. Because delivery requires an
+explicit tool call, a turn that calls neither tool is simply silent.
+
+Silent scheduled posts (`delivery: "silent"`) block `send_message` for that
+turn, so a background task cannot leak its working notes into the channel.
 
 ## Storage and records
 

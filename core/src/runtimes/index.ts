@@ -196,4 +196,4 @@ function runtimeKey(ctx: ChannelContext): ChannelKey {
   return deriveChannelKey(ctx);
 }
 
-export { type RuntimeResult, type PostOptions, type ChannelOutput, ChannelRuntime } from "./channel.js";
+export { type RuntimeResult, type PostOptions, ChannelRuntime } from "./channel.js";

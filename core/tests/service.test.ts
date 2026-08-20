@@ -22,7 +22,6 @@ const config: Config = {
   resourceReadTimeout: 30,
   pacing: { charactersPerSecond: 8, maxTotalDelayMs: 60_000 },
   customInnerThought: true,
-  wrapFinalReply: false,
   session: { compact: { responseIdleMinutes: 0, minMessages: 20, maxFailures: 3, model: undefined }, archive: { maxKB: 0 } },
 };
 

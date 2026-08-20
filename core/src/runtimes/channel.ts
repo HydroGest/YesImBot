@@ -11,9 +11,16 @@ import {
   type AgentToolSet,
 } from "@yesimbot/agent-runtime";
 import type { AssistantContent, LanguageModel, ToolSet } from "ai";
-import { type Bot, type Context, type Element, type Logger } from "koishi";
+import { Universal, type Bot, type Context, type Logger } from "koishi";
 
-import { createDescribeImageTool, createFinishTool, createReadTool, createSendMessageTool } from "../agents/tools.js";
+import {
+  createDescribeImageTool,
+  createFinishTool,
+  createReadTool,
+  createSendMessageTool,
+  type DeliveredNotice,
+  type SendFailedNotice,
+} from "../agents/tools.js";
 import type { WillEngine, WillState } from "../agents/will.js";
 import { type Channel, type ChannelContext, deriveChannelKey } from "../channels/index.js";
 import type { Config } from "../config.js";
@@ -21,7 +28,6 @@ import {
   createEvent,
   createMessage,
   formatInput,
-  parseReplyWithMetadata,
   isEvent,
   isMessage,
   isMessageRecord,
@@ -30,9 +36,7 @@ import {
   type Message,
   type MessageRecord,
 } from "../messages/index.js";
-import { prepareOutputSegments } from "../resources/index.js";
-import { OutputQueue } from "./output.js";
-import { buildCoreSystemPrompt, FINAL_REPLY_TAG, readPersona } from "./prompt.js";
+import { buildCoreSystemPrompt, readPersona } from "./prompt.js";
 
 const MODEL_INPUT_PLUGIN: AgentPlugin = {
   name: "core.model-input",
@@ -57,12 +61,11 @@ const COMPACT_HISTORY_PLUGIN: AgentPlugin = {
   },
 };
 
-export type ChannelOutput = { readonly turnId: string; readonly messageId: string; readonly segments: readonly Element[][] };
-
 export type RuntimeResult =
   | { readonly kind: "wait"; readonly eventId: string }
   | { readonly kind: "join"; readonly eventId: string; readonly turnId: string }
-  | { readonly kind: "run"; readonly eventId: string; readonly output: AsyncIterable<ChannelOutput>; readonly signal: AbortSignal };
+  /** `done` settles when the turn finishes; delivery already happened inside `send_message`. */
+  | { readonly kind: "run"; readonly eventId: string; readonly done: Promise<void> };
 
 export type PostOptions = {
   readonly trigger?: boolean;
@@ -93,11 +96,12 @@ export class ChannelRuntime {
   private readonly logger: Logger;
   private tail: Promise<void> = Promise.resolve();
   private readonly streams = new Set<Promise<void>>();
-  private readonly controllers = new Set<AbortController>();
   private stopped = false;
   private stopTask: Promise<void> | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
   private responseCompactionPending = false;
+  /** Turns started by a silent post; `send_message` is blocked for them. */
+  private readonly silentTurns = new Set<string>();
 
   private persona = "";
 
@@ -110,7 +114,15 @@ export class ChannelRuntime {
     this.logger = ctx.logger("yesimbot/channel-runtime");
     this.logger.level = options.config.logLevel ?? 2;
     const tools: AgentToolSet = [
-      createSendMessageTool(options.bot, this.context.channelId, options.channel.resources),
+      createSendMessageTool({
+        bot: options.bot,
+        channelId: this.context.channelId,
+        resources: options.channel.resources,
+        pacing: options.config.pacing,
+        innerThought: options.config.customInnerThought,
+        onDelivered: (notice) => this.announceDelivered(notice),
+        onFailed: (notice) => this.announceSendFailed(notice),
+      }),
       createReadTool(options.channel.resources, options.imageOutputSupported),
       createFinishTool(),
     ];
@@ -127,12 +139,11 @@ export class ChannelRuntime {
           channel: this.context,
           selfId: this.selfId,
           customInnerThought: options.config.customInnerThought,
-          finalReplyTag: options.config.wrapFinalReply ? FINAL_REPLY_TAG : undefined,
           logger: this.logger,
         }),
       tools,
       providerTools: options.providerTools,
-      plugins: [COMPACT_HISTORY_PLUGIN, MODEL_INPUT_PLUGIN, ...options.plugins],
+      plugins: [COMPACT_HISTORY_PLUGIN, MODEL_INPUT_PLUGIN, this.silentTurnPlugin(), ...options.plugins],
     });
   }
 
@@ -173,31 +184,10 @@ export class ChannelRuntime {
       if (trigger && ifBusy === "reject" && this.agent.getActiveTurnId() !== null) throw new AgentBusyError();
       const input = await this.persist(event);
       await this.archiveIfOversize();
-      const result = !trigger ? { kind: "wait" as const, eventId: input.id } : this.start(input, false, ifBusy);
-      this.logger.debug("runtime.post", { eventId: input.id, eventType: event.eventType, trigger, ifBusy, result: result.kind });
+      const silent = options.delivery === "silent";
+      const result = !trigger ? { kind: "wait" as const, eventId: input.id } : this.start(input, false, ifBusy, silent);
+      this.logger.debug("runtime.post", { eventId: input.id, eventType: event.eventType, trigger, ifBusy, silent, result: result.kind });
       return result;
-    });
-  }
-
-  public fail(eventId: string, cause: unknown, delivery?: { turnId: string; messageId: string; segmentIndex: number; segmentTotal: number }): Promise<void> {
-    return this.schedule(async () => {
-      const input = createEvent({
-        eventType: "delivery.failed",
-        platform: this.context.platform,
-        selfId: this.selfId,
-        channel: { id: this.context.channelId, type: this.context.type === "direct" ? 1 : 0 },
-        timestamp: Date.now(),
-        text: "delivery failed",
-        delivery: {
-          turnId: delivery?.turnId ?? "",
-          messageId: delivery?.messageId ?? eventId,
-          segmentIndex: delivery?.segmentIndex ?? 0,
-          segmentTotal: delivery?.segmentTotal ?? 0,
-          error: { name: cause instanceof Error ? cause.name : "Error", message: cause instanceof Error ? cause.message : String(cause) },
-        },
-      });
-      await this.agent.append(input);
-      this.ctx.emit("yesimbot/event", input);
     });
   }
 
@@ -221,7 +211,6 @@ export class ChannelRuntime {
     if (this.stopTask) return this.stopTask;
     this.stopped = true;
     this.clearIdleTimer();
-    for (const controller of this.controllers) controller.abort();
     this.stopTask = this.schedule(async () => {
       await this.agent.interrupt("stop");
       await this.agent.stop();
@@ -243,39 +232,66 @@ export class ChannelRuntime {
     return input;
   }
 
-  private start(input: Message | Event, passive: boolean, ifBusy: "defer" | "join" | "reject"): RuntimeResult {
+  private announceDelivered(notice: DeliveredNotice): void {
+    if (notice.channelId !== this.context.channelId) return;
+    this.ctx.emit("yesimbot/delivered", {
+      platform: this.context.platform,
+      selfId: this.selfId,
+      channel: { id: this.context.channelId, type: this.channelType() },
+      messageId: notice.messageId,
+      turnId: notice.turnId,
+      text: notice.text,
+    });
+  }
+
+  /** Surfaces send failures to operators; the model already received them as the tool result. */
+  private announceSendFailed(notice: SendFailedNotice): void {
+    this.ctx.emit(
+      "yesimbot/event",
+      createEvent({
+        eventType: "delivery.failed",
+        platform: this.context.platform,
+        selfId: this.selfId,
+        channel: { id: notice.channelId, type: this.channelType() },
+        timestamp: Date.now(),
+        text: "delivery failed",
+        delivery: {
+          turnId: notice.turnId,
+          messageId: "",
+          segmentIndex: notice.failedAt + 1,
+          segmentTotal: notice.total,
+          error: notice.error,
+        },
+      }),
+    );
+  }
+
+  private channelType(): Universal.Channel["type"] {
+    return this.context.type === "direct" ? Universal.Channel.Type.DIRECT : Universal.Channel.Type.TEXT;
+  }
+
+  private start(input: Message | Event, passive: boolean, ifBusy: "defer" | "join" | "reject", silent = false): RuntimeResult {
     const activeTurnId = this.agent.getActiveTurnId();
     if (ifBusy === "join" && activeTurnId !== null) {
       this.agent.send(input, { ifBusy: "join" });
       return { kind: "join", eventId: input.id, turnId: activeTurnId };
     }
-    const controller = new AbortController();
-    const queue = new OutputQueue<ChannelOutput>();
-    const task = this.consume(this.agent.run(input, { ifBusy: ifBusy === "join" ? "defer" : ifBusy }), queue, controller, passive);
-    this.controllers.add(controller);
+    const task = this.consume(this.agent.run(input, { ifBusy: ifBusy === "join" ? "defer" : ifBusy }), passive, silent);
     this.streams.add(task);
-    void task.finally(() => {
-      this.controllers.delete(controller);
-      this.streams.delete(task);
-    });
-    return { kind: "run", eventId: input.id, output: queue, signal: controller.signal };
+    void task.finally(() => this.streams.delete(task));
+    return { kind: "run", eventId: input.id, done: task };
   }
 
-  private async consume(
-    stream: AsyncIterable<AgentInternalEvent>,
-    output: OutputQueue<ChannelOutput>,
-    controller: AbortController,
-    passive: boolean,
-  ): Promise<void> {
-    let assistant = false;
+  private async consume(stream: AsyncIterable<AgentInternalEvent>, passive: boolean, silent: boolean): Promise<void> {
+    let delivered = false;
     let completed = false;
-    let finalReplyFeedbackInjected = false;
     let turnId = "";
     try {
       for await (const event of stream) {
         if (event.type === "turn.start") {
           turnId = event.turnId;
-          this.logger.debug("runtime.turn.start", { turnId: event.turnId });
+          if (silent) this.silentTurns.add(event.turnId);
+          this.logger.debug("runtime.turn.start", { turnId: event.turnId, silent });
           continue;
         }
         if (event.type === "turn.step") {
@@ -297,6 +313,7 @@ export class ChannelRuntime {
           continue;
         }
         if (event.type === "tool.done") {
+          if (event.toolName === "send_message" && (event.result as { ok?: boolean } | undefined)?.ok === true) delivered = true;
           this.logger.debug("runtime.tool.done", { turnId: event.turnId, toolName: event.toolName, toolCallId: event.toolCallId });
           continue;
         }
@@ -306,51 +323,29 @@ export class ChannelRuntime {
         }
         if (event.type === "message.appended" && "turnId" in event && event.message.role === "assistant") {
           turnId = event.turnId;
+          // Model text is internal reasoning space: it is recorded and logged, never delivered.
           const content = renderAssistantText(event.message.content);
           if (content !== undefined) {
-            const finalReplyTag = this.options.config.wrapFinalReply ? FINAL_REPLY_TAG : undefined;
-            const parsed = parseReplyWithMetadata(content, { finalReplyTag });
-            if (parsed.missingFinalReply && !finalReplyFeedbackInjected) {
-              finalReplyFeedbackInjected = true;
-              try {
-                const feedback = createSystemMessage(
-                  `上一轮的回复因未使用必需的 <${FINAL_REPLY_TAG}>…</${FINAL_REPLY_TAG}> 格式而被拦截。下一轮如需向用户发送内容，必须将完整的最终回复放在且仅放在一个 <${FINAL_REPLY_TAG}>…</${FINAL_REPLY_TAG}> 中；内部思考和工具调用不要放入标签。`,
-                );
-                if (this.agent.getActiveTurnId() === event.turnId) this.agent.send(feedback, { ifBusy: "join" });
-                else await this.agent.append(feedback);
-                this.logger.debug("runtime.output.final_reply_feedback", { turnId, messageId: event.message.id });
-              } catch (cause) {
-                this.logger.warn("runtime.output.final_reply_feedback_failed", { turnId, messageId: event.message.id, cause });
-              }
-            }
-            const segments = await prepareOutputSegments(
-              parsed.segments,
-              this.options.channel.resources,
-              controller.signal,
-            );
-            if (segments.length) {
-              this.logger.debug("runtime.output.segments", { turnId, messageId: event.message.id, segmentCount: segments.length });
-              output.push({ turnId, messageId: event.message.id, segments });
-              assistant = true;
-            }
+            this.logger.debug("runtime.output.text", { turnId, messageId: event.message.id, text: content.slice(0, 2000) });
           }
+          continue;
         }
         if (event.type === "turn.failed") {
           this.logger.warn("runtime.turn.failed", { turnId: event.turnId, error: event.error.message });
-          throw new Error(event.error.message);
+          return;
         }
         if (event.type === "turn.aborted") {
           this.logger.warn("runtime.turn.aborted", { turnId: event.turnId, reason: event.reason });
-          throw new Error("Agent turn aborted");
+          return;
         }
       }
       completed = true;
-      if (passive && completed) await this.options.will.observe?.({ turnId, status: "done", messages: [] });
-      output.close();
+      if (passive) await this.options.will.observe?.({ turnId, status: "done", messages: [] });
     } catch (cause) {
-      output.close(cause);
+      this.logger.warn("runtime.turn.consume_failed", { turnId, cause });
     } finally {
-      if (completed && assistant) {
+      if (turnId) this.silentTurns.delete(turnId);
+      if (completed && delivered) {
         this.responseCompactionPending = false;
         this.resetIdleTimer();
       } else if (this.responseCompactionPending && this.agent.getActiveTurnId() === null) {
@@ -414,6 +409,17 @@ export class ChannelRuntime {
       clearTimeout(this.idleTimer);
       this.idleTimer = undefined;
     }
+  }
+
+  /** Silent posts must not reach the channel, so `send_message` is refused for their turns. */
+  private silentTurnPlugin(): AgentPlugin {
+    return {
+      name: "core.silent-turn",
+      beforeToolCall: (call, context) =>
+        call.toolName === "send_message" && this.silentTurns.has(context.turnId)
+          ? { type: "block", reason: "本轮是静默后台任务，不能向频道发送消息。完成任务后调用 finish 结束本轮。" }
+          : { type: "allow" },
+    };
   }
 }
 

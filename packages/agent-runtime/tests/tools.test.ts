@@ -104,7 +104,7 @@ function createSingleToolCallModel() {
   } as unknown as LanguageModelV3 & { observedPrompts: LanguageModelV3CallOptions["prompt"][]; observedToolNames: string[][] };
 }
 
-function createFinalizeToolLoopModel() {
+function createFinalizeToolLoopModel(input = "{}") {
   const stopReason = "stop" as unknown as LanguageModelV3FinishReason;
   const toolCallsReason = "tool-calls" as unknown as LanguageModelV3FinishReason;
   let callCount = 0;
@@ -145,9 +145,9 @@ function createFinalizeToolLoopModel() {
           start(controller) {
             controller.enqueue({ type: "stream-start", warnings: [] });
             controller.enqueue({ type: "tool-input-start", id: "call_finalize", toolName: "finalize" });
-            controller.enqueue({ type: "tool-input-delta", id: "call_finalize", delta: "{}" });
+            controller.enqueue({ type: "tool-input-delta", id: "call_finalize", delta: input });
             controller.enqueue({ type: "tool-input-end", id: "call_finalize" });
-            controller.enqueue({ type: "tool-call", toolCallId: "call_finalize", toolName: "finalize", input: "{}" });
+            controller.enqueue({ type: "tool-call", toolCallId: "call_finalize", toolName: "finalize", input });
             controller.enqueue({
               type: "finish",
               finishReason: toolCallsReason,
@@ -237,6 +237,46 @@ describe("tools", () => {
     expect(model.observedPrompts).toHaveLength(1);
     expect(agent.isIdle()).toBe(true);
     expect(onTurnFinish).toHaveBeenCalledWith(expect.objectContaining({ status: "done" }), expect.any(Object));
+  });
+
+  it("stops the turn when a predicate terminal tool decides from its input", async () => {
+    const model = createFinalizeToolLoopModel('{"continue":false}');
+    const agent = createAgent({
+      model,
+      tools: [
+        {
+          name: "finalize",
+          terminal: (input: { continue?: boolean }) => !input.continue,
+          inputSchema: z.object({ continue: z.boolean().optional() }),
+          execute: async () => ({ ok: true }),
+        },
+      ],
+    });
+
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    expect(model.observedPrompts).toHaveLength(1);
+  });
+
+  it("continues the turn when a predicate terminal tool opts into another step", async () => {
+    const model = createFinalizeToolLoopModel('{"continue":true}');
+    const agent = createAgent({
+      model,
+      tools: [
+        {
+          name: "finalize",
+          terminal: (input: { continue?: boolean }) => !input.continue,
+          inputSchema: z.object({ continue: z.boolean().optional() }),
+          execute: async () => ({ ok: true }),
+        },
+      ],
+    });
+
+    agent.send(createUserMessage("hello"));
+    await agent.wait();
+
+    expect(model.observedPrompts).toHaveLength(2);
   });
 
   it("caps the tool loop at the configured maxSteps", async () => {

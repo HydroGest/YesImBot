@@ -45,7 +45,6 @@ const config: Config = {
   resourceReadTimeout: 1,
   pacing: { charactersPerSecond: 1, maxTotalDelayMs: 1 },
   customInnerThought: true,
-  wrapFinalReply: false,
   session: { compact: { responseIdleMinutes: 0, minMessages: 1, maxFailures: 1, model: undefined }, archive: { maxKB: 0 } },
 };
 
@@ -63,13 +62,17 @@ const event = {
 // ChannelRuntime scheduling
 // ---------------------------------------------------------------------------
 
-async function runtime(providerTools?: ToolSet, configOverrides: Partial<Config> = {}) {
+async function runtime(
+  providerTools?: ToolSet,
+  configOverrides: Partial<Config> = {},
+  bot: { selfId: string; sendMessage: unknown } = { selfId: "bot", sendMessage: vi.fn() },
+) {
   const root = await mkdtemp(join(tmpdir(), "yesimbot-runtime-"));
   const channel = new Channel({ type: "guild", platform: "test", channelId: "room", guildId: "room" }, root);
   await channel.conversation.init();
   const value = new ChannelRuntime(new Context(), {
     channel,
-    bot: { selfId: "bot", sendMessage: vi.fn() } as never,
+    bot: bot as never,
     will: { decide: state.decide, observe: state.observe } as never,
     model: {} as never,
     imageOutputSupported: false,
@@ -157,21 +160,21 @@ describe("ChannelRuntime scheduling", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
-  it("runs an active post through one filtered output stream without Will", async () => {
+  it("runs an active post without delivering the model text output", async () => {
     state.run.mockReturnValue(
       (async function* () {
-        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "reply" } };
+        yield { type: "turn.start", turnId: "turn-1" };
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "内部规划，不应发送" } };
+        yield { type: "turn.done", turnId: "turn-1" };
       })(),
     );
-    const { value, root } = await runtime();
+    const bot = { selfId: "bot", sendMessage: vi.fn() };
+    const { value, root } = await runtime(undefined, {}, bot);
     try {
       const result = await value.post(event);
       expect(result.kind).toBe("run");
-      if (result.kind === "run") {
-        await expect(Array.fromAsync(result.output)).resolves.toEqual([
-          { turnId: "turn-1", messageId: "message-1", segments: [[expect.objectContaining({ type: "text", attrs: { content: "reply" } })]] },
-        ]);
-      }
+      if (result.kind === "run") await result.done;
+      expect(bot.sendMessage).not.toHaveBeenCalled();
       expect(state.send).not.toHaveBeenCalled();
       expect(state.decide).not.toHaveBeenCalled();
       expect(state.run).toHaveBeenCalledOnce();
@@ -181,48 +184,73 @@ describe("ChannelRuntime scheduling", () => {
     }
   });
 
-  it("re-prompts the active turn once after discarding unwrapped replies", async () => {
-    state.run.mockReturnValue(
-      (async function* () {
-        state.active = "turn-1";
-        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "internal planning" } };
-        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-2", content: "still unwrapped" } };
-        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-3", content: "<reply>corrected reply</reply>" } };
-        state.active = null;
-      })(),
-    );
-    const { value, root } = await runtime(undefined, { wrapFinalReply: true });
+  it("exposes send_message and finish with the expected turn-ending semantics", async () => {
+    const { value, root } = await runtime();
     try {
-      const result = await value.post(event);
-      expect(result.kind).toBe("run");
-      if (result.kind === "run") {
-        await expect(Array.fromAsync(result.output)).resolves.toEqual([
-          { turnId: "turn-1", messageId: "message-3", segments: [[expect.objectContaining({ type: "text", attrs: { content: "corrected reply" } })]] },
-        ]);
-      }
-      expect(state.send).toHaveBeenCalledOnce();
-      expect(state.send).toHaveBeenCalledWith(
-        expect.objectContaining({ role: "system", content: expect.stringMatching(/下一轮.*<reply>.*<\/reply>/s) }),
-        { ifBusy: "join" },
-      );
+      const tools = vi.mocked(createAgent).mock.calls.at(-1)?.[0].tools ?? [];
+      const send = tools.find((tool) => tool.name === "send_message");
+      const finish = tools.find((tool) => tool.name === "finish");
+      expect(typeof send?.terminal).toBe("function");
+      expect(finish?.terminal).toBe(true);
     } finally {
       await value.stop();
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  it("runs passive trigger and observes only after the output stream ends", async () => {
+  it("blocks send_message for a silent post and allows it otherwise", async () => {
+    let blockedDuringTurn: unknown;
+    let allowedAfterTurn: unknown;
+    const plugin = () =>
+      vi
+        .mocked(createAgent)
+        .mock.calls.at(-1)?.[0]
+        .plugins?.find((item) => item.name === "core.silent-turn");
+    state.run.mockImplementation(() =>
+      (async function* () {
+        yield { type: "turn.start", turnId: "turn-1" };
+        blockedDuringTurn = await plugin()?.beforeToolCall?.(
+          { toolCallId: "c1", toolName: "send_message", args: {} } as never,
+          {
+            turnId: "turn-1",
+          } as never,
+        );
+        yield { type: "turn.done", turnId: "turn-1" };
+      })(),
+    );
+    const { value, root } = await runtime();
+    try {
+      const result = await value.post(event, { delivery: "silent" });
+      if (result.kind === "run") await result.done;
+      allowedAfterTurn = await plugin()?.beforeToolCall?.(
+        { toolCallId: "c2", toolName: "send_message", args: {} } as never,
+        {
+          turnId: "turn-1",
+        } as never,
+      );
+
+      expect(blockedDuringTurn).toMatchObject({ type: "block" });
+      expect(allowedAfterTurn).toEqual({ type: "allow" });
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("runs passive trigger and observes only after the turn ends", async () => {
     state.decide.mockResolvedValue("trigger");
     state.run.mockReturnValue(
       (async function* () {
+        yield { type: "turn.start", turnId: "turn-1" };
         yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "reply" } };
+        yield { type: "turn.done", turnId: "turn-1" };
       })(),
     );
     const { value, root } = await runtime();
     try {
       const result = await value.handle(event);
       expect(result.kind).toBe("run");
-      if (result.kind === "run") await Array.fromAsync(result.output);
+      if (result.kind === "run") await result.done;
       expect(state.decide).toHaveBeenCalledOnce();
       expect(state.observe).toHaveBeenCalledWith(expect.objectContaining({ turnId: "turn-1", status: "done" }));
     } finally {
@@ -231,7 +259,7 @@ describe("ChannelRuntime scheduling", () => {
     }
   });
 
-  it("observes a passive silent turn after the stream ends", async () => {
+  it("observes a passive turn that ends without any tool call", async () => {
     state.decide.mockResolvedValue("trigger");
     state.run.mockReturnValue(
       (async function* () {
@@ -243,26 +271,8 @@ describe("ChannelRuntime scheduling", () => {
     try {
       const result = await value.handle(event);
       expect(result.kind).toBe("run");
-      if (result.kind === "run") await Array.fromAsync(result.output);
+      if (result.kind === "run") await result.done;
       expect(state.observe).toHaveBeenCalledWith(expect.objectContaining({ turnId: "turn-1", status: "done" }));
-    } finally {
-      await value.stop();
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("records delivery failure through the same Runtime FIFO", async () => {
-    const { value, root } = await runtime();
-    try {
-      await value.fail("event-1", new Error("offline"), { turnId: "turn-1", messageId: "assistant-1", segmentIndex: 2, segmentTotal: 3 });
-      expect(state.append).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            eventType: "delivery.failed",
-            delivery: expect.objectContaining({ turnId: "turn-1", messageId: "assistant-1", segmentIndex: 2, segmentTotal: 3 }),
-          }),
-        }),
-      );
     } finally {
       await value.stop();
       await rm(root, { recursive: true, force: true });
@@ -336,9 +346,13 @@ async function createResponseRuntime(archiveMaxBytes = 0) {
   return { value, channel, root };
 }
 
+/** A turn that actually delivered: response-idle compaction keys off a successful send_message. */
 function completedReply() {
   return (async function* () {
+    yield { type: "turn.start", turnId: "turn-1" };
     yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "reply" } };
+    yield { type: "tool.done", turnId: "turn-1", toolName: "send_message", toolCallId: "call-1", result: { ok: true, messageIds: ["m1"], count: 1 } };
+    yield { type: "turn.done", turnId: "turn-1" };
   })();
 }
 
@@ -382,7 +396,7 @@ describe("ChannelRuntime response-idle compaction", () => {
     const compact = vi.spyOn(channel.conversation, "compact").mockResolvedValue({ compacted: false });
     try {
       const result = await value.post(event);
-      if (result.kind === "run") await Array.fromAsync(result.output);
+      if (result.kind === "run") await result.done;
       await vi.advanceTimersByTimeAsync(10);
       expect(compact).toHaveBeenCalledWith("idle", expect.anything());
     } finally {
@@ -397,7 +411,7 @@ describe("ChannelRuntime response-idle compaction", () => {
     const compact = vi.spyOn(channel.conversation, "compact").mockResolvedValue({ compacted: false });
     try {
       const result = await value.post(event);
-      if (result.kind === "run") await Array.fromAsync(result.output);
+      if (result.kind === "run") await result.done;
       await vi.advanceTimersByTimeAsync(5);
       await value.post({ ...event, timestamp: 2 }, { trigger: false });
       await vi.advanceTimersByTimeAsync(5);
@@ -414,7 +428,7 @@ describe("ChannelRuntime response-idle compaction", () => {
     const compact = vi.spyOn(channel.conversation, "compact").mockResolvedValue({ compacted: false });
     try {
       const result = await value.post(event);
-      if (result.kind === "run") await Array.fromAsync(result.output);
+      if (result.kind === "run") await result.done;
       await value.stop();
       await vi.advanceTimersByTimeAsync(20);
       expect(compact).not.toHaveBeenCalled();

@@ -18,7 +18,6 @@ const config: Config = {
   resourceReadTimeout: 30,
   pacing: { charactersPerSecond: 100_000, maxTotalDelayMs: 60_000 },
   customInnerThought: true,
-  wrapFinalReply: false,
   session: { compact: { responseIdleMinutes: 0, minMessages: 20, maxFailures: 3, model: undefined }, archive: { maxKB: 0 } },
 };
 
@@ -33,24 +32,23 @@ const event: EventRecord<"delivery.failed"> = {
 };
 
 describe("Messenger", () => {
-  it("routes an active post through its matching Bot and producing Runtime", async () => {
+  it("routes an active post through its matching Bot and awaits the producing Runtime turn", async () => {
     const ctx = new Context();
     const exact = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
     const decoy = { platform: "test", selfId: "bot-2", sendMessage: vi.fn(async () => []) };
     ctx.bots.push(decoy as never, exact as never);
+    let settled = false;
     const runtime = {
       context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" },
-      fail: vi.fn(async () => undefined),
       post: vi.fn(async () => ({
         kind: "run" as const,
         eventId: "event-1",
-        output: (async function* () {
-          yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("reply")]] };
-        })(),
-        signal: new AbortController().signal,
+        done: Promise.resolve().then(() => {
+          settled = true;
+        }),
       })),
     };
-    const channels = { resolve: vi.fn(async () => ({ context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" } })) };
+    const channels = { resolve: vi.fn(async () => ({ context: runtime.context })) };
     const runtimes = { get: vi.fn(async () => runtime) };
 
     const messenger = new Messenger(ctx, config, channels as never, runtimes as never);
@@ -59,26 +57,19 @@ describe("Messenger", () => {
 
     expect(runtimes.get).toHaveBeenCalledWith(expect.anything(), exact);
     expect(runtime.post).toHaveBeenCalledWith(event, { trigger: true, ifBusy: "defer" });
-    expect(exact.sendMessage).toHaveBeenCalledWith("room-1", [h.text("reply")]);
+    expect(settled).toBe(true);
+    // Delivery now belongs to send_message inside the turn, so Messenger never touches the Bot.
+    expect(exact.sendMessage).not.toHaveBeenCalled();
     expect(decoy.sendMessage).not.toHaveBeenCalled();
-    expect(runtime.fail).not.toHaveBeenCalled();
   });
 
-  it("runs a silent active post without delivering its output to the channel", async () => {
+  it("forwards the silent delivery intent to the Runtime that enforces it", async () => {
     const ctx = new Context();
     const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
     ctx.bots.push(bot as never);
     const runtime = {
       context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" },
-      fail: vi.fn(async () => undefined),
-      post: vi.fn(async () => ({
-        kind: "run" as const,
-        eventId: "event-1",
-        output: (async function* () {
-          yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("internal maintenance report")]] };
-        })(),
-        signal: new AbortController().signal,
-      })),
+      post: vi.fn(async () => ({ kind: "run" as const, eventId: "event-1", done: Promise.resolve() })),
     };
     const channels = { resolve: vi.fn(async () => ({ context: runtime.context })) };
     const runtimes = { get: vi.fn(async () => runtime) };
@@ -88,7 +79,6 @@ describe("Messenger", () => {
 
     expect(runtime.post).toHaveBeenCalledWith(event, { trigger: true, ifBusy: "defer", delivery: "silent" });
     expect(bot.sendMessage).not.toHaveBeenCalled();
-    expect(runtime.fail).not.toHaveBeenCalled();
   });
 
   it("keeps the Session live through default translation and resource persistence", async () => {
@@ -140,71 +130,6 @@ describe("Messenger", () => {
     expect(resources.persistElements).toHaveBeenCalledOnce();
     expect(runtime.handle).toHaveBeenCalledWith(expect.objectContaining({ elements: [h("img", { id: "0123456789abcdef0123456789abcdef" })] }));
     expect(runtimes.get).toHaveBeenCalledWith(channel, bot, session);
-  });
-
-  it("feeds an active delivery rejection back to its producing Runtime", async () => {
-    const ctx = new Context();
-    const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => Promise.reject(new Error("offline"))) };
-    ctx.bots.push(bot as never);
-    const runtime = {
-      context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" },
-      fail: vi.fn(async () => undefined),
-      post: vi.fn(async () => ({
-        kind: "run" as const,
-        eventId: "event-1",
-        output: (async function* () {
-          yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("reply")]] };
-        })(),
-        signal: new AbortController().signal,
-      })),
-    };
-    const channels = { resolve: vi.fn(async () => ({ context: runtime.context })) };
-    const runtimes = { get: vi.fn(async () => runtime) };
-    const messenger = new Messenger(ctx, { ...config, pacing: { charactersPerSecond: 8, maxTotalDelayMs: 1 } }, channels as never, runtimes as never);
-
-    await messenger.post(event);
-
-    expect(bot.sendMessage).toHaveBeenCalledOnce();
-    expect(runtime.fail).toHaveBeenCalledWith("event-1", expect.objectContaining({ message: "offline" }), {
-      turnId: "turn-1",
-      messageId: "assistant-1",
-      segmentIndex: 1,
-      segmentTotal: 1,
-    });
-  });
-  it("does not deliver a segment aborted during pacing delay", async () => {
-    vi.useFakeTimers();
-    try {
-      const ctx = new Context();
-      const controller = new AbortController();
-      const bot = { platform: "test", selfId: "bot-1", sendMessage: vi.fn(async () => []) };
-      ctx.bots.push(bot as never);
-      const runtime = {
-        context: { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" },
-        fail: vi.fn(async () => undefined),
-        post: vi.fn(async () => ({
-          kind: "run" as const,
-          eventId: "event-1",
-          output: (async function* () {
-            yield { turnId: "turn-1", messageId: "assistant-1", segments: [[h.text("reply")]] };
-          })(),
-          signal: controller.signal,
-        })),
-      };
-      const channels = { resolve: vi.fn(async () => ({ context: runtime.context })) };
-      const runtimes = { get: vi.fn(async () => runtime) };
-      const messenger = new Messenger(ctx, { ...config, pacing: { charactersPerSecond: 1, maxTotalDelayMs: 1_000 } }, channels as never, runtimes as never);
-
-      const pending = messenger.post(event);
-      for (let attempt = 0; attempt < 10 && vi.getTimerCount() === 0; attempt += 1) await Promise.resolve();
-      expect(vi.getTimerCount()).toBeGreaterThan(0);
-      controller.abort();
-      await vi.runAllTimersAsync();
-      await expect(pending).resolves.toBeUndefined();
-      expect(bot.sendMessage).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("rejects an active post without a matching Bot before Runtime creation", async () => {
