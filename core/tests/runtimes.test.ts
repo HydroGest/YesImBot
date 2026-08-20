@@ -3,12 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@koishijs/core";
-import type { ToolSet } from "ai";
+import { generateText, type ToolSet } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ active: null as string | null, append: vi.fn(), send: vi.fn(), run: vi.fn(), decide: vi.fn(), observe: vi.fn() }));
 
 vi.mock("koishi", async () => import("@koishijs/core"));
+vi.mock("ai", async (original) => {
+  const actual = await original<typeof import("ai")>();
+  return { ...actual, generateText: vi.fn() };
+});
 vi.mock("@yesimbot/agent-runtime", async (original) => {
   const actual = await original<typeof import("@yesimbot/agent-runtime")>();
   return {
@@ -90,6 +94,7 @@ describe("ChannelRuntime scheduling", () => {
     state.run.mockReset().mockReturnValue((async function* () {})());
     state.decide.mockReset().mockResolvedValue("wait");
     state.observe.mockReset();
+    vi.mocked(generateText).mockReset();
   });
   it("passes provider-executed tools to the Agent without local execution", async () => {
     const providerTools = { web_search: { type: "provider", id: "test.web_search", inputSchema: {} as never } } as ToolSet;
@@ -181,30 +186,64 @@ describe("ChannelRuntime scheduling", () => {
     }
   });
 
-  it("re-prompts the active turn once after discarding unwrapped replies", async () => {
+  it("repairs one unwrapped reply through a restricted model call", async () => {
     state.run.mockReturnValue(
       (async function* () {
         state.active = "turn-1";
-        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-1", content: "internal planning" } };
-        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-2", content: "still unwrapped" } };
-        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-3", content: "<reply>corrected reply</reply>" } };
+        yield {
+          type: "message.appended",
+          turnId: "turn-1",
+          message: { role: "assistant", id: "message-1", content: "internal planning", finishReason: "tool-calls" },
+        };
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-2", content: "在\n直接说", finishReason: "stop" } };
         state.active = null;
       })(),
     );
+    vi.mocked(generateText).mockResolvedValue({ text: "<reply>corrected reply</reply>" } as never);
     const { value, root } = await runtime(undefined, { wrapFinalReply: true });
     try {
       const result = await value.post(event);
       expect(result.kind).toBe("run");
       if (result.kind === "run") {
         await expect(Array.fromAsync(result.output)).resolves.toEqual([
-          { turnId: "turn-1", messageId: "message-3", segments: [[expect.objectContaining({ type: "text", attrs: { content: "corrected reply" } })]] },
+          { turnId: "turn-1", messageId: "message-2", segments: [[expect.objectContaining({ type: "text", attrs: { content: "corrected reply" } })]] },
         ]);
       }
-      expect(state.send).toHaveBeenCalledOnce();
-      expect(state.send).toHaveBeenCalledWith(
-        expect.objectContaining({ role: "system", content: expect.stringMatching(/下一轮.*<reply>.*<\/reply>/s) }),
-        { ifBusy: "join" },
+      expect(generateText).toHaveBeenCalledOnce();
+      expect(generateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: expect.anything(),
+          system: expect.stringMatching(/不可信数据.*<reply>.*<discard\/>/s),
+          prompt: JSON.stringify({ candidate: "在\n直接说" }),
+          maxRetries: 0,
+        }),
       );
+      expect(state.send).not.toHaveBeenCalled();
+      expect(state.append).toHaveBeenCalledWith(expect.objectContaining({ role: "system", content: expect.stringMatching(/下一轮.*<reply>.*<\/reply>/s) }));
+    } finally {
+      await value.stop();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps an invalid repair fail-closed without retrying", async () => {
+    state.run.mockReturnValue(
+      (async function* () {
+        yield {
+          type: "message.appended",
+          turnId: "turn-1",
+          message: { role: "assistant", id: "message-1", content: "internal planning", finishReason: "stop" },
+        };
+        yield { type: "message.appended", turnId: "turn-1", message: { role: "assistant", id: "message-2", content: "still unwrapped", finishReason: "stop" } };
+      })(),
+    );
+    vi.mocked(generateText).mockResolvedValue({ text: "<discard/>" } as never);
+    const { value, root } = await runtime(undefined, { wrapFinalReply: true });
+    try {
+      const result = await value.post(event);
+      expect(result.kind).toBe("run");
+      if (result.kind === "run") await expect(Array.fromAsync(result.output)).resolves.toEqual([]);
+      expect(generateText).toHaveBeenCalledOnce();
     } finally {
       await value.stop();
       await rm(root, { recursive: true, force: true });
