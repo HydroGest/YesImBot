@@ -34,6 +34,7 @@ export const Config: Schema<Config> = Schema.object({
     .default([
       { id: "deepseek-v4-flash", toolCall: true, reasoning: true },
       { id: "deepseek-v4-pro", toolCall: true, reasoning: true },
+      { id: "deepseek-v4-flash-vision-exp", toolCall: true, reasoning: true },
     ])
     .description("可用聊天模型列表"),
 });
