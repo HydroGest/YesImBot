@@ -3,7 +3,7 @@
     "id": "提供商标识符",
     "apiKey": "API 密钥",
     "baseURL": "API 基础地址",
-    "thinking": "默认思考等级（模型 ID 可用 :level 覆盖）",
+    "webSearch": "启用原生 Web 搜索",
     "chatModels": {
       "$desc": "可用聊天模型列表",
       "$inner": {

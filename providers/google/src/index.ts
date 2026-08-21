@@ -1,6 +1,10 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Context, Schema } from "koishi";
 import { type BaseProviderConfig } from "koishi-plugin-yesimbot";
+
+import enUS from "./locales/en-US.json";
+import zhCN from "./locales/zh-CN.json";
+
 export const name = "yesimbot-provider-google";
 
 export const usage = "Google 提供商插件";
@@ -30,6 +34,9 @@ export const Config: Schema<Config> = Schema.object({
     .role("table")
     .default([])
     .description("可用嵌入模型列表"),
+}).i18n({
+  "zh-CN": zhCN._config,
+  "en-US": enUS._config,
 });
 
 interface Config extends BaseProviderConfig {}
