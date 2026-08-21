@@ -2,6 +2,10 @@ import { createDeepSeek, type DeepSeekLanguageModelOptions } from "@ai-sdk/deeps
 import { defaultSettingsMiddleware, wrapLanguageModel } from "ai";
 import { Context, Schema } from "koishi";
 import { type BaseProviderConfig } from "koishi-plugin-yesimbot";
+
+import enUS from "./locales/en-US.json";
+import zhCN from "./locales/zh-CN.json";
+
 export const name = "yesimbot-provider-deepseek";
 
 export const usage = "DeepSeek 提供商插件";
@@ -11,7 +15,7 @@ export const inject = ["yesimbot"];
 export const Config: Schema<Config> = Schema.object({
   id: Schema.string().default("deepseek").description("提供商标识"),
   apiKey: Schema.string().role("secret").required().description("API Key"),
-  baseURL: Schema.string().description("API Base URL"),
+  baseURL: Schema.string().role("link").description("API Base URL"),
   thinking: Schema.union([
     Schema.const("auto").description("自适应"),
     Schema.const("none").description("关闭"),
@@ -34,8 +38,12 @@ export const Config: Schema<Config> = Schema.object({
     .default([
       { id: "deepseek-v4-flash", toolCall: true, reasoning: true },
       { id: "deepseek-v4-pro", toolCall: true, reasoning: true },
+      { id: "deepseek-v4-flash-vision-exp", toolCall: true, reasoning: true },
     ])
     .description("可用聊天模型列表"),
+}).i18n({
+  "zh-CN": zhCN._config,
+  "en-US": enUS._config,
 });
 
 type ThinkingLevel = "auto" | "none" | "low" | "medium" | "high" | "xhigh" | "max";

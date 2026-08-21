@@ -1,7 +1,7 @@
 {
   "name": "@yesimbot/koishi-plugin-provider-google",
   "version": "0.0.1",
-  "description": "",
+  "description": "YesImBot Google model provider plugin",
   "bugs": {
     "url": "https://github.com/YesWeAreBot/YesImBot/issues"
   },
@@ -58,12 +58,12 @@
   },
   "koishi": {
     "description": {
-      "zh": "",
-      "en": ""
+      "zh": "Google 模型提供商插件（支持 Gemini 系列模型与嵌入）",
+      "en": "Google model provider plugin (Gemini models with embeddings)"
     },
     "service": {
       "required": [
-        "yesimbot.model"
+        "yesimbot"
       ]
     }
   }

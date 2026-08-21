@@ -3,18 +3,13 @@
     "id": "Provider identifier",
     "apiKey": "API key",
     "baseURL": "API base URL",
+    "webSearch": "Enable native web search",
     "chatModels": {
       "$desc": "Available chat models",
       "$inner": {
         "id": "Model ID",
         "toolCall": "Tool calling",
         "reasoning": "Reasoning"
-      }
-    },
-    "embeddingModels": {
-      "$desc": "Available embedding models",
-      "$inner": {
-        "id": "Model ID"
       }
     }
   }

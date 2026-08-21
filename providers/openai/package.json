@@ -1,7 +1,7 @@
 {
   "name": "@yesimbot/koishi-plugin-provider-openai",
   "version": "0.0.1",
-  "description": "",
+  "description": "YesImBot OpenAI model provider plugin",
   "bugs": {
     "url": "https://github.com/YesWeAreBot/YesImBot/issues"
   },
@@ -58,12 +58,12 @@
   },
   "koishi": {
     "description": {
-      "zh": "",
-      "en": ""
+      "zh": "OpenAI 模型提供商插件（支持 chat / responses 格式与原生 Web 搜索）",
+      "en": "OpenAI model provider plugin (chat / responses formats with native web search)"
     },
     "service": {
       "required": [
-        "yesimbot.model"
+        "yesimbot"
       ]
     }
   }

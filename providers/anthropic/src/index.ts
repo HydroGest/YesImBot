@@ -2,6 +2,10 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import type { ToolSet } from "ai";
 import { Context, Schema } from "koishi";
 import { type BaseProviderConfig } from "koishi-plugin-yesimbot";
+
+import enUS from "./locales/en-US.json";
+import zhCN from "./locales/zh-CN.json";
+
 export const name = "yesimbot-provider-anthropic";
 
 export const usage = "Anthropic 提供商插件";
@@ -27,6 +31,9 @@ export const Config: Schema<Config> = Schema.object({
       { id: "claude-haiku-4-5-20251001", toolCall: true, reasoning: true },
     ])
     .description("可用聊天模型列表"),
+}).i18n({
+  "zh-CN": zhCN._config,
+  "en-US": enUS._config,
 });
 
 export interface Config extends BaseProviderConfig {

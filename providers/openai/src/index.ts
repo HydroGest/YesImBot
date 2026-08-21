@@ -2,6 +2,10 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { ToolSet } from "ai";
 import { Context, Schema } from "koishi";
 import { type BaseProviderConfig } from "koishi-plugin-yesimbot";
+
+import enUS from "./locales/en-US.json";
+import zhCN from "./locales/zh-CN.json";
+
 export const name = "yesimbot-provider-openai";
 
 export const usage = "OpenAI 提供商插件";
@@ -42,7 +46,10 @@ export const Config: Schema<Config> = Schema.intersect([
     Schema.object({ format: Schema.const("chat") }),
     Schema.object({ format: Schema.const("responses"), webSearch: Schema.boolean().default(false).description("启用原生 Web 搜索") }),
   ]),
-]);
+]).i18n({
+  "zh-CN": zhCN._config,
+  "en-US": enUS._config,
+});
 
 interface Config extends BaseProviderConfig {
   format: "chat" | "responses";

@@ -1,7 +1,7 @@
 {
   "name": "@yesimbot/koishi-plugin-provider-deepseek",
   "version": "0.0.1",
-  "description": "",
+  "description": "YesImBot DeepSeek model provider plugin",
   "bugs": {
     "url": "https://github.com/YesWeAreBot/YesImBot/issues"
   },
@@ -42,7 +42,7 @@
     "pub": "yarn npm publish --access public"
   },
   "dependencies": {
-    "@ai-sdk/deepseek": "^2.0.0",
+    "@ai-sdk/deepseek": "^2.0.56",
     "ai": "^6.0.0"
   },
   "devDependencies": {
@@ -59,12 +59,12 @@
   },
   "koishi": {
     "description": {
-      "zh": "",
-      "en": ""
+      "zh": "DeepSeek 模型提供商插件（支持 deepseek-v4 系列模型与思考等级控制）",
+      "en": "DeepSeek model provider plugin (deepseek-v4 models with thinking level control)"
     },
     "service": {
       "required": [
-        "yesimbot.model"
+        "yesimbot"
       ]
     }
   }
