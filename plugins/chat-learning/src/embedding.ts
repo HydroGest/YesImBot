@@ -1,4 +1,4 @@
-import { embedMany, type EmbeddingModel } from "ai";
+import { embedMany, type EmbeddingModel } from "@yesimbot/agent-runtime";
 import type { Context } from "koishi";
 
 import type { ModelCache } from "./model-cache.js";

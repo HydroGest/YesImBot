@@ -1,5 +1,5 @@
 import { jsonSchema, type AgentMessage, type AgentTool, type AgentToolExecuteContext } from "@yesimbot/agent-runtime";
-import { embed, type EmbeddingModel } from "ai";
+import { embed, type EmbeddingModel } from "@yesimbot/agent-runtime";
 import { isMessage, type ChannelContext, type ConversationReadOptions, type MessageRecord } from "koishi-plugin-yesimbot";
 
 import { MemoryStore } from "./store/memory.js";

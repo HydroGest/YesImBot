@@ -20,7 +20,7 @@ export const Config: Schema<Config> = Schema.intersect([
     apiKey: Schema.string().role("secret").required().description("API Key"),
     baseURL: Schema.string().description("API Base URL"),
     format: Schema.union([Schema.const("chat"), Schema.const("responses")])
-      .default("chat")
+      .default("responses")
       .description("API 格式"),
     chatModels: Schema.array(
       Schema.object({

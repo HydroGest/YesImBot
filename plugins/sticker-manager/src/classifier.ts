@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText } from "@yesimbot/agent-runtime";
 import type { Context } from "koishi";
 
 import { firstFrameToPng } from "./frames.js";

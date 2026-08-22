@@ -1,4 +1,4 @@
-import { generateText, type LanguageModel } from "ai";
+import { generateText, type LanguageModel } from "@yesimbot/agent-runtime";
 import { z } from "zod";
 
 import { modelCacheId, type ModelCache } from "./model-cache.js";

@@ -1,5 +1,4 @@
-import { createAgent, createUserMessage, jsonSchema, type AgentTool } from "@yesimbot/agent-runtime";
-import type { LanguageModel } from "ai";
+import { createAgent, createUserMessage, jsonSchema, LanguageModel, type AgentTool } from "@yesimbot/agent-runtime";
 import type { ChannelContext, MessageRecord } from "koishi-plugin-yesimbot";
 
 import { EvidenceStore } from "./store/evidence.js";

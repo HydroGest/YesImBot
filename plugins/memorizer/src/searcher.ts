@@ -1,5 +1,5 @@
 import { createAgent, createUserMessage, jsonSchema, type AgentTool, type AgentToolExecuteContext } from "@yesimbot/agent-runtime";
-import type { LanguageModel } from "ai";
+import type { LanguageModel } from "@yesimbot/agent-runtime";
 import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 import { participants, toRecall } from "./plugin.js";

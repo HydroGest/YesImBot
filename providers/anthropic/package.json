@@ -42,17 +42,17 @@
     "pub": "yarn npm publish --access public"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.0"
+    "@ai-sdk/anthropic": "3.0.111"
   },
   "devDependencies": {
     "koishi": "^4.18.10",
     "koishi-plugin-yesimbot": "workspace:^",
-    "zod": "^3.25.76"
+    "zod": "3.25.76"
   },
   "peerDependencies": {
     "koishi": "^4.18.10",
     "koishi-plugin-yesimbot": "workspace:^",
-    "zod": "^3.25.76"
+    "zod": "3.25.76"
   },
   "koishi": {
     "description": {

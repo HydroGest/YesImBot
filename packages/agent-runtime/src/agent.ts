@@ -452,7 +452,7 @@ export function createAgent(config: AgentConfig): Agent {
             const stepMessages: AgentMessage[] = responseMessages.map((message) =>
               message.role === "assistant"
                 ? createAssistantMessage(message.content, { providerOptions: message.providerOptions, usage: step.usage, finishReason: step.finishReason })
-                : createToolMessage(message.content),
+                : createToolMessage(message.content, { providerOptions: message.providerOptions }),
             );
             turnUsage = mergeUsage(turnUsage, step.usage);
 

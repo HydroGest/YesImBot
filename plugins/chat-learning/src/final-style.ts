@@ -1,6 +1,6 @@
 import type { AgentAssistantMessage, AgentEntry, AgentMessage } from "@yesimbot/agent-runtime";
 import { createAssistantMessage } from "@yesimbot/agent-runtime";
-import { generateText, type LanguageModel } from "ai";
+import { generateText, type LanguageModel } from "@yesimbot/agent-runtime";
 
 const FINAL_STYLE_SYSTEM = [
   "你是这个群的群友，负责把 bot 即将发送的最终发言改得更像群友。",

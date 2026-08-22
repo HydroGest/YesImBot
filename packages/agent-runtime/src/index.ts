@@ -23,3 +23,7 @@ export * from "./storage.js";
 export * from "./tools.js";
 
 export * from "./turn.js";
+
+export { embed, embedMany, generateText, streamText } from "ai";
+
+export type { EmbeddingModel, LanguageModel, ModelMessage } from "ai";

@@ -42,8 +42,8 @@
     "pub": "yarn npm publish --access public"
   },
   "dependencies": {
-    "@ai-sdk/deepseek": "^2.0.56",
-    "ai": "^6.0.0"
+    "@ai-sdk/deepseek": "2.0.57",
+    "ai": "6.0.264"
   },
   "devDependencies": {
     "@yesimbot/agent-runtime": "workspace:^",

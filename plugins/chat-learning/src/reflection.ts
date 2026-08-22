@@ -1,5 +1,4 @@
-import type { AgentEntry } from "@yesimbot/agent-runtime";
-import { generateText, type LanguageModel } from "ai";
+import { generateText, LanguageModel, type AgentEntry } from "@yesimbot/agent-runtime";
 
 import { escapePromptText } from "./projector.js";
 import type { ReflectionRecord, ReflectionStore } from "./reflection-store.js";

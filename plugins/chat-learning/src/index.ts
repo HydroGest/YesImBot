@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 
 import type { AgentEntry, AgentPlugin, AgentPluginRuntime, AgentStorage, PrepareStepContext } from "@yesimbot/agent-runtime";
 import { createMessageEntry } from "@yesimbot/agent-runtime";
-import type { ModelMessage } from "ai";
+import type { ModelMessage } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, Universal, type Command, type Session } from "koishi";
 import { createMessage, isMessage, type ChannelContext, type DeliveredPayload } from "koishi-plugin-yesimbot";
 

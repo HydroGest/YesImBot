@@ -1,5 +1,5 @@
 import type { AssistantModelMessage, SystemModelMessage, ToolModelMessage, UserModelMessage } from "@ai-sdk/provider-utils";
-import type { AssistantContent, LanguageModelUsage, ModelMessage, ToolContent, UserContent } from "ai";
+import type { AssistantContent, ImagePart, LanguageModelUsage, ModelMessage, ToolContent, UserContent } from "ai";
 
 import { createRandomId } from "./id.js";
 import { PluginHost } from "./plugin.js";
@@ -61,8 +61,9 @@ export function createAssistantMessage(
   return { ...createMessageBase({ id, timestamp }), role: "assistant", content, ...rest };
 }
 
-export function createToolMessage(content: ToolContent, options: CreateMessageOptions = {}): AgentToolMessage {
-  return { ...createMessageBase(options), role: "tool", content };
+export function createToolMessage(content: ToolContent, options: Omit<Partial<AgentToolMessage>, "role" | "content"> = {}): AgentToolMessage {
+  const { id, timestamp, ...rest } = options;
+  return { ...createMessageBase({ id, timestamp }), role: "tool", content, ...rest };
 }
 
 export function createCustomMessage<T extends AgentCustomMessageType>(
@@ -102,7 +103,69 @@ export async function buildModelMessages(options: {
     }
   }
 
-  return result;
+  return extractToolImages(result);
+}
+
+/**
+ * Extract image-data/image-url parts from tool-result content and emit them
+ * as a following user message with proper ImagePart format.
+ * This ensures providers that cannot handle multimodal tool results (e.g. OpenAI Chat)
+ * still deliver images to the model via the user-role image path.
+ */
+function extractToolImages(messages: ModelMessage[]): ModelMessage[] {
+  const out: ModelMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.role !== "tool") {
+      out.push(msg);
+      continue;
+    }
+
+    const images: ImagePart[] = [];
+    const toolNames: string[] = [];
+    let modified = false;
+
+    const newContent: ToolContent = (msg.content as ToolContent).map((part) => {
+      if (part.type !== "tool-result") return part;
+      const output = part.output;
+      if (output.type !== "content") return part;
+
+      const imageItems: ImagePart[] = [];
+      const remaining = output.value.filter((item) => {
+        if (item.type === "image-data") {
+          imageItems.push({ type: "image", image: item.data, mediaType: item.mediaType });
+          return false;
+        }
+        if (item.type === "image-url") {
+          imageItems.push({ type: "image", image: new URL(item.url), mediaType: undefined });
+          return false;
+        }
+        return true;
+      });
+
+      if (imageItems.length === 0) return part;
+
+      modified = true;
+      images.push(...imageItems);
+      toolNames.push(part.toolName);
+
+      // Rewrite tool result to keep only non-image content
+      const newOutput = remaining.length > 0 ? { ...output, value: remaining } : { type: "text" as const, value: `[${part.toolName}: 图片已通过视觉输入]` };
+      return { ...part, output: newOutput };
+    });
+
+    if (!modified) {
+      out.push(msg);
+      continue;
+    }
+
+    out.push({ ...msg, content: newContent });
+    // Append user message with extracted images
+    const label = toolNames.length === 1 ? `[以下是工具 ${toolNames[0]} 返回的图片]` : `[以下是工具返回的图片]`;
+    out.push({ role: "user", content: [{ type: "text", text: label }, ...images] });
+  }
+
+  return out;
 }
 
 function createMessageBase(options: CreateMessageOptions = {}): AgentMessageBase {
