@@ -1,5 +1,4 @@
-import type { AgentTool, AgentToolSet } from "@yesimbot/agent-runtime";
-import type { Tool } from "ai";
+import type { AgentTool, AgentToolSet, Tool } from "@yesimbot/agent-runtime";
 import type { CommandResult, Sandbox } from "bash-tool";
 
 import { createEditTool } from "./edit-tool";

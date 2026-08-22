@@ -1,13 +1,35 @@
-import type { AgentTool } from "@yesimbot/agent-runtime";
-import { z } from "zod";
+import { AgentTool, jsonSchema } from "@yesimbot/agent-runtime";
 
 import type { WorkspaceBashBackend } from "./bash-tool";
 
-const editFileSchema = z.object({
-  path: z.string().describe("The absolute path to the file to edit"),
-  oldString: z.string().describe("The exact text to find in the file (must match exactly, including whitespace and indentation)"),
-  newString: z.string().describe("The text to replace it with (can be empty to delete the matched text)"),
-  replaceAll: z.boolean().optional().default(false).describe("Replace all occurrences instead of just the first"),
+const editFileSchema = jsonSchema<{
+  path: string;
+  oldString: string;
+  newString: string;
+  replaceAll: boolean;
+}>({
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "The absolute path to the file to edit",
+    },
+    oldString: {
+      type: "string",
+      description: "The exact text to find in the file (must match exactly, including whitespace and indentation)",
+    },
+    newString: {
+      type: "string",
+      description: "The text to replace it with (can be empty to delete the matched text)",
+    },
+    replaceAll: {
+      type: "boolean",
+      description: "Replace all occurrences instead of just the first",
+      default: false,
+    },
+  },
+  required: ["path", "oldString", "newString"],
+  additionalProperties: false,
 });
 
 export interface CreateEditToolInput {

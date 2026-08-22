@@ -1,4 +1,5 @@
 export type ScheduleState = "enabled" | "paused" | "cancelled" | "completed";
+
 export type ScheduleDelivery = "channel" | "silent";
 
 export type ScheduleLastResult = {

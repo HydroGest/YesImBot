@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import type { ReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
-import { h, type Context, type Element, type Logger } from "koishi";
+import { h, type Context, type Element } from "koishi";
 
 import type { AssetStore } from "./asset.js";
 import type { ChannelResources } from "./index.js";

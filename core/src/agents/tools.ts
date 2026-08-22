@@ -30,6 +30,10 @@ type SendMessageOutput =
   | { ok: true; messageIds: string[]; count: number }
   | { ok: false; error: { name: string; message: string }; sent: string[]; failedAt: number };
 
+type FinishInput = { reason: string };
+
+type FinishOutput = { ok: true };
+
 /** Facts about one delivered platform message, reported so the owner can announce it. */
 export interface DeliveredNotice {
   readonly channelId: string;
@@ -72,21 +76,21 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
     inputSchema: jsonSchema<SendMessageInput>({
       type: "object",
       properties: {
+        ...(innerThought ? { inner_thought: { type: "string", description: "本次发送前的内心独白；只保留在你自己的历史里，不会发送给任何人" } } : {}),
+        mode: { type: "string", enum: ["element", "raw"], description: "element（默认）解析消息元素；raw 原样发送纯文本" },
+        channel: { type: "string", minLength: 1, description: "目标频道 ID；留空则发往当前频道" },
         messages: {
           type: "array",
           minItems: 1,
           items: { type: "string", minLength: 1 },
           description: "要发送的消息，每一项作为一条独立消息按顺序发出",
         },
-        channel: { type: "string", minLength: 1, description: "目标频道 ID；留空则发往当前频道" },
-        mode: { type: "string", enum: ["element", "raw"], description: "element（默认）解析消息元素；raw 原样发送纯文本" },
         continue: { type: "boolean", description: "true 时发送后继续生成下一步，可以再调用工具或再次发送消息" },
-        ...(innerThought ? { inner_thought: { type: "string", description: "本次发送前的内心独白；只保留在你自己的历史里，不会发送给任何人" } } : {}),
       },
       required: ["messages"],
     }),
     execute: async (input, execution) => {
-      const target = input.channel ?? defaultChannelId;
+      const target = input.channel ? input.channel : defaultChannelId;
       const mode = input.mode ?? "element";
       const total = input.messages.length;
       const sent: string[] = [];
@@ -227,6 +231,21 @@ export function createDescribeImageTool(model: LanguageModel, resources: Channel
         return { error: `vision_call_failed: ${cause instanceof Error ? cause.message : String(cause)}` };
       }
     },
+  };
+}
+
+export function createFinishTool(): AgentTool<FinishInput, FinishOutput> {
+  return {
+    name: "finish",
+    terminal: true,
+    description:
+      "结束本轮，不发送任何消息。当你判断当前场景不需要你参与、或已经做完该做的事且没有要说的话时使用。保持沉默是一个完整的选择，不需要为了确认收到或维持礼貌而发言。",
+    inputSchema: jsonSchema<FinishInput>({
+      type: "object",
+      properties: { reason: { type: "string", description: "结束原因" } },
+      required: ["reason"],
+    }),
+    execute: async () => ({ ok: true }),
   };
 }
 
@@ -406,23 +425,4 @@ function formatBytes(length: number): string {
   if (length >= 1024 * 1024) return `${(length / (1024 * 1024)).toFixed(1)} MiB`;
   if (length >= 1024) return `${(length / 1024).toFixed(1)} KiB`;
   return `${length} B`;
-}
-
-type FinishInput = { reason: string };
-
-type FinishOutput = { ok: true };
-
-export function createFinishTool(): AgentTool<FinishInput, FinishOutput> {
-  return {
-    name: "finish",
-    terminal: true,
-    description:
-      "结束本轮，不发送任何消息。当你判断当前场景不需要你参与、或已经做完该做的事且没有要说的话时使用。保持沉默是一个完整的选择，不需要为了确认收到或维持礼貌而发言。",
-    inputSchema: jsonSchema<FinishInput>({
-      type: "object",
-      properties: { reason: { type: "string", description: "结束原因" } },
-      required: ["reason"],
-    }),
-    execute: async () => ({ ok: true }),
-  };
 }

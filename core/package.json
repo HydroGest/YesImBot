@@ -46,7 +46,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/json-schema": "^7",
+    "@types/json-schema": "^7.0.15",
     "koishi": "^4.18.11",
     "vitest": "^4.0.18"
   },

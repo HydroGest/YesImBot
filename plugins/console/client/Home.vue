@@ -299,6 +299,7 @@
 <script lang="ts" setup>
 import { socket, store } from "@koishijs/client";
 import { computed } from "vue";
+
 import YesImBotIcon from "./YesImBotIcon.vue";
 
 const connected = computed(() => Boolean(socket.value));

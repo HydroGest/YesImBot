@@ -26,4 +26,4 @@ export * from "./turn.js";
 
 export { embed, embedMany, generateText, streamText } from "ai";
 
-export type { EmbeddingModel, LanguageModel, ModelMessage } from "ai";
+export type { EmbeddingModel, LanguageModel, ModelMessage, Tool, ToolSet } from "ai";

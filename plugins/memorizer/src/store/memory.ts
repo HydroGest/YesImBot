@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Context, Database, Field, Types } from "koishi";
+import type { Context, Field, Types } from "koishi";
 import type { ChannelContext } from "koishi-plugin-yesimbot";
 
 import { retentionScore, type Memory, type MemoryCreateInput, type MemoryQuery, type MemoryRow, type MemoryType, type MemoryUpdateInput } from "../types.js";

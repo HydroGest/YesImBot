@@ -186,7 +186,11 @@ export class ConversationsProvider extends DataService<ConversationIndex> {
   }
 }
 
-export async function parseConversationJsonl(content: string, session: string, channelRoot: string): Promise<{ entries: ConversationEntryView[]; truncated: boolean }> {
+export async function parseConversationJsonl(
+  content: string,
+  session: string,
+  channelRoot: string,
+): Promise<{ entries: ConversationEntryView[]; truncated: boolean }> {
   const entries: ConversationEntryView[] = [];
   let sequence = 0;
   let truncated = false;
@@ -316,19 +320,19 @@ async function scanChannelSummaries(channelsPath: string, policies: readonly Con
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
     const root = join(channelsPath, entry.name);
-      const manifest = await readChannelManifest(join(root, "channel.json"));
-      if (!manifest) continue;
-      const sessions = await scanSessionSummaries(join(root, "sessions"));
-      const matchContext: ChannelMatchContext = {
-        platform: manifest.platform,
-        channelId: manifest.channelId ?? manifest.guildId ?? "",
-        guildId: manifest.guildId,
-        selfId: manifest.selfId,
-        userId: manifest.userId,
-        type: manifest.type,
-        isDirect: manifest.type === "direct",
-      };
-      channels.push({
+    const manifest = await readChannelManifest(join(root, "channel.json"));
+    if (!manifest) continue;
+    const sessions = await scanSessionSummaries(join(root, "sessions"));
+    const matchContext: ChannelMatchContext = {
+      platform: manifest.platform,
+      channelId: manifest.channelId ?? manifest.guildId ?? "",
+      guildId: manifest.guildId,
+      selfId: manifest.selfId,
+      userId: manifest.userId,
+      type: manifest.type,
+      isDirect: manifest.type === "direct",
+    };
+    channels.push({
       key: entry.name,
       type: manifest.type,
       platform: manifest.platform,
@@ -484,7 +488,14 @@ async function parseMessageEntry(
       result.push({ ...base, id: `${base.id}-thought-${result.length}`, kind: "thought", text: thought });
     }
     if (visibleText) {
-      result.push({ ...base, id: `${base.id}-assistant`, kind: "assistant", text: visibleText, usage: message.usage, finishReason: stringValue(message.finishReason) });
+      result.push({
+        ...base,
+        id: `${base.id}-assistant`,
+        kind: "assistant",
+        text: visibleText,
+        usage: message.usage,
+        finishReason: stringValue(message.finishReason),
+      });
     }
     result.push(...parseToolCalls(message.content, base));
     return result;
@@ -570,9 +581,26 @@ async function resolveAssetViews(elements: unknown[], channelRoot: string): Prom
 function detectImageType(bytes: Uint8Array): string {
   if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
-  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38 && (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61)
+  if (
+    bytes.length >= 6 &&
+    bytes[0] === 0x47 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x38 &&
+    (bytes[4] === 0x37 || bytes[4] === 0x39) &&
+    bytes[5] === 0x61
+  )
     return "image/gif";
-  if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50)
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  )
     return "image/webp";
   return "application/octet-stream";
 }
