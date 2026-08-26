@@ -1,5 +1,4 @@
-import type { AgentEntry, AgentMessage } from "@yesimbot/agent-runtime";
-import { generateText, type AssistantContent, type LanguageModel } from "ai";
+import { AgentEntry, AgentMessage, generateText, type AssistantContent, type LanguageModel } from "@yesimbot/agent-runtime";
 import type { Element } from "koishi";
 
 export function filterEntriesForCompression(entries: readonly AgentEntry[]): string {

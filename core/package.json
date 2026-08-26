@@ -41,9 +41,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@yesimbot/agent-runtime": "workspace:^",
-    "ai": "^6.0.264",
-    "zod": "^3.25.76"
+    "@yesimbot/agent-runtime": "workspace:^"
   },
   "devDependencies": {
     "@types/json-schema": "^7.0.15",

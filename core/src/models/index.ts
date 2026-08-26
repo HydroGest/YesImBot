@@ -1,8 +1,16 @@
 import { join, resolve } from "node:path";
 
-import type { EmbeddingModelV3, LanguageModelV3 } from "@ai-sdk/provider";
-import { wrapEmbeddingModel, wrapLanguageModel } from "ai";
-import type { EmbeddingModel, EmbeddingModelMiddleware, LanguageModel, LanguageModelMiddleware, ToolSet } from "ai";
+import {
+  EmbeddingModel,
+  EmbeddingModelMiddleware,
+  EmbeddingModelV3,
+  LanguageModel,
+  LanguageModelMiddleware,
+  LanguageModelV3,
+  ToolSet,
+  wrapEmbeddingModel,
+  wrapLanguageModel,
+} from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema } from "koishi";
 
 import type { ChannelContext } from "../channels/index.js";
