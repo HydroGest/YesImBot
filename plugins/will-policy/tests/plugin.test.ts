@@ -1,10 +1,10 @@
-import type { WillPlugin } from "koishi-plugin-yesimbot";
+import { createMessage, type WillPlugin } from "koishi-plugin-yesimbot";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("koishi", async () => import("@koishijs/core"));
 
-import WillPolicyPlugin from "../src/index.js";
-import { defaultRoutingConfig, defaultWillingnessConfig } from "../src/types.js";
+import WillPolicyPlugin, { resolveWillingnessForChannel } from "../src/index.js";
+import { defaultRoutingConfig, defaultWillingnessConfig, type PolicyWillingnessConfig } from "../src/types.js";
 
 interface CommandAction {
   (argv: { session?: { send: ReturnType<typeof vi.fn> } }): Promise<unknown>;
@@ -66,6 +66,95 @@ describe("WillPolicyPlugin", () => {
 
     expect(registered).toHaveLength(1);
     expect(plugin.match({} as never)).toBe(false);
+  });
+
+  it("applies the first matching channel willingness override", async () => {
+    const { plugin } = await createInstance(() => true);
+    const config: PolicyWillingnessConfig = {
+      ...plugin.config.willingness!,
+      channelOverrides: [
+        { platform: "test", channelId: "room-1", textGain: 1, keywordMultiplier: 2 },
+        { platform: "*", channelId: "*", textGain: 99 },
+      ],
+    };
+
+    const resolved = resolveWillingnessForChannel(config, { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" });
+
+    expect(resolved.textGain).toBe(1);
+    expect(resolved.keywordMultiplier).toBe(2);
+  });
+
+  it("preserves omitted override fields from the global configuration", () => {
+    const config = { ...defaultWillingnessConfig(), keywordMultiplier: 7, channelOverrides: [{ platform: "test", channelId: "room-1", textGain: 2 }] };
+
+    const resolved = resolveWillingnessForChannel(config, { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" });
+
+    expect(resolved.textGain).toBe(2);
+    expect(resolved.keywordMultiplier).toBe(7);
+  });
+
+  it("matches guild channels when isDirect is omitted", () => {
+    const config = { ...defaultWillingnessConfig(), channelOverrides: [{ platform: "test", channelId: "room-1", textGain: 4 }] };
+
+    const resolved = resolveWillingnessForChannel(config, { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" });
+
+    expect(resolved.textGain).toBe(4);
+  });
+
+  it("matches wildcard platforms", () => {
+    const config = { ...defaultWillingnessConfig(), channelOverrides: [{ platform: "*", channelId: "room-1", textGain: 5 }] };
+
+    const resolved = resolveWillingnessForChannel(config, { type: "guild", platform: "another-platform", channelId: "room-1", guildId: "room-1" });
+
+    expect(resolved.textGain).toBe(5);
+  });
+
+  it("keeps global willingness values when no channel override matches", async () => {
+    const config = { ...defaultWillingnessConfig(), channelOverrides: [{ platform: "test", channelId: "other-room", textGain: 1 }] };
+
+    const resolved = resolveWillingnessForChannel(config, { type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" });
+
+    expect(resolved.textGain).toBe(defaultWillingnessConfig().textGain);
+  });
+
+  it("normalizes direct account ids before matching overrides", async () => {
+    const config = { ...defaultWillingnessConfig(), channelOverrides: [{ platform: "test", channelId: "user-1", isDirect: true, textGain: 3 }] };
+
+    const resolved = resolveWillingnessForChannel(config, { type: "direct", platform: "test", channelId: "private:user-1", selfId: "bot-1", userId: "user-1" });
+
+    expect(resolved.textGain).toBe(3);
+  });
+
+  it("normalizes direct account ids when isDirect is omitted", () => {
+    const config = { ...defaultWillingnessConfig(), channelOverrides: [{ platform: "test", channelId: "user-1", textGain: 6 }] };
+
+    const resolved = resolveWillingnessForChannel(config, { type: "direct", platform: "test", channelId: "private:user-1", selfId: "bot-1", userId: "user-1" });
+
+    expect(resolved.textGain).toBe(6);
+  });
+
+  it("applies channel overrides through plugin setup", async () => {
+    const { plugin } = await createInstance(() => true);
+    const configured = new WillPolicyPlugin(plugin.ctx, {
+      engine: "willingness",
+      willingness: { ...defaultWillingnessConfig(), channelOverrides: [{ platform: "test", channelId: "room-1", textGain: 8 }] },
+    });
+
+    const engine = configured.setup({ type: "guild", platform: "test", channelId: "room-1", guildId: "room-1" });
+    await engine.decide(
+      createMessage({
+        platform: "test",
+        selfId: "bot-1",
+        timestamp: Date.now(),
+        channel: { id: "room-1", type: 0 },
+        user: { id: "user-1" },
+        messageId: "m-1",
+        elements: [],
+      }),
+      { activeTurnId: null },
+    );
+
+    expect(engine.getCurrentWillingness?.()).toBe(8);
   });
 
   it("registers one root debug command for all cloned instances", async () => {

@@ -5,7 +5,7 @@ import type { ChannelContext, WillEngine, WillPlugin } from "koishi-plugin-yesim
 
 import { resolvePolicy } from "./policy.js";
 import { PolicyRoutingEngine } from "./routing.js";
-import type { WillPolicyConfig } from "./types.js";
+import type { PolicyWillingnessChannelOverride, PolicyWillingnessConfig, WillPolicyConfig } from "./types.js";
 import { PolicyWillingnessEngine } from "./willingness.js";
 
 export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.intersect([
@@ -56,6 +56,18 @@ export const WillPolicyConfigSchema: Schema<WillPolicyConfig> = Schema.intersect
         mentionForce: Schema.boolean().default(false).description("被 @ 时强制触发"),
         quoteForce: Schema.boolean().default(false).description("引用时强制触发"),
         directForce: Schema.boolean().default(false).description("私聊强制触发"),
+        channelOverrides: Schema.array(
+          Schema.object({
+            platform: Schema.string().default("*").description("平台；* 表示任意平台"),
+            channelId: Schema.string().default("*").description("频道、群或私聊账号；* 表示任意"),
+            isDirect: Schema.boolean().description("是否私聊；留空同时匹配群聊与私聊"),
+            textGain: Schema.number().min(0).description("普通消息基础增益覆盖"),
+            keywordMultiplier: Schema.number().min(0).description("命中关键词时的乘数覆盖"),
+          }),
+        )
+          .role("table")
+          .default([])
+          .description("按顺序匹配的频道意愿值覆盖；第一条匹配规则生效"),
       })
         .required()
         .description("意愿值引擎配置；仅在 engine 为 willingness 时生效"),
@@ -162,12 +174,11 @@ export default class WillPolicyPlugin implements WillPlugin {
     return matched;
   }
 
-  public setup(_scope: ChannelContext): WillEngine {
+  public setup(scope: ChannelContext): WillEngine {
     const resolved = resolvePolicy(this.config);
     this.logger.debug("resolve_will_policy", { engine: resolved.engine, routing: resolved.routing, willingness: resolved.willingness });
-    return resolved.engine === "routing"
-      ? new PolicyRoutingEngine(resolved.routing, this.logger)
-      : new PolicyWillingnessEngine(resolved.willingness, this.logger);
+    if (resolved.engine === "routing") return new PolicyRoutingEngine(resolved.routing, this.logger);
+    return new PolicyWillingnessEngine(resolveWillingnessForChannel(resolved.willingness, scope), this.logger);
   }
 
   public async stop(): Promise<void> {
@@ -208,4 +219,26 @@ export default class WillPolicyPlugin implements WillPlugin {
   private instanceDescription(): string {
     return [`WillPolicy[${this.instanceId.slice(0, 8)}]`, `engine=${this.config.engine}`, `priority=${this.priority}`].join(" ");
   }
+}
+
+export function resolveWillingnessForChannel(config: PolicyWillingnessConfig, context: ChannelContext): PolicyWillingnessConfig {
+  const override = config.channelOverrides?.find((rule) => matchesChannelOverride(context, rule));
+  if (!override) return config;
+  return {
+    ...config,
+    ...(override.textGain === undefined ? {} : { textGain: override.textGain }),
+    ...(override.keywordMultiplier === undefined ? {} : { keywordMultiplier: override.keywordMultiplier }),
+  };
+}
+
+function matchesChannelOverride(context: ChannelContext, rule: PolicyWillingnessChannelOverride): boolean {
+  if (rule.platform !== "*" && rule.platform !== context.platform) return false;
+  const channelId = context.type === "direct" ? normalizeDirectChannelId(rule) : rule.channelId;
+  if (channelId !== "*" && channelId !== context.channelId) return false;
+  return rule.isDirect === undefined || rule.isDirect === (context.type === "direct");
+}
+
+function normalizeDirectChannelId(rule: PolicyWillingnessChannelOverride): string {
+  if (rule.isDirect !== false && rule.channelId !== "*" && !rule.channelId.startsWith("private:")) return `private:${rule.channelId}`;
+  return rule.channelId;
 }
