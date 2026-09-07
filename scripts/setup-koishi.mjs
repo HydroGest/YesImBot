@@ -386,8 +386,8 @@ function syncRepository() {
     log(`local yesimbot is behind ${BRANCH}; fast-forwarding`);
     runChecked("git", ["-C", yesimbotRoot, "fetch", "origin", BRANCH]);
     runChecked("git", ["-C", yesimbotRoot, "merge", "--ff-only", `origin/${BRANCH}`]);
-  } catch (cause) {
-    log(`could not sync yesimbot repository: ${cause instanceof Error ? cause.message : String(cause)}`);
+  } catch (error) {
+    log(`could not sync yesimbot repository: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -441,7 +441,7 @@ function toPosix(value) {
 }
 
 function isManagedPluginName(name) {
-  return name === "koishi-plugin-yesimbot" || name.startsWith("koishi-plugin-yesimbot-") || /^@yesimbot\/koishi-plugin-provider-/.test(name);
+  return name === "koishi-plugin-yesimbot" || name.startsWith("koishi-plugin-yesimbot-") || name.startsWith("@yesimbot/koishi-plugin-provider-");
 }
 
 function configKeyToPackageName(key) {

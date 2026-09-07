@@ -153,7 +153,7 @@ function medianCutPalette(bins: readonly HistogramBin[], maxColors: number): Arr
   return boxes.map(averageBoxColor);
 }
 
-function widestBoxIndex(boxes: readonly (readonly HistogramBin[])[]): number {
+function widestBoxIndex(boxes: ReadonlyArray<readonly HistogramBin[]>): number {
   let best = -1;
   let bestRange = -1;
   for (let index = 0; index < boxes.length; index += 1) {
@@ -240,7 +240,7 @@ function averageBoxColor(box: readonly HistogramBin[]): [number, number, number]
   return [Math.round(r / count), Math.round(g / count), Math.round(b / count)];
 }
 
-function createNearestIndex(colors: readonly (readonly [number, number, number])[], offset: number): Uint8Array {
+function createNearestIndex(colors: ReadonlyArray<readonly [number, number, number]>, offset: number): Uint8Array {
   const nearest = new Uint8Array(1 << 15);
   for (let key = 0; key < nearest.length; key += 1) {
     const r = ((key >> 10) << 3) | ((key >> 10) >> 2);
@@ -264,7 +264,7 @@ function createNearestIndex(colors: readonly (readonly [number, number, number])
   return nearest;
 }
 
-function toGifPalette(colors: readonly (readonly [number, number, number])[], hasTransparency: boolean): number[] {
+function toGifPalette(colors: ReadonlyArray<readonly [number, number, number]>, hasTransparency: boolean): number[] {
   const palette = hasTransparency ? [[0, 0, 0], ...colors] : colors;
   const flat = palette.map(([r, g, b]) => (r << 16) | (g << 8) | b);
   let size = 2;

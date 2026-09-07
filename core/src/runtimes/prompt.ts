@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import path from "node:path";
 
 import type { SystemModelMessage } from "ai";
 import type { Logger } from "koishi";
@@ -50,7 +50,7 @@ export async function buildCoreSystemPrompt(options: CoreSystemPromptOptions): P
 
 export async function ensureDefaultPersona(basePath: string): Promise<void> {
   try {
-    await writeFile(join(basePath, "PERSONA.md"), DEFAULT_PERSONA, { encoding: "utf8", flag: "wx" });
+    await writeFile(path.join(basePath, "PERSONA.md"), DEFAULT_PERSONA, { encoding: "utf8", flag: "wx" });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
@@ -59,7 +59,7 @@ export async function ensureDefaultPersona(basePath: string): Promise<void> {
 /** Creates an empty AGENTS.md so operators have a place to write; Core provides no default content. */
 export async function ensureAgentsFile(basePath: string): Promise<void> {
   try {
-    await writeFile(join(basePath, "AGENTS.md"), "", { encoding: "utf8", flag: "wx" });
+    await writeFile(path.join(basePath, "AGENTS.md"), "", { encoding: "utf8", flag: "wx" });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
@@ -135,7 +135,7 @@ send_message 的 inner_thought 字段用来记录你在发送前的内心活动�
 
 async function readPromptFile(basePath: string, fileName: "AGENTS.md" | "PERSONA.md", logger?: Logger): Promise<string | undefined> {
   try {
-    const content = (await readFile(join(basePath, fileName), "utf8")).trim();
+    const content = (await readFile(path.join(basePath, fileName), "utf8")).trim();
     return content.length > 0 ? content : undefined;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {

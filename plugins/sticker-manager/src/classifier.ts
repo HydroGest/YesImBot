@@ -33,10 +33,10 @@ export class ModelStickerClassifier implements StickerClassifier {
     let ref;
     try {
       ref = this.ctx.yesimbot.model.resolveChatModel(modelId);
-    } catch (cause) {
+    } catch (error) {
       this.ctx
         .logger("yesimbot.sticker-manager")
-        .warn("classification_model_unavailable", { modelId, cause: cause instanceof Error ? cause.message : String(cause) });
+        .warn("classification_model_unavailable", { modelId, cause: error instanceof Error ? error.message : String(error) });
       return undefined;
     }
 
@@ -68,8 +68,8 @@ export class ModelStickerClassifier implements StickerClassifier {
         ],
       });
       return parseClassification(text, this.config.tagMode);
-    } catch (cause) {
-      this.ctx.logger("yesimbot.sticker-manager").warn("classification_call_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+    } catch (error) {
+      this.ctx.logger("yesimbot.sticker-manager").warn("classification_call_failed", { cause: error instanceof Error ? error.message : String(error) });
       return undefined;
     }
   }

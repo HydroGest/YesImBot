@@ -1,11 +1,11 @@
 import { readFile, readdir } from "node:fs/promises";
-import { basename, join } from "node:path";
+import path from "node:path";
 
 import type { Context } from "koishi";
 
 import { detectImageMediaType, isSupportedImageFile } from "./files.js";
 import type { StickerStore } from "./store.js";
-import type { ImportStats, StickerSource } from "./types.js";
+import type { ImportStats } from "./types.js";
 
 export interface ImporterOptions {
   ctx: Context;
@@ -33,9 +33,9 @@ export async function importImageFile(options: ImporterOptions, filePath: string
     });
     if (result.status === "created") stats.success += 1;
     else stats.duplicate += 1;
-  } catch (cause) {
+  } catch (error) {
     stats.failed += 1;
-    stats.failedItems.push(`${filePath}: ${messageOf(cause)}`);
+    stats.failedItems.push(`${filePath}: ${messageOf(error)}`);
   }
   return stats;
 }
@@ -46,11 +46,11 @@ export async function importDirectory(options: ImporterOptions, sourceDir: strin
   if (subdirs.length === 0) throw new Error(`源目录下没有分类子目录: ${sourceDir}`);
 
   for (const subdir of subdirs) {
-    const category = basename(subdir);
+    const category = path.basename(subdir);
     const files = await listImageFiles(subdir);
     stats.total += files.length;
     for (const file of files) {
-      const filePath = join(subdir, file);
+      const filePath = path.join(subdir, file);
       try {
         const image = await readLocalImage(filePath, options.maxImportFileBytes);
         const result = await options.store.save({
@@ -62,9 +62,9 @@ export async function importDirectory(options: ImporterOptions, sourceDir: strin
         });
         if (result.status === "created") stats.success += 1;
         else stats.duplicate += 1;
-      } catch (cause) {
+      } catch (error) {
         stats.failed += 1;
-        stats.failedItems.push(`${filePath}: ${messageOf(cause)}`);
+        stats.failedItems.push(`${filePath}: ${messageOf(error)}`);
       }
     }
   }
@@ -76,8 +76,8 @@ export async function importEmojiHubTxt(options: ImporterOptions, filePath: stri
   let content: string;
   try {
     content = await readFile(filePath, "utf8");
-  } catch (cause) {
-    throw new Error(`无法读取文件: ${messageOf(cause)}`);
+  } catch (error) {
+    throw new Error(`无法读取文件: ${messageOf(error)}`);
   }
   const urls = content
     .split(/\r?\n/)
@@ -99,9 +99,9 @@ export async function importEmojiHubTxt(options: ImporterOptions, filePath: stri
       const result = await options.store.save({ scopeKey: options.scopeKey, bytes, mediaType, category, source: { kind: "import" } });
       if (result.status === "created") stats.success += 1;
       else stats.duplicate += 1;
-    } catch (cause) {
+    } catch (error) {
       stats.failed += 1;
-      stats.failedItems.push(`${rawUrl}: ${messageOf(cause)}`);
+      stats.failedItems.push(`${rawUrl}: ${messageOf(error)}`);
     }
   }
   return stats;
@@ -121,7 +121,7 @@ async function readLocalImage(filePath: string, maxBytes: number): Promise<Impor
 
 async function listSubdirectories(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
-  return entries.filter((entry) => entry.isDirectory()).map((entry) => join(dir, entry.name));
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(dir, entry.name));
 }
 
 async function listImageFiles(dir: string): Promise<string[]> {
@@ -148,4 +148,4 @@ function messageOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export type { StickerSource };
+export type { StickerSource } from "./types.js";

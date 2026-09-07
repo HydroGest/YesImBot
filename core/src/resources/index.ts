@@ -69,9 +69,9 @@ export class ChannelResources {
   public async open(uri: string, signal?: AbortSignal): Promise<ResourceOpenResult | undefined> {
     try {
       return await this.openStrict(uri, signal);
-    } catch (cause) {
-      if (cause instanceof ResourceReadError) return undefined;
-      throw cause;
+    } catch (error) {
+      if (error instanceof ResourceReadError) return undefined;
+      throw error;
     }
   }
 
@@ -103,8 +103,8 @@ export class ChannelResources {
       const reader = this.readers.get(parsed.protocol.slice(0, -1));
       if (!reader) throw new ResourceReadError("resource_unavailable");
       return await this.openReader(reader, parsed, signal);
-    } catch (cause) {
-      if (cause instanceof ResourceReadError) throw cause;
+    } catch (error) {
+      if (error instanceof ResourceReadError) throw error;
       throw new ResourceReadError("resource_read_failed");
     }
   }
@@ -145,8 +145,8 @@ export class ChannelResources {
       const result = await Promise.race([reader.setup(this, uri, { signal: controller.signal, maxBytes: READ_MAX_BYTES }), timed, cancelled]);
       if (signal?.aborted) throw new ResourceReadError("resource_read_aborted");
       return normalize(result);
-    } catch (cause) {
-      if (cause instanceof ResourceReadError) throw cause;
+    } catch (error) {
+      if (error instanceof ResourceReadError) throw error;
       if (signal?.aborted) throw new ResourceReadError("resource_read_aborted");
       throw new ResourceReadError("resource_read_failed");
     } finally {
@@ -162,7 +162,7 @@ export class ChannelResources {
 }
 
 export async function prepareOutputSegments(
-  segments: readonly (readonly Element[])[],
+  segments: ReadonlyArray<readonly Element[]>,
   resources: ChannelResources,
   signal?: AbortSignal,
 ): Promise<Element[][]> {

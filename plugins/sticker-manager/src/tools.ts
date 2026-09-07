@@ -165,8 +165,8 @@ export function createStickerTools(options: StickerToolsOptions): AgentTool[] {
           tags: sticker.tags,
           message: tags && tags.length > 0 ? `已按标签 ${tags.join("、")} 发送 ${sticker.category} 分类的表情包` : `已发送 ${sticker.category} 分类的表情包`,
         };
-      } catch (cause) {
-        return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
     },
   };

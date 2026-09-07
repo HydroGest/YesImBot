@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import path from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Schema, type Bot, type Context } from "koishi";
@@ -83,7 +83,7 @@ export default class MemoryAgentPlugin {
     config: MemorizerConfig,
   ) {
     this.config = config;
-    const root = resolve(ctx.baseDir, config.dataPath || "data/yesimbot/memorizer");
+    const root = path.resolve(ctx.baseDir, config.dataPath || "data/yesimbot/memorizer");
     this.store = new MemoryStore(ctx);
     this.evidence = new EvidenceStore(root);
     this.pending = new PendingStore(root);

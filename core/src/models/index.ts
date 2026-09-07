@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import path from "node:path";
 
 import {
   EmbeddingModel,
@@ -223,7 +223,7 @@ export class ModelService {
   }
 
   private getModelsConfigPath(): string {
-    return join(resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir), "models.json");
+    return path.join(path.resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir), "models.json");
   }
 
   private async start(): Promise<void> {
@@ -238,7 +238,7 @@ export class ModelService {
   private async stop(): Promise<void> {}
 
   private refreshSchemas(): void {
-    const options: Schema<string>[] = [];
+    const options: Array<Schema<string>> = [];
     for (const model of this.chatModels.values()) {
       if (model.config.hidden) {
         continue;
@@ -249,7 +249,7 @@ export class ModelService {
     options.push(Schema.string().description("Custom model (provider:model)"));
     this.ctx.schema.set("registry.chatModels", Schema.union(options).default(""));
 
-    const embeddingOptions: Schema<string>[] = [];
+    const embeddingOptions: Array<Schema<string>> = [];
     for (const model of this.embeddingModels.values()) {
       if (model.config.hidden) {
         continue;

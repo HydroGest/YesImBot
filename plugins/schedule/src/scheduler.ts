@@ -109,9 +109,9 @@ export class ScheduleScheduler {
     try {
       await this.ctx.yesimbot.messenger.post(event, { trigger: true, ifBusy: "defer", delivery: row.delivery });
       await this.store.finish(row.id, occurrenceAt, "accepted");
-    } catch (cause) {
-      const error = cause instanceof Error ? { name: cause.name, message: cause.message } : { name: "Error", message: String(cause) };
-      await this.store.finish(row.id, occurrenceAt, "failed", error);
+    } catch (error) {
+      const detail = error instanceof Error ? { name: error.name, message: error.message } : { name: "Error", message: String(error) };
+      await this.store.finish(row.id, occurrenceAt, "failed", detail);
     }
   }
 }

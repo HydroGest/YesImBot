@@ -31,5 +31,3 @@ export const StickerConfigSchema: Schema<StickerConfig> = Schema.object({
   sendStaticAsGif: Schema.boolean().default(true).description("发送静态图片表情包时转为单帧 GIF，默认开启；GIF 原样发送"),
   stickerElement: Schema.boolean().default(true).description("允许 bot 直接输出 <sticker/> 发送表情，默认开启"),
 });
-
-export type { StickerConfig };

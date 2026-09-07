@@ -36,7 +36,7 @@ type KickUserInput = GroupUserInput & { rejectAddRequest?: boolean };
 type ForwardSendResult = { ok: true; messageId: string } | { ok: false; error: { name: string; message: string } };
 
 export interface OnebotUtilsConfig {
-  enabledTools: (typeof TOOLS)[keyof typeof TOOLS][];
+  enabledTools: Array<(typeof TOOLS)[keyof typeof TOOLS]>;
   parseImages: boolean;
   attachImageSummary: boolean;
   maxForwardPageChars: number;
@@ -110,7 +110,7 @@ function getOneBotInternal(bot: Bot): OneBotInternal {
 async function loadForwardSendNodes(internal: OneBotInternal, forwardId: string): Promise<readonly OneBotForwardSendNode[] | undefined> {
   const response = await internal.getForwardMsg(forwardId);
   if (!Array.isArray(response)) return undefined;
-  const nodes = response as unknown as readonly { readonly sender: OneBotSenderInfo; readonly time: number; readonly message: readonly OneBotCQCode[] }[];
+  const nodes = response as unknown as ReadonlyArray<{ readonly sender: OneBotSenderInfo; readonly time: number; readonly message: readonly OneBotCQCode[] }>;
   return Promise.all(
     nodes.map(async (node) => ({
       type: "node" as const,
@@ -274,8 +274,8 @@ function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsC
         const target = directChannelId(scope.channelId);
         const messageId = scope.type === "direct" ? await internal.sendPrivateForwardMsg(target, nodes) : await internal.sendGroupForwardMsg(target, nodes);
         return { ok: true, messageId: String(messageId) };
-      } catch (cause) {
-        return { ok: false, error: { name: cause instanceof Error ? cause.name : "Error", message: errorMessage(cause) } };
+      } catch (error) {
+        return { ok: false, error: { name: error instanceof Error ? error.name : "Error", message: errorMessage(error) } };
       }
     },
   };
@@ -377,8 +377,8 @@ function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsC
       try {
         await requestOneBot(bot, "set_group_ban", { group_id: Number(scope.channelId), user_id: toOneBotUserId(userId), duration: Math.floor(duration) });
         return { success: true };
-      } catch (cause) {
-        return { error: errorMessage(cause) };
+      } catch (error) {
+        return { error: errorMessage(error) };
       }
     },
   };
@@ -391,8 +391,8 @@ function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsC
       try {
         await requestOneBot(bot, "set_group_ban", { group_id: Number(scope.channelId), user_id: toOneBotUserId(userId), duration: 0 });
         return { success: true };
-      } catch (cause) {
-        return { error: errorMessage(cause) };
+      } catch (error) {
+        return { error: errorMessage(error) };
       }
     },
   };
@@ -414,8 +414,8 @@ function createOneBotTools(ctx: Context, bot: Bot, config: Readonly<OnebotUtilsC
           reject_add_request: rejectAddRequest ?? false,
         });
         return { success: true };
-      } catch (cause) {
-        return { error: errorMessage(cause) };
+      } catch (error) {
+        return { error: errorMessage(error) };
       }
     },
   };

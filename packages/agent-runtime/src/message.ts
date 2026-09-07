@@ -196,5 +196,9 @@ function toPlainModelMessage(message: AgentUserMessage | AgentAssistantMessage |
       }
       return next;
     }
+    default: {
+      const unhandled: never = message;
+      throw new TypeError(`Unsupported message role: ${JSON.stringify(unhandled)}`);
+    }
   }
 }

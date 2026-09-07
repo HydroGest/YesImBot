@@ -163,7 +163,7 @@ export function createTurnQueue(options: TurnQueueOptions) {
 function createQueuedTurn(messages: AgentMessage[]): QueuedTurn {
   const controller = new AbortController();
   const joined: AgentMessage[] = [];
-  const joinedPersistence: Promise<void>[] = [];
+  const joinedPersistence: Array<Promise<void>> = [];
 
   const request: TurnRequest = {
     turnId: createRandomId(),

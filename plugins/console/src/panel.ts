@@ -1,6 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { freemem, totalmem } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 
 import { DataService } from "@koishijs/console";
 import {} from "@koishijs/loader";
@@ -375,15 +375,15 @@ function readModelState(ctx: Context, config: ReturnType<typeof readCoreConfig>,
   } else if (!registeredChatModels.some((entry) => entry.fullId === config.chatModel)) {
     try {
       model.resolveChatModel(config.chatModel);
-    } catch (cause) {
-      issues.push({ level: "error", message: `chatModel 解析失败：${messageOf(cause)}` });
+    } catch (error) {
+      issues.push({ level: "error", message: `chatModel 解析失败：${messageOf(error)}` });
     }
   }
   if (config.visionModel && !registeredChatModels.some((entry) => entry.fullId === config.visionModel)) {
     try {
       model.resolveChatModel(config.visionModel);
-    } catch (cause) {
-      issues.push({ level: "warning", message: `visionModel 解析失败：${messageOf(cause)}` });
+    } catch (error) {
+      issues.push({ level: "warning", message: `visionModel 解析失败：${messageOf(error)}` });
     }
   }
   if (!providers.length) {
@@ -463,12 +463,12 @@ function normalizePluginKey(key: string): string {
 
 async function loadYesImBotPackageRegistry(ctx: Context): Promise<Map<string, YesImBotPackageMeta>> {
   const result = new Map<string, YesImBotPackageMeta>();
-  const nodeModules = join(ctx.loader.baseDir || ctx.baseDir, "node_modules");
+  const nodeModules = path.join(ctx.loader.baseDir || ctx.baseDir, "node_modules");
   const entries = await readdir(nodeModules, { withFileTypes: true }).catch(() => []);
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const packagePaths = entry.name.startsWith("@") ? await scopedPackagePaths(nodeModules, entry.name) : [join(nodeModules, entry.name, "package.json")];
+    const packagePaths = entry.name.startsWith("@") ? await scopedPackagePaths(nodeModules, entry.name) : [path.join(nodeModules, entry.name, "package.json")];
     for (const packagePath of packagePaths) {
       const meta = await readYesImBotPackageMeta(packagePath);
       if (meta) result.set(meta.configKey, meta);
@@ -478,9 +478,9 @@ async function loadYesImBotPackageRegistry(ctx: Context): Promise<Map<string, Ye
 }
 
 async function scopedPackagePaths(nodeModules: string, scope: string): Promise<string[]> {
-  const scopeDir = join(nodeModules, scope);
+  const scopeDir = path.join(nodeModules, scope);
   const entries = await readdir(scopeDir, { withFileTypes: true }).catch(() => []);
-  return entries.filter((entry) => entry.isDirectory()).map((entry) => join(scopeDir, entry.name, "package.json"));
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(scopeDir, entry.name, "package.json"));
 }
 
 async function readYesImBotPackageMeta(packagePath: string): Promise<YesImBotPackageMeta | undefined> {

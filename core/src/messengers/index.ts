@@ -84,7 +84,7 @@ export class Messenger {
       } catch {}
     }
     await this.runtimes.stop();
-    await Promise.allSettled([...this.tasks]);
+    await Promise.allSettled(this.tasks);
   }
 
   private async handle(session: Session): Promise<void> {
@@ -117,8 +117,8 @@ export class Messenger {
       const result = await runtime.handle(record);
       this.logger.debug("messenger.route.result", { routeId, result: result.kind, eventId: result.eventId });
       if (result.kind === "run") await result.done;
-    } catch (cause) {
-      this.warn("messenger.route_failed", cause, session.platform);
+    } catch (error) {
+      this.warn("messenger.route_failed", error, session.platform);
     }
   }
 

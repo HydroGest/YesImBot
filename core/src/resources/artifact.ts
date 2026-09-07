@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import path from "node:path";
 
 const SAFE_ARTIFACT_NAME = /^[a-zA-Z0-9_-]+$/;
 const SAFE_MEDIA_TYPE = /^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/;
@@ -32,14 +32,14 @@ export class ChannelArtifactStore implements ArtifactStore {
   public async open(uri: string): Promise<ArtifactOpenResult> {
     const parsed = parseArtifactUri(uri);
     if (!parsed) throw new Error("Invalid artifact URI");
-    const directory = join(this.path(), parsed.toolName, parsed.uuid);
+    const directory = path.join(this.path(), parsed.toolName, parsed.uuid);
     try {
-      const [bytes, metadataRaw] = await Promise.all([readFile(join(directory, "data")), readFile(join(directory, "metadata.json"), "utf-8")]);
+      const [bytes, metadataRaw] = await Promise.all([readFile(path.join(directory, "data")), readFile(path.join(directory, "metadata.json"), "utf-8")]);
       const metadata = parseMetadata(JSON.parse(metadataRaw), bytes.byteLength);
       return { bytes: new Uint8Array(bytes), mediaType: metadata.mediaType, filename: metadata.filename };
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === "ENOENT") throw new Error("Artifact not found");
-      throw cause;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error("Artifact not found");
+      throw error;
     }
   }
 
@@ -48,7 +48,7 @@ export class ChannelArtifactStore implements ArtifactStore {
   }
 
   private path(): string {
-    return join(this.root, "artifacts");
+    return path.join(this.root, "artifacts");
   }
 }
 
@@ -62,11 +62,11 @@ class ChannelArtifactWriter implements ArtifactWriter {
     if (!(bytes instanceof Uint8Array)) throw new Error("Artifact data must be bytes");
     const normalized = parseMetadata({ ...metadata, byteLength: bytes.byteLength }, bytes.byteLength);
     const uuid = generateUuidV7();
-    const base = join(this.root, "artifacts", this.toolName);
-    const directory = join(base, uuid);
-    const temporary = join(base, `.${uuid}.tmp`);
+    const base = path.join(this.root, "artifacts", this.toolName);
+    const directory = path.join(base, uuid);
+    const temporary = path.join(base, `.${uuid}.tmp`);
     await mkdir(temporary, { recursive: true });
-    await Promise.all([writeFile(join(temporary, "data"), bytes), writeFile(join(temporary, "metadata.json"), JSON.stringify(normalized))]);
+    await Promise.all([writeFile(path.join(temporary, "data"), bytes), writeFile(path.join(temporary, "metadata.json"), JSON.stringify(normalized))]);
     await rename(temporary, directory);
     return `artifact://${this.toolName}/${uuid}`;
   }

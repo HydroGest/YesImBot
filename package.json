@@ -30,6 +30,7 @@
     "test": "yakumo vitest"
   },
   "devDependencies": {
+    "@koishijs/core": "^4.18.11",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^22.16.2",
     "husky": "^9.1.7",

@@ -49,10 +49,10 @@ export default class StickerManagerPlugin {
       this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
       this.disposeCommands = registerStickerCommands({ ctx: this.ctx, store: this.store, classifier, config: this.config });
       this.logger.success("Sticker manager plugin started");
-    } catch (cause) {
+    } catch (error) {
       this.started = false;
-      this.stop().catch((stopCause) => this.logger.warn("sticker_plugin_stop_failed", { cause: stopCause }));
-      throw cause;
+      this.stop().catch((error) => this.logger.warn("sticker_plugin_stop_failed", { error }));
+      throw error;
     }
   }
 

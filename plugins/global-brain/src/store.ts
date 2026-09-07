@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import path from "node:path";
 
 import type { ChannelContext } from "koishi-plugin-yesimbot";
 
@@ -80,7 +80,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
   const now = options.now ?? Date.now;
   const createId = options.createId ?? randomUUID;
   const maxBlobBytes = options.maxBlobBytes ?? 5 * 1024 * 1024;
-  const blobDir = join(dirname(options.filePath), "blobs");
+  const blobDir = path.join(path.dirname(options.filePath), "blobs");
   const threads = new Map<string, BrainThread>();
   const replies = new Map<string, BrainReply[]>();
   const seenThreads = new Map<string, Set<string>>();
@@ -168,12 +168,12 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
         try {
           const record = parseRecord(JSON.parse(line) as unknown);
           if (record) applyRecord(record);
-        } catch (cause) {
-          warn("global_brain.invalid_record", { line: index + 1, cause: cause instanceof Error ? cause.message : String(cause) });
+        } catch (error) {
+          warn("global_brain.invalid_record", { line: index + 1, cause: error instanceof Error ? error.message : String(error) });
         }
       }
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   };
 
@@ -181,7 +181,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
     async init() {
       if (initialized) return;
       await serialize(async () => {
-        await mkdir(dirname(options.filePath), { recursive: true });
+        await mkdir(path.dirname(options.filePath), { recursive: true });
         await load();
         initialized = true;
       });
@@ -198,14 +198,14 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
         }
         const copied = bytes.slice();
         const id = createHash("sha256").update(copied).digest("hex").slice(0, 32);
-        const destination = join(blobDir, id);
+        const destination = path.join(blobDir, id);
         try {
           await readFile(destination);
           return id;
-        } catch (cause) {
-          if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         }
-        const temporary = join(blobDir, `.${id}.${randomUUID()}.tmp`);
+        const temporary = path.join(blobDir, `.${id}.${randomUUID()}.tmp`);
         await mkdir(blobDir, { recursive: true });
         try {
           await writeFile(temporary, copied, { flag: "wx" });
@@ -221,7 +221,7 @@ export function createGlobalBrainStore(options: GlobalBrainStoreOptions): Global
       await this.init();
       if (!/^[a-f0-9]{32}$/.test(id)) throw new BrainStoreError("invalid_blob_id", "Invalid blob id");
       return serialize(async () => {
-        return new Uint8Array(await readFile(join(blobDir, id)));
+        return new Uint8Array(await readFile(path.join(blobDir, id)));
       });
     },
 

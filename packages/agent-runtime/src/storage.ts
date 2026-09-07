@@ -1,5 +1,5 @@
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import path from "node:path";
 
 import type { AgentEntry } from "./entry.js";
 
@@ -32,7 +32,7 @@ export function createJsonlStorage(filePath: string): AgentStorage<AgentEntry> {
         return;
       }
 
-      await mkdir(dirname(filePath), { recursive: true });
+      await mkdir(path.dirname(filePath), { recursive: true });
       const payload = entries.map((entry) => JSON.stringify(entry)).join("\n");
       await appendFile(filePath, `${payload}\n`, "utf8");
     },

@@ -237,7 +237,7 @@ function formatFileSize(value: unknown): string | null {
   return `${(bytes / unit[0]).toFixed(1)} ${unit[1]}`;
 }
 
-function collectImageRequests(records: readonly (readonly ForwardMessage[])[], imageUrls: ReadonlyMap<string, string>): ForwardImageRequest[] {
+function collectImageRequests(records: ReadonlyArray<readonly ForwardMessage[]>, imageUrls: ReadonlyMap<string, string>): ForwardImageRequest[] {
   const requests = new Map<string, ForwardImageRequest>();
   for (const recordList of records) {
     for (const record of recordList) {

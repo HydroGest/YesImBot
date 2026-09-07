@@ -1,5 +1,5 @@
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import path from "node:path";
 
 import type { AgentEntry } from "@yesimbot/agent-runtime";
 
@@ -48,7 +48,7 @@ export function createChatHistoryStore(filePath: string): ChatHistoryStore {
       return serialize(async () => {
         if (nextEntries.length === 0) return;
         entries.push(...nextEntries);
-        await mkdir(dirname(filePath), { recursive: true });
+        await mkdir(path.dirname(filePath), { recursive: true });
         const payload = nextEntries.map((entry) => JSON.stringify(entry)).join("\n");
         await appendFile(filePath, `${payload}\n`, "utf8");
       });
@@ -66,7 +66,7 @@ export function createChatHistoryStore(filePath: string): ChatHistoryStore {
           return [];
         }
 
-        await mkdir(dirname(filePath), { recursive: true });
+        await mkdir(path.dirname(filePath), { recursive: true });
         const temporary = `${filePath}.${Date.now()}.tmp`;
         await writeFile(temporary, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, { encoding: "utf8", flag: "wx" });
         try {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import path from "node:path";
 
 export type ReflectionSource = "auto" | "human";
 
@@ -69,7 +69,7 @@ export function createReflectionStore(filePath: string): ReflectionStore {
     append(input) {
       return serialize(async () => {
         const record: ReflectionRecord = { ...input, id: randomUUID(), createdAt: Date.now() };
-        await mkdir(dirname(filePath), { recursive: true });
+        await mkdir(path.dirname(filePath), { recursive: true });
         await appendFile(filePath, `${JSON.stringify(record)}\n`, "utf8");
         records.push(record);
         return record;

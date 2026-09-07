@@ -75,10 +75,10 @@ export class MemoryScheduler {
       try {
         await this.run(channel, batch);
         await this.pending.complete(batch.map((item) => item.id));
-      } catch (cause) {
+      } catch (error) {
         await this.pending.fail(
           batch.map((item) => item.id),
-          cause,
+          error,
           Date.now(),
         );
       }

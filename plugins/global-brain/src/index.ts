@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import path from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Context, Logger, Schema, type Bot } from "koishi";
@@ -52,9 +52,9 @@ export default class GlobalBrainPlugin {
   public async start(): Promise<void> {
     this.dispose?.();
     this.dispose = undefined;
-    const storageDir = this.config.storageDir ? resolve(this.ctx.baseDir, this.config.storageDir) : join(this.ctx.baseDir, "global-brain");
+    const storageDir = this.config.storageDir ? path.resolve(this.ctx.baseDir, this.config.storageDir) : path.join(this.ctx.baseDir, "global-brain");
     const store = createGlobalBrainStore({
-      filePath: join(storageDir, "brain.jsonl"),
+      filePath: path.join(storageDir, "brain.jsonl"),
       maxDigestThreads: this.config.maxDigestThreads,
       maxDigestReplies: this.config.maxDigestReplies,
       maxBlobBytes: this.config.maxBlobBytes,
@@ -115,11 +115,11 @@ export default class GlobalBrainPlugin {
   private async runImmediateShare(thread: BrainThread, target: ActiveScope): Promise<void> {
     try {
       await this.ctx.yesimbot.messenger.post(buildImmediateShareEvent(target.scope, target.selfId, thread));
-    } catch (cause) {
+    } catch (error) {
       this.logger.warn("global_brain.immediate_trigger_failed", {
         threadId: thread.id,
         targetScope: target.scope,
-        cause: cause instanceof Error ? cause.message : String(cause),
+        cause: error instanceof Error ? error.message : String(error),
       });
     }
   }

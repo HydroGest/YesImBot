@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import path from "node:path";
 
 import type { CharacterCardV3 } from "@risuai/ccardlib";
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
@@ -43,7 +43,7 @@ export default class RoleplayPlugin {
     this.disposeAgentPlugin?.();
     this.disposeAgentPlugin = undefined;
 
-    const card = await loadCharacterCard(resolve(this.ctx.baseDir, this.config.characterCard));
+    const card = await loadCharacterCard(path.resolve(this.ctx.baseDir, this.config.characterCard));
     const greeting = selectGreeting(card, this.config.useRandomGreeting ?? false);
     this.card = card;
     this.greeting = greeting;

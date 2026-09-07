@@ -19,12 +19,12 @@ Athena 已经重写过不止一次。
 
 当前分支不能单独承担历史证据。后续记录使用以下标记：
 
-| 标记 | 含义 | 例子 | 可信度 |
-| --- | --- | --- | --- |
-| `[C]` | commit、tag 或远程分支 | `6e3f647`、`v4.0.0-beta.5` | 最高，但 squash 可能隐藏中间过程 |
-| `[S]` | 旧源码或文档备份 | `references/YesImBot-v3/` | 高，能证明某时点的实现形态 |
-| `[D]` | OpenSpec、retrospective、当前会话中明确接受的决定 | archived change、主规范 | 高，适合解释意图和约束 |
-| `[R]` | 事后回忆或解释 | “当时已经厌倦维护 fat core” | 需要与其他证据交叉验证 |
+| 标记  | 含义                                              | 例子                        | 可信度                           |
+| ----- | ------------------------------------------------- | --------------------------- | -------------------------------- |
+| `[C]` | commit、tag 或远程分支                            | `6e3f647`、`v4.0.0-beta.5`  | 最高，但 squash 可能隐藏中间过程 |
+| `[S]` | 旧源码或文档备份                                  | `references/YesImBot-v3/`   | 高，能证明某时点的实现形态       |
+| `[D]` | OpenSpec、retrospective、当前会话中明确接受的决定 | archived change、主规范     | 高，适合解释意图和约束           |
+| `[R]` | 事后回忆或解释                                    | “当时已经厌倦维护 fat core” | 需要与其他证据交叉验证           |
 
 判断性语句至少应附一个 `[C]`、`[S]` 或 `[D]`。无法验证的记忆可以保留，但必须标成 `[R]`，不能写成既定事实。
 
@@ -301,69 +301,70 @@ MemOS 同时收窄为 search/add 两项受信任 scope 内的能力。工具结�
 
 ### 当前有效
 
-| ID | 决策 | 状态与理由 |
-| --- | --- | --- |
-| P-01 | 群聊按“场”理解，而不是独立请求 | 产品原则，持续有效 |
-| P-02 | 不回复是一等行为 | `WillEngine.Decision` 以 `wait | trigger` 表达首版参与判断 |
-| P-03 | `@yesimbot/agent-runtime` 保持框架无关 | 当前核心边界 |
-| P-04 | Koishi core 是集成层，不拥有全部业务能力 | 当前核心边界 |
-| P-05 | 可选能力进入 `plugins/*`，模型进入 `providers/*` | 已实施 |
-| P-06 | 平台输入进入 `platforms/*` | 已实施 |
-| P-07 | 频道 Event 使用 JSONL，长期记忆由插件负责 | 已实施 |
-| P-11 | PlatformTranslator 持久化图片，Runtime 投影本地资产 | 入站下载属于平台；历史和模型调用不请求平台 |
-| P-12 | Forward 和 quote 不自动展开 | 已实施 |
-| P-13 | 每频道 FIFO 管理持久化、观察、WillEngine 判断和首次提交 | 已实施 |
-| P-14 | 模型流消费在 FIFO 外 | 已实施 |
-| P-15 | 消息 formatter 由 core 固定 | 已实施 |
-| P-17 | 未发布旧格式不提供兼容层 | 当前分支明确偏好 |
-| P-18 | Prompt 由 Constitution、persona、可选 agents 和 runtime context 固定排序 | Runtime 创建时快照稳定资源 |
-| P-19 | 公共 API 只为现有用例服务 | KISS / YAGNI 原则 |
-| P-22 | `ChannelRuntime` 独占频道 Agent 生命周期 | `YesImBotService` 只做 Koishi composition 与 delegation |
-| P-24 | `EventRecord` 是路由、持久化和 WillEngine 判断的唯一事实 | 结构复用 Satori Event 与 `yesimbot.event`，不再维护 Platform 消息代数 |
-| P-25 | 每个平台最多注册一个 Translator | 精确平台 > 显式通配 > 内置默认；选定 Translator 的 null 或抛错都不 fallback |
-| P-26 | Messenger 是 Session 和被动回复的唯一 owner | Translator、ChannelResources 和 `Session.send()` 都在活动 handler 内完成 |
-| P-27 | WillEngine 是每频道的最小参与判断 seam | 默认 routing；可选 WillPlugin 通过 `ctx.yesimbot.agent.will()` 注册，按 priority 稳定排序 |
-| P-28 | 出站能力保持 Messenger 内部拆分 | Messenger 处理被动 Session.send、主动 Bot.sendMessage 与 delivery.failed 回灌 |
-| P-29 | `ctx.yesimbot` 只公开四个领域入口 | model、messenger、agent、resource；Runtime、ChannelResources owner 与传输适配保持私有 |
-| P-30 | `ChannelScope` 保持原始字段 | 不公开或持久化 Channel Key、identity、tuple key 或 directory helper |
-| P-31 | Core 使用可读 versionless channel root | `channel.json`、sessions、assets 和插件子目录共存；tuple 仅属实现 |
-| P-32 | Database 是必需依赖，shared 频道 assignee admission fail closed | Koishi 拥有分配权；Core 不重复存储 assignee |
-| P-33 | shared Bot 变化时停旧建新 | 当前 record 进入新 Runtime；不提供 reload 或 drain 协调 |
-| P-34 | AssetStore 是公开的 scoped byte store | PlatformTranslator 写入、Runtime 读取；具体存储与路径 helper 保持私有 |
+| ID   | 决策                                                                     | 状态与理由                                                                                |
+| ---- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| P-01 | 群聊按“场”理解，而不是独立请求                                           | 产品原则，持续有效                                                                        |
+| P-02 | 不回复是一等行为                                                         | `WillEngine.Decision` 以 `wait                                                            | trigger` 表达首版参与判断 |
+| P-03 | `@yesimbot/agent-runtime` 保持框架无关                                   | 当前核心边界                                                                              |
+| P-04 | Koishi core 是集成层，不拥有全部业务能力                                 | 当前核心边界                                                                              |
+| P-05 | 可选能力进入 `plugins/*`，模型进入 `providers/*`                         | 已实施                                                                                    |
+| P-06 | 平台输入进入 `platforms/*`                                               | 已实施                                                                                    |
+| P-07 | 频道 Event 使用 JSONL，长期记忆由插件负责                                | 已实施                                                                                    |
+| P-11 | PlatformTranslator 持久化图片，Runtime 投影本地资产                      | 入站下载属于平台；历史和模型调用不请求平台                                                |
+| P-12 | Forward 和 quote 不自动展开                                              | 已实施                                                                                    |
+| P-13 | 每频道 FIFO 管理持久化、观察、WillEngine 判断和首次提交                  | 已实施                                                                                    |
+| P-14 | 模型流消费在 FIFO 外                                                     | 已实施                                                                                    |
+| P-15 | 消息 formatter 由 core 固定                                              | 已实施                                                                                    |
+| P-17 | 未发布旧格式不提供兼容层                                                 | 当前分支明确偏好                                                                          |
+| P-18 | Prompt 由 Constitution、persona、可选 agents 和 runtime context 固定排序 | Runtime 创建时快照稳定资源                                                                |
+| P-19 | 公共 API 只为现有用例服务                                                | KISS / YAGNI 原则                                                                         |
+| P-22 | `ChannelRuntime` 独占频道 Agent 生命周期                                 | `YesImBotService` 只做 Koishi composition 与 delegation                                   |
+| P-24 | `EventRecord` 是路由、持久化和 WillEngine 判断的唯一事实                 | 结构复用 Satori Event 与 `yesimbot.event`，不再维护 Platform 消息代数                     |
+| P-25 | 每个平台最多注册一个 Translator                                          | 精确平台 > 显式通配 > 内置默认；选定 Translator 的 null 或抛错都不 fallback               |
+| P-26 | Messenger 是 Session 和被动回复的唯一 owner                              | Translator、ChannelResources 和 `Session.send()` 都在活动 handler 内完成                  |
+| P-27 | WillEngine 是每频道的最小参与判断 seam                                   | 默认 routing；可选 WillPlugin 通过 `ctx.yesimbot.agent.will()` 注册，按 priority 稳定排序 |
+| P-28 | 出站能力保持 Messenger 内部拆分                                          | Messenger 处理被动 Session.send、主动 Bot.sendMessage 与 delivery.failed 回灌             |
+| P-29 | `ctx.yesimbot` 只公开四个领域入口                                        | model、messenger、agent、resource；Runtime、ChannelResources owner 与传输适配保持私有     |
+| P-30 | `ChannelScope` 保持原始字段                                              | 不公开或持久化 Channel Key、identity、tuple key 或 directory helper                       |
+| P-31 | Core 使用可读 versionless channel root                                   | `channel.json`、sessions、assets 和插件子目录共存；tuple 仅属实现                         |
+| P-32 | Database 是必需依赖，shared 频道 assignee admission fail closed          | Koishi 拥有分配权；Core 不重复存储 assignee                                               |
+| P-33 | shared Bot 变化时停旧建新                                                | 当前 record 进入新 Runtime；不提供 reload 或 drain 协调                                   |
+| P-34 | AssetStore 是公开的 scoped byte store                                    | PlatformTranslator 写入、Runtime 读取；具体存储与路径 helper 保持私有                     |
 
 ### 明确延后
 
-| ID | 方向 | 启动条件 |
-| --- | --- | --- |
-| D-01 | 学习型或评分型 WillEngine | 有可解释输入、离线样本和评估方法 |
-| D-02 | 标准事件消费者 | 明确路由、持久化和幂等 |
-| D-03 | World state | 出现聊天历史无法回答的具体状态需求 |
-| D-04 | 主动计划与投递 | 权限、预算、审计、停止机制齐备 |
-| D-05 | 音频和视频模型输入 | Provider 能力与资产协议明确 |
-| D-06 | TTS 和语音人格 | 有稳定维护者与独立插件边界 |
-| D-07 | 跨频道资源中心 | 出现真实跨频道复用需求 |
+| ID   | 方向                      | 启动条件                           |
+| ---- | ------------------------- | ---------------------------------- |
+| D-01 | 学习型或评分型 WillEngine | 有可解释输入、离线样本和评估方法   |
+| D-02 | 标准事件消费者            | 明确路由、持久化和幂等             |
+| D-03 | World state               | 出现聊天历史无法回答的具体状态需求 |
+| D-04 | 主动计划与投递            | 权限、预算、审计、停止机制齐备     |
+| D-05 | 音频和视频模型输入        | Provider 能力与资产协议明确        |
+| D-06 | TTS 和语音人格            | 有稳定维护者与独立插件边界         |
+| D-07 | 跨频道资源中心            | 出现真实跨频道复用需求             |
 
 ### 已否决或退役
 
-| ID | 旧方向 | 原因 |
-| --- | --- | --- |
-| R-01 | v3 fat mono-core | 中心循环和服务耦合无法持续扩展 |
-| R-02 | L1/L2/L3 多级记忆作为 core 基础设施 | 成本高，收益不稳定 |
-| R-03 | 独立 LoggerService | Koishi 已提供能力 |
-| R-04 | Handlebars prompt 变量体系 | 难以审查，运行时纯文本更直接 |
-| R-05 | v4 beta 十一服务人格架构 | 拆目录没有消除聊天机器人心智耦合 |
-| R-06 | SessionRuntime / Activation / EventBatch 作为中心模型 | 复杂度高，Coordination/Delivery 未闭合 |
-| R-07 | 公共 plugin-sdk 装饰器体系 | 当前有更小的 AgentPlugin factory seam |
-| R-08 | 平台 Fact / View / Reader / Snapshot / template 系统 | 没有足够消费者，职责侵入 core |
-| R-09 | 自动递归展开 forward/quote | 不稳定、昂贵且污染历史 |
-| R-10 | 旧 JSONL 与旧平台消息兼容 | 当前是全新实现，没有现实消费者 |
-| R-11 | Translator 选择与 refine 作为平台入口 | 单一 PlatformTranslator 直接产生最终 Message/EventRecord，删除 Draft 中间层 |
-| R-12 | `Platform.Message` 与 `MessageRecord` 平行模型 | Satori Event resources 与 `yesimbot.event` 已覆盖结构和持久化 |
-| R-13 | Event publish-only | Event 需要进入 JSONL、WillEngine 和模型历史 |
-| R-14 | `ctx.yesimbot.platform` 公共服务 | 插件改用 `registerTranslator()` 与 Agent plugin factory context |
-| R-15 | `Platform.Message` 作为路由真相 | EventRecord 成为唯一 canonical input |
-| R-16 | 公共 `DeliveryService` | Gateway 被动回复和 current-bot Agent tool 已覆盖当前用例 |
+| ID   | 旧方向                                                                 | 原因                                                                        |
+| ---- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| R-01 | v3 fat mono-core                                                       | 中心循环和服务耦合无法持续扩展                                              |
+| R-02 | L1/L2/L3 多级记忆作为 core 基础设施                                    | 成本高，收益不稳定                                                          |
+| R-03 | 独立 LoggerService                                                     | Koishi 已提供能力                                                           |
+| R-04 | Handlebars prompt 变量体系                                             | 难以审查，运行时纯文本更直接                                                |
+| R-05 | v4 beta 十一服务人格架构                                               | 拆目录没有消除聊天机器人心智耦合                                            |
+| R-06 | SessionRuntime / Activation / EventBatch 作为中心模型                  | 复杂度高，Coordination/Delivery 未闭合                                      |
+| R-07 | 公共 plugin-sdk 装饰器体系                                             | 当前有更小的 AgentPlugin factory seam                                       |
+| R-08 | 平台 Fact / View / Reader / Snapshot / template 系统                   | 没有足够消费者，职责侵入 core                                               |
+| R-09 | 自动递归展开 forward/quote                                             | 不稳定、昂贵且污染历史                                                      |
+| R-10 | 旧 JSONL 与旧平台消息兼容                                              | 当前是全新实现，没有现实消费者                                              |
+| R-11 | Translator 选择与 refine 作为平台入口                                  | 单一 PlatformTranslator 直接产生最终 Message/EventRecord，删除 Draft 中间层 |
+| R-12 | `Platform.Message` 与 `MessageRecord` 平行模型                         | Satori Event resources 与 `yesimbot.event` 已覆盖结构和持久化               |
+| R-13 | Event publish-only                                                     | Event 需要进入 JSONL、WillEngine 和模型历史                                 |
+| R-14 | `ctx.yesimbot.platform` 公共服务                                       | 插件改用 `registerTranslator()` 与 Agent plugin factory context             |
+| R-15 | `Platform.Message` 作为路由真相                                        | EventRecord 成为唯一 canonical input                                        |
+| R-16 | 公共 `DeliveryService`                                                 | Gateway 被动回复和 current-bot Agent tool 已覆盖当前用例                    |
 | R-17 | 公共或持久化 Channel Key、`ChannelScopeId` 与 versioned directory 格式 | 被 raw ChannelScope、私有 canonical tuple 和 versionless readable root 取代 |
+
 ### PlatformTranslator 架构决策（2026-08）
 
 Core 入站边界统一命名为 `PlatformTranslator`。Gateway 推导 `RecordBase`，按精确平台、显式 `"*"`、内置默认的顺序只选择一次 Translator；消息 Translator 直接返回最终 `MessageRecord`，事件通过 `assembleEvent` 返回最终 `EventRecord`。内置默认仅透传带非空 message ID 的 `message-created` 元素，不持久化媒体；未选 Translator 的 null 或异常不触发回退，统一记录 `gateway.route_failed`。
@@ -472,15 +473,15 @@ OpenSpec 能防止实现漂移，但设计文档不是权威到不可推翻。�
 
 ### 8.5 与其他文档的分工
 
-| 文档 | 负责内容 |
-| --- | --- |
-| 本日志 | 产品判断、系统演进、长期偏好及其证据 |
-| 愿景文档 | 稳定产品方向和当前边界 |
-| `AGENTS.md` | 当前仓库事实与工作规则 |
-| `CHANGELOG.md` | 面向版本的功能变化和普通 bug 修复 |
-| `openspec/specs/` | 当前规范要求 |
+| 文档                            | 负责内容                                     |
+| ------------------------------- | -------------------------------------------- |
+| 本日志                          | 产品判断、系统演进、长期偏好及其证据         |
+| 愿景文档                        | 稳定产品方向和当前边界                       |
+| `AGENTS.md`                     | 当前仓库事实与工作规则                       |
+| `CHANGELOG.md`                  | 面向版本的功能变化和普通 bug 修复            |
+| `openspec/specs/`               | 当前规范要求                                 |
 | OpenSpec change / retrospective | 单次变更的任务、验证、review、同步和归档记录 |
-| commit / PR | 具体实现、机械操作和低层证据 |
+| commit / PR                     | 具体实现、机械操作和低层证据                 |
 
 ### 8.6 取证顺序
 

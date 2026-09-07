@@ -1,5 +1,5 @@
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import path from "node:path";
 
 import { createEntry, createJsonlStorage, type AgentEntry, type AgentStorage } from "@yesimbot/agent-runtime";
 import type { LanguageModel } from "ai";
@@ -83,9 +83,9 @@ export class Conversation {
     return Promise.all(
       (await this.files()).reverse().map(async (filename) => ({
         filename,
-        isActive: join(this.sessionsPath(), filename) === active,
-        size: (await stat(join(this.sessionsPath(), filename))).size,
-        createdAt: basename(filename, ".jsonl"),
+        isActive: path.join(this.sessionsPath(), filename) === active,
+        size: (await stat(path.join(this.sessionsPath(), filename))).size,
+        createdAt: path.basename(filename, ".jsonl"),
       })),
     );
   }
@@ -102,9 +102,9 @@ export class Conversation {
     await this.init();
     const filename = id.endsWith(".jsonl") ? id : `${id}.jsonl`;
     if (!/^[0-9A-Za-zTZ_-]+\.jsonl$/.test(filename)) throw new Error("Invalid session id");
-    const path = join(this.sessionsPath(), filename);
-    await stat(path);
-    this.setStorage(path);
+    const filePath = path.join(this.sessionsPath(), filename);
+    await stat(filePath);
+    this.setStorage(filePath);
     await this.restoreMemory();
   }
 
@@ -161,17 +161,17 @@ export class Conversation {
         this.failures += 1;
         return { compacted: false, reason: "empty_summary" };
       }
-      const compact = createEntry("compact", { summary, lastEntryId: messages.at(-1)!.id, sourceSession: basename(this.storagePathValue!, ".jsonl") });
+      const compact = createEntry("compact", { summary, lastEntryId: messages.at(-1)!.id, sourceSession: path.basename(this.storagePathValue!, ".jsonl") });
       await this.storage.append(compact);
       this.memory = summary;
       this.failures = 0;
       return { compacted: true };
-    } catch (cause) {
+    } catch (error) {
       this.failures += 1;
-      if (input.signal?.aborted) throw cause;
+      if (input.signal?.aborted) throw error;
       return {
         compacted: false,
-        reason: cause instanceof Error && cause.message === "Compaction produced an empty summary." ? "empty_summary" : "model_failure",
+        reason: error instanceof Error && error.message === "Compaction produced an empty summary." ? "empty_summary" : "model_failure",
       };
     }
   }
@@ -183,7 +183,7 @@ export class Conversation {
 
     for (const filename of await this.files()) {
       const messages: ReadMessage[] = [];
-      for (const entry of await createJsonlStorage(join(this.sessionsPath(), filename)).read()) {
+      for (const entry of await createJsonlStorage(path.join(this.sessionsPath(), filename)).read()) {
         if (entry.type !== "message" || !isPlatformMessage(entry.data)) continue;
         messages.push({ record: { ...entry.data.data, timestamp: entry.data.timestamp }, session: filename, index: messages.length });
       }
@@ -227,19 +227,19 @@ export class Conversation {
   private async createOrResolve(): Promise<string> {
     await mkdir(this.sessionsPath(), { recursive: true });
     const files = await this.files();
-    return files.at(-1) ? join(this.sessionsPath(), files.at(-1)!) : this.createSession();
+    return files.at(-1) ? path.join(this.sessionsPath(), files.at(-1)!) : this.createSession();
   }
 
   private async createSession(entries: readonly AgentEntry[] = []): Promise<string> {
     await mkdir(this.sessionsPath(), { recursive: true });
     const payload = entries.length ? `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n` : "";
     for (;;) {
-      const path = join(this.sessionsPath(), `${formatTimestamp(new Date())}.jsonl`);
+      const filePath = path.join(this.sessionsPath(), `${formatTimestamp(new Date())}.jsonl`);
       try {
-        await writeFile(path, payload, { flag: "wx" });
-        return path;
-      } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
+        await writeFile(filePath, payload, { flag: "wx" });
+        return filePath;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       }
     }
   }
@@ -247,14 +247,14 @@ export class Conversation {
   private async files(): Promise<string[]> {
     try {
       return (await readdir(this.sessionsPath())).filter((name) => name.endsWith(".jsonl") && name !== "messages.jsonl").sort();
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw cause;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
     }
   }
 
   private sessionsPath(): string {
-    return join(this.root, "sessions");
+    return path.join(this.root, "sessions");
   }
 }
 

@@ -1,5 +1,5 @@
 import { mkdir, realpath, stat } from "node:fs/promises";
-import { posix, resolve } from "node:path";
+import path from "node:path";
 
 import type { MountSpec } from "./types";
 
@@ -46,7 +46,7 @@ export async function normalizeMounts(mounts: readonly MountSpec[] | undefined, 
 
   const normalized: NormalizedMountSpec[] = [];
   for (const mount of candidates) {
-    const source = resolve(baseDir, mount.source);
+    const source = path.resolve(baseDir, mount.source);
     if (mount.mode === "rw") {
       await mkdir(source, { recursive: true });
     }
@@ -67,20 +67,20 @@ export async function normalizeMounts(mounts: readonly MountSpec[] | undefined, 
   return normalized;
 }
 
-export function normalizeVirtualMountPath(path: string): string {
-  if (!path || path.trim().length === 0) {
+export function normalizeVirtualMountPath(mountPoint: string): string {
+  if (!mountPoint || mountPoint.trim().length === 0) {
     throw new Error("Mount point must not be empty");
   }
-  if (!path.startsWith("/")) {
-    throw new Error(`Mount point must be an absolute virtual path: ${path}`);
+  if (!mountPoint.startsWith("/")) {
+    throw new Error(`Mount point must be an absolute virtual path: ${mountPoint}`);
   }
 
-  const segments = path.split("/").filter(Boolean);
+  const segments = mountPoint.split("/").filter(Boolean);
   if (segments.some((segment) => segment === "." || segment === "..")) {
-    throw new Error(`Mount point must not contain . or .. segments: ${path}`);
+    throw new Error(`Mount point must not contain . or .. segments: ${mountPoint}`);
   }
 
-  const normalized = posix.normalize(path).replace(/\/+$/, "") || "/";
+  const normalized = path.posix.normalize(mountPoint).replace(/\/+$/, "") || "/";
   if (normalized === "/") {
     throw new Error("Mount point / is not allowed");
   }

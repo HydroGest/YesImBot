@@ -10,7 +10,7 @@ type BackendSandbox = Sandbox & { setPendingCommand(command: string): void };
 export interface WorkspaceBashBackend {
   executeCommand(command: string, options?: { cwd?: string; signal?: AbortSignal }): Promise<unknown>;
   readFile(path: string): Promise<string>;
-  writeFiles(files: readonly { path: string; content: string }[]): Promise<void>;
+  writeFiles(files: ReadonlyArray<{ path: string; content: string }>): Promise<void>;
 }
 
 export interface CreateBashToolSetInput {

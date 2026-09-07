@@ -269,8 +269,8 @@ async function load(): Promise<void> {
     const request: ConversationRequest = { channel: channel.value, session: sessionName.value };
     const requestDetail = send as unknown as (type: "yesimbot/conversation", input: ConversationRequest) => Promise<DetailPayload>;
     detail.value = await requestDetail("yesimbot/conversation", request);
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : String(cause);
+  } catch (error) {
+    error.value = error instanceof Error ? error.message : String(error);
   } finally {
     loading.value = false;
   }
@@ -328,7 +328,9 @@ function buildTurnGroups(entries: ConversationEntryView[]): TurnGroup[] {
   let group: TurnGroup | undefined;
   let main: MainNode | undefined;
 
+  // oxlint-disable-next-line unicorn/consistent-function-scoping
   const createGroup = (entry: ConversationEntryView): TurnGroup => ({ id: entry.id, start: entry.timestamp, mainNodes: [] });
+  // oxlint-disable-next-line unicorn/consistent-function-scoping
   const createMain = (entry: ConversationEntryView): MainNode => {
     return {
       id: entry.id,
@@ -350,6 +352,7 @@ function buildTurnGroups(entries: ConversationEntryView[]): TurnGroup[] {
       result: entry.result,
     };
   };
+  // oxlint-disable-next-line unicorn/consistent-function-scoping
   const mergeEntry = (target: MainNode, entry: ConversationEntryView): void => {
     if (entry.kind === "thought" && entry.text && !target.thought) target.thought = entry.text;
     if (entry.kind === "assistant" && entry.text && !target.reply) target.reply = entry.text;
@@ -383,6 +386,7 @@ function buildTurnGroups(entries: ConversationEntryView[]): TurnGroup[] {
 
 function formatTime(value: number): string {
   const date = new Date(value);
+  // oxlint-disable-next-line unicorn/consistent-function-scoping
   const pad = (part: number) => String(part).padStart(2, "0");
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }

@@ -61,9 +61,9 @@ export class Runtimes {
       });
       try {
         await runtime.init();
-      } catch (cause) {
+      } catch (error) {
         await runtime.stop().catch(() => undefined);
-        throw cause;
+        throw error;
       }
       this.runtimes.set(key, runtime);
       this.logger.debug("runtimes.get.created", { key, selfId: bot.selfId, runtimeCount: this.runtimeCount() });

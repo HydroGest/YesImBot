@@ -1,5 +1,5 @@
 import { readFile, readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import path from "node:path";
 
 import { addUsage, averageCounts, emptyTokenCounts, getLocalDateNumber } from "./aggregate.js";
 import { normalizeLanguageUsage } from "./middleware.js";
@@ -89,7 +89,7 @@ export class JsonlUsageHistory implements UsageHistorySource {
   private async walk(directory: string, output: string[]): Promise<void> {
     const entries = await readdir(directory, { withFileTypes: true });
     for (const entry of entries) {
-      const target = join(directory, entry.name);
+      const target = path.join(directory, entry.name);
       if (entry.isDirectory()) {
         await this.walk(target, output);
       } else if (entry.name.endsWith(".jsonl")) {

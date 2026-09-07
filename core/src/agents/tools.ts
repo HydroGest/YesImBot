@@ -120,11 +120,11 @@ export function createSendMessageTool(options: SendMessageToolOptions): AgentToo
             sent.push(...ids);
             for (const id of ids) onDelivered?.({ channelId: target, messageId: id, turnId: execution.turnId, text: message });
           }
-        } catch (cause) {
-          if (cause instanceof ResourceReadError) return abort(index, { name: cause.code, message: cause.message });
+        } catch (error) {
+          if (error instanceof ResourceReadError) return abort(index, { name: error.code, message: error.message });
           return abort(index, {
-            name: cause instanceof Error ? cause.name : "Error",
-            message: cause instanceof Error ? cause.message : String(cause),
+            name: error instanceof Error ? error.name : "Error",
+            message: error instanceof Error ? error.message : String(error),
           });
         }
       }
@@ -169,8 +169,8 @@ export function createReadTool(resources: ChannelResources, imageOutputSupported
       let opened: Awaited<ReturnType<ChannelResources["openStrict"]>>;
       try {
         opened = await resources.openStrict(uri, execution.abortSignal);
-      } catch (cause) {
-        if (cause instanceof ResourceReadError) return { uri, error: cause.code };
+      } catch (error) {
+        if (error instanceof ResourceReadError) return { uri, error: error.code };
         return { uri, error: "resource_read_failed" };
       }
       const mediaType = detectedMediaType(opened.bytes) ?? opened.mediaType;
@@ -233,8 +233,8 @@ export function createDescribeImageTool(model: LanguageModel, resources: Channel
           ],
         });
         return { text: result.text };
-      } catch (cause) {
-        return { error: `vision_call_failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+      } catch (error) {
+        return { error: `vision_call_failed: ${error instanceof Error ? error.message : String(error)}` };
       }
     },
   };

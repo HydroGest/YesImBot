@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import path from "node:path";
 
 import type { Context, Field, Types } from "koishi";
 
@@ -63,8 +63,8 @@ export async function migrateV3(options: MigrateV3Options): Promise<MigrationRes
   try {
     registerV3StickerModel(options.ctx.model);
     rows = (await options.ctx.database.get(V3_STICKER_TABLE, {})) as unknown as V3StickerRow[];
-  } catch (cause) {
-    throw new Error(`无法读取 v3 表 ${V3_STICKER_TABLE}: ${messageOf(cause)}`);
+  } catch (error) {
+    throw new Error(`无法读取 v3 表 ${V3_STICKER_TABLE}: ${messageOf(error)}`);
   }
 
   const candidates = rows.filter((row) => {
@@ -80,7 +80,7 @@ export async function migrateV3(options: MigrateV3Options): Promise<MigrationRes
     try {
       const oldFilePath = row.filePath;
       if (!oldFilePath) throw new Error("missing v3 filePath");
-      const filePath = options.sourceDir ? join(options.sourceDir, basename(oldFilePath)) : oldFilePath;
+      const filePath = options.sourceDir ? path.join(options.sourceDir, path.basename(oldFilePath)) : oldFilePath;
       const bytes = new Uint8Array(await readFile(filePath));
       const mediaType = detectImageMediaType(bytes);
       if (!mediaType) throw new Error("unsupported image");
@@ -97,9 +97,9 @@ export async function migrateV3(options: MigrateV3Options): Promise<MigrationRes
       const result = await options.store.save({ scopeKey: options.scopeKey, bytes, mediaType, category: row.category ?? "", source: v3Source(row) });
       if (result.status === "created") stats.imported += 1;
       else stats.duplicate += 1;
-    } catch (cause) {
+    } catch (error) {
       stats.failed += 1;
-      stats.failedItems.push(`${row.id ?? row.filePath}: ${messageOf(cause)}`);
+      stats.failedItems.push(`${row.id ?? row.filePath}: ${messageOf(error)}`);
     }
   }
   return stats;
@@ -136,10 +136,10 @@ export async function migrateScope(options: MigrateScopeOptions): Promise<Migrat
       });
       if (result.status === "created") stats.imported += 1;
       else stats.duplicate += 1;
-    } catch (cause) {
+    } catch (error) {
       failed = true;
       stats.failed += 1;
-      stats.failedItems.push(`${row.id}: ${messageOf(cause)}`);
+      stats.failedItems.push(`${row.id}: ${messageOf(error)}`);
     }
   }
 

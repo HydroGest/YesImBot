@@ -126,15 +126,15 @@ node scripts/setup-koishi.mjs --app ../koishi-app
 
 ## 参数说明
 
-| 参数 | 说明 |
-| --- | --- |
-| `--app <dir>` | 指定已有 Koishi 应用目录 |
-| `--create-app <dir>` | 创建新的 Koishi 应用；目录已存在且是有效 Koishi 应用时直接复用 |
-| `--check` | 只检查当前配置，不修改文件；仍会检查 Node/Git/Yarn |
-| `--pull` | 先 fetch 并 fast-forward 到远端 `dev`；此时要求 yesimbot 仓库无未提交修改 |
-| `--start` | 完成配置和构建后执行 `yarn dev` |
-| `--repo <url>` | 指定 yesimbot git 地址；仅在没有 origin 时使用 |
-| `--help` | 显示帮助 |
+| 参数                 | 说明                                                                      |
+| -------------------- | ------------------------------------------------------------------------- |
+| `--app <dir>`        | 指定已有 Koishi 应用目录                                                  |
+| `--create-app <dir>` | 创建新的 Koishi 应用；目录已存在且是有效 Koishi 应用时直接复用            |
+| `--check`            | 只检查当前配置，不修改文件；仍会检查 Node/Git/Yarn                        |
+| `--pull`             | 先 fetch 并 fast-forward 到远端 `dev`；此时要求 yesimbot 仓库无未提交修改 |
+| `--start`            | 完成配置和构建后执行 `yarn dev`                                           |
+| `--repo <url>`       | 指定 yesimbot git 地址；仅在没有 origin 时使用                            |
+| `--help`             | 显示帮助                                                                  |
 
 `--app` 和 `--create-app` 不能同时使用。
 

@@ -93,8 +93,8 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
       try {
         const stats = await importDirectory({ ctx, store, scopeKey: scopeKeyFor(scope, config), maxImportFileBytes: config.maxImportFileBytes }, sourceDir);
         return formatImportStats(stats);
-      } catch (cause) {
-        return `导入失败: ${messageOf(cause)}`;
+      } catch (error) {
+        return `导入失败: ${messageOf(error)}`;
       }
     }),
   );
@@ -113,8 +113,8 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
             category,
           );
           return formatImportStats(stats);
-        } catch (cause) {
-          return `导入失败: ${messageOf(cause)}`;
+        } catch (error) {
+          return `导入失败: ${messageOf(error)}`;
         }
       }),
   );
@@ -128,8 +128,8 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
       try {
         const count = await store.renameCategory(scopeKeyFor(scope, config), oldName, newName);
         return `已将分类 "${oldName}" 重命名为 "${newName}"，共更新 ${count} 个表情包`;
-      } catch (cause) {
-        return `重命名失败: ${messageOf(cause)}`;
+      } catch (error) {
+        return `重命名失败: ${messageOf(error)}`;
       }
     }),
   );
@@ -145,8 +145,8 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
         try {
           const count = await store.mergeCategories(scopeKeyFor(scope, config), sourceCategory, targetCategory);
           return `已将分类 "${sourceCategory}" 合并到 "${targetCategory}"，共移动 ${count} 个表情包`;
-        } catch (cause) {
-          return `合并失败: ${messageOf(cause)}`;
+        } catch (error) {
+          return `合并失败: ${messageOf(error)}`;
         }
       }),
   );
@@ -161,8 +161,8 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
         try {
           await store.moveSticker(scopeKeyFor(scope, config), stickerId, newCategory);
           return `已将表情包 ${stickerId} 移动到分类 "${newCategory}"`;
-        } catch (cause) {
-          return `移动失败: ${messageOf(cause)}`;
+        } catch (error) {
+          return `移动失败: ${messageOf(error)}`;
         }
       }),
   );
@@ -278,8 +278,8 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
             dryRun: options?.dryRun === true,
           });
           return formatMigrationStats(stats);
-        } catch (cause) {
-          return `迁移失败: ${messageOf(cause)}`;
+        } catch (error) {
+          return `迁移失败: ${messageOf(error)}`;
         }
       }),
   );
@@ -299,8 +299,8 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
         try {
           fromScopeKey = resolveScopeOption(options?.from, scope, scopeKeyFor(scope, config));
           toScopeKey = resolveScopeOption(options?.to, scope, scopeKeyFor(scope, config));
-        } catch (cause) {
-          return `迁移失败: ${messageOf(cause)}`;
+        } catch (error) {
+          return `迁移失败: ${messageOf(error)}`;
         }
         if (fromScopeKey === toScopeKey) return "来源和目标 scope 相同，无需迁移";
         try {
@@ -312,8 +312,8 @@ export function registerStickerCommands(deps: StickerCommandDeps): () => void {
             limit: numberOption(options, "limit"),
           });
           return formatMigrationStats(stats);
-        } catch (cause) {
-          return `迁移失败: ${messageOf(cause)}`;
+        } catch (error) {
+          return `迁移失败: ${messageOf(error)}`;
         }
       }),
   );

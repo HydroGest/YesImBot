@@ -22,10 +22,10 @@ export async function buildPatternEmbeddingMap(
     let model: EmbeddingModel;
     try {
       model = ctx.yesimbot.model.resolveEmbedding(modelId);
-    } catch (cause) {
+    } catch (error) {
       ctx
         .logger("yesimbot.chat-learning")
-        .warn("chat_learning.embedding_model_unavailable", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
+        .warn("chat_learning.embedding_model_unavailable", { model: modelId, cause: error instanceof Error ? error.message : String(error) });
       return new Map();
     }
 
@@ -46,10 +46,10 @@ export async function buildPatternEmbeddingMap(
         if (pattern) map.set(pattern.key, embedding as number[]);
       });
       return map;
-    } catch (cause) {
+    } catch (error) {
       ctx
         .logger("yesimbot.chat-learning")
-        .warn("chat_learning.embedding_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
+        .warn("chat_learning.embedding_failed", { model: modelId, cause: error instanceof Error ? error.message : String(error) });
       return new Map();
     }
   };

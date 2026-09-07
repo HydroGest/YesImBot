@@ -20,7 +20,7 @@ export const createAgentChannel = (options?: CreateAgentChannelOptions): AgentCh
 
   const emit: AgentChannel["emit"] = async (channel, event, emitOptions) => {
     const listeners = channels.get(channel);
-    const promises: Promise<void>[] = [];
+    const promises: Array<Promise<void>> = [];
 
     if (listeners) {
       promises.push(

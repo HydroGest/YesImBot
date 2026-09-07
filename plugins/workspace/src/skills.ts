@@ -1,6 +1,6 @@
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import path from "node:path";
 
 import matter from "gray-matter";
 
@@ -19,7 +19,7 @@ type ParsedFrontmatter<T extends Record<string, unknown>> = { frontmatter: T; bo
  * - recurse into subdirectories to find SKILL.md
  */
 export async function loadSkillsFromDir(dir: string): Promise<LoadSkillsResult> {
-  const rootDir = await realpath(dir).catch(() => resolve(dir));
+  const rootDir = await realpath(dir).catch(() => path.resolve(dir));
   return loadSkillsFromDirInternal(dir, true, rootDir, new Set());
 }
 
@@ -92,7 +92,7 @@ export async function loadSkills(options: LoadSkillsOptions): Promise<LoadSkills
         const rootDir = await realpath(resolvedPath);
         await addSkills(await loadSkillsFromDirInternal(resolvedPath, true, rootDir, new Set()));
       } else if (stats.isFile() && resolvedPath.endsWith(".md")) {
-        const rootDir = await realpath(dirname(resolvedPath));
+        const rootDir = await realpath(path.dirname(resolvedPath));
         const result = await loadSkillFromFile(resolvedPath, rootDir);
         if (result.skill) {
           await addSkills({ skills: [result.skill], diagnostics: result.diagnostics });
@@ -159,7 +159,7 @@ async function loadSkillsFromDirInternal(dir: string, includeRootFiles: boolean,
 
     for (const entry of entries) {
       if (entry.name !== "SKILL.md") continue;
-      const filePath = join(dir, entry.name);
+      const filePath = path.join(dir, entry.name);
       let isFile = entry.isFile();
       if (entry.isSymbolicLink()) {
         try {
@@ -178,7 +178,7 @@ async function loadSkillsFromDirInternal(dir: string, includeRootFiles: boolean,
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       if (entry.name === "node_modules") continue;
-      const fullPath = join(dir, entry.name);
+      const fullPath = path.join(dir, entry.name);
 
       let isDirectory = entry.isDirectory();
       let isFile = entry.isFile();
@@ -229,8 +229,8 @@ async function loadSkillFromFile(filePath: string, rootDir?: string): Promise<{ 
     }
     const rawContent = await readFile(realFilePath, "utf-8");
     const { frontmatter } = parseFrontmatter<SkillFrontmatter>(rawContent);
-    const skillDir = dirname(realFilePath);
-    const parentDirName = basename(skillDir);
+    const skillDir = path.dirname(realFilePath);
+    const parentDirName = path.basename(skillDir);
     const description = typeof frontmatter.description === "string" ? frontmatter.description : undefined;
 
     const descriptionErrors = validateDescription(description);
@@ -266,19 +266,19 @@ function escapeXml(str: string): string {
 function normalizePath(input: string): string {
   const trimmed = input.trim();
   if (trimmed === "~") return homedir();
-  if (trimmed.startsWith("~/")) return join(homedir(), trimmed.slice(2));
-  if (trimmed.startsWith("~")) return join(homedir(), trimmed.slice(1));
+  if (trimmed.startsWith("~/")) return path.join(homedir(), trimmed.slice(2));
+  if (trimmed.startsWith("~")) return path.join(homedir(), trimmed.slice(1));
   return trimmed;
 }
 
 function resolveSkillPath(p: string, cwd: string): string {
   const normalized = normalizePath(p);
-  return isAbsolute(normalized) ? normalized : resolve(cwd, normalized);
+  return path.isAbsolute(normalized) ? normalized : path.resolve(cwd, normalized);
 }
 
 function isPathContained(root: string, candidate: string): boolean {
-  const path = relative(resolve(root), resolve(candidate));
-  return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+  const relativePath = path.relative(path.resolve(root), path.resolve(candidate));
+  return relativePath === "" || (relativePath !== ".." && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath));
 }
 
 export type { LoadSkillsOptions, LoadSkillsResult, ResourceDiagnostic, Skill, SkillFrontmatter } from "./types";

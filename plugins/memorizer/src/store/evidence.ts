@@ -1,5 +1,5 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import path from "node:path";
 
 import type { MessageRecord } from "koishi-plugin-yesimbot";
 
@@ -59,29 +59,29 @@ export class EvidenceStore {
         const evidence = JSON.parse(raw) as MemoryEvidence;
         if (evidence.memoryId !== memoryId || !Array.isArray(evidence.messages)) throw new Error("schema mismatch");
         return evidence;
-      } catch (cause) {
-        throw new Error(`Invalid evidence JSON for ${memoryId}: ${cause instanceof Error ? cause.message : String(cause)}`);
+      } catch (error) {
+        throw new Error(`Invalid evidence JSON for ${memoryId}: ${error instanceof Error ? error.message : String(error)}`);
       }
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return { memoryId, messages: [] };
-      throw cause;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { memoryId, messages: [] };
+      throw error;
     }
   }
 
   private async writeEvidence(evidence: MemoryEvidence): Promise<void> {
-    const path = this.pathFor(evidence.memoryId);
-    await mkdir(dirname(path), { recursive: true });
-    const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+    const filePath = this.pathFor(evidence.memoryId);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    const temporary = `${filePath}.${crypto.randomUUID()}.tmp`;
     await writeFile(temporary, `${JSON.stringify(evidence)}\n`, { encoding: "utf8", flag: "wx" });
     try {
-      await rename(temporary, path);
+      await rename(temporary, filePath);
     } finally {
       await rm(temporary, { force: true });
     }
   }
 
   private pathFor(memoryId: string): string {
-    return join(this.root, "evidence", `${memoryId}.json`);
+    return path.join(this.root, "evidence", `${memoryId}.json`);
   }
 }
 

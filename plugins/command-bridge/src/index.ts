@@ -225,7 +225,7 @@ export default class CommandBridgePlugin {
   }
 
   private listCommands(_input: ListCommandsInput): string {
-    const commander = (this.ctx as unknown as { $commander: { _commandList: readonly import("koishi").Command[] } }).$commander;
+    const commander = (this.ctx as unknown as { $commander: { _commandList: ReadonlyArray<import("koishi").Command> } }).$commander;
     const catalog = collectCommandCatalog(commander);
     const allowed = filterCommandCatalog(catalog, this.config);
     return formatCommandCatalog(allowed) || "(no commands available)";

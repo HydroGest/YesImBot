@@ -41,13 +41,13 @@ export class Agents {
         if (result) initialized.push(result);
       }
       return initialized;
-    } catch (cause) {
+    } catch (error) {
       for (const plugin of initialized.reverse()) {
         try {
           await plugin.stop?.();
         } catch {}
       }
-      throw cause;
+      throw error;
     }
   }
 

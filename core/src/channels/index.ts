@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import path from "node:path";
 
 import type { Context, Logger } from "koishi";
 
@@ -55,7 +55,7 @@ export class Channels implements Resources {
   private readonly started: Promise<void>;
 
   public constructor(ctx: Context, options: ChannelsOptions) {
-    this.channelsPath = resolve(options.basePath, "channels");
+    this.channelsPath = path.resolve(options.basePath, "channels");
     this.imageInput = options.imageInput ?? false;
     this.readTimeoutMs = options.readTimeoutMs ?? 10_000;
     this.compactConfig = options.compactConfig ?? { minMessages: 20, maxFailures: 3 };
@@ -113,7 +113,7 @@ export class Channels implements Resources {
     const channel = await this.resolve(ctx);
     this.logger.debug("channels.reset", { key: deriveChannelKey(ctx), root: channel.root });
     await Promise.all([
-      fs.rm(join(channel.root, "sessions"), { recursive: true, force: true }),
+      fs.rm(path.join(channel.root, "sessions"), { recursive: true, force: true }),
       channel.resources.assets.clear(),
       channel.resources.artifacts.clear(),
     ]);
@@ -141,14 +141,14 @@ export class Channels implements Resources {
         continue;
       }
       try {
-        const raw = JSON.parse(await fs.readFile(join(this.channelsPath, entry.name, "channel.json"), "utf8")) as unknown;
+        const raw = JSON.parse(await fs.readFile(path.join(this.channelsPath, entry.name, "channel.json"), "utf8")) as unknown;
         const manifest = parseManifest(raw);
         const canonical = channelDirectoryName(manifest);
 
         if (entry.name === canonical) {
           // Directory name is already canonical; rewrite manifest if raw was normalized (e.g. userId added)
           if (!manifestMatchesRaw(raw, manifest)) {
-            await fs.writeFile(join(this.channelsPath, entry.name, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+            await fs.writeFile(path.join(this.channelsPath, entry.name, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
           }
           this.manifests.set(deriveChannelKey(manifest), manifest);
           continue;
@@ -162,14 +162,14 @@ export class Channels implements Resources {
         } else {
           throw new Error("Manifest directory name does not match directory");
         }
-      } catch (cause) {
-        this.logger.error("storage.manifest_invalid", { directoryName: entry.name, cause });
+      } catch (error) {
+        this.logger.error("storage.manifest_invalid", { directoryName: entry.name, error });
       }
     }
   }
 
   private async migrateLegacyDirectory(sourceDirectory: string, destinationDirectory: string, manifest: ChannelManifest): Promise<void> {
-    const destination = join(this.channelsPath, destinationDirectory);
+    const destination = path.join(this.channelsPath, destinationDirectory);
     if (sourceDirectory !== destinationDirectory) {
       try {
         const destinationStat = await fs.lstat(destination);
@@ -177,38 +177,38 @@ export class Channels implements Resources {
 
         // A prior version may have created the canonical directory while the legacy shared directory
         // remained. Preserve both by quarantining the canonical copy, then migrate the legacy data.
-        const quarantine = join(this.channelsPath, `.conflict-${destinationDirectory}-${randomUUID()}`);
+        const quarantine = path.join(this.channelsPath, `.conflict-${destinationDirectory}-${randomUUID()}`);
         await fs.rename(destination, quarantine);
         this.logger.warn("storage.manifest_conflict_quarantined", { sourceDirectory, destinationDirectory, quarantine });
-      } catch (cause) {
-        if (!(typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")) throw cause;
+      } catch (error) {
+        if (!(typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")) throw error;
       }
-      await fs.rename(join(this.channelsPath, sourceDirectory), destination);
-      await fs.writeFile(join(destination, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+      await fs.rename(path.join(this.channelsPath, sourceDirectory), destination);
+      await fs.writeFile(path.join(destination, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
       this.logger.info("storage.manifest_migrated", { sourceDirectory, destinationDirectory });
       return;
     }
-    await fs.writeFile(join(destination, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    await fs.writeFile(path.join(destination, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   }
 
   private async ensureRoot(ctx: ChannelContext): Promise<string> {
     const key = deriveChannelKey(ctx);
     if (!this.manifests.has(key)) {
       const directory = channelDirectoryName(ctx);
-      const root = join(this.channelsPath, directory);
+      const root = path.join(this.channelsPath, directory);
       try {
         const stat = await fs.lstat(root);
         if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Channel storage destination is not a directory");
-        const manifest = parseManifest(JSON.parse(await fs.readFile(join(root, "channel.json"), "utf8")));
+        const manifest = parseManifest(JSON.parse(await fs.readFile(path.join(root, "channel.json"), "utf8")));
         if (deriveChannelKey(manifest) !== key) throw new Error("Channel storage integrity mismatch");
         this.manifests.set(key, manifest);
-      } catch (cause) {
-        if (!(typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")) throw cause;
-        const temporary = join(this.channelsPath, `.${directory}.${randomUUID()}.tmp`);
+      } catch (error) {
+        if (!(typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")) throw error;
+        const temporary = path.join(this.channelsPath, `.${directory}.${randomUUID()}.tmp`);
         const manifest = { ...ctx, createdAt: new Date().toISOString() } as ChannelManifest;
         try {
           await fs.mkdir(temporary);
-          await fs.writeFile(join(temporary, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+          await fs.writeFile(path.join(temporary, "channel.json"), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
           await fs.rename(temporary, root);
         } finally {
           await fs.rm(temporary, { recursive: true, force: true });
@@ -216,11 +216,11 @@ export class Channels implements Resources {
         this.manifests.set(key, manifest);
       }
     }
-    const root = join(this.channelsPath, channelDirectoryName(ctx));
+    const root = path.join(this.channelsPath, channelDirectoryName(ctx));
     if ((await fs.lstat(root)).isSymbolicLink()) throw new Error("Channel directory is a symbolic link");
     const realRoot = await fs.realpath(root);
-    const rel = relative(this.channelsPath, realRoot);
-    if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) throw new Error("Resolved storage path escapes its channel root");
+    const rel = path.relative(this.channelsPath, realRoot);
+    if (rel.startsWith(`..${path.sep}`) || rel === ".." || path.isAbsolute(rel)) throw new Error("Resolved storage path escapes its channel root");
     return root;
   }
 }
@@ -242,6 +242,8 @@ export function channelDirectoryName(ctx: ChannelContext): string {
       const selfId = ctx.selfId;
       return ["direct", encodeDirectorySegment(ctx.platform), encodeDirectorySegment(userId), encodeDirectorySegment(selfId)].join("-");
     }
+    default:
+      throw new TypeError(`Unsupported channel type: ${(ctx as ChannelContext).type}`);
   }
 }
 

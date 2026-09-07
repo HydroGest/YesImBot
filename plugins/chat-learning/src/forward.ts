@@ -13,7 +13,7 @@ interface OneBotForwardNode {
   readonly data: {
     readonly name: string;
     readonly uin: string;
-    readonly content: readonly { readonly type: "text"; readonly data: { readonly text: string } }[];
+    readonly content: ReadonlyArray<{ readonly type: "text"; readonly data: { readonly text: string } }>;
     readonly time: string;
   };
 }

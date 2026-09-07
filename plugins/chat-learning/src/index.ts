@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+// oxlint-disable-next-line unicorn/import-style -- `path` is used as a local name across this module
 import { dirname, join, resolve } from "node:path";
 
 import type { AgentEntry, AgentPlugin, AgentPluginRuntime, AgentStorage, PrepareStepContext } from "@yesimbot/agent-runtime";
@@ -118,8 +119,8 @@ export default class ChatLearningPlugin {
     this.logger = ctx.logger("yesimbot.chat-learning");
     this.logger.level = ctx.yesimbot.config.logLevel ?? 2;
     ctx.on("yesimbot/delivered", (payload) => {
-      void this.onDelivered(payload).catch((cause) => {
-        this.logger.warn("chat_learning.delivered_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+      void this.onDelivered(payload).catch((error) => {
+        this.logger.warn("chat_learning.delivered_failed", { cause: error instanceof Error ? error.message : String(error) });
       });
     });
     ctx.on("ready", this.start.bind(this));
@@ -145,15 +146,15 @@ export default class ChatLearningPlugin {
       this.observeDispose = this.ctx.middleware(async (session, next) => {
         try {
           await this.observeGlobal(session);
-        } catch (cause) {
-          this.logger.warn("chat_learning.observe_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+        } catch (error) {
+          this.logger.warn("chat_learning.observe_failed", { cause: error instanceof Error ? error.message : String(error) });
         }
         return next();
       });
       const intervalMs = this.config.globalSyncIntervalMinutes * 60 * 1000;
       this.globalSyncTimer = setInterval(() => {
-        void this.syncGlobalHistoryOnly().catch((cause) => {
-          this.logger.warn("chat_learning.global_history_sync_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+        void this.syncGlobalHistoryOnly().catch((error) => {
+          this.logger.warn("chat_learning.global_history_sync_failed", { cause: error instanceof Error ? error.message : String(error) });
         });
       }, intervalMs);
       this.globalSyncTimer.unref?.();
@@ -316,8 +317,8 @@ export default class ChatLearningPlugin {
 
     const scheduleRebuild = (): void => {
       dirty = true;
-      void rebuild(false).catch((cause) => {
-        logger.warn("chat_learning.rebuild_failed", { scope, cause: cause instanceof Error ? cause.message : String(cause) });
+      void rebuild(false).catch((error) => {
+        logger.warn("chat_learning.rebuild_failed", { scope, cause: error instanceof Error ? error.message : String(error) });
       });
     };
     this.rebuildHooks.set(key, scheduleRebuild);
@@ -330,8 +331,8 @@ export default class ChatLearningPlugin {
     this.resetHooks.set(key, () => {
       learnedEntries = [];
       dirty = true;
-      void rebuild(false).catch((cause) => {
-        logger.warn("chat_learning.reset_rebuild_failed", { scope, cause: cause instanceof Error ? cause.message : String(cause) });
+      void rebuild(false).catch((error) => {
+        logger.warn("chat_learning.reset_rebuild_failed", { scope, cause: error instanceof Error ? error.message : String(error) });
       });
     });
 
@@ -373,8 +374,8 @@ export default class ChatLearningPlugin {
               });
               logger.debug("chat_learning.reflection_saved", { scope, model: modelId, messageId: current.messageId });
             }
-          } catch (cause) {
-            logger.warn("chat_learning.reflection_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
+          } catch (error) {
+            logger.warn("chat_learning.reflection_failed", { model: modelId, cause: error instanceof Error ? error.message : String(error) });
           }
         }
       })().finally(() => {
@@ -411,8 +412,8 @@ export default class ChatLearningPlugin {
             try {
               next = await rewriteAssistantEntries(next, ctx.yesimbot.model.resolveChatModel(finalStyleModelId).model, reference);
               logger.debug("chat_learning.final_style_rewritten", { scope, entries: next.length });
-            } catch (cause) {
-              logger.warn("chat_learning.final_style_rewrite_failed", { scope, cause: cause instanceof Error ? cause.message : String(cause) });
+            } catch (error) {
+              logger.warn("chat_learning.final_style_rewrite_failed", { scope, cause: error instanceof Error ? error.message : String(error) });
             }
           }
         }
@@ -515,9 +516,9 @@ export default class ChatLearningPlugin {
             `state=${join(storagePath, "chat-learning.json")}`,
           ].join("\n");
           return await this.replyLong(session, text, text);
-        } catch (cause) {
-          this.logger.warn("chat_learning.status_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
-          return `status 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+        } catch (error) {
+          this.logger.warn("chat_learning.status_failed", { cause: error instanceof Error ? error.message : String(error) });
+          return `status 失败：${error instanceof Error ? error.message : String(error)}`;
         }
       }),
     );
@@ -559,9 +560,9 @@ export default class ChatLearningPlugin {
             const text = lines.join("\n");
             this.logger.debug("chat_learning.global_preview", { scope, path, patterns: bank.patterns.length, chains: bank.chains.length, limit });
             return await this.replyLong(session, text, text);
-          } catch (cause) {
-            this.logger.warn("chat_learning.global_preview_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
-            return `global 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+          } catch (error) {
+            this.logger.warn("chat_learning.global_preview_failed", { cause: error instanceof Error ? error.message : String(error) });
+            return `global 失败：${error instanceof Error ? error.message : String(error)}`;
           }
         }),
     );
@@ -620,9 +621,9 @@ export default class ChatLearningPlugin {
             const rawText = `${prefix}\n\n${block}${reflectionBlock}`;
             const fallbackText = `${prefix}\n\n${escapePromptText(block)}${fallbackReflection}`;
             return await this.replyLong(session, rawText, fallbackText);
-          } catch (cause) {
-            this.logger.warn("chat_learning.preview_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
-            return `preview 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+          } catch (error) {
+            this.logger.warn("chat_learning.preview_failed", { cause: error instanceof Error ? error.message : String(error) });
+            return `preview 失败：${error instanceof Error ? error.message : String(error)}`;
           }
         }),
     );
@@ -665,9 +666,9 @@ export default class ChatLearningPlugin {
             `globalPatterns=${globalPatterns}`,
             `globalChains=${globalChains}`,
           ].join("\n");
-        } catch (cause) {
-          this.logger.warn("chat_learning.sync_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
-          return `sync 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+        } catch (error) {
+          this.logger.warn("chat_learning.sync_failed", { cause: error instanceof Error ? error.message : String(error) });
+          return `sync 失败：${error instanceof Error ? error.message : String(error)}`;
         }
       }),
     );
@@ -690,9 +691,9 @@ export default class ChatLearningPlugin {
           this.resetHooks.get(scopeKey(scope))?.();
           this.logger.debug("chat_learning.reset", { scope });
           return "已清空 chat-learning 学习数据，不影响会话历史。";
-        } catch (cause) {
-          this.logger.warn("chat_learning.reset_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
-          return `reset 失败：${cause instanceof Error ? cause.message : String(cause)}`;
+        } catch (error) {
+          this.logger.warn("chat_learning.reset_failed", { cause: error instanceof Error ? error.message : String(error) });
+          return `reset 失败：${error instanceof Error ? error.message : String(error)}`;
         }
       }),
     );
@@ -828,8 +829,8 @@ export default class ChatLearningPlugin {
 
   private async globalHistoryStoreFor(): Promise<ChatHistoryStore> {
     if (this.globalHistoryStore) return this.globalHistoryStore;
-    const path = join(dirname(this.defaultGlobalPath()), "chat-learning-global-history.jsonl");
-    const store = createChatHistoryStore(path);
+    const filePath = join(dirname(this.defaultGlobalPath()), "chat-learning-global-history.jsonl");
+    const store = createChatHistoryStore(filePath);
     await store.init();
     this.globalHistoryStore = store;
     return store;
@@ -906,8 +907,8 @@ export default class ChatLearningPlugin {
             links,
             { maxThreads: config.maxModelThreads, maxThreadMessages: config.maxModelThreadMessages },
             this.modelCache,
-          ).catch((cause) => {
-            this.logger.warn("chat_learning.global_classify_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
+          ).catch((error) => {
+            this.logger.warn("chat_learning.global_classify_failed", { model: modelId, cause: error instanceof Error ? error.message : String(error) });
             return undefined;
           })
         : undefined;
@@ -947,8 +948,8 @@ export default class ChatLearningPlugin {
         this.logger.debug("chat_learning.forward_sent", { scope: scopeOf(session), chars: forwardText.length });
         return undefined;
       }
-    } catch (cause) {
-      this.logger.warn("chat_learning.forward_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+    } catch (error) {
+      this.logger.warn("chat_learning.forward_failed", { cause: error instanceof Error ? error.message : String(error) });
     }
     return fallbackText;
   }
@@ -1017,8 +1018,8 @@ async function enrichWithModel(
       cache,
     );
     return { ...state, responsePatterns: patterns.responsePatterns, initiationPatterns: patterns.initiationPatterns, memeTemplates, builtAt: Date.now() };
-  } catch (cause) {
-    logger.warn("chat_learning.model_enrich_failed", { model: modelId, cause: cause instanceof Error ? cause.message : String(cause) });
+  } catch (error) {
+    logger.warn("chat_learning.model_enrich_failed", { model: modelId, cause: error instanceof Error ? error.message : String(error) });
     return state;
   }
 }

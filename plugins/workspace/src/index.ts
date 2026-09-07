@@ -1,5 +1,5 @@
 import { readFile, mkdir, realpath, stat } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import path from "node:path";
 import { URL } from "node:url";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
@@ -76,7 +76,7 @@ export default class WorkspacePlugin {
     for (const dispose of this.disposeReaders.splice(0)) dispose();
 
     const sandbox = this.getSandboxConfig();
-    const skillPaths = (this.config.skillPaths ?? []).map((path) => resolve(this.ctx.baseDir, path));
+    const skillPaths = (this.config.skillPaths ?? []).map((skillPath) => path.resolve(this.ctx.baseDir, skillPath));
     const loadResult = await loadSkills({ skillPaths, cwd: this.ctx.baseDir });
     for (const diagnostic of loadResult.diagnostics) {
       this.logger.warn(`技能加载诊断: ${diagnostic.message} (${diagnostic.path ?? "unknown"})`);
@@ -162,7 +162,7 @@ export default class WorkspacePlugin {
       throw new Error("Workspace plugin has not been started");
     }
 
-    const workspaceRoot = join(resources.path, "workspace");
+    const workspaceRoot = path.join(resources.path, "workspace");
     await mkdir(workspaceRoot, { recursive: true });
 
     const workspace = await Workspace.create(this.createWorkspaceConfig(workspaceRoot, sandbox, mounts));
@@ -209,7 +209,7 @@ export default class WorkspacePlugin {
     if (!parsed) throw new Error("Invalid skill URI");
     const skill = skills.find((candidate) => candidate.name === parsed.name);
     if (!skill) throw new Error("Skill not found");
-    const resolved = resolve(skill.baseDir, parsed.relativePath);
+    const resolved = path.resolve(skill.baseDir, parsed.relativePath);
     if (!isPathContained(skill.baseDir, resolved)) {
       throw new Error("Skill path escapes its root");
     }
@@ -219,7 +219,7 @@ export default class WorkspacePlugin {
       throw new Error("Skill path escapes its root");
     }
     const bytes = await readBoundedFile(realFile, options);
-    return { bytes, filename: basename(realFile) };
+    return { bytes, filename: path.basename(realFile) };
   }
 
   private async openWorkspace(
@@ -229,8 +229,8 @@ export default class WorkspacePlugin {
   ): Promise<{ bytes: Uint8Array; mediaType?: string; filename?: string }> {
     const relativePath = parseWorkspaceUri(uri.href);
     if (!relativePath) throw new Error("Invalid workspace URI");
-    const root = join(resources.path, "workspace");
-    const resolved = resolve(root, relativePath);
+    const root = path.join(resources.path, "workspace");
+    const resolved = path.resolve(root, relativePath);
     if (!isPathContained(root, resolved)) {
       throw new Error("Workspace path escapes its root");
     }
@@ -240,7 +240,7 @@ export default class WorkspacePlugin {
       throw new Error("Workspace path escapes its root");
     }
     const bytes = await readBoundedFile(realFile, options);
-    return { bytes, filename: basename(realFile) };
+    return { bytes, filename: path.basename(realFile) };
   }
 }
 
@@ -296,6 +296,6 @@ function isSafeRelativePath(path: string): boolean {
 }
 
 function isPathContained(root: string, candidate: string): boolean {
-  const path = relative(resolve(root), resolve(candidate));
-  return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+  const relativePath = path.relative(path.resolve(root), path.resolve(candidate));
+  return relativePath === "" || (relativePath !== ".." && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath));
 }

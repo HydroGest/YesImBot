@@ -1,5 +1,5 @@
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import path from "node:path";
 
 import type { AgentPlugin } from "@yesimbot/agent-runtime";
 import { Schema, Time } from "koishi";
@@ -143,9 +143,9 @@ export class QuotaStore {
       let content = "";
       try {
         content = await readFile(this.usagePath(day), "utf8");
-      } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code === "ENOENT") return result;
-        throw cause;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return result;
+        throw error;
       }
       for (const line of content.split("\n")) {
         if (!line.trim()) continue;
@@ -191,7 +191,7 @@ export class QuotaStore {
   public setOverride(scope: string, patch: QuotaOverride): Promise<QuotaOverride> {
     return this.serialize(async () => {
       await this.loadOverrides();
-      const current = { ...(this.overrides.get(scope) ?? {}), ...patch };
+      const current = { ...this.overrides.get(scope), ...patch };
       this.overrides.set(scope, current);
       await this.saveOverrides();
       return current;
@@ -236,15 +236,15 @@ export class QuotaStore {
   }
 
   private usagePath(day: string): string {
-    return join(this.directory, `usage-${day}.jsonl`);
+    return path.join(this.directory, `usage-${day}.jsonl`);
   }
 
   private notificationPath(day: string): string {
-    return join(this.directory, `notifications-${day}.jsonl`);
+    return path.join(this.directory, `notifications-${day}.jsonl`);
   }
 
   private overridesPath(): string {
-    return join(this.directory, "overrides.json");
+    return path.join(this.directory, "overrides.json");
   }
 
   private async loadOverrides(): Promise<void> {
@@ -254,9 +254,9 @@ export class QuotaStore {
       for (const [key, value] of Object.entries(parsed)) {
         if (value && typeof value === "object") this.overrides.set(key, value);
       }
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== "ENOENT") {
-        this.logger.warn("quota.load_overrides_failed", { cause: cause instanceof Error ? cause.message : String(cause) });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        this.logger.warn("quota.load_overrides_failed", { cause: error instanceof Error ? error.message : String(error) });
       }
     }
     this.overridesLoaded = true;
@@ -273,9 +273,9 @@ export class QuotaStore {
     const cached = this.notificationCounts.get(day);
     if (cached) return cached;
     const counts = new Map<string, number>();
-    const content = await readFile(this.notificationPath(day), "utf8").catch((cause: NodeJS.ErrnoException) => {
-      if (cause.code === "ENOENT") return "";
-      throw cause;
+    const content = await readFile(this.notificationPath(day), "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
     });
     for (const line of content.split("\n")) {
       if (!line.trim()) continue;
@@ -309,7 +309,7 @@ export default class QuotaPlugin {
     private readonly config: Config,
   ) {
     this.logger = ctx.logger("yesimbot-quota");
-    this.store = new QuotaStore(resolve(ctx.baseDir, config.quotaStorageDir), this.logger);
+    this.store = new QuotaStore(path.resolve(ctx.baseDir, config.quotaStorageDir), this.logger);
     ctx.on("ready", this.start.bind(this));
     ctx.on("dispose", this.stop.bind(this));
   }
@@ -321,16 +321,16 @@ export default class QuotaPlugin {
       this.disposers.push(this.ctx.yesimbot.agent.use({ setup: (context) => this.createMeter(context) }));
       this.disposers.push(
         this.ctx.on("yesimbot/model-usage", (event) =>
-          this.recordModelUsage(event).catch((cause) =>
-            this.logger.warn("quota.record_failed", { cause: cause instanceof Error ? cause.message : String(cause) }),
+          this.recordModelUsage(event).catch((error) =>
+            this.logger.warn("quota.record_failed", { cause: error instanceof Error ? error.message : String(error) }),
           ),
         ),
       );
       this.disposers.push(this.registerCommands());
       this.started = true;
-    } catch (cause) {
+    } catch (error) {
       this.stop();
-      throw cause;
+      throw error;
     }
   }
 
@@ -437,8 +437,8 @@ export default class QuotaPlugin {
         channelId: context.channelId,
         isDirect: context.type === "direct",
       });
-    } catch (cause) {
-      this.logger.warn("quota.notify_failed", { cause: cause instanceof Error ? cause.message : String(cause), context });
+    } catch (error) {
+      this.logger.warn("quota.notify_failed", { cause: error instanceof Error ? error.message : String(error), context });
     } finally {
       this.pendingBlockedNotify.delete(key);
     }
@@ -577,8 +577,8 @@ export default class QuotaPlugin {
             for await (const guild of bot.getGuildIter()) {
               if (bot.platform && guild.id) add({ platform: bot.platform, type: "guild", channelId: guild.id, guildId: guild.id }, guild.name);
             }
-          } catch (cause) {
-            this.logger.warn("quota.list_guilds_failed", { platform: bot.platform, cause: cause instanceof Error ? cause.message : String(cause) });
+          } catch (error) {
+            this.logger.warn("quota.list_guilds_failed", { platform: bot.platform, cause: error instanceof Error ? error.message : String(error) });
           }
         }
       } else {

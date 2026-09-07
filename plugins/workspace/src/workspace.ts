@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import path from "node:path";
 
 import type * as JustBashModule from "just-bash";
 import type { Bash, IFileSystem, InitialFiles, MountableFs, NetworkConfig } from "just-bash";
@@ -136,13 +136,13 @@ export class Workspace {
   }
 
   private buildFilesystem(jb: JustBash): { fs: MountableFs; mounts: WorkspaceMountSummary[] } {
-    const root = resolve(this.config.root);
+    const root = path.resolve(this.config.root);
     const mounts = assertValidMountConfig(this.config.filesystem ?? {});
     const initialFiles = this.config.filesystem?.initialFiles ?? {};
     const memoryFiles: InitialFiles = {};
-    for (const [path, to] of Object.entries(initialFiles)) {
-      memoryFiles[path] = () => {
-        return readFile(resolve(to), "utf-8");
+    for (const [virtualPath, to] of Object.entries(initialFiles)) {
+      memoryFiles[virtualPath] = () => {
+        return readFile(path.resolve(to), "utf-8");
       };
     }
 
@@ -151,22 +151,25 @@ export class Workspace {
         base: createDefaultBaseFilesystem(memoryFiles, jb),
         mounts: [
           { mountPoint: DEFAULT_WORKSPACE_MOUNT, filesystem: new jb.ReadWriteFs({ root }) },
-          ...Object.entries(mounts.persistPaths).map(([mountPoint, hostPath]) => ({ mountPoint, filesystem: new jb.ReadWriteFs({ root: resolve(hostPath) }) })),
+          ...Object.entries(mounts.persistPaths).map(([mountPoint, hostPath]) => ({
+            mountPoint,
+            filesystem: new jb.ReadWriteFs({ root: path.resolve(hostPath) }),
+          })),
           ...Object.entries(mounts.readOnlyPaths).map(([mountPoint, hostPath]) => ({
             mountPoint,
-            filesystem: new jb.OverlayFs({ root: resolve(hostPath), mountPoint: "/", readOnly: true }),
+            filesystem: new jb.OverlayFs({ root: path.resolve(hostPath), mountPoint: "/", readOnly: true }),
           })),
           ...Object.entries(mounts.overlayPaths).map(([mountPoint, hostPath]) => ({
             mountPoint,
-            filesystem: new jb.OverlayFs({ root: resolve(hostPath), mountPoint: "/" }),
+            filesystem: new jb.OverlayFs({ root: path.resolve(hostPath), mountPoint: "/" }),
           })),
         ],
       }),
       mounts: [
         { path: DEFAULT_WORKSPACE_MOUNT, kind: "persistent" },
-        ...Object.keys(mounts.persistPaths).map((path) => ({ path, kind: "persistent" as const })),
-        ...Object.keys(mounts.readOnlyPaths).map((path) => ({ path, kind: "read-only" as const })),
-        ...Object.keys(mounts.overlayPaths).map((path) => ({ path, kind: "overlay" as const })),
+        ...Object.keys(mounts.persistPaths).map((mountPoint) => ({ path: mountPoint, kind: "persistent" as const })),
+        ...Object.keys(mounts.readOnlyPaths).map((mountPoint) => ({ path: mountPoint, kind: "read-only" as const })),
+        ...Object.keys(mounts.overlayPaths).map((mountPoint) => ({ path: mountPoint, kind: "overlay" as const })),
       ],
     };
   }
@@ -196,7 +199,7 @@ export class Workspace {
     }
   }
 
-  private async writeFiles(files: readonly { path: string; content: string }[]): Promise<void> {
+  private async writeFiles(files: ReadonlyArray<{ path: string; content: string }>): Promise<void> {
     for (const file of files) {
       await this.fs.writeFile(file.path, file.content, "utf8");
     }

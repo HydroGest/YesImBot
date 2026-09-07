@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import path from "node:path";
 
 import { type Context, Service } from "koishi";
 
@@ -62,7 +62,7 @@ export default class YesImBotService extends Service<Config> {
 
   public override async start(): Promise<void> {
     await this.channels.start();
-    const promptBasePath = resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir);
+    const promptBasePath = path.resolve(this.ctx.baseDir, this.config.basePath || this.ctx.baseDir);
     await ensureDefaultPersona(promptBasePath);
     await ensureAgentsFile(promptBasePath);
     this.platformDisposer = registerPlatforms(this.ctx, this.messengerOwner);

@@ -440,6 +440,7 @@ function formatDuration(seconds: number): string {
 
 function formatDate(value: string): string {
   const date = new Date(value);
+  // oxlint-disable-next-line unicorn/consistent-function-scoping
   const pad = (part: number) => String(part).padStart(2, "0");
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }

@@ -191,6 +191,7 @@ function typeLabel(type: ConversationChannelSummary["type"]): string {
 function formatDate(value: number | null): string {
   if (!value) return "从未活跃";
   const date = new Date(value);
+  // oxlint-disable-next-line unicorn/consistent-function-scoping
   const pad = (part: number) => String(part).padStart(2, "0");
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

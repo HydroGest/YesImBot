@@ -48,11 +48,11 @@ export default class SchedulePlugin {
       this.disposeAgentPlugin = this.ctx.yesimbot.agent.use(this);
       this.registerCommands();
       this.logger.success("Schedule plugin started");
-    } catch (cause) {
+    } catch (error) {
       this.started = false;
       this.scheduler?.stop();
       this.scheduler = undefined;
-      throw cause;
+      throw error;
     }
   }
 
@@ -113,8 +113,8 @@ export default class SchedulePlugin {
             const schedule = await this.store.create(scope, input);
             await this.scheduler?.rearm();
             return `已创建定时任务 ${schedule.id}（${schedule.kind}，下次执行 ${schedule.nextRunAt}）`;
-          } catch (cause) {
-            return `创建失败：${messageOf(cause)}`;
+          } catch (error) {
+            return `创建失败：${messageOf(error)}`;
           }
         }),
     );
@@ -154,8 +154,8 @@ export default class SchedulePlugin {
             const schedule = await this.store.update(scope, id, patch);
             await this.scheduler?.rearm();
             return `已更新定时任务 ${schedule.id}（${schedule.kind}，下次执行 ${schedule.nextRunAt}）`;
-          } catch (cause) {
-            return `更新失败：${messageOf(cause)}`;
+          } catch (error) {
+            return `更新失败：${messageOf(error)}`;
           }
         }),
     );
@@ -192,8 +192,8 @@ export default class SchedulePlugin {
       const schedule = await this.store[operation](scope, id);
       await this.scheduler?.rearm();
       return `${okPrefix}定时任务 ${schedule.id}`;
-    } catch (cause) {
-      return `${errorPrefix}：${messageOf(cause)}`;
+    } catch (error) {
+      return `${errorPrefix}：${messageOf(error)}`;
     }
   }
 

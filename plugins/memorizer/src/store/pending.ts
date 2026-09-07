@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import path from "node:path";
 
 import type { ChannelContext } from "koishi-plugin-yesimbot";
 
@@ -12,7 +12,7 @@ export class PendingStore {
   private tail: Promise<void> = Promise.resolve();
 
   public constructor(root: string) {
-    this.path = join(root, "memory-pending.json");
+    this.path = path.join(root, "memory-pending.json");
   }
 
   public init(): Promise<void> {
@@ -22,9 +22,9 @@ export class PendingStore {
         const parsed = JSON.parse(raw) as unknown;
         if (!Array.isArray(parsed)) throw new Error("must be an array");
         this.pending = parsed as PendingMemory[];
-      } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code === "ENOENT") return;
-        throw new Error(`Invalid pending JSON: ${cause instanceof Error ? cause.message : String(cause)}`);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw new Error(`Invalid pending JSON: ${error instanceof Error ? error.message : String(error)}`);
       }
     });
   }
@@ -106,7 +106,7 @@ export class PendingStore {
   }
 
   private async write(): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true });
+    await mkdir(path.dirname(this.path), { recursive: true });
     const temporary = `${this.path}.${crypto.randomUUID()}.tmp`;
     await writeFile(temporary, `${JSON.stringify(this.pending)}\n`, { encoding: "utf8", flag: "wx" });
     try {

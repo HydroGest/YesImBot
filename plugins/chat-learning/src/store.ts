@@ -1,5 +1,5 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import path from "node:path";
 
 import type { ChatLearningState } from "./types.js";
 
@@ -41,7 +41,7 @@ export function createChatLearningStore(filePath: string): ChatLearningStore {
     update(next) {
       return serialize(async () => {
         state = next;
-        await mkdir(dirname(filePath), { recursive: true });
+        await mkdir(path.dirname(filePath), { recursive: true });
         const temporary = `${filePath}.${Date.now()}.tmp`;
         await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
         try {

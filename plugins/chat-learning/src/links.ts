@@ -114,7 +114,10 @@ export function isGraphRelated(graph: MessageGraph, fromId: string, toId: string
   return fromComponent !== undefined && fromComponent === toComponent;
 }
 
-export function buildConversationChains(segments: readonly { readonly turns: readonly MessageTurn[] }[], links: readonly MessageLink[]): ConversationChain[] {
+export function buildConversationChains(
+  segments: ReadonlyArray<{ readonly turns: readonly MessageTurn[] }>,
+  links: readonly MessageLink[],
+): ConversationChain[] {
   const turns = segments.flatMap((segment) => segment.turns);
   const byId = new Map(turns.map((turn) => [turn.id, turn]));
   const parentEdges = new Map<string, MessageLink[]>();

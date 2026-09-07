@@ -81,11 +81,11 @@ export class StickerStore {
       await this.files.write(input.bytes, contentId);
       try {
         await this.model.create(STICKER_TABLE, row);
-      } catch (cause) {
+      } catch (error) {
         if (!(await this.isReferenced(contentId))) {
           await this.files.remove(contentId);
         }
-        throw cause;
+        throw error;
       }
 
       return { status: "created", sticker: toProjection(row) };

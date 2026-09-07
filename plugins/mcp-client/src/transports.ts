@@ -16,6 +16,8 @@ export async function connectMcpServer(ctx: Context, name: string, server: McpSe
       return await connectToHttpServer(ctx, name, server);
     case "sse":
       return await connectToSseServer(ctx, name, server);
+    default:
+      throw new TypeError(`Unsupported MCP server type: ${(server as McpServer).type}`);
   }
 }
 

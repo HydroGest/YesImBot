@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import path from "node:path";
 
 import type { LinkCorrection, LinkCorrectionAction, LinkKind } from "./types.js";
 
@@ -64,7 +64,7 @@ export function createFeedbackStore(filePath: string): FeedbackStore {
           createdAt: Date.now(),
           note: input.note,
         };
-        await mkdir(dirname(filePath), { recursive: true });
+        await mkdir(path.dirname(filePath), { recursive: true });
         await appendFile(filePath, `${JSON.stringify(correction)}\n`, "utf8");
         corrections.push(correction);
         return correction;

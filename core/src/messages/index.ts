@@ -172,23 +172,24 @@ export function parseReply(raw: string): Element[][] {
       offset = end + 1;
     }
   };
-  const split = (elements: readonly Element[]): Element[][] => {
-    const segments: Element[][] = [];
-    let current: Element[] = [];
-    const flush = () => {
-      if (current.some((element) => element.type !== "text" || `${element.attrs.content ?? ""}`.trim())) segments.push(current);
-      current = [];
-    };
-    for (const element of elements) {
-      if (element.type === "message") {
-        flush();
-        segments.push(...split(element.children));
-      } else current.push(element);
-    }
-    flush();
-    return segments;
+  return splitMessageSegments(h.parse(masked).flatMap(restore));
+}
+
+function splitMessageSegments(elements: readonly Element[]): Element[][] {
+  const segments: Element[][] = [];
+  let current: Element[] = [];
+  const flush = () => {
+    if (current.some((element) => element.type !== "text" || `${element.attrs.content ?? ""}`.trim())) segments.push(current);
+    current = [];
   };
-  return split(h.parse(masked).flatMap(restore));
+  for (const element of elements) {
+    if (element.type === "message") {
+      flush();
+      segments.push(...splitMessageSegments(element.children));
+    } else current.push(element);
+  }
+  flush();
+  return segments;
 }
 
 function stripInnerThoughtRegions(source: string): string {

@@ -63,7 +63,7 @@ export async function buildMemeTemplates(
   return cache && key ? cache.getOrProduce(key, produce) : produce();
 }
 
-function findTemplateCandidates(items: readonly { readonly phrase: string; readonly frequency: number }[]): TemplateCandidate[] {
+function findTemplateCandidates(items: ReadonlyArray<{ readonly phrase: string; readonly frequency: number }>): TemplateCandidate[] {
   const candidates = new Map<string, { template: string; examples: string[]; frequency: number; slots: Set<string> }>();
 
   for (let left = 0; left < items.length; left += 1) {
@@ -97,7 +97,7 @@ function findTemplateCandidates(items: readonly { readonly phrase: string; reado
     .sort((left, right) => right.frequency - left.frequency);
 }
 
-function findRepetitionCandidates(items: readonly { readonly phrase: string; readonly frequency: number }[]): TemplateCandidate[] {
+function findRepetitionCandidates(items: ReadonlyArray<{ readonly phrase: string; readonly frequency: number }>): TemplateCandidate[] {
   const byUnit = new Map<string, { unit: string; examples: string[]; frequency: number; repeatCounts: Set<number> }>();
 
   for (const item of items) {

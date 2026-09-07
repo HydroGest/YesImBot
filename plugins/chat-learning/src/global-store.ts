@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import path from "node:path";
 
 import { cosineSimilarity } from "./embedding.js";
 import type {
@@ -52,7 +52,7 @@ export function createGlobalRuleStore(filePath: string): GlobalRuleStore {
     update(next) {
       return serialize(async () => {
         bank = next;
-        await mkdir(dirname(filePath), { recursive: true });
+        await mkdir(path.dirname(filePath), { recursive: true });
         const temporary = `${filePath}.${Date.now()}.tmp`;
         await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
         try {

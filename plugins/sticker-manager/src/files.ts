@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import path from "node:path";
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"]);
 
@@ -8,7 +8,7 @@ export class StickerFileStore {
   private readonly root: string;
 
   public constructor(baseDir: string, storagePath: string) {
-    this.root = join(resolve(baseDir, storagePath), "files");
+    this.root = path.join(path.resolve(baseDir, storagePath), "files");
   }
 
   public get directory(): string {
@@ -23,14 +23,14 @@ export class StickerFileStore {
     await this.ensure();
     const target = this.path(contentId);
     if (await this.exists(contentId)) return;
-    const temporary = join(this.root, `.${contentId}.${randomUUID()}.tmp`);
+    const temporary = path.join(this.root, `.${contentId}.${randomUUID()}.tmp`);
     try {
       await writeFile(temporary, bytes, { flag: "wx" });
       await rename(temporary, target);
-    } catch (cause) {
+    } catch (error) {
       await rm(temporary, { force: true });
       if (await this.exists(contentId)) return;
-      throw cause;
+      throw error;
     }
   }
 
@@ -51,9 +51,9 @@ export class StickerFileStore {
     try {
       const entries = await readdir(this.root);
       return entries.filter((name) => !name.startsWith("."));
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw cause;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
     }
   }
 
@@ -62,7 +62,7 @@ export class StickerFileStore {
   }
 
   private path(contentId: string): string {
-    return join(this.root, contentId);
+    return path.join(this.root, contentId);
   }
 }
 

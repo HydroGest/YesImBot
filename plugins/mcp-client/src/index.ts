@@ -129,7 +129,7 @@ export default class McpClientPlugin {
           execute: async (params: unknown) => {
             try {
               const result = await client.callTool({ name: tool.name, arguments: structuredClone(params as Record<string, unknown>) });
-              return result.content as Array<McpToolOutputBlock>;
+              return result.content as McpToolOutputBlock[];
             } catch (error) {
               this.ctx.logger.error(`调用工具 ${tool.name} 失败: ${(error as Error).message}`);
               throw error;
@@ -208,7 +208,7 @@ function wrapToolWithArtifacts(tool: AgentTool, artifacts: ArtifactStore): Agent
   return {
     ...tool,
     toModelOutput: async (options) => {
-      const { output } = options as { output: Array<McpToolOutputBlock> };
+      const { output } = options as { output: McpToolOutputBlock[] };
       if (!output || output.length === 0) {
         return { type: "text" as const, value: "" };
       }

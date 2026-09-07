@@ -1,4 +1,4 @@
-import YesImBotService from "./service.js";
+import type YesImBotService from "./service.js";
 
 declare module "koishi" {
   interface Context {
@@ -6,7 +6,7 @@ declare module "koishi" {
   }
 }
 
-export default YesImBotService;
+export { default } from "./service.js";
 
 export type { ChannelPlugin, WillDebug, WillEngine, WillPlugin, WillState } from "./agents/index.js";
 

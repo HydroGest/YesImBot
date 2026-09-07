@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import path from "node:path";
 
 import { DataService } from "@koishijs/console";
 import { Context, Logger, Schema, Time, type Field, type Types } from "koishi";
@@ -74,7 +74,7 @@ export default class UsagePlugin extends DataService<UsagePayload> {
     super(ctx, "yesimbotUsage");
     this.logger = ctx.logger("yesimbot-usage");
     const history =
-      usageConfig.historySource === "jsonl" ? new JsonlUsageHistory(resolve(ctx.baseDir, "data", "yesimbot")) : new DatabaseUsageHistory(ctx.database);
+      usageConfig.historySource === "jsonl" ? new JsonlUsageHistory(path.resolve(ctx.baseDir, "data", "yesimbot")) : new DatabaseUsageHistory(ctx.database);
     this.store = new UsageStore(ctx.database, usageConfig.rateWindowSeconds, history);
     ctx.model.extend(USAGE_TABLE, USAGE_FIELDS, { primary: ["date", "hour", "provider", "model", "kind"] });
     this.refreshSoon = ctx.debounce(() => this.refresh(), 1000);
@@ -89,7 +89,7 @@ export default class UsagePlugin extends DataService<UsagePayload> {
       this.refreshSoon();
     });
 
-    ctx.console.addEntry({ dev: resolve(__dirname, "../client/index.ts"), prod: resolve(ctx.baseDir, "node_modules", PACKAGE_NAME, "dist") });
+    ctx.console.addEntry({ dev: path.resolve(__dirname, "../client/index.ts"), prod: path.resolve(ctx.baseDir, "node_modules", PACKAGE_NAME, "dist") });
 
     ctx.on("ready", this.setup.bind(this));
     ctx.on("dispose", this.stop.bind(this));

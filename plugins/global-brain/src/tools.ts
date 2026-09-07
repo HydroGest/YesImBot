@@ -67,8 +67,8 @@ function createBrainDepositTool(options: BrainToolOptions): AgentTool {
           await options.onImmediateShare?.(thread);
         }
         return { outcome: "created", thread };
-      } catch (cause) {
-        return fail(cause);
+      } catch (error) {
+        return fail(error);
       }
     },
   };
@@ -92,8 +92,8 @@ function createBrainReadTool(options: BrainToolOptions): AgentTool {
         if (!view) return { outcome: "failed", error: { code: "thread_not_found", message: "Thread does not exist" } };
         const localized = await materializeView(view, store, assets, scope);
         return { outcome: "ok", ...localized };
-      } catch (cause) {
-        return fail(cause);
+      } catch (error) {
+        return fail(error);
       }
     },
   };
@@ -131,8 +131,8 @@ function createBrainReplyTool(options: BrainToolOptions): AgentTool {
           author: input.author,
         });
         return { outcome: "created", reply };
-      } catch (cause) {
-        return fail(cause);
+      } catch (error) {
+        return fail(error);
       }
     },
   };
@@ -153,8 +153,8 @@ function createBrainResolveTool(options: BrainToolOptions): AgentTool {
       try {
         await store.resolve(input.threadId, scope);
         return { outcome: "resolved" };
-      } catch (cause) {
-        return fail(cause);
+      } catch (error) {
+        return fail(error);
       }
     },
   };
@@ -170,8 +170,8 @@ function createBrainStatusTool(options: BrainToolOptions): AgentTool {
       try {
         const threads: BrainThreadStatus[] = await store.status(scope);
         return { outcome: "ok", threads };
-      } catch (cause) {
-        return fail(cause);
+      } catch (error) {
+        return fail(error);
       }
     },
   };

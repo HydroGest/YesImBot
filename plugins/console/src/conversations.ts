@@ -1,5 +1,5 @@
 import { readFile, readdir, stat } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import path from "node:path";
 
 import { DataService } from "@koishijs/console";
 import {} from "@koishijs/loader";
@@ -319,10 +319,10 @@ async function scanChannelSummaries(channelsPath: string, policies: readonly Con
   const channels: ConversationChannelSummary[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-    const root = join(channelsPath, entry.name);
-    const manifest = await readChannelManifest(join(root, "channel.json"));
+    const root = path.join(channelsPath, entry.name);
+    const manifest = await readChannelManifest(path.join(root, "channel.json"));
     if (!manifest) continue;
-    const sessions = await scanSessionSummaries(join(root, "sessions"));
+    const sessions = await scanSessionSummaries(path.join(root, "sessions"));
     const matchContext: ChannelMatchContext = {
       platform: manifest.platform,
       channelId: manifest.channelId ?? manifest.guildId ?? "",
@@ -380,12 +380,12 @@ async function scanSessionSummaries(sessionsPath: string): Promise<ConversationS
   const sessions: ConversationSessionSummary[] = [];
   for (const filename of filenames) {
     try {
-      const info = await stat(join(sessionsPath, filename));
+      const info = await stat(path.join(sessionsPath, filename));
       sessions.push({
         filename,
         isActive: false,
         size: info.size,
-        createdAt: basename(filename, ".jsonl"),
+        createdAt: path.basename(filename, ".jsonl"),
         lastActivityAt: info.mtimeMs,
       });
     } catch {
@@ -401,7 +401,7 @@ async function readConversationDetail(ctx: Context, request: ConversationRequest
   const channelsPath = resolveChannelsPath(ctx);
   const channelPath = safeJoin(channelsPath, request.channel);
   if (!channelPath) throw new Error("Invalid channel");
-  const sessionPath = safeJoin(join(channelPath, "sessions"), request.session);
+  const sessionPath = safeJoin(path.join(channelPath, "sessions"), request.session);
   if (!sessionPath) throw new Error("Invalid session");
   const info = await stat(sessionPath);
   if (!info.isFile()) throw new Error("Session file not found");
@@ -557,7 +557,7 @@ async function resolveAssetViews(elements: unknown[], channelRoot: string): Prom
       const attrs = objectValue(element.attrs);
       const id = stringValue(element.id) ?? stringValue(attrs?.id);
       if ((element.type === "img" || element.type === "file") && id && COMPLETE_ASSET_ID.test(id)) {
-        const assetPath = safeJoin(join(channelRoot, "assets"), id);
+        const assetPath = safeJoin(path.join(channelRoot, "assets"), id);
         if (assetPath) {
           try {
             const bytes = await readFile(assetPath);
@@ -707,7 +707,7 @@ function resolveChannelsPath(ctx: Context): string {
   const coreEntry = Object.entries(plugins).find(([key]) => normalizePluginKey(key) === "yesimbot");
   const raw = coreEntry?.[1] as Record<string, unknown> | undefined;
   const basePath = typeof raw?.basePath === "string" ? raw.basePath : "data/yesimbot";
-  return resolve(ctx.baseDir, basePath, "channels");
+  return path.resolve(ctx.baseDir, basePath, "channels");
 }
 
 function flattenPluginConfig(plugins: Record<string, unknown>): Record<string, unknown> {
@@ -734,9 +734,9 @@ function normalizePluginKey(key: string): string {
 
 function safeJoin(root: string, segment: string): string | undefined {
   if (!segment || segment.includes("/") || segment.includes("\\") || segment.includes("..")) return undefined;
-  const target = join(root, segment);
-  const rel = relative(root, target);
-  if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) return undefined;
+  const target = path.join(root, segment);
+  const rel = path.relative(root, target);
+  if (rel.startsWith(`..${path.sep}`) || rel === ".." || path.isAbsolute(rel)) return undefined;
   return target;
 }
 

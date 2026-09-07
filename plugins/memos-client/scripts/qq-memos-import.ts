@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import path from "node:path";
 
 import { deriveMemosImportChunkIdentity } from "../src/identity.js";
 import type { MemosAddMessageRequest, MemosMessage } from "../src/types.js";
@@ -17,7 +17,7 @@ const DEFAULT_OVERLAP_MESSAGES = 0;
 
 const PLATFORM = "onebot";
 
-const entryFileName = process.argv[1] ? basename(process.argv[1]) : "";
+const entryFileName = process.argv[1] ? path.basename(process.argv[1]) : "";
 
 if (entryFileName === "qq-memos-import.ts" || entryFileName === "qq-memos-import.js") {
   main().catch((error) => {
@@ -360,7 +360,7 @@ function inferPrivateChannelId(messages: RawMessage[], botSelfId: string, chatIn
 }
 
 function inferChannelId(filePath: string, conversationType: QqConversationType, chatInfo: RawChatInfo, messages: RawMessage[], botSelfId: string): string {
-  const fileName = basename(filePath);
+  const fileName = path.basename(filePath);
   const channelId = conversationType === "group" ? inferGroupChannelId(fileName, chatInfo) : `private:${inferPrivateChannelId(messages, botSelfId, chatInfo)}`;
   if (!channelId) throw new Error(`Unable to infer QQ channel id for ${fileName}`);
   return channelId;
@@ -435,7 +435,7 @@ function normalizeMessage(
   const system = Boolean(message.system);
   return {
     role: system ? "system" : senderId === botSelfId ? "assistant" : "user",
-    messageId: readString(message.id) ?? `${basename(filePath)}:${index}`,
+    messageId: readString(message.id) ?? `${path.basename(filePath)}:${index}`,
     timestampMs: getTimestampMs(message.timestamp),
     senderId,
     senderName: getSenderName(message.sender),
@@ -448,14 +448,14 @@ function normalizeMessage(
     resources: normalizeResources(message.content),
     conversationType,
     channelId,
-    sourceFileName: basename(filePath),
+    sourceFileName: path.basename(filePath),
   };
 }
 
 async function parseQqExportFile(filePath: string, botSelfId: string): Promise<ParsedMessage[]> {
   const raw = await readFile(filePath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
-  if (!isRawQqExport(parsed)) throw new Error(`Unsupported QQ export shape: ${basename(filePath)}`);
+  if (!isRawQqExport(parsed)) throw new Error(`Unsupported QQ export shape: ${path.basename(filePath)}`);
   const conversationType = normalizeConversationType(parsed.chatInfo.type);
   const channelId = inferChannelId(filePath, conversationType, parsed.chatInfo, parsed.messages, botSelfId);
   return parsed.messages.map((message, index) => normalizeMessage(message, index, filePath, conversationType, channelId, botSelfId));
@@ -471,7 +471,7 @@ async function discoverInputFiles(input: string): Promise<string[]> {
   const entries = await readdir(input, { withFileTypes: true });
   return entries
     .filter((entry) => entry.isFile() && entry.name.toLocaleLowerCase().endsWith(".json"))
-    .map((entry) => join(input, entry.name))
+    .map((entry) => path.join(input, entry.name))
     .sort((left, right) => left.localeCompare(right));
 }
 
