@@ -1,6 +1,5 @@
-import { TurnResult } from "@yesimbot/agent-runtime";
 import type { Logger, Universal } from "koishi";
-import { isMessage, type WillDebug, type WillState, type Event, type Message, type WillEngine } from "koishi-plugin-yesimbot";
+import { isMessage, type WillDebug, type WillState, type Event, type Message, type WillEngine, TurnResult } from "koishi-plugin-yesimbot";
 
 import { hasImage, hasQuote, mentionKind } from "./message-context.js";
 import type { PolicyWillingnessConfig } from "./types.js";

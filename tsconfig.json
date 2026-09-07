@@ -1,1 +1,9 @@
-{ "extends": "./tsconfig.base", "compilerOptions": { "paths": { "koishi-plugin-yesimbot": ["./core/src"], "@yesimbot/*": ["./packages/*/src"] } } }
+{
+  "extends": "./tsconfig.base",
+  "compilerOptions": {
+    "paths": {
+      "koishi-plugin-yesimbot": ["./core/src"],
+      "@yesimbot/*": ["./packages/*/src"]
+    }
+  }
+}

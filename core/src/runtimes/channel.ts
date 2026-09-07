@@ -1,5 +1,6 @@
 import {
   AgentBusyError,
+  AssistantContent,
   createAgent,
   createEntry,
   createEventEntry,
@@ -9,8 +10,9 @@ import {
   type AgentInternalEvent,
   type AgentPlugin,
   type AgentToolSet,
+  type LanguageModel,
+  type ToolSet,
 } from "@yesimbot/agent-runtime";
-import type { AssistantContent, LanguageModel, ToolSet } from "ai";
 import { Universal, type Bot, type Context, type Logger } from "koishi";
 
 import {
@@ -22,7 +24,7 @@ import {
   type SendFailedNotice,
 } from "../agents/tools.js";
 import type { WillEngine, WillState } from "../agents/will.js";
-import { type Channel, type ChannelContext, deriveChannelKey } from "../channels/index.js";
+import { deriveChannelKey, type Channel, type ChannelContext } from "../channels/index.js";
 import type { Config } from "../config.js";
 import {
   createEvent,
@@ -161,8 +163,8 @@ export class ChannelRuntime {
         await this.options.channel.conversation.storage.append(
           createEventEntry(createInternalEvent({ type: "will.decision", eventId: input.id, decision, debug: this.options.will.debug?.() })),
         );
-      } catch (cause) {
-        this.logger.warn("runtime.will_decision_persist_failed", { eventId: input.id, cause });
+      } catch (error) {
+        this.logger.warn("runtime.will_decision_persist_failed", { eventId: input.id, error });
       }
       const result = decision === "wait" ? { kind: "wait" as const, eventId: input.id } : this.start(input, true, "join");
       this.logger.debug("runtime.handle", {
@@ -214,7 +216,7 @@ export class ChannelRuntime {
     this.stopTask = this.schedule(async () => {
       await this.agent.interrupt("stop");
       await this.agent.stop();
-      await Promise.allSettled([...this.streams]);
+      await Promise.allSettled(this.streams);
     });
     return this.stopTask;
   }
@@ -341,8 +343,8 @@ export class ChannelRuntime {
       }
       completed = true;
       if (passive) await this.options.will.observe?.({ turnId, status: "done", messages: [] });
-    } catch (cause) {
-      this.logger.warn("runtime.turn.consume_failed", { turnId, cause });
+    } catch (error) {
+      this.logger.warn("runtime.turn.consume_failed", { turnId, error });
     } finally {
       if (turnId) this.silentTurns.delete(turnId);
       if (completed && delivered) {

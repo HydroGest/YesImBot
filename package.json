@@ -16,34 +16,33 @@
     "plugins/*",
     "providers/*"
   ],
+  "type": "module",
   "scripts": {
-    "build": "turbo run build",
-    "check-types": "turbo run check-types",
-    "clean": "turbo run clean && rimraf .turbo",
-    "fmt": "oxfmt",
-    "fmt:check": "oxfmt --check .",
-    "koishi:dev": "node scripts/start-koishi.mjs --dev",
-    "koishi:start": "node scripts/start-koishi.mjs",
+    "build": "yakumo build",
+    "clean": "yakumo clean",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "prepare": "husky",
-    "pub": "turbo run pub",
     "setup-koishi": "node scripts/setup-koishi.mjs",
     "setup-koishi:check": "node scripts/setup-koishi.mjs --check",
-    "test": "turbo run test"
+    "test": "yakumo vitest"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^22.16.2",
-    "bumpp": "^10.2.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "oxfmt": "^0.62.0",
     "oxlint": "^1.77.0",
-    "pkgroll": "^2.27.1",
-    "rimraf": "^6.1.2",
-    "turbo": "2.10.8",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "7.3.6",
+    "vitest": "4.1.10",
+    "yakumo": "^3.2.1",
+    "yakumo-esbuild": "^3.0.2",
+    "yakumo-tsc": "^3.0.1",
+    "yakumo-vitest": "^1.3.3"
   },
   "lint-staged": {
     "*.{ts,tsx,mjs,cjs,js,jsx}": [

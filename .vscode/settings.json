@@ -1,0 +1,23 @@
+{
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    ".env.universal": ".env.*",
+    "vite.config.ts": "vite*.ts",
+    "README.md": "CODE_OF_CONDUCT.md, RELEASES.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md",
+    "tsconfig.json": "tsconfig.*.json, env.d.ts",
+    "package.json": ".editorconfig, .yarnrc.yml, *.config.ts, yakumo.yml, .gitattributes, .gitignore, LICENSE",
+    "AGENTS.md": "AGENTS.md, CLAUDE.md"
+  },
+  "editor.detectIndentation": false,
+  "editor.tabSize": 2,
+  "editor.formatOnSave": true,
+  "editor.formatOnType": false,
+  "editor.formatOnPaste": true,
+  "editor.formatOnSaveMode": "file",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "always"
+  },
+  "files.autoSave": "onFocusChange",
+  "typescript.disableAutomaticTypeAcquisition": true
+}

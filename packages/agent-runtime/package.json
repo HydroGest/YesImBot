@@ -28,6 +28,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/provider": "3.0.15",
     "@ai-sdk/provider-utils": "4.0.46",
     "ai": "6.0.264",
     "zod": "3.25.76"

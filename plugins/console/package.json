@@ -35,6 +35,7 @@
     "koishi-plugin-yesimbot": "workspace:^"
   },
   "peerDependencies": {
+    "@koishijs/console": "^5.30.4",
     "@koishijs/plugin-console": "^5.30.4",
     "koishi": "^4.18.10",
     "koishi-plugin-yesimbot": "workspace:^"

@@ -174,7 +174,6 @@ yarn-error.log
 # Add here any additional files/directories you want to ignore in your project
 .agents/
 .claude/
-.vscode/
 references/
 
 .koishi-app-path
@@ -182,4 +181,5 @@ references/
 *.o
 skills-lock.json
 yarn.lock
+bun.lock
 yesimbot-setup.log
