@@ -1,4 +1,0 @@
-schema: superpowers-bridge
-created: 2026-07-05
-goal: Provide shared ChannelScope and ChannelScopeId APIs, canonical path-safe
-  IDs, metadata-backed reverse lookup, and unified channel-scoped data layout.

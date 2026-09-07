@@ -1,5 +1,0 @@
-schema: superpowers-bridge
-created: 2026-07-04
-goal: Provide group-chat-friendly long-term memory through plugins/memos-client,
-  with runtime-filled identity fields, search-before-answer, selective
-  write-after-answer, and agent-runtime terminal tool support.

@@ -1,5 +1,0 @@
-schema: superpowers-bridge
-created: 2026-07-21
-goal: Make Platform.Message the routing source of truth, move the full channel
-  lifecycle behind ChannelRuntime, and centralize outbound delivery over
-  Koishi/Satori.
